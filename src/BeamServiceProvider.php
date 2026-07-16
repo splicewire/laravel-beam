@@ -22,6 +22,7 @@ class BeamServiceProvider extends PackageServiceProvider
     {
         $package
             ->name('laravel-beam')
-            ->hasConfigFile('beam');
+            ->hasConfigFile('beam')
+            ->hasMigration('create_schema_records_table');
     }
 }
