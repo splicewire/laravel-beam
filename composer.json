@@ -1,0 +1,45 @@
+{
+    "name": "schemastud/laravel-beam",
+    "description": "The app-substrate rung an application stands on with or without an editor: the runtime home of the generic schema-record + media model traits and the host-hook registries (webhook / sitemap / doctor). Boots headless — frame (the editor rung) depends on beam, never the reverse (ADR-0082 layering). No Beam model is minted; beam is a substrate, not an instance.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.2",
+        "illuminate/contracts": "^11.0|^12.0|^13.0",
+        "illuminate/support": "^11.0|^12.0|^13.0",
+        "spatie/laravel-package-tools": "^1.16"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.0",
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "phpunit/phpunit": "^11.0|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Schemastud\\Beam\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Schemastud\\Beam\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Schemastud\\Beam\\BeamServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "scripts": {
+        "pint": "@php -d memory_limit=512M vendor/bin/pint",
+        "test": "@php vendor/bin/phpunit"
+    }
+}
