@@ -1,5 +1,8 @@
 <?php
 
+use Schemastud\Beam\Models\BeamSubmission;
+use Schemastud\Beam\Models\SchemaRecord;
+
 return [
 
     /*
@@ -14,7 +17,25 @@ return [
     | never the reverse (ADR-0082). Keep host/editor concerns out of this file.
     */
 
-    // 'schema_record' => [ ... ]   // (ticket 07)
+    /*
+    | Swappable models (Spatie swappable-model pattern). A host that composes the beam
+    | traits on its own record/reference models points these at its subclasses.
+    */
+    'models' => [
+        'schema_record' => SchemaRecord::class,
+        'submission' => BeamSubmission::class,
+    ],
+
+    /*
+    | Table names. "shared" means shared CODE, not a shared database — every app that
+    | consumes beam gets its own tables. The migrations are publish-only stubs; a multi-tenant
+    | host owns tenant-guarded copies so submissions land in the tenant schema, not central.
+    */
+    'tables' => [
+        'schema_records' => 'schema_records',
+        'submissions' => 'beam_submissions',
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 

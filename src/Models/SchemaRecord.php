@@ -4,6 +4,7 @@ namespace Schemastud\Beam\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Schemastud\Beam\Concerns\PersistsSchemaRecord;
+use Schemastud\Beam\Revisions\RecordsRevisions;
 
 /**
  * A concrete, standalone schema record — the narrow-core row for apps that want a generic
@@ -19,6 +20,7 @@ use Schemastud\Beam\Concerns\PersistsSchemaRecord;
 class SchemaRecord extends Model
 {
     use PersistsSchemaRecord;
+    use RecordsRevisions;
 
     protected $table = 'schema_records';
 
