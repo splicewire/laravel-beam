@@ -1,11 +1,11 @@
 <?php
 
-namespace Schemastud\Beam\Tests;
+namespace Splicewire\Beam\Tests;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Schemastud\Beam\Concerns\PersistsSchemaRecord;
+use Splicewire\Beam\Concerns\PersistsSchemaRecord;
 
 class PersistsSchemaRecordTest extends TestCase
 {

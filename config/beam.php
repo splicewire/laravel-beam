@@ -1,7 +1,7 @@
 <?php
 
-use Schemastud\Beam\Models\BeamSubmission;
-use Schemastud\Beam\Models\SchemaRecord;
+use Splicewire\Beam\Models\BeamSubmission;
+use Splicewire\Beam\Models\SchemaRecord;
 
 return [
 

@@ -1,11 +1,11 @@
 <?php
 
-namespace Schemastud\Beam\Tests;
+namespace Splicewire\Beam\Tests;
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Schemastud\Beam\Models\BeamSubmission;
-use Schemastud\Beam\Models\SchemaRecord;
+use Splicewire\Beam\Models\BeamSubmission;
+use Splicewire\Beam\Models\SchemaRecord;
 
 class BeamSubmissionTest extends TestCase
 {

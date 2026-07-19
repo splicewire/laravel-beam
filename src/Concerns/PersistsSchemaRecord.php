@@ -1,6 +1,6 @@
 <?php
 
-namespace Schemastud\Beam\Concerns;
+namespace Splicewire\Beam\Concerns;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;

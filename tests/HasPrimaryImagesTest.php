@@ -1,11 +1,11 @@
 <?php
 
-namespace Schemastud\Beam\Tests;
+namespace Splicewire\Beam\Tests;
 
 use Illuminate\Database\Eloquent\Model;
-use Schemastud\Beam\Concerns\HasFeaturedImage;
-use Schemastud\Beam\Concerns\HasPrimaryImages;
 use Spatie\MediaLibrary\HasMedia;
+use Splicewire\Beam\Concerns\HasFeaturedImage;
+use Splicewire\Beam\Concerns\HasPrimaryImages;
 
 class HasPrimaryImagesTest extends TestCase
 {

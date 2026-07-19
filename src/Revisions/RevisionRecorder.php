@@ -1,6 +1,6 @@
 <?php
 
-namespace Schemastud\Beam\Revisions;
+namespace Splicewire\Beam\Revisions;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;

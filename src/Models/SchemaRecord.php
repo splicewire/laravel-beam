@@ -1,10 +1,10 @@
 <?php
 
-namespace Schemastud\Beam\Models;
+namespace Splicewire\Beam\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Schemastud\Beam\Concerns\PersistsSchemaRecord;
-use Schemastud\Beam\Revisions\RecordsRevisions;
+use Splicewire\Beam\Concerns\PersistsSchemaRecord;
+use Splicewire\Beam\Revisions\RecordsRevisions;
 
 /**
  * A concrete, standalone schema record — the narrow-core row for apps that want a generic

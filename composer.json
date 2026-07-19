@@ -1,5 +1,5 @@
 {
-    "name": "schemastud/laravel-beam",
+    "name": "splicewire/laravel-beam",
     "description": "The app-substrate rung an application stands on with or without an editor: the runtime home of the generic schema-record + media model traits and the host-hook registries (webhook / sitemap / doctor). Boots headless — frame (the editor rung) depends on beam, never the reverse (ADR-0082 layering). No Beam model is minted; beam is a substrate, not an instance.",
     "type": "library",
     "license": "MIT",
@@ -19,12 +19,12 @@
     },
     "autoload": {
         "psr-4": {
-            "Schemastud\\Beam\\": "src/"
+            "Splicewire\\Beam\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Schemastud\\Beam\\Tests\\": "tests/"
+            "Splicewire\\Beam\\Tests\\": "tests/"
         }
     },
     "extra": {
@@ -33,7 +33,7 @@
         },
         "laravel": {
             "providers": [
-                "Schemastud\\Beam\\BeamServiceProvider"
+                "Splicewire\\Beam\\BeamServiceProvider"
             ]
         }
     },

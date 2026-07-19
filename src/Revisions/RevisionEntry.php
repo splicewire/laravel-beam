@@ -1,6 +1,6 @@
 <?php
 
-namespace Schemastud\Beam\Revisions;
+namespace Splicewire\Beam\Revisions;
 
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 use Spatie\LaravelData\Data;

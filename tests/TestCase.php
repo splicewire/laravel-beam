@@ -1,12 +1,12 @@
 <?php
 
-namespace Schemastud\Beam\Tests;
+namespace Splicewire\Beam\Tests;
 
 use Orchestra\Testbench\TestCase as Orchestra;
-use Schemastud\Beam\BeamServiceProvider;
 use Spatie\Activitylog\ActivitylogServiceProvider;
 use Spatie\LaravelData\LaravelDataServiceProvider;
 use Spatie\MediaLibrary\MediaLibraryServiceProvider;
+use Splicewire\Beam\BeamServiceProvider;
 
 abstract class TestCase extends Orchestra
 {

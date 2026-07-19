@@ -1,6 +1,6 @@
 <?php
 
-namespace Schemastud\Beam\Concerns;
+namespace Splicewire\Beam\Concerns;
 
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;

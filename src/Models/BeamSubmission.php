@@ -1,11 +1,11 @@
 <?php
 
-namespace Schemastud\Beam\Models;
+namespace Splicewire\Beam\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Schemastud\Beam\Concerns\PersistsSchemaRecord;
+use Splicewire\Beam\Concerns\PersistsSchemaRecord;
 
 /**
  * The generic submission reference — a beam-native companion to a {@see SchemaRecord}, composition

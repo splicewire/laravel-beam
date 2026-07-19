@@ -1,8 +1,8 @@
 <?php
 
-namespace Schemastud\Beam\Tests;
+namespace Splicewire\Beam\Tests;
 
-use Schemastud\Beam\BeamServiceProvider;
+use Splicewire\Beam\BeamServiceProvider;
 
 class BeamBootTest extends TestCase
 {

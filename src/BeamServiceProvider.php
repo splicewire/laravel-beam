@@ -1,6 +1,6 @@
 <?php
 
-namespace Schemastud\Beam;
+namespace Splicewire\Beam;
 
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
