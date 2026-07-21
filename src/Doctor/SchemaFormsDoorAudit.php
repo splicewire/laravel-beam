@@ -2,7 +2,7 @@
 
 namespace Splicewire\Beam\Doctor;
 
-use Schemastud\Doctor\Finding;
+use Rushing\Doctor\Finding;
 
 /**
  * Advisory, presence-conditional: if schemastud/laravel-schema-forms is installed (its

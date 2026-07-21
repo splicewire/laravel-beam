@@ -3,8 +3,8 @@
 namespace Splicewire\Beam\Tests;
 
 use Illuminate\Contracts\Console\Kernel;
-use Schemastud\Doctor\DoctorStatus;
-use Schemastud\Doctor\Finding;
+use Rushing\Doctor\DoctorStatus;
+use Rushing\Doctor\Finding;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
@@ -101,7 +101,7 @@ class BeamDoctorCommandTest extends TestCase
     public function test_dependency_audit_fails_on_a_committed_path_repository(): void
     {
         $findings = (new BeamDependencyContractAudit)->run(
-            ['repositories' => [['type' => 'path', 'url' => '../../schemastud/laravel-doctor']]],
+            ['repositories' => [['type' => 'path', 'url' => '../../rushing/laravel-doctor']]],
             ['packages' => [], 'packages-dev' => []],
         );
 

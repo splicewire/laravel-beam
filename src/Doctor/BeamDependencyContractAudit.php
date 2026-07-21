@@ -2,7 +2,7 @@
 
 namespace Splicewire\Beam\Doctor;
 
-use Schemastud\Doctor\Finding;
+use Rushing\Doctor\Finding;
 
 /**
  * The moat-free, generic subset of the satellite's dependency-contract audit. Given

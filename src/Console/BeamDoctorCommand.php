@@ -3,8 +3,8 @@
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
-use Schemastud\Doctor\DoctorStatus;
-use Schemastud\Doctor\Finding;
+use Rushing\Doctor\DoctorStatus;
+use Rushing\Doctor\Finding;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\SchemaFormsDoorAudit;

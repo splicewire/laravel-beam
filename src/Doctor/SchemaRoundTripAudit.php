@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Doctor;
 
 use ReflectionClass;
-use Schemastud\Doctor\Finding;
+use Rushing\Doctor\Finding;
 use Spatie\LaravelData\Data;
 
 /**

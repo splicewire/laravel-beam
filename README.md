@@ -33,11 +33,11 @@ that graduates only if a surface forces an instance registry (map fog).
 php artisan splicewire:beam:doctor
 ```
 
-Audits whether a base-tier Beam app is deploy-ready. **Moat-free**: it never requires
+Audits whether a base-tier Beam app is deploy-ready. **Product-free**: it never requires
 `splicewire/laravel-satellite`, and its frame / schema-forms / data-schemas checks are
 **advisory and presence-conditional** (`class_exists` / `app()->bound()` at runtime) — on a
 headless beam app where none are installed they emit an informational PASS/skip, never a
-FAIL. It consumes the `Finding` + `DoctorStatus` primitives from `schemastud/laravel-doctor`.
+FAIL. It consumes the `Finding` + `DoctorStatus` primitives from `rushing/laravel-doctor`.
 
 ### Output format (the `<DoctorOutput>` parse target)
 
