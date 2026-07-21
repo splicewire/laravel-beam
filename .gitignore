@@ -1,5 +1,6 @@
 /vendor/
 /node_modules/
+/composer.local.json
 composer.lock
 .phpunit.result.cache
 .php-cs-fixer.cache

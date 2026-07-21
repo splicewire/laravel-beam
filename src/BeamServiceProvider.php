@@ -4,6 +4,7 @@ namespace Splicewire\Beam;
 
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
+use Splicewire\Beam\Console\BeamDoctorCommand;
 
 /**
  * The beam substrate provider. beam is the runtime an app stands on with or without an editor —
@@ -31,5 +32,16 @@ class BeamServiceProvider extends PackageServiceProvider
             ->hasConfigFile('beam')
             ->hasMigration('create_schema_records_table')
             ->hasMigration('create_beam_submissions_table');
+    }
+
+    public function packageBooted(): void
+    {
+        // Base-tier readiness command. Moat-free (never touches the satellite); the
+        // frame/schema-forms/data-schemas checks it runs are advisory + presence-conditional.
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                BeamDoctorCommand::class,
+            ]);
+        }
     }
 }
