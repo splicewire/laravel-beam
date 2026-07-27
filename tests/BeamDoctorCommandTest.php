@@ -7,9 +7,13 @@ use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
+use Splicewire\Beam\Doctor\BeamManifestAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
+use Splicewire\Beam\Doctor\MarqueeGateAudit;
+use Splicewire\Beam\Doctor\McpIsolationAudit;
 use Splicewire\Beam\Doctor\SchemaFormsDoorAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
+use Splicewire\Beam\Doctor\SitemapReadinessAudit;
 
 class BeamDoctorCommandTest extends TestCase
 {
@@ -20,6 +24,7 @@ class BeamDoctorCommandTest extends TestCase
         if (isset($this->fixtureBase) && is_dir($this->fixtureBase)) {
             @unlink($this->fixtureBase.'/composer.json');
             @unlink($this->fixtureBase.'/composer.lock');
+            @unlink($this->fixtureBase.'/BEAM.md');
             @rmdir($this->fixtureBase);
         }
 
@@ -28,12 +33,13 @@ class BeamDoctorCommandTest extends TestCase
 
     /**
      * Point the app base path at a temp dir holding a fixture composer.json + composer.lock,
-     * so the command reads a controlled contract rather than the real project's.
+     * so the command reads a controlled contract rather than the real project's. Writes a valid
+     * BEAM.md by default (the manifest is a gate) unless $withManifest is false.
      *
      * @param  array<string, mixed>  $composerJson
      * @param  array<string, mixed>|null  $composerLock
      */
-    private function pointBaseAt(array $composerJson, ?array $composerLock): void
+    private function pointBaseAt(array $composerJson, ?array $composerLock, bool $withManifest = true): void
     {
         $this->fixtureBase = sys_get_temp_dir().'/beam-doctor-'.uniqid();
         @mkdir($this->fixtureBase, 0777, true);
@@ -41,6 +47,12 @@ class BeamDoctorCommandTest extends TestCase
         file_put_contents($this->fixtureBase.'/composer.json', json_encode($composerJson));
         if ($composerLock !== null) {
             file_put_contents($this->fixtureBase.'/composer.lock', json_encode($composerLock));
+        }
+        if ($withManifest) {
+            file_put_contents(
+                $this->fixtureBase.'/BEAM.md',
+                "---\nsatellite: fixture\nvariant: inertia-react\n---\n# Fixture\n",
+            );
         }
 
         $this->app->setBasePath($this->fixtureBase);
@@ -82,6 +94,21 @@ class BeamDoctorCommandTest extends TestCase
         );
 
         $this->artisan('splicewire:beam:doctor')->assertExitCode(BeamDoctorCommand::SUCCESS);
+    }
+
+    public function test_command_fails_when_the_beam_manifest_is_absent(): void
+    {
+        // The BEAM.md self-description is a gate (relocated from the satellite doctor): a beam site
+        // with no manifest (and no legacy SATELLITE.md fallback) is not conformant.
+        $this->pointBaseAt(
+            ['minimum-stability' => 'dev', 'prefer-stable' => true],
+            ['packages' => [], 'packages-dev' => []],
+            withManifest: false,
+        );
+
+        $this->artisan('splicewire:beam:doctor')
+            ->expectsOutputToContain('BEAM.md is missing')
+            ->assertExitCode(BeamDoctorCommand::FAILURE);
     }
 
     // ---- BeamDependencyContractAudit (the hard gate) -------------------------------
@@ -161,6 +188,90 @@ class BeamDoctorCommandTest extends TestCase
         $finding = (new SchemaFormsDoorAudit)->run();
 
         $this->assertSame(DoctorStatus::Pass, $finding->status);
+    }
+
+    // ---- Relocated base/shell audits (moved from the satellite doctor) --------------
+
+    public function test_beam_manifest_audit_passes_with_identity_keys(): void
+    {
+        $this->assertSame(DoctorStatus::Pass, (new BeamManifestAudit)->run(true, 'numero', 'inertia-react')->status);
+    }
+
+    public function test_beam_manifest_audit_fails_when_missing(): void
+    {
+        $finding = (new BeamManifestAudit)->run(false, null, null);
+        $this->assertSame(DoctorStatus::Fail, $finding->status);
+        $this->assertStringContainsString('missing', $finding->detail);
+    }
+
+    public function test_beam_manifest_audit_fails_when_a_required_key_is_absent(): void
+    {
+        $finding = (new BeamManifestAudit)->run(true, 'numero', null);
+        $this->assertSame(DoctorStatus::Fail, $finding->status);
+        $this->assertStringContainsString('variant', $finding->detail);
+    }
+
+    public function test_mcp_isolation_audit_passes_when_nothing_registered(): void
+    {
+        $this->assertSame(DoctorStatus::Pass, (new McpIsolationAudit)->run([])->status);
+    }
+
+    public function test_mcp_isolation_audit_fails_on_an_unisolated_registration(): void
+    {
+        $finding = (new McpIsolationAudit)->run([
+            ['source' => '.mcp.json', 'command' => 'npx @playwright/mcp@latest'],
+        ]);
+        $this->assertSame(DoctorStatus::Fail, $finding->status);
+    }
+
+    public function test_mcp_isolation_audit_passes_on_an_isolated_registration(): void
+    {
+        $finding = (new McpIsolationAudit)->run([
+            ['source' => '.mcp.json', 'command' => 'npx @playwright/mcp@latest --isolated'],
+        ]);
+        $this->assertSame(DoctorStatus::Pass, $finding->status);
+    }
+
+    public function test_marquee_gate_audit_passes_when_middleware_is_in_the_web_group(): void
+    {
+        $mw = 'Rushing\\Marquee\\Middleware\\EnforceSiteMode';
+        $finding = (new MarqueeGateAudit)->run([$mw], $mw, true, true);
+        $this->assertSame(DoctorStatus::Pass, $finding->status);
+    }
+
+    public function test_marquee_gate_audit_fails_when_auto_register_on_but_not_wired(): void
+    {
+        $mw = 'Rushing\\Marquee\\Middleware\\EnforceSiteMode';
+        $finding = (new MarqueeGateAudit)->run([], $mw, true, true);
+        $this->assertSame(DoctorStatus::Fail, $finding->status);
+    }
+
+    public function test_sitemap_audit_warns_when_disabled(): void
+    {
+        $this->assertSame(DoctorStatus::Warn, (new SitemapReadinessAudit)->run(false, [])->status);
+    }
+
+    public function test_sitemap_audit_passes_when_enabled_and_unshadowed(): void
+    {
+        $this->assertSame(DoctorStatus::Pass, (new SitemapReadinessAudit)->run(true, [])->status);
+    }
+
+    public function test_dependency_audit_fails_when_required_marquee_has_no_repo(): void
+    {
+        $findings = (new BeamDependencyContractAudit)->run(
+            ['require' => ['rushing/laravel-marquee' => 'dev-main']],
+            ['packages' => [], 'packages-dev' => []],
+        );
+        $this->assertSame(DoctorStatus::Fail, $this->finding($findings, 'marquee site-mode gate wired')->status);
+    }
+
+    public function test_dependency_audit_warns_on_undeclared_first_party_closure(): void
+    {
+        $findings = (new BeamDependencyContractAudit)->run(
+            ['require' => ['splicewire/laravel-beam' => 'dev-main']],
+            ['packages' => [], 'packages-dev' => []],
+        );
+        $this->assertSame(DoctorStatus::Warn, $this->finding($findings, 'first-party closure declared in repositories')->status);
     }
 
     /**

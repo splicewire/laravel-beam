@@ -11,24 +11,135 @@ use Rushing\Doctor\Finding;
  * repositories committed to composer.json, and (advisory) stability flags present when
  * dev-main pins exist.
  *
- * This is THE hard gate: only these findings can fail the doctor's exit code. It carries
- * none of the satellite-specific checks (marquee, house skills, first-party closure) —
- * base beam is a substrate, not a product deployment (ADR-0082 / ADR-0095).
+ * This is THE hard gate: the path-free/repo/stability findings can fail the doctor's exit code.
+ * It also carries the generic install-contract checks relocated from the satellite doctor —
+ * the marquee deploy-dark launch gate (declared) and the first-party repository closure — since
+ * both are beam-shell concerns generic across sites (ADR-0082 / ADR-0095). It carries NO
+ * house/fleet specifics (npm scope skew, house skills source, capability packages) — those stay
+ * on the satellite/house doctor.
  */
 class BeamDependencyContractAudit
 {
     /**
+     * First-party composer vendors (ADR-0073 + ADR-0077): schemastud/ owns the substrate,
+     * splicewire/ the product, rushing/ the portfolio shelf. Order does not matter — a name
+     * matches on the first vendor it prefixes.
+     */
+    public const FIRST_PARTY_VENDORS = ['schemastud/', 'splicewire/', 'rushing/'];
+
+    /**
      * @param  array<string, mixed>  $composerJson
      * @param  array<string, mixed>|null  $composerLock
+     * @param  list<string>  $vendors  Allowed first-party composer vendors (defaults to FIRST_PARTY_VENDORS).
      * @return list<Finding>
      */
-    public function run(array $composerJson, ?array $composerLock): array
+    public function run(array $composerJson, ?array $composerLock, array $vendors = self::FIRST_PARTY_VENDORS): array
     {
         return [
             $this->lockHasNoPathRefs($composerLock),
             $this->committedReposAreGitResolved($composerJson),
             $this->stabilityConfigured($composerJson),
+            $this->marqueeGateDeclared($composerJson),
+            $this->firstPartyClosureDeclared($composerJson, $vendors),
         ];
+    }
+
+    /**
+     * A site cannot deploy dark (public sees the `soon` splash from first DNS resolve) and flip
+     * live without a redeploy unless it ships the marquee site-mode gate. Required + git-declared
+     * is the deploy-critical contract; missing the require is only advisory (a site may opt out),
+     * but a required-yet-undeclared marquee will not install on a clean box.
+     *
+     * @param  array<string, mixed>  $composerJson
+     */
+    private function marqueeGateDeclared(array $composerJson): Finding
+    {
+        $check = 'marquee site-mode gate wired';
+
+        if (! array_key_exists('rushing/laravel-marquee', $composerJson['require'] ?? [])) {
+            return Finding::warn(
+                $check,
+                'rushing/laravel-marquee is not required — this site cannot deploy in `soon` and flip live with `php artisan marquee:mode live`.'
+            );
+        }
+
+        $repoUrls = '';
+        foreach ($composerJson['repositories'] ?? [] as $repo) {
+            if (is_array($repo)) {
+                $repoUrls .= ' '.($repo['url'] ?? '');
+            }
+        }
+
+        if (! str_contains($repoUrls, 'laravel-marquee')) {
+            return Finding::fail(
+                $check,
+                'rushing/laravel-marquee is required but has no git repository entry — it will not install on a clean box.'
+            );
+        }
+
+        return Finding::pass($check, 'marquee gate required and git-declared — deploy-dark launch flow available.');
+    }
+
+    /**
+     * Composer `repositories` are root-only — a dependency's own repositories block is ignored, so
+     * the app must declare a repository for every first-party package in its FULL transitive
+     * closure (including ones it never names directly). A required first-party package with no
+     * matching repository entry is the classic "won't resolve on a clean box" gap. Advisory (warn).
+     *
+     * @param  array<string, mixed>  $composerJson
+     * @param  list<string>  $vendors
+     */
+    private function firstPartyClosureDeclared(array $composerJson, array $vendors): Finding
+    {
+        $check = 'first-party closure declared in repositories';
+        $requires = array_keys(($composerJson['require'] ?? []) + ($composerJson['require-dev'] ?? []));
+        $firstPartyRequires = array_values(array_filter(
+            $requires,
+            fn (string $name): bool => $this->firstPartyVendor($name, $vendors) !== null,
+        ));
+
+        if ($firstPartyRequires === []) {
+            return Finding::pass($check, 'No first-party requirements to declare.');
+        }
+
+        $repoUrls = '';
+        foreach ($composerJson['repositories'] ?? [] as $repo) {
+            if (is_array($repo)) {
+                $repoUrls .= ' '.($repo['url'] ?? '');
+            }
+        }
+
+        $undeclared = [];
+        foreach ($firstPartyRequires as $name) {
+            $short = substr($name, strlen((string) $this->firstPartyVendor($name, $vendors)));
+            if (! str_contains($repoUrls, $short)) {
+                $undeclared[] = $name;
+            }
+        }
+
+        if ($undeclared !== []) {
+            return Finding::warn(
+                $check,
+                'Required first-party packages without a matching repository entry (repositories are root-only — declare the whole closure): '
+                .implode(', ', $undeclared).'.'
+            );
+        }
+
+        return Finding::pass($check, 'Every required first-party package has a repository entry.');
+    }
+
+    /**
+     * @param  list<string>  $vendors
+     */
+    private function firstPartyVendor(string $name, array $vendors): ?string
+    {
+        foreach ($vendors as $vendor) {
+            if (str_starts_with($name, $vendor)) {
+                return $vendor;
+            }
+        }
+
+        return null;
     }
 
     /**
