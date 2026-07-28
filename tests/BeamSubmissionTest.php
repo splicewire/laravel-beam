@@ -16,6 +16,9 @@ class BeamSubmissionTest extends TestCase
         Schema::create('schema_records', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('schema_ref')->nullable()->index();
+            $table->string('schema_id')->nullable()->index();
+            $table->string('migration_status')->nullable()->index();
+            $table->string('head_version')->nullable();
             $table->json('payload')->nullable();
             $table->json('meta')->nullable();
             $table->timestamps();

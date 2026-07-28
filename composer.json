@@ -1,6 +1,6 @@
 {
     "name": "splicewire/laravel-beam",
-    "description": "The app-substrate rung an application stands on with or without an editor: the runtime home of the generic schema-record + media model traits and the host-hook registries (webhook / sitemap / doctor). Boots headless — frame (the editor rung) depends on beam, never the reverse (ADR-0082 layering). No Beam model is minted; beam is a substrate, not an instance.",
+    "description": "The schema-driven-CMS core: composes the open schema foundation (schemastud/laravel-data-schemas) and the open versioning foundation (rushing/laravel-versioning) into a schema-typed, snapshot-versioned, migrate-on-read SchemaRecord. Depends DOWN on both open foundations (the allowed ADR-0092 direction; frame → beam → data-schemas is a diamond, not a cycle) and relocates nothing out of them. Also the runtime home of the generic media model traits and the host-hook registries (webhook / sitemap / doctor). Boots headless — frame (the editor rung) depends on beam, never the reverse (ADR-0082 layering). No Beam model is minted; beam is a substrate, not an instance.",
     "type": "library",
     "license": "MIT",
     "require": {
@@ -8,6 +8,8 @@
         "illuminate/contracts": "^11.0|^12.0|^13.0",
         "illuminate/support": "^11.0|^12.0|^13.0",
         "rushing/laravel-doctor": "*",
+        "rushing/laravel-versioning": "dev-main",
+        "schemastud/laravel-data-schemas": "^1.0",
         "spatie/laravel-activitylog": "^4.0|^5.0",
         "spatie/laravel-data": "^4.0|^5.0",
         "spatie/laravel-medialibrary": "^11.0",

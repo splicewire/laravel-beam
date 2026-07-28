@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Tests;
 
 use Orchestra\Testbench\TestCase as Orchestra;
+use Rushing\Versioning\VersioningServiceProvider;
+use Schemastud\DataSchemas\LaravelDataSchemasServiceProvider;
 use Spatie\Activitylog\ActivitylogServiceProvider;
 use Spatie\LaravelData\LaravelDataServiceProvider;
 use Spatie\MediaLibrary\MediaLibraryServiceProvider;
@@ -31,6 +33,12 @@ abstract class TestCase extends Orchestra
             // its RevisionEntry projection is a spatie/laravel-data object.
             ActivitylogServiceProvider::class,
             LaravelDataServiceProvider::class,
+            // The two open foundations beam-core composes (ADR-0135): the versioning seam
+            // (Migrator/RecordReconciler/Versionable + VersionStore) and the schema engine
+            // (SchemaRegistry the default reconciler resolves). Declared dependencies DOWN,
+            // not rungs above beam.
+            VersioningServiceProvider::class,
+            LaravelDataSchemasServiceProvider::class,
         ];
     }
 }

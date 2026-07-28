@@ -5,9 +5,14 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The generic schema-record store — the narrow core. Populator-specific facts (generation
- * provenance, submission context) belong in reference tables keyed by `schema_records.id`,
- * NOT as columns here (composition, not inheritance).
+ * The generic schema-record store — the narrow core, now schema-driven-CMS core (ADR-0135).
+ * Populator-specific facts (generation provenance, submission context) belong in reference
+ * tables keyed by `schema_records.id`, NOT as columns here (composition, not inheritance).
+ *
+ * The versioning columns are the trait defaults: `schema_id` (the absolute `$id` the payload
+ * was written under — the migrate-on-read version column), `migration_status`
+ * (current/pending/failed), and `head_version` (the Versionable snapshot HEAD pin). Distinct
+ * from `schema_ref`, which stays the declared schema BINDING (a bare stem or versioned id).
  */
 return new class extends Migration
 {
@@ -16,6 +21,9 @@ return new class extends Migration
         Schema::create('schema_records', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('schema_ref')->nullable()->index();
+            $table->string('schema_id')->nullable()->index();
+            $table->string('migration_status')->nullable()->index();
+            $table->string('head_version')->nullable();
             $table->json('payload')->nullable();
             $table->json('meta')->nullable();
             $table->timestamps();
