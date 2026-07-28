@@ -1,6 +1,5 @@
 <?php
 
-use Splicewire\Beam\Models\BeamSubmission;
 use Splicewire\Beam\Models\SchemaRecord;
 
 return [
@@ -19,21 +18,23 @@ return [
 
     /*
     | Swappable models (Spatie swappable-model pattern). A host that composes the beam
-    | traits on its own record/reference models points these at its subclasses.
+    | traits on its own record model points this at its subclass.
+    |
+    | The generic BeamSubmission REFERENCE model was retired (ADR-0138): a submission is
+    | exactly one thing — a FormSubmission (a beam SchemaRecord). The two-model split was
+    | created-but-never-read; the FC-15 reference precedent is reversed.
     */
     'models' => [
         'schema_record' => SchemaRecord::class,
-        'submission' => BeamSubmission::class,
     ],
 
     /*
     | Table names. "shared" means shared CODE, not a shared database — every app that
     | consumes beam gets its own tables. The migrations are publish-only stubs; a multi-tenant
-    | host owns tenant-guarded copies so submissions land in the tenant schema, not central.
+    | host owns tenant-guarded copies so records land in the tenant schema, not central.
     */
     'tables' => [
         'schema_records' => 'schema_records',
-        'submissions' => 'beam_submissions',
     ],
 
     // 'media'         => [ ... ]   // (ticket 08)
