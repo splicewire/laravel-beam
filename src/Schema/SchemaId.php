@@ -86,6 +86,18 @@ final class SchemaId implements Stringable
         return $this->version;
     }
 
+    /**
+     * The record TYPE this id denotes — the single place the "schema binding → record
+     * type" rule lives, shared by every schema-record model that resolves its type off a
+     * `schema_ref`. A binding may be a bare stem (`content/article`) — already the record
+     * type — or a versioned `$id` (`content/article/2`), stripped to its stem. (Calling
+     * `stem()` unconditionally would wrongly drop a bare stem's last name segment.)
+     */
+    public function recordType(): string
+    {
+        return $this->version === null ? $this->raw : $this->stem;
+    }
+
     /** A sibling `$id` on the same stem at the given version. */
     public function withVersion(int $version): self
     {

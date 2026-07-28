@@ -19,7 +19,7 @@ use Splicewire\Beam\Schema\SchemaId;
  * with their own columns (kind, subject_id, title, …) use the trait on their own model
  * instead of extending this.
  *
- * As the schema-driven-CMS core (ADR-0135), a SchemaRecord is schema-typed AND
+ * As the schema-driven-CMS core (ADR-0138), a SchemaRecord is schema-typed AND
  * snapshot-versioned AND migrate-on-read AND restore-composes-migration out of the box —
  * no app-local wiring. THREE versioning disciplines coexist here, they do not merge:
  *
@@ -156,14 +156,10 @@ class SchemaRecord extends Model implements MigratesSnapshotOnRestore, Versionab
     }
 
     /**
-     * Derive the record type (schema stem) from a `schema_ref` binding — null for an
-     * empty/absent ref. Shared by the read path ({@see resolveRecordType()}) and the
+     * Derive the record type from a `schema_ref` binding — null for an empty/absent ref,
+     * otherwise the binding's {@see SchemaId::recordType()} (bare stem as-is, versioned id
+     * stripped to its stem). Shared by the read path ({@see resolveRecordType()}) and the
      * snapshot-restore path ({@see migrateSnapshotForward()}).
-     *
-     * `schema_ref` may be bound EITHER as a bare stem (`content/article`) OR as a
-     * versioned `$id` (`content/article/2`). A bare stem IS already the record type;
-     * only a versioned binding is stripped to its stem. (Calling `stem()` on a bare
-     * stem would wrongly drop its last name segment.)
      */
     protected function recordTypeFor(mixed $schemaRef): ?string
     {
@@ -171,8 +167,6 @@ class SchemaRecord extends Model implements MigratesSnapshotOnRestore, Versionab
             return null;
         }
 
-        $id = SchemaId::from($schemaRef);
-
-        return $id->version() === null ? $schemaRef : $id->stem();
+        return SchemaId::from($schemaRef)->recordType();
     }
 }

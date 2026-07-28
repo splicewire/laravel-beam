@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The generic schema-record store — the narrow core, now schema-driven-CMS core (ADR-0135).
+ * The generic schema-record store — the narrow core, now schema-driven-CMS core (ADR-0138).
  * Populator-specific facts (generation provenance, submission context) belong in reference
  * tables keyed by `schema_records.id`, NOT as columns here (composition, not inheritance).
  *

@@ -48,7 +48,7 @@ class BeamServiceProvider extends PackageServiceProvider
 
     public function packageRegistered(): void
     {
-        // beam-core's DEFAULT schema-migration wiring (ADR-0135): so a headless beam app
+        // beam-core's DEFAULT schema-migration wiring (ADR-0138): so a headless beam app
         // gets a working migrate-on-read SchemaRecord out of the box. A richer host (e.g.
         // splicewire-app) OVERRIDES both bindings — its app providers register after the
         // package's, so its system-vs-tenant TargetSchemaResolver + LLM-armed adapter win.
