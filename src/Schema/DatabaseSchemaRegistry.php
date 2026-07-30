@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Splicewire\Beam\Schema;
 
-use Illuminate\Database\Query\Builder;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Builder;
 use InvalidArgumentException;
 use Schemastud\DataSchemas\Contracts\EnumeratesVersions;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
@@ -14,6 +12,7 @@ use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
 use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
 use Splicewire\Beam\Beam;
+use Splicewire\Beam\Models\BeamSchema;
 
 /**
  * DB-backed {@see SchemaRegistry} — the runtime sibling of the
@@ -21,8 +20,8 @@ use Splicewire\Beam\Beam;
  *
  * Where the filesystem registry holds a host's COMMITTED code schemas, this
  * resolves schemas a downstream tenant registered at RUNTIME (no deploy). It is
- * backed by a `schema_registry` table (UUID PK, `schema_id` unique). A frozen
- * artifact is keyed by its absolute, versioned `$id`.
+ * backed by the {@see BeamSchema} model over `beam_schemas` (UUID PK, `schema_id`
+ * unique). A frozen artifact is keyed by its absolute, versioned `$id`.
  *
  * The mechanism is host-agnostic: the `$table` and `$connection` are injected, so
  * a multi-tenant host binds it per-resolution against the active tenant connection
@@ -68,28 +67,22 @@ class DatabaseSchemaRegistry implements EnumeratesVersions, SchemaRegistry
             throw new SchemaRegistryConflict($id, $existing->fingerprint, $incoming);
         }
 
-        $this->query()->insert([
-            'id' => (string) Str::uuid(),
+        // The {@see BeamSchema} model mints the UUID (HasUuids) + timestamps and JSON-casts `artifact`.
+        $this->query()->create([
             'schema_id' => $id,
             'schema_name' => SchemaId::from($id)->stem(),
             'version' => SchemaId::from($id)->version(),
             'fingerprint' => $incoming,
-            'artifact' => json_encode($schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-            'created_at' => now(),
-            'updated_at' => now(),
+            'artifact' => $schema,
         ]);
     }
 
     public function get(string $id): ?array
     {
         $row = $this->query()->where('schema_id', $id)->first();
-        if ($row === null) {
-            return null;
-        }
 
-        $decoded = json_decode((string) $row->artifact, true);
-
-        return is_array($decoded) ? $decoded : null;
+        // `artifact` is array-cast on the model — a stored schema round-trips as its decoded document.
+        return is_array($row?->artifact) ? $row->artifact : null;
     }
 
     public function has(string $id): bool
@@ -126,9 +119,16 @@ class DatabaseSchemaRegistry implements EnumeratesVersions, SchemaRegistry
             ->all();
     }
 
-    /** A fresh query builder bound to the configured connection + table. */
+    /** A fresh {@see BeamSchema} query bound to the configured table + (tenant) connection. */
     protected function query(): Builder
     {
-        return DB::connection($this->connection)->table($this->table);
+        $model = new BeamSchema;
+        $model->setTable($this->table);
+
+        if ($this->connection !== null) {
+            $model->setConnection($this->connection);
+        }
+
+        return $model->newQuery();
     }
 }
