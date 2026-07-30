@@ -21,7 +21,8 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
  *
  * READ (`get`/`has`) walks the sources IN ORDER — the FIRST source is authoritative, so a `['db','file']`
  * host has the DB tier SHADOW the filesystem tier (a tenant's runtime-registered schema wins, falling
- * back to committed code artifacts), exactly as {@see ChainedSchemaRegistry} did.
+ * back to committed code artifacts), exactly as the former ChainedSchemaRegistry did (that BC shim is
+ * now deleted — beam-particle-rename ticket 02 deferred its removal to the contract phase; done here).
  *
  * WRITE (`register`) lands in the FIRST WRITABLE source — for `['db','file']` that is the DB tier
  * (runtime registrations are tenant-owned, write-once, and must never mutate the committed code
