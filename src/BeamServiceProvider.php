@@ -12,8 +12,10 @@ use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Console\BeamDoctorCommand;
+use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
 use Splicewire\Beam\Http\PublicIntakeController;
+use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Read\Contracts\RecordHydrator;
 use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
 use Splicewire\Beam\Read\NullSchemaDataResolver;
@@ -108,6 +110,10 @@ class BeamServiceProvider extends PackageServiceProvider
         // DataFilterRecordHydrator over the same RecordHydrator port (port-in-base / binding-in-host).
         $this->app->bind(SchemaDataResolver::class, NullSchemaDataResolver::class);
         $this->app->bind(RecordHydrator::class, PayloadRecordReader::class);
+
+        // The beam-install self-registration manifest (ticket 08): a singleton every beam-* package
+        // pushes its own install step into, from its own provider. beam-core never learns consumer names.
+        $this->app->singleton(BeamInstallManifest::class);
     }
 
     public function packageBooted(): void
@@ -117,8 +123,18 @@ class BeamServiceProvider extends PackageServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 BeamDoctorCommand::class,
+                BeamInstallCommand::class,
             ]);
         }
+
+        // beam-core registers ITS OWN install step, core-first (order 0), like any consumer — the config
+        // + substrate migrations. Consumers self-register their steps from their own providers (ticket 08).
+        $this->app->make(BeamInstallManifest::class)->register(
+            package: 'splicewire/laravel-beam (core)',
+            publishTags: ['laravel-beam-config', 'laravel-beam-migrations'],
+            migrates: true,
+            order: 0,
+        );
 
         // The OPTIONAL public intake door (ticket 04) — mounted only when the host opts in. Deny-default
         // still guards it (a schema must be allow-listed), so mounting alone opens nothing.
