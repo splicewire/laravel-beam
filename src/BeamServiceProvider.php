@@ -2,15 +2,21 @@
 
 namespace Splicewire\Beam;
 
+use Illuminate\Contracts\Auth\Access\Gate;
+use Illuminate\Contracts\Events\Dispatcher;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
+use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
+use Splicewire\Beam\Write\Contracts\WriteGate;
+use Splicewire\Beam\Write\GateWriteGate;
+use Splicewire\Beam\Write\RecordWriter;
 
 /**
  * The beam-core provider. beam is the schema-driven-CMS core: it composes the open schema
@@ -67,6 +73,23 @@ class BeamServiceProvider extends PackageServiceProvider
             $app->make(SchemaRegistry::class),
             new JsonSchemaGenerator((array) config('data-schemas', [])),
             targetResolver: $app->make(SchemaTargetResolver::class),
+        ));
+
+        // The beam write pipeline (ADR-0150 / beam-write-pipeline ticket 03). The DEFAULT WriteGate
+        // delegates to the Laravel authorization gate — deny-by-default, existing create/update policies
+        // keep governing. A host that wants public intake binds a permissive gate + allow-list instead
+        // (ticket 04). The RecordWriter composes the gate, the shipped target resolver, the acceptance
+        // gate, and the event dispatcher into the one validate → authorize → persist → emit path.
+        $this->app->bind(
+            WriteGate::class,
+            fn ($app) => new GateWriteGate($app->make(Gate::class)),
+        );
+
+        $this->app->bind(RecordWriter::class, fn ($app) => new RecordWriter(
+            $app->make(WriteGate::class),
+            $app->make(SchemaTargetResolver::class),
+            new AcceptanceGate,
+            $app->make(Dispatcher::class),
         ));
     }
 

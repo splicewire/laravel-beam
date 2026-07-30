@@ -4,6 +4,10 @@ namespace Splicewire\Beam\Concerns;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Splicewire\Beam\Events\SchemaRecordPersisted;
+use Splicewire\Beam\Models\SchemaRecord;
+use Splicewire\Beam\Schema\SchemaId;
+use Splicewire\Beam\Write\RecordWriter;
 
 /**
  * The generic schema-record skeleton: turn an Eloquent model into a server-persisted,
@@ -46,5 +50,44 @@ trait PersistsSchemaRecord
     public function extract(): void
     {
         //
+    }
+
+    /**
+     * The beam write-pipeline persist seam ({@see RecordWriter}): fill this
+     * record from a schema-shaped payload. The DEFAULT fills the model's own attributes — the app-model
+     * case, where the payload IS the record's columns. The base {@see SchemaRecord}
+     * overrides it to route the content into its `payload` JSON column instead. Keeping this a seam is
+     * what makes the pipeline model-agnostic: the writer never has to know which shape it's persisting.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function fillFromSchemaPayload(array $payload): void
+    {
+        $this->fill($payload);
+    }
+
+    /**
+     * The record's TYPE — the stem of its `schema_ref` binding ({@see SchemaId::recordType()}: a bare
+     * stem as-is, a versioned `$id` stripped to its stem) — used by the write pipeline to resolve the
+     * target schema for validation. Null when the record carries no schema binding (a plain app model),
+     * for which the pipeline skips schema validation.
+     */
+    public function recordType(): ?string
+    {
+        $ref = $this->getAttribute('schema_ref');
+
+        return is_string($ref) && $ref !== '' ? SchemaId::from($ref)->recordType() : null;
+    }
+
+    /**
+     * The schema binding this record was written under (its `schema_ref` — a bare stem or a versioned
+     * `$id`), reported on the {@see SchemaRecordPersisted} event. Null for a
+     * model that carries no `schema_ref`.
+     */
+    public function schemaBinding(): ?string
+    {
+        $ref = $this->getAttribute('schema_ref');
+
+        return is_string($ref) && $ref !== '' ? $ref : null;
     }
 }

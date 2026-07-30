@@ -66,6 +66,19 @@ class SchemaRecord extends Model implements MigratesSnapshotOnRestore, Versionab
     }
 
     /**
+     * The beam write-pipeline persist seam, specialized for the base record: the schema-shaped content
+     * IS this model's `payload` JSON column, so route it there rather than mass-filling attributes (the
+     * default {@see PersistsSchemaRecord::fillFromSchemaPayload()} behaviour, which suits app models with
+     * real columns). The `schema_ref` binding is set on the target BEFORE the write and is preserved.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function fillFromSchemaPayload(array $payload): void
+    {
+        $this->setAttribute($this->payloadColumn(), $payload);
+    }
+
+    /**
      * The bound reconciler: the container's {@see RecordReconciler}. Beam binds a
      * registry-backed default; a host overrides that binding with its richer adapter,
      * which transparently repoints this record's read path.
