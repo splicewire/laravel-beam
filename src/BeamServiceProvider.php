@@ -4,6 +4,7 @@ namespace Splicewire\Beam;
 
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Support\Facades\Route;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
@@ -11,6 +12,8 @@ use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Console\BeamDoctorCommand;
+use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
+use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
@@ -102,5 +105,30 @@ class BeamServiceProvider extends PackageServiceProvider
                 BeamDoctorCommand::class,
             ]);
         }
+
+        // The OPTIONAL public intake door (ticket 04) — mounted only when the host opts in. Deny-default
+        // still guards it (a schema must be allow-listed), so mounting alone opens nothing.
+        if (config('beam.intake.enabled', false)) {
+            $this->registerIntakeRoute();
+        }
+    }
+
+    /**
+     * Mount POST /beam/intake/{schema} onto {@see PublicIntakeController}, with the configured throttle
+     * and — when enabled — the opt-in honeypot. The `{schema}` param is a schema stem/ref, so it may
+     * contain slashes.
+     */
+    protected function registerIntakeRoute(): void
+    {
+        $middleware = ['throttle:'.config('beam.intake.throttle', '5,1')];
+
+        if (config('beam.intake.honeypot.enabled', false)) {
+            $middleware[] = HoneypotMiddleware::class;
+        }
+
+        Route::post('beam/intake/{schema}', PublicIntakeController::class)
+            ->where('schema', '.*')
+            ->middleware($middleware)
+            ->name('beam.intake.submit');
     }
 }

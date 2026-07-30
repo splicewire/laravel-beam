@@ -37,6 +37,36 @@ return [
         'schema_records' => 'schema_records',
     ],
 
+    /*
+    | The optional generic PUBLIC INTAKE door (beam-write-pipeline ticket 04 / ADR-0150). A host mounts
+    | this to accept anonymous form submissions with no controller of its own — or leaves it OFF and
+    | calls RecordWriter from its own controller. It is deny-by-default: nothing is anonymously writable
+    | unless a schema stem is explicitly listed in `public_schemas`.
+    */
+    'intake' => [
+        // Mount POST /beam/intake/{form}. Off by default — the door is opt-in.
+        'enabled' => false,
+
+        // URL-safe form slug => the schema stem (or absolute $id) it resolves. The route addresses a
+        // form by its slug; the slug maps to a registered schema. A slug absent here (and not itself a
+        // resolvable stem) is a 404. Being addressable is NOT being public — see `public_schemas`.
+        'forms' => [],
+
+        // The allow-list: schema stems (or versioned $ids) a stranger may submit. Empty ⇒ nothing is
+        // publicly submittable (the safe default; a bad default here would silently open write access).
+        // A form that resolves but is absent here is refused (403) by the deny-default gate.
+        'public_schemas' => [],
+
+        // Opt-in honeypot bot defence, default OFF — never silently imposed.
+        'honeypot' => [
+            'enabled' => false,
+            'field' => 'website',
+        ],
+
+        // Route throttle, "{maxAttempts},{decayMinutes}".
+        'throttle' => '5,1',
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 
