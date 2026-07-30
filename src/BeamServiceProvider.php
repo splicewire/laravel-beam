@@ -14,6 +14,10 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
 use Splicewire\Beam\Http\PublicIntakeController;
+use Splicewire\Beam\Read\Contracts\RecordHydrator;
+use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
+use Splicewire\Beam\Read\NullSchemaDataResolver;
+use Splicewire\Beam\Read\PayloadRecordReader;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
@@ -94,6 +98,13 @@ class BeamServiceProvider extends PackageServiceProvider
             new AcceptanceGate,
             $app->make(Dispatcher::class),
         ));
+
+        // The READ seam mirroring the write pipeline (ticket 13, DESIGN §9). The record → Data-class
+        // policy is host-owned (null default here); the DEFAULT hydrator is the degenerate payload reader
+        // — NO data-filters dependency. A host that wants query-composing list reads binds its own
+        // DataFilterRecordHydrator over the same RecordHydrator port (port-in-base / binding-in-host).
+        $this->app->bind(SchemaDataResolver::class, NullSchemaDataResolver::class);
+        $this->app->bind(RecordHydrator::class, PayloadRecordReader::class);
     }
 
     public function packageBooted(): void
