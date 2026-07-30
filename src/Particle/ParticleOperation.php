@@ -24,7 +24,7 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
  * run either way with no host branching — the `?async` dance controllers copy today (FragmentUrlBatch.run,
  * Composition.*) collapses to a convention.
  */
-final class ParticleOperation
+class ParticleOperation
 {
     /**
      * @param  string  $resource  the particle resource key this operation hangs off (for the route + auth)

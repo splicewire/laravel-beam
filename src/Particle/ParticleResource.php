@@ -33,7 +33,7 @@ use Spatie\LaravelData\Data;
  *     relation association (e.g. `->owner()->associate($user)`) that mass-fill can't set.
  *   - {@see $afterWrite} runs AFTER the write — for relation syncs (`->sync()`, `attachTags`, …).
  */
-final class ParticleResource
+class ParticleResource
 {
     /**
      * @param  string  $key  the registry key AND the data-filters resource key the list query rides
