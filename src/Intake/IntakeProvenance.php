@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Splicewire\Beam\Intake;
 
-use Splicewire\Beam\Models\SchemaRecord;
+use Splicewire\Beam\Models\BeamParticle;
 
 /**
  * Optional intake-provenance facets for a record written through the public intake door
@@ -15,7 +15,7 @@ use Splicewire\Beam\Models\SchemaRecord;
  * baked into every write. It replaces the dissolved submissions package's `FormSubmission` intake
  * columns (form_key/context/user_id) with a structured facet set carried in the record's `meta`.
  *
- * A "submission" is therefore no longer a package or a model — it is a {@see SchemaRecord}
+ * A "submission" is therefore no longer a package or a model — it is a {@see BeamParticle}
  * written through the public binding, carrying these facets under `meta['intake']`.
  */
 final class IntakeProvenance

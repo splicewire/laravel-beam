@@ -9,11 +9,11 @@ use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
-use Splicewire\Beam\Read\Contracts\RecordHydrator;
+use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
 
 /**
- * The degenerate {@see RecordHydrator} default (beam-write-pipeline ticket 13, DESIGN §9a/§9d): the
+ * The degenerate {@see ParticleHydrator} default (beam-write-pipeline ticket 13, DESIGN §9a/§9d): the
  * direct-from-source reader. A record's reconciled payload IS the data → `Data::from(reconcile($payload))`.
  * "Reader is the degenerate Hydrator" — one seam, not two.
  *
@@ -24,7 +24,7 @@ use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
  * niche until the deferred storage-collapse (DESIGN §9a); the host binds a `DataFilterRecordHydrator` for
  * real model-backed lists.
  */
-final class PayloadRecordReader implements RecordHydrator
+final class PayloadParticleReader implements ParticleHydrator
 {
     public function __construct(private readonly SchemaDataResolver $dataResolver) {}
 
@@ -58,7 +58,7 @@ final class PayloadRecordReader implements RecordHydrator
     public function query(string $recordType, ReadContext $ctx): object
     {
         throw new BadMethodCallException(
-            'The payload reader does not compose list queries; bind a query-composing RecordHydrator (DataFilterRecordHydrator).',
+            'The payload reader does not compose list queries; bind a query-composing ParticleHydrator (DataFilterRecordHydrator).',
         );
     }
 

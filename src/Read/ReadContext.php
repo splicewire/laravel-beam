@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Splicewire\Beam\Read;
 
 use Illuminate\Contracts\Auth\Authenticatable;
-use Splicewire\Beam\Read\Contracts\RecordHydrator;
+use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 
 /**
  * The minimal projection declaration for a read (beam-write-pipeline ticket 13, DESIGN §9c). It is the
@@ -16,7 +16,7 @@ use Splicewire\Beam\Read\Contracts\RecordHydrator;
  * BOTH read axes at once — the eager-load axis (data-filters `allowedIncludes` / `->with` / `withCount`)
  * AND the spatie serialization partial (`Data->include([...])`) — killing the double-declaration that
  * today is hand-synced in `FragmentResourceHandler::index` (eager-load list vs `->include(...)` list).
- * A {@see RecordHydrator} is what compiles it to both.
+ * A {@see ParticleHydrator} is what compiles it to both.
  *
  * Deliberately NOT here (cut from v1, DESIGN §9c/§9f): sparse-fieldsets (`fields`) — data-filters has no
  * `allowedFields` reflection yet; a `depth` knob — path length already IS depth; filters/sorts — they

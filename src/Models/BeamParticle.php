@@ -9,18 +9,18 @@ use Rushing\Versioning\Contracts\MigratesSnapshotOnRestore;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\Contracts\Versionable;
 use Splicewire\Beam\Beam;
-use Splicewire\Beam\Concerns\PersistsSchemaRecord;
+use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Revisions\RecordsRevisions;
 use Splicewire\Beam\Schema\SchemaId;
 
 /**
- * A concrete, standalone schema record — the narrow-core row for apps that want a generic
+ * A concrete, standalone schema particle — the narrow-core row for apps that want a generic
  * store without minting their own model. It is entirely optional: the load-bearing piece
- * is {@see PersistsSchemaRecord}, which any domain model composes directly. Domain apps
+ * is {@see PersistsBeamParticle}, which any domain model composes directly. Domain apps
  * with their own columns (kind, subject_id, title, …) use the trait on their own model
  * instead of extending this.
  *
- * As the schema-driven-CMS core (ADR-0138), a SchemaRecord is schema-typed AND
+ * As the schema-driven-CMS core (ADR-0138), a BeamParticle is schema-typed AND
  * snapshot-versioned AND migrate-on-read AND restore-composes-migration out of the box —
  * no app-local wiring. THREE versioning disciplines coexist here, they do not merge:
  *
@@ -55,9 +55,9 @@ use Splicewire\Beam\Schema\SchemaId;
  * leaves existing version rows resolvable. The beam provider registers the alias additively
  * (`Relation::morphMap`, never `enforceMorphMap` — a host has many class-string morphs).
  */
-class SchemaRecord extends Model implements MigratesSnapshotOnRestore, Versionable
+class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionable
 {
-    use PersistsSchemaRecord;
+    use PersistsBeamParticle;
     use ReconcilesPayloadOnRead;
     use RecordsRevisions;
     use VersionableTrait;
@@ -97,7 +97,7 @@ class SchemaRecord extends Model implements MigratesSnapshotOnRestore, Versionab
     /**
      * The beam write-pipeline persist seam, specialized for the base record: the schema-shaped content
      * IS this model's `payload` JSON column, so route it there rather than mass-filling attributes (the
-     * default {@see PersistsSchemaRecord::fillFromSchemaPayload()} behaviour, which suits app models with
+     * default {@see PersistsBeamParticle::fillFromSchemaPayload()} behaviour, which suits app models with
      * real columns). The `schema_ref` binding is set on the target BEFORE the write and is preserved.
      *
      * @param  array<string, mixed>  $payload

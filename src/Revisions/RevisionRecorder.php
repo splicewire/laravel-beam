@@ -10,7 +10,7 @@ use Spatie\Activitylog\Models\Activity;
 /**
  * The generic reversibility port, backed by `spatie/laravel-activitylog`. Generalized up from
  * composition's app-local `DataActivityRecorder` (ADR-0049) so it becomes beam-core: any
- * beam SchemaRecord (or any Eloquent-backed record) gets change-history + undo/redo.
+ * beam BeamParticle (or any Eloquent-backed record) gets change-history + undo/redo.
  *
  * Usable directly on any record; specialized by extension for a specific payload shape (e.g.
  * composition's `CellRevisionRecorder`, which pins the payload to a cell's `slots` and re-derives

@@ -13,11 +13,11 @@ use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
 use Splicewire\Beam\Intake\IntakeProvenance;
 use Splicewire\Beam\Intake\PublicIntakeWriteGate;
-use Splicewire\Beam\Models\SchemaRecord;
+use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Validation\SchemaFormValidator;
-use Splicewire\Beam\Write\RecordWriter;
+use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\WriteNotAuthorized;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -25,16 +25,16 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 /**
  * The optional generic public intake door (beam-write-pipeline ticket 04): a host accepts anonymous
  * form submissions with NO controller of its own by mounting this route. It generalizes the dissolved
- * submissions package's `POST /schema-forms/{form}` door DOWN into beam-core, riding {@see RecordWriter}.
+ * submissions package's `POST /schema-forms/{form}` door DOWN into beam-core, riding {@see ParticleWriter}.
  *
  * Order is deliberately deny-first: resolve the form schema (404 unknown) → authorize the schema through
  * the permissive-but-allow-listed {@see PublicIntakeWriteGate} (403 if not marked public — the write is
  * refused before its payload is even validated) → format-validate the payload (422 with per-field errors)
- * → persist a {@see SchemaRecord} carrying {@see IntakeProvenance} facets through the pipeline (which
- * re-authorizes, boolean-validates, and emits `SchemaRecordPersisted`). The honeypot short-circuit, when
+ * → persist a {@see BeamParticle} carrying {@see IntakeProvenance} facets through the pipeline (which
+ * re-authorizes, boolean-validates, and emits `BeamParticlePersisted`). The honeypot short-circuit, when
  * enabled, is handled upstream by {@see HoneypotMiddleware}.
  *
- * A "submission" is thus exactly a `SchemaRecord` written through the public binding — no separate model.
+ * A "submission" is thus exactly a `BeamParticle` written through the public binding — no separate model.
  */
 final class PublicIntakeController
 {
@@ -78,10 +78,10 @@ final class PublicIntakeController
             ], Response::HTTP_UNPROCESSABLE_ENTITY));
         }
 
-        $record = new SchemaRecord(['schema_ref' => $this->schemaRef($stem, $targetSchema)]);
+        $record = new BeamParticle(['schema_ref' => $this->schemaRef($stem, $targetSchema)]);
         $record->meta = ['intake' => $this->provenance($request, $actor)->toArray()];
 
-        $writer = new RecordWriter($gate, $this->targets, $this->acceptance, $this->events);
+        $writer = new ParticleWriter($gate, $this->targets, $this->acceptance, $this->events);
         $writer->write($record, $payload, $actor);
 
         return new JsonResponse(['id' => $record->getKey(), 'schemaRef' => $record->schema_ref], 201);

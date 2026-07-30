@@ -12,11 +12,11 @@ use InvalidArgumentException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Lazy;
-use Splicewire\Beam\Concerns\PersistsSchemaRecord;
+use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Read\Cardinality;
 use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
 use Splicewire\Beam\Read\NullSchemaDataResolver;
-use Splicewire\Beam\Read\PayloadRecordReader;
+use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -27,7 +27,7 @@ use Splicewire\Beam\Tests\TestCase;
  * `ReadContext::includes` list compiles to the spatie serialization partial (a Lazy prop appears only
  * when included), and that list queries are (deliberately) the query-composing host binding's job.
  */
-class PayloadRecordReaderTest extends TestCase
+class PayloadParticleReaderTest extends TestCase
 {
     protected function setUp(): void
     {
@@ -42,9 +42,9 @@ class PayloadRecordReaderTest extends TestCase
         });
     }
 
-    private function reader(?string $dataClass): PayloadRecordReader
+    private function reader(?string $dataClass): PayloadParticleReader
     {
-        return new PayloadRecordReader(new class($dataClass) implements SchemaDataResolver
+        return new PayloadParticleReader(new class($dataClass) implements SchemaDataResolver
         {
             public function __construct(private ?string $class) {}
 
@@ -98,7 +98,7 @@ class PayloadRecordReaderTest extends TestCase
         $this->expectException(RuntimeException::class);
 
         // The beam-core default resolves nothing — a host must bind its projection policy.
-        (new PayloadRecordReader(new NullSchemaDataResolver))->hydrate($record, ReadContext::detail());
+        (new PayloadParticleReader(new NullSchemaDataResolver))->hydrate($record, ReadContext::detail());
     }
 
     public function test_cardinality_is_a_mode_on_the_context(): void
@@ -110,7 +110,7 @@ class PayloadRecordReaderTest extends TestCase
 
 class ReaderFixtureModel extends Model
 {
-    use PersistsSchemaRecord;
+    use PersistsBeamParticle;
 
     protected $table = 'reader_fixtures';
 

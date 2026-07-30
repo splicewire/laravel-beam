@@ -7,7 +7,7 @@ namespace Splicewire\Beam\Validation;
 use Opis\JsonSchema\Errors\ErrorFormatter;
 use Opis\JsonSchema\Validator;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
-use Splicewire\Beam\Write\RecordWriter;
+use Splicewire\Beam\Write\ParticleWriter;
 use stdClass;
 
 /**
@@ -15,7 +15,7 @@ use stdClass;
  * relocated down from the dissolved submissions package's `SchemaValidator`.
  *
  * Two validation gates deliberately coexist (DESIGN §7 L10): the boolean {@see AcceptanceGate}
- * the migration ladder and {@see RecordWriter} use, and THIS formatted path,
+ * the migration ladder and {@see ParticleWriter} use, and THIS formatted path,
  * which returns a field-keyed error map so the HTTP layer can render a 422 body. It is the door's
  * concern (a human submitting a form deserves per-field errors), not the pipeline's.
  */

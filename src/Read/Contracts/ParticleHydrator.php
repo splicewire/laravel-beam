@@ -6,25 +6,25 @@ namespace Splicewire\Beam\Read\Contracts;
 
 use Illuminate\Database\Eloquent\Model;
 use Spatie\LaravelData\Data;
-use Splicewire\Beam\Read\PayloadRecordReader;
+use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Read\ReadContext;
-use Splicewire\Beam\Write\RecordWriter;
+use Splicewire\Beam\Write\ParticleWriter;
 
 /**
- * The read seam that mirrors the write pipeline's {@see RecordWriter}
+ * The read seam that mirrors the write pipeline's {@see ParticleWriter}
  * (beam-write-pipeline ticket 13, DESIGN §9). Where the writer collapses validate→authorize→persist→emit,
  * the hydrator collapses resolve→(reconcile)→assemble a typed `Data` from scattered sources — and
  * compiles ONE {@see ReadContext::$includes} list into BOTH the eager-load axis AND the serialization
  * partial, killing the double-declaration.
  *
  * Two implementations, port-in-base / binding-in-host (DESIGN §9d):
- *  - the degenerate {@see PayloadRecordReader} in beam-core — direct-from-source
+ *  - the degenerate {@see PayloadParticleReader} in beam-core — direct-from-source
  *    (`Data::from(reconcile($payload))`), needing NO `rushing/laravel-data-filters` dependency;
  *  - the query-composing `DataFilterRecordHydrator` bound in a host where data-filters IS available —
  *    its {@see self::query()} returns the composed data-filters builder so pagination / saved filters /
  *    further `filter[...]` ride it.
  */
-interface RecordHydrator
+interface ParticleHydrator
 {
     /**
      * Assemble a single typed `Data` for `$source` under `$ctx` — the detail read, and the degenerate

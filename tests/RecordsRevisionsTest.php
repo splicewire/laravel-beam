@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Tests;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Beam;
-use Splicewire\Beam\Models\SchemaRecord;
+use Splicewire\Beam\Models\BeamParticle;
 
 class RecordsRevisionsTest extends TestCase
 {
@@ -40,7 +40,7 @@ class RecordsRevisionsTest extends TestCase
 
     public function test_a_schema_record_records_and_reverts_a_revision(): void
     {
-        $record = SchemaRecord::create([
+        $record = BeamParticle::create([
             'schema_ref' => 'x/1',
             'payload' => ['body' => 'original'],
         ]);
@@ -66,7 +66,7 @@ class RecordsRevisionsTest extends TestCase
 
     public function test_revisions_are_grouped_by_correlation_for_batch_undo(): void
     {
-        $record = SchemaRecord::create(['schema_ref' => 'x/1', 'payload' => ['n' => 0]]);
+        $record = BeamParticle::create(['schema_ref' => 'x/1', 'payload' => ['n' => 0]]);
 
         $record->recordRevision(['payload' => ['n' => 0]], ['payload' => ['n' => 1]], 'refine', 'run-abc');
         $record->recordRevision(['payload' => ['n' => 1]], ['payload' => ['n' => 2]], 'refine', 'run-abc');

@@ -7,7 +7,7 @@ use Spatie\LaravelData\Data;
 
 /**
  * A typed projection of one activity-log row — the substrate-level revision record. Generalized
- * up from composition's app-local `RevisionEntry` (ADR-0049 §2) so *every* beam SchemaRecord —
+ * up from composition's app-local `RevisionEntry` (ADR-0049 §2) so *every* beam BeamParticle —
  * generation-, edit-, or submission-populated — gets change-history + undo/redo, not just
  * composition cells.
  *

@@ -8,9 +8,9 @@ use Closure;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
-use Splicewire\Beam\Concerns\PersistsSchemaRecord;
-use Splicewire\Beam\Events\SchemaRecordPersisted;
-use Splicewire\Beam\Models\SchemaRecord;
+use Splicewire\Beam\Concerns\PersistsBeamParticle;
+use Splicewire\Beam\Events\BeamParticlePersisted;
+use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 
@@ -26,16 +26,16 @@ use Splicewire\Beam\Write\Contracts\WriteGate;
  *   2. **validate** the payload against the record type's resolved target schema via the
  *      {@see AcceptanceGate} — non-conforming ⇒ {@see PayloadRejected} and nothing persists (skipped
  *      when the type has no registered schema: a plain app model validates at its own DTO boundary);
- *   3. **persist** by filling the model through its {@see PersistsSchemaRecord}
+ *   3. **persist** by filling the model through its {@see PersistsBeamParticle}
  *      seam and saving — to ANY trait-bearing model, which keeps its own table;
  *   4. run the optional **after-persist hook** (relation syncs live HERE, deliberately not folded into
  *      the pipeline — DESIGN §3a);
- *   5. **emit** one {@see SchemaRecordPersisted} — the single post-persist signal every write path shares.
+ *   5. **emit** one {@see BeamParticlePersisted} — the single post-persist signal every write path shares.
  *
- * It is named `RecordWriter`, NOT `SchemaRecordWriter`: it writes any persisting record, not only the
- * base {@see SchemaRecord}.
+ * It is named `ParticleWriter`, NOT `BeamParticleWriter`: it writes any persisting particle, not only the
+ * base {@see BeamParticle}.
  */
-final class RecordWriter
+final class ParticleWriter
 {
     public function __construct(
         private readonly WriteGate $gate,
@@ -77,7 +77,7 @@ final class RecordWriter
             }
         }
 
-        // 3. Persist through the model's schema-payload seam when it has one (a PersistsSchemaRecord
+        // 3. Persist through the model's schema-payload seam when it has one (a PersistsBeamParticle
         //    model decides how content lands on it); otherwise fall back to a plain mass-fill, so the
         //    pipeline stays usable by ANY model — e.g. Frame's arbitrary host records (ticket 06).
         if (method_exists($model, 'fillFromSchemaPayload')) {
@@ -93,14 +93,14 @@ final class RecordWriter
         }
 
         // 5. One signal, every write path.
-        $this->events->dispatch(new SchemaRecordPersisted($model, $payload, $this->bindingOf($model)));
+        $this->events->dispatch(new BeamParticlePersisted($model, $payload, $this->bindingOf($model)));
 
         return $model;
     }
 
     /**
      * The record type used to resolve the target schema — a trait-bearing model exposes its stem via
-     * {@see PersistsSchemaRecord::recordType()}; any other model has none
+     * {@see PersistsBeamParticle::recordType()}; any other model has none
      * (validation is skipped).
      */
     private function recordTypeOf(Model $model): ?string

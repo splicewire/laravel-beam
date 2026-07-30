@@ -11,21 +11,21 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Splicewire\Beam\Beam;
-use Splicewire\Beam\Models\SchemaRecord;
+use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV1;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV2;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureExpensiveV1;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureExpensiveV2;
 use Splicewire\Beam\Tests\TestCase;
-use Splicewire\Beam\Write\RecordWriter;
+use Splicewire\Beam\Write\ParticleWriter;
 
 /**
  * The public intake door (beam-write-pipeline ticket 04) at the HTTP seam — the generalized-down
  * successor to submissions' `POST /schema-forms/{form}` tests, repointed onto `POST /beam/intake/{form}`.
  *
  * `contact` is a PUBLIC form (on the allow-list); `private` resolves to a real schema but is NOT on the
- * allow-list, so the deny-default gate refuses it. Everything rides {@see RecordWriter}
- * and persists a base {@see SchemaRecord} carrying intake-provenance facets — no `FormSubmission` model.
+ * allow-list, so the deny-default gate refuses it. Everything rides {@see ParticleWriter}
+ * and persists a base {@see BeamParticle} carrying intake-provenance facets — no `FormSubmission` model.
  */
 class PublicIntakeRouteTest extends TestCase
 {
@@ -88,7 +88,7 @@ class PublicIntakeRouteTest extends TestCase
         $response->assertStatus(201)->assertJson(['schemaRef' => self::CHEAP_STEM.'/2']);
         $this->assertDatabaseCount(Beam::table('particles'), 1);
 
-        $record = SchemaRecord::firstOrFail();
+        $record = BeamParticle::firstOrFail();
         // Migrate-on-read wiring is live: the write stamped the current schema id + status.
         $this->assertSame(self::CHEAP_STEM.'/2', $record->schema_id);
         $this->assertSame('current', $record->migration_status);

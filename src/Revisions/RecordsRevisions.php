@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Revisions;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The beam-core revision trait: mix it into any SchemaRecord (or any Eloquent model) to give the
+ * The beam-core revision trait: mix it into any BeamParticle (or any Eloquent model) to give the
  * record activity-log-backed change-history + undo/redo. This is the generalization of
  * composition's app-local, cell-scoped revision mechanism up into beam (spec §8) — "frozen" only
  * ever meant *materialised*, never *immutable*, so beam records are mutable, referential, and
