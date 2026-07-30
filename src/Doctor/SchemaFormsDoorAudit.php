@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Doctor;
 use Rushing\Doctor\Finding;
 
 /**
- * Advisory, presence-conditional: if schemastud/laravel-schema-forms is installed (its
+ * Advisory, presence-conditional: if splicewire/laravel-schema-forms is installed (its
  * service provider class present, or a `schema-forms.submit` route registered), report the
  * submit door as reachable; otherwise PASS with a skip note. Base beam has no forms door,
  * and that is valid (ADR-0082). Never FAILs.
