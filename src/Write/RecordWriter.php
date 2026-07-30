@@ -77,8 +77,14 @@ final class RecordWriter
             }
         }
 
-        // 3. Persist through the model's schema-payload seam (the model decides how content lands on it).
-        $model->fillFromSchemaPayload($payload);
+        // 3. Persist through the model's schema-payload seam when it has one (a PersistsSchemaRecord
+        //    model decides how content lands on it); otherwise fall back to a plain mass-fill, so the
+        //    pipeline stays usable by ANY model — e.g. Frame's arbitrary host records (ticket 06).
+        if (method_exists($model, 'fillFromSchemaPayload')) {
+            $model->fillFromSchemaPayload($payload);
+        } else {
+            $model->fill($payload);
+        }
         $model->save();
 
         // 4. After-persist hook — relation syncs and other record-specific writes live here.
