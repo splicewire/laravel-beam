@@ -123,7 +123,7 @@ class BeamDoctorCommand extends Command
         return (new MarqueeGateAudit)->run(
             $this->laravel['router']->getMiddlewareGroups()['web'] ?? [],
             $middleware,
-            (bool) config('beam.marquee.auto_register', true),
+            (bool) config('beam.core.marquee.auto_register', true),
             class_exists($middleware),
         );
     }
@@ -160,7 +160,7 @@ class BeamDoctorCommand extends Command
     private function sitemapFinding(string $base): Finding
     {
         $public = $base.'/public';
-        $path = ltrim((string) config('beam.sitemap.path', 'sitemap.xml'), '/');
+        $path = ltrim((string) config('beam.core.sitemap.path', 'sitemap.xml'), '/');
 
         $shadowing = [];
         foreach ([$path, 'robots.txt'] as $file) {
@@ -170,7 +170,7 @@ class BeamDoctorCommand extends Command
         }
 
         return (new SitemapReadinessAudit)->run(
-            (bool) config('beam.sitemap.enabled', true),
+            (bool) config('beam.core.sitemap.enabled', true),
             $shadowing,
         );
     }

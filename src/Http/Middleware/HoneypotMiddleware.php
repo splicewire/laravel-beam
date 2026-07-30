@@ -23,7 +23,7 @@ final class HoneypotMiddleware
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $field = (string) config('beam.intake.honeypot.field', 'website');
+        $field = (string) config('beam.core.intake.honeypot.field', 'website');
 
         if ($request->filled($field)) {
             // Silent success: look exactly like an accepted submission, persist nothing.

@@ -39,14 +39,14 @@ class PublicIntakeRouteTest extends TestCase
         parent::getEnvironmentSetUp($app);
 
         // Mount the opt-in door (config is read at boot, so it must be set here, pre-boot).
-        $app['config']->set('beam.intake.enabled', true);
-        $app['config']->set('beam.intake.forms', [
+        $app['config']->set('beam.core.intake.enabled', true);
+        $app['config']->set('beam.core.intake.forms', [
             'contact' => self::CHEAP_STEM,      // public
             'private' => self::EXPENSIVE_STEM,  // resolvable but NOT public
         ]);
-        $app['config']->set('beam.intake.public_schemas', [self::CHEAP_STEM]);
-        $app['config']->set('beam.intake.honeypot', ['enabled' => true, 'field' => 'website']);
-        $app['config']->set('beam.intake.throttle', '2,1');
+        $app['config']->set('beam.core.intake.public_schemas', [self::CHEAP_STEM]);
+        $app['config']->set('beam.core.intake.honeypot', ['enabled' => true, 'field' => 'website']);
+        $app['config']->set('beam.core.intake.throttle', '2,1');
     }
 
     protected function setUp(): void

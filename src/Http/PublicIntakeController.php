@@ -49,7 +49,7 @@ final class PublicIntakeController
     {
         // Map the URL-safe form slug to its schema stem (or accept a resolvable stem passed directly),
         // then resolve the target schema through beam's registry (filesystem tier). Unknown ⇒ 404.
-        $forms = (array) config('beam.intake.forms', []);
+        $forms = (array) config('beam.core.intake.forms', []);
         $stem = isset($forms[$form]) && $forms[$form] !== '' ? (string) $forms[$form] : $form;
         $targetSchema = $this->targets->targetFor($stem);
         if ($targetSchema === []) {
@@ -58,9 +58,9 @@ final class PublicIntakeController
 
         // Strip the honeypot field so it never reaches the payload (defence works with the middleware
         // off too — a stray honeypot value is simply not persisted).
-        $payload = $request->except([(string) config('beam.intake.honeypot.field', 'website')]);
+        $payload = $request->except([(string) config('beam.core.intake.honeypot.field', 'website')]);
 
-        $gate = new PublicIntakeWriteGate((array) config('beam.intake.public_schemas', []));
+        $gate = new PublicIntakeWriteGate((array) config('beam.core.intake.public_schemas', []));
         $actor = $request->user();
 
         // Deny-first: a schema not on the public allow-list is refused BEFORE its payload is validated.

@@ -54,7 +54,10 @@ class BeamServiceProvider extends PackageServiceProvider
     {
         $package
             ->name('laravel-beam')
-            ->hasConfigFile('beam')
+            // Nested config namespace (beam-write-pipeline ticket 07): publishes config/beam/core.php,
+            // merged + read as config('beam.core.*'). Never a flat config/beam.php — having both a
+            // beam.php file and a beam/ dir is the one real Laravel footgun this move avoids.
+            ->hasConfigFile('beam/core')
             ->hasMigration('create_schema_records_table')
             ->hasMigration('create_versions_table');
     }
@@ -119,7 +122,7 @@ class BeamServiceProvider extends PackageServiceProvider
 
         // The OPTIONAL public intake door (ticket 04) — mounted only when the host opts in. Deny-default
         // still guards it (a schema must be allow-listed), so mounting alone opens nothing.
-        if (config('beam.intake.enabled', false)) {
+        if (config('beam.core.intake.enabled', false)) {
             $this->registerIntakeRoute();
         }
     }
@@ -131,9 +134,9 @@ class BeamServiceProvider extends PackageServiceProvider
      */
     protected function registerIntakeRoute(): void
     {
-        $middleware = ['throttle:'.config('beam.intake.throttle', '5,1')];
+        $middleware = ['throttle:'.config('beam.core.intake.throttle', '5,1')];
 
-        if (config('beam.intake.honeypot.enabled', false)) {
+        if (config('beam.core.intake.honeypot.enabled', false)) {
             $middleware[] = HoneypotMiddleware::class;
         }
 

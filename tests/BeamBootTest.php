@@ -20,6 +20,7 @@ class BeamBootTest extends TestCase
 
     public function test_beam_config_is_published_and_readable(): void
     {
-        $this->assertIsArray(config('beam'));
+        // Nested config namespace (ticket 07): beam-core publishes config/beam/core.php, read as beam.core.*.
+        $this->assertIsArray(config('beam.core'));
     }
 }
