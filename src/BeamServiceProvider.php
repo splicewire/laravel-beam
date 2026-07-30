@@ -16,10 +16,14 @@ use Splicewire\Beam\Concerns\PersistsSchemaRecord;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Events\BeamParticlePersisted;
+use Splicewire\Beam\Http\ArrayResponseEnvelope;
+use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
 use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
 use Splicewire\Beam\Read\NullSchemaDataResolver;
@@ -139,6 +143,16 @@ class BeamServiceProvider extends PackageServiceProvider
         // DataFilterRecordHydrator over the same ParticleHydrator port (port-in-base / binding-in-host).
         $this->app->bind(SchemaDataResolver::class, NullSchemaDataResolver::class);
         $this->app->bind(ParticleHydrator::class, PayloadParticleReader::class);
+
+        // The generic particle REST surface (promoted from splicewire-app, ADR-0116). The two declaration
+        // registries are container singletons so inline `Route::particleResource()` / `Route::particleOp()`
+        // declarations survive across the request; the DEFAULT response seam is the neutral
+        // {@see ArrayResponseEnvelope} (a plain `{ data: … }` JsonResponse). A richer host BINDS its own
+        // envelope adapter over its response DTO — and, when it subclasses the registries for its own
+        // container FQN, re-aliases these singletons to the same instance (port-in-base / binding-in-host).
+        $this->app->singleton(ParticleResourceRegistry::class);
+        $this->app->singleton(ParticleOperationRegistry::class);
+        $this->app->bind(ResponseEnvelope::class, ArrayResponseEnvelope::class);
 
         // The beam-install self-registration manifest (ticket 08): a singleton every beam-* package
         // pushes its own install step into, from its own provider. beam-core never learns consumer names.
