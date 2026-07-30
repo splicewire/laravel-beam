@@ -13,6 +13,7 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
 use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
+use Splicewire\Beam\Beam;
 
 /**
  * DB-backed {@see SchemaRegistry} — the runtime sibling of the
@@ -35,10 +36,18 @@ use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
  */
 class DatabaseSchemaRegistry implements EnumeratesVersions, SchemaRegistry
 {
+    protected string $table;
+
     public function __construct(
-        protected string $table = 'schema_registry',
+        ?string $table = null,
         protected ?string $connection = null,
-    ) {}
+    ) {
+        // Default to the prefix-routed Beam table name (`beam_schemas` under the default prefix),
+        // resolved through the single table-prefix seam ({@see Beam::table()}) — the renamed
+        // successor to the former `schema_registry` (beam-particle-rename ticket 02). A host may
+        // still inject an explicit table.
+        $this->table = $table ?? Beam::table('schemas');
+    }
 
     public function register(array $schema): void
     {
