@@ -11,11 +11,14 @@ use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
+use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
+use Splicewire\Beam\Events\SchemaRecordPersisted;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
 use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Install\BeamInstallManifest;
+use Splicewire\Beam\Models\SchemaRecord;
 use Splicewire\Beam\Read\Contracts\RecordHydrator;
 use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
 use Splicewire\Beam\Read\NullSchemaDataResolver;
@@ -66,6 +69,11 @@ class BeamServiceProvider extends PackageServiceProvider
 
     public function packageRegistered(): void
     {
+        // Particle vocabulary aliases (beam-particle-rename ticket 01, EXPAND phase): both the legacy
+        // `Record`/`SchemaRecord` names and the new `Particle`/`BeamParticle` names resolve, so call sites
+        // migrate at their own cadence (T03–T06) before the contract phase (T07) flips canonicality.
+        $this->registerParticleAliases();
+
         // beam-core's DEFAULT schema-migration wiring (ADR-0138): so a headless beam app
         // gets a working migrate-on-read SchemaRecord out of the box. A richer host (e.g.
         // splicewire-app) OVERRIDES both bindings — its app providers register after the
@@ -141,6 +149,29 @@ class BeamServiceProvider extends PackageServiceProvider
         if (config('beam.core.intake.enabled', false)) {
             $this->registerIntakeRoute();
         }
+    }
+
+    /**
+     * Lazily alias the new `Particle` vocabulary onto the current `Record`/`SchemaRecord` classes +
+     * interfaces (beam-particle-rename ticket 01). Registered as an autoloader so an alias resolves only
+     * when first referenced (no eager load of every target). Traits can't be `class_alias`'d, so the
+     * trait rename ships as a wrapping trait ({@see PersistsBeamParticle}).
+     */
+    protected function registerParticleAliases(): void
+    {
+        $aliases = [
+            'Splicewire\Beam\Models\BeamParticle' => SchemaRecord::class,
+            'Splicewire\Beam\Write\ParticleWriter' => RecordWriter::class,
+            'Splicewire\Beam\Read\Contracts\ParticleHydrator' => RecordHydrator::class,
+            'Splicewire\Beam\Read\PayloadParticleReader' => PayloadRecordReader::class,
+            'Splicewire\Beam\Events\BeamParticlePersisted' => SchemaRecordPersisted::class,
+        ];
+
+        spl_autoload_register(static function (string $class) use ($aliases): void {
+            if (isset($aliases[$class])) {
+                class_alias($aliases[$class], $class);
+            }
+        });
     }
 
     /**

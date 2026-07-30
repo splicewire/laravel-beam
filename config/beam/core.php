@@ -67,6 +67,26 @@ return [
         'throttle' => '5,1',
     ],
 
+    /*
+    | RETROFIT SEAM (beam-particle-rename ticket 01). Every Beam table name is `table_prefix . $name`,
+    | resolved in ONE place ({@see \Splicewire\Beam\Beam::table()}). A greenfield/satellite host keeps
+    | the default `beam_`; a RETROFIT host dropping Beam into a pre-existing Laravel app changes this ONE
+    | value (`''`, `acme_beam_`, …) so Beam's generic-noun tables never collide with the host's own
+    | `posts`/`teams`/`categories`. No table is renamed by this knob yet — later tickets route model
+    | `getTable()` + migrations through the helper.
+    */
+    'table_prefix' => 'beam_',
+
+    /*
+    | The schema-definition store's read/write source order (consumed by the registry collapse, T02):
+    | an ordered list, e.g. ['db','file'] (DB-first, filesystem fallback) or ['file'] (filesystem only).
+    | The trio of Filesystem/Database/Chained registries collapses onto one config-driven class reading
+    | this. Additive here; no behaviour change until T02.
+    */
+    'schema' => [
+        'sources' => ['db', 'file'],
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 
