@@ -6,7 +6,9 @@ use Illuminate\Console\Command;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
+use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BeamManifestAudit;
+use Splicewire\Beam\Doctor\DoctorAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
@@ -30,6 +32,11 @@ use Splicewire\Beam\Doctor\SitemapReadinessAudit;
  * MCP isolation can fail the exit code; sitemap readiness + frame/schema-forms render Pass/Warn but
  * never turn the run red.
  *
+ * Aggregation (beam-ux-prototype-extract ticket 08): after its own hardcoded audits, this command
+ * iterates the {@see BeamDoctorManifest} — the consumer tail every beam-* package self-registers its
+ * {@see DoctorAudit} into (order-ascending, each carrying its own gate/advisory
+ * flag). One run aggregates the whole family; beam-core's own audits stay hardcoded (coexist, not migrate).
+ *
  * Output format (the parse target for a future <DoctorOutput>): each finding renders as one line
  * `<check>: <detail>` at info (Pass) / warn (Warn) / error (Fail).
  */
@@ -39,7 +46,7 @@ class BeamDoctorCommand extends Command
 
     protected $description = 'Base-tier Beam readiness (moat-free; owns the base/shell conformance: dependency contract, BEAM.md manifest, marquee gate, MCP isolation).';
 
-    public function handle(): int
+    public function handle(BeamDoctorManifest $manifest): int
     {
         $base = $this->laravel->basePath();
 
@@ -79,6 +86,20 @@ class BeamDoctorCommand extends Command
 
         foreach ($advisoryFindings as $finding) {
             $this->render($finding);
+        }
+
+        // Consumer tail: every beam-* package that self-registered a DoctorAudit into the manifest
+        // (order-ascending). A gate registration's Fail joins the exit code; an advisory one only renders.
+        foreach ($manifest->registrations() as $registration) {
+            $audit = $this->laravel->make($registration->audit);
+
+            foreach ($audit->run() as $finding) {
+                $this->render($finding);
+
+                if ($registration->gate) {
+                    $gateFailed = $gateFailed || $finding->status === DoctorStatus::Fail;
+                }
+            }
         }
 
         if ($gateFailed) {

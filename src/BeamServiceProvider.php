@@ -15,6 +15,7 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Concerns\PersistsSchemaRecord;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
+use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
@@ -157,6 +158,11 @@ class BeamServiceProvider extends PackageServiceProvider
         // The beam-install self-registration manifest (ticket 08): a singleton every beam-* package
         // pushes its own install step into, from its own provider. beam-core never learns consumer names.
         $this->app->singleton(BeamInstallManifest::class);
+
+        // The beam-doctor aggregation manifest (beam-ux-prototype-extract ticket 08): the doctor-side
+        // twin of the install manifest — a singleton consumers push their own audits into, so one
+        // `beam:doctor` run aggregates the whole family. beam-core's own audits stay hardcoded (coexist).
+        $this->app->singleton(BeamDoctorManifest::class);
     }
 
     public function packageBooted(): void
