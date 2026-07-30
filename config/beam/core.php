@@ -1,6 +1,6 @@
 <?php
 
-use Splicewire\Beam\Models\SchemaRecord;
+use Splicewire\Beam\Models\BeamParticle;
 
 return [
 
@@ -18,23 +18,27 @@ return [
 
     /*
     | Swappable models (Spatie swappable-model pattern). A host that composes the beam
-    | traits on its own record model points this at its subclass.
+    | traits on its own particle model points this at its subclass.
     |
     | The generic BeamSubmission REFERENCE model was retired (ADR-0138): a submission is
-    | exactly one thing — a FormSubmission (a beam SchemaRecord). The two-model split was
-    | created-but-never-read; the FC-15 reference precedent is reversed.
+    | exactly one thing — a FormSubmission (a beam particle). The two-model split was
+    | created-but-never-read; the FC-15 reference precedent is reversed. Renamed
+    | record → particle (ADR-0151); the retired `SchemaRecord` alias is gone once the
+    | back-compat shim is removed, so this key names the canonical BeamParticle directly.
     */
     'models' => [
-        'schema_record' => SchemaRecord::class,
+        'particle' => BeamParticle::class,
     ],
 
     /*
-    | Table names. "shared" means shared CODE, not a shared database — every app that
-    | consumes beam gets its own tables. The migrations are publish-only stubs; a multi-tenant
-    | host owns tenant-guarded copies so records land in the tenant schema, not central.
+    | Table names, illustrative. The AUTHORITATIVE resolver is Beam::table($name) =
+    | `table_prefix . $name` (below / ADR-0151) — a model's getTable() calls it, it does not
+    | read this list. "shared" means shared CODE, not a shared database — every app that
+    | consumes beam gets its own tables; a multi-tenant host owns tenant-guarded copies so
+    | particles land in the tenant schema, not central.
     */
     'tables' => [
-        'schema_records' => 'schema_records',
+        'particles' => 'beam_particles',
     ],
 
     /*
@@ -86,6 +90,13 @@ return [
     'schema' => [
         'sources' => ['db', 'file'],
     ],
+
+    /*
+    | Tenancy mode, answered by the `beam:install` wizard (beam-particle-rename ticket 10): "single" (one
+    | database) or "multi" (tenant-scoped). Declarative only — a multi-tenant host still wires its own
+    | tenancy package; this records the operator's intent so tooling can branch on it.
+    */
+    'tenancy' => 'single',
 
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
