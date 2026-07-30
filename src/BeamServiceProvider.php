@@ -4,6 +4,7 @@ namespace Splicewire\Beam;
 
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Route;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
@@ -45,7 +46,7 @@ use Splicewire\Beam\Write\RecordWriter;
  * live under Splicewire\Beam\Schema; the host binds its own SchemaTargetResolver policy behind the
  * beam port.
  *
- * The substrate migrations (schema_records + versions) are publish-only `.stub` files: a
+ * The substrate migrations (beam_particles + beam_versions) are publish-only `.stub` files: a
  * single-tenant host publishes them (`vendor:publish --tag=laravel-beam-migrations`) and a
  * multi-tenant host (splicewire-app) owns tenant-guarded copies in BOTH its central and per-tenant
  * migration sets, so records land in the tenant schema rather than falling through to central.
@@ -63,8 +64,8 @@ class BeamServiceProvider extends PackageServiceProvider
             // merged + read as config('beam.core.*'). Never a flat config/beam.php — having both a
             // beam.php file and a beam/ dir is the one real Laravel footgun this move avoids.
             ->hasConfigFile('beam/core')
-            ->hasMigration('create_schema_records_table')
-            ->hasMigration('create_versions_table');
+            ->hasMigration('create_beam_particles_table')
+            ->hasMigration('create_beam_versions_table');
     }
 
     public function packageRegistered(): void
@@ -73,6 +74,24 @@ class BeamServiceProvider extends PackageServiceProvider
         // `Record`/`SchemaRecord` names and the new `Particle`/`BeamParticle` names resolve, so call sites
         // migrate at their own cadence (T03–T06) before the contract phase (T07) flips canonicality.
         $this->registerParticleAliases();
+
+        // Route beam's two BASE tables through the ONE table-prefix seam (beam-particle-rename T03):
+        //
+        //  - `beam_particles` — the SchemaRecord model resolves its own table via Beam::table('particles')
+        //    (its getTable() override), so nothing to bind here.
+        //  - `beam_versions` — the durable version store lives in the versioning FOUNDATION, which holds
+        //    no beam opinion and depends on nothing upward. beam depends DOWN on versioning, so beam is
+        //    the allowed layer to repoint versioning's config table seam at its prefixed name. The
+        //    foundation default stays `versions`; only a beam-composing host gets `beam_versions`.
+        $this->app['config']->set('versioning.table', Beam::table('versions'));
+
+        // The durable particle morph alias (beam-particle-rename T03). `beam_versions.versionable_type`
+        // stores this token, and SchemaRecord::getMorphClass() returns it — so the eventual class rename
+        // (T07) leaves existing version rows resolvable. ADDITIVE (Relation::morphMap), NEVER
+        // enforceMorphMap: a beam-composing host (splicewire-app) has many models on class-string morphs,
+        // and global enforcement would orphan every one of them. Additive registration is idempotent and
+        // composes with whatever map the host already declared.
+        Relation::morphMap(['beam_particle' => SchemaRecord::class]);
 
         // beam-core's DEFAULT schema-migration wiring (ADR-0138): so a headless beam app
         // gets a working migrate-on-read SchemaRecord out of the box. A richer host (e.g.

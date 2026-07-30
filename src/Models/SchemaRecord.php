@@ -8,6 +8,7 @@ use Rushing\Versioning\Concerns\Versionable as VersionableTrait;
 use Rushing\Versioning\Contracts\MigratesSnapshotOnRestore;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\Contracts\Versionable;
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Concerns\PersistsSchemaRecord;
 use Splicewire\Beam\Revisions\RecordsRevisions;
 use Splicewire\Beam\Schema\SchemaId;
@@ -39,10 +40,20 @@ use Splicewire\Beam\Schema\SchemaId;
  * binding and the written-under id are different things, and conflating them corrupts
  * bare-stem tenant refs.
  *
- * Backs the publishable `schema_records` table: `id` (uuid7), `schema_ref`, `schema_id`,
+ * Backs the publishable `beam_particles` table: `id` (uuid7), `schema_ref`, `schema_id`,
  * `migration_status`, `head_version`, `payload`, `meta`, timestamps. Populator-specific
  * facts (generation provenance, submission context) live in reference overlays keyed by
  * this record's id, never as columns here.
+ *
+ * The table name is resolved through the single beam table-prefix seam ({@see Beam::table()}) —
+ * `beam_particles` under the default `beam_` prefix, `<host_prefix>particles` under a retrofit
+ * host — NOT a hardcoded `$table` property (a property default can't call `config()`), so the
+ * one prefix knob repoints this model with every other beam table.
+ *
+ * The morph value it writes into `beam_versions.versionable_type` is the stable alias
+ * `beam_particle` ({@see getMorphClass()}), not the FQCN — so the eventual class rename (T07)
+ * leaves existing version rows resolvable. The beam provider registers the alias additively
+ * (`Relation::morphMap`, never `enforceMorphMap` — a host has many class-string morphs).
  */
 class SchemaRecord extends Model implements MigratesSnapshotOnRestore, Versionable
 {
@@ -51,13 +62,31 @@ class SchemaRecord extends Model implements MigratesSnapshotOnRestore, Versionab
     use RecordsRevisions;
     use VersionableTrait;
 
-    protected $table = 'schema_records';
-
     protected $fillable = [
         'schema_ref',
         'payload',
         'meta',
     ];
+
+    /**
+     * The physical table, resolved through the ONE beam table-prefix seam — `beam_particles` by
+     * default. Not a `$table` property because a property default can't call `config()`; centralizing
+     * it here means a retrofit host's prefix override reaches this model like every other beam table.
+     */
+    public function getTable(): string
+    {
+        return Beam::table('particles');
+    }
+
+    /**
+     * The polymorphic morph value this record writes into `beam_versions.versionable_type` — the
+     * durable alias `beam_particle`, NOT the FQCN. Registered additively in the beam provider's
+     * morph map, so version rows survive the eventual class rename (T07) and resolve either way.
+     */
+    public function getMorphClass(): string
+    {
+        return 'beam_particle';
+    }
 
     /** The JSON column on this model holding the typed payload. */
     public function payloadColumn(): string

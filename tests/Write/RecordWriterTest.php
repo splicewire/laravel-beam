@@ -13,6 +13,7 @@ use ReflectionClass;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Concerns\PersistsSchemaRecord;
 use Splicewire\Beam\Events\SchemaRecordPersisted;
 use Splicewire\Beam\Models\SchemaRecord;
@@ -85,7 +86,7 @@ class RecordWriterTest extends TestCase
 
         // Persisted, with the content in the payload column.
         $this->assertTrue($record->exists);
-        $this->assertDatabaseHas('schema_records', ['id' => $record->id, 'schema_ref' => self::CHEAP_REF]);
+        $this->assertDatabaseHas(Beam::table('particles'), ['id' => $record->id, 'schema_ref' => self::CHEAP_REF]);
         $this->assertSame($payload, SchemaRecord::findOrFail($record->id)->payload);
 
         // One post-persist signal, carrying the record, the payload, and the binding.
@@ -109,7 +110,7 @@ class RecordWriterTest extends TestCase
             // expected
         }
 
-        $this->assertDatabaseCount('schema_records', 0);
+        $this->assertDatabaseCount(Beam::table('particles'), 0);
         Event::assertNotDispatched(SchemaRecordPersisted::class);
     }
 
@@ -152,7 +153,7 @@ class RecordWriterTest extends TestCase
         // The base SchemaRecord — schema-validated content in the payload column, versioned binding.
         $content = ['title' => 'Rec', 'body' => null, 'summary' => null];
         $record = $this->writer()->write(new SchemaRecord(['schema_ref' => self::CHEAP_REF]), $content);
-        $this->assertDatabaseHas('schema_records', ['id' => $record->id, 'schema_ref' => self::CHEAP_REF]);
+        $this->assertDatabaseHas(Beam::table('particles'), ['id' => $record->id, 'schema_ref' => self::CHEAP_REF]);
         $this->assertSame($content, SchemaRecord::findOrFail($record->id)->payload);
     }
 
@@ -189,7 +190,7 @@ class RecordWriterTest extends TestCase
 
     private function createTables(): void
     {
-        Schema::create('schema_records', function (Blueprint $table) {
+        Schema::create(Beam::table('particles'), function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('schema_ref')->nullable()->index();
             $table->string('schema_id')->nullable()->index();
@@ -200,7 +201,7 @@ class RecordWriterTest extends TestCase
             $table->timestamps();
         });
 
-        Schema::create('versions', function (Blueprint $table) {
+        Schema::create(Beam::table('versions'), function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('versionable_type');
             $table->uuid('versionable_id');

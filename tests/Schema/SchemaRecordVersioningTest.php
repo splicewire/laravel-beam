@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace Splicewire\Beam\Tests\Schema;
 
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use ReflectionClass;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\MigrationStatus;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Models\SchemaRecord;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV1;
@@ -105,7 +108,7 @@ class SchemaRecordVersioningTest extends TestCase
 
     private function createTables(): void
     {
-        Schema::create('schema_records', function (Blueprint $table) {
+        Schema::create(Beam::table('particles'), function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('schema_ref')->nullable()->index();
             $table->string('schema_id')->nullable()->index();
@@ -116,7 +119,7 @@ class SchemaRecordVersioningTest extends TestCase
             $table->timestamps();
         });
 
-        Schema::create('versions', function (Blueprint $table) {
+        Schema::create(Beam::table('versions'), function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('versionable_type');
             $table->uuid('versionable_id');
@@ -160,7 +163,7 @@ class SchemaRecordVersioningTest extends TestCase
         $this->assertSame(MigrationStatus::Current->value, $record->migration_status);
 
         // The persisted row carries the same stamp.
-        $row = DB::table('schema_records')->where('id', $record->id)->first();
+        $row = DB::table(Beam::table('particles'))->where('id', $record->id)->first();
         $this->assertSame($this->idAt(self::CHEAP_STEM, 2), $row->schema_id);
         $this->assertSame(MigrationStatus::Current->value, $row->migration_status);
     }
@@ -173,7 +176,7 @@ class SchemaRecordVersioningTest extends TestCase
         ]);
 
         // Age the row: rewrite it to the v1 id + a v1-shaped payload, bypassing events.
-        DB::table('schema_records')->where('id', $record->id)->update([
+        DB::table(Beam::table('particles'))->where('id', $record->id)->update([
             'schema_id' => $this->idAt(self::CHEAP_STEM, 1),
             'migration_status' => MigrationStatus::Pending->value,
             'payload' => json_encode(['title' => 'Aged', 'body' => 'Body']),
@@ -189,7 +192,7 @@ class SchemaRecordVersioningTest extends TestCase
         $this->assertSame(MigrationStatus::Current->value, $fresh->migration_status);
 
         // The persisted row was advanced — the write-back amortized the migration.
-        $row = DB::table('schema_records')->where('id', $record->id)->first();
+        $row = DB::table(Beam::table('particles'))->where('id', $record->id)->first();
         $this->assertSame($this->idAt(self::CHEAP_STEM, 2), $row->schema_id);
         $this->assertSame(MigrationStatus::Current->value, $row->migration_status);
         $this->assertArrayHasKey('summary', json_decode($row->payload, true));
@@ -203,7 +206,7 @@ class SchemaRecordVersioningTest extends TestCase
         ]);
 
         // Age the row to the expensive v1 id + a v1-shaped payload.
-        DB::table('schema_records')->where('id', $record->id)->update([
+        DB::table(Beam::table('particles'))->where('id', $record->id)->update([
             'schema_id' => $this->idAt(self::EXPENSIVE_STEM, 1),
             'migration_status' => MigrationStatus::Current->value,
             'payload' => json_encode(['title' => 'Keep', 'body' => 'Me']),
@@ -218,7 +221,7 @@ class SchemaRecordVersioningTest extends TestCase
         $this->assertArrayNotHasKey('headline', $fresh->payload);
 
         // The migrated payload is never written: the persisted payload stays v1-shaped.
-        $row = DB::table('schema_records')->where('id', $record->id)->first();
+        $row = DB::table(Beam::table('particles'))->where('id', $record->id)->first();
         $persisted = json_decode($row->payload, true);
         $this->assertSame(['title' => 'Keep', 'body' => 'Me'], $persisted);
         $this->assertArrayNotHasKey('headline', $persisted);
@@ -256,7 +259,7 @@ class SchemaRecordVersioningTest extends TestCase
 
         // Freeze the row at a v1 shape: age it to the v1 id + a v1-shaped payload,
         // bypassing events, then snapshot THAT stale shape.
-        DB::table('schema_records')->where('id', $record->id)->update([
+        DB::table(Beam::table('particles'))->where('id', $record->id)->update([
             'schema_id' => $this->idAt(self::CHEAP_STEM, 1),
             'migration_status' => MigrationStatus::Current->value,
             'payload' => json_encode(['title' => 'Aged', 'body' => 'Body']),
@@ -280,5 +283,90 @@ class SchemaRecordVersioningTest extends TestCase
         $this->assertArrayHasKey('summary', $migrated['payload']);
         $this->assertSame('Aged', $migrated['payload']['title']);
         $this->assertSame($this->idAt(self::CHEAP_STEM, 2), $migrated['schema_id']);
+    }
+
+    public function test_a_freshly_versioned_particle_stamps_and_resolves_through_the_beam_particle_morph_alias(): void
+    {
+        // The beam provider registers `beam_particle` => SchemaRecord additively (never enforce), and
+        // SchemaRecord::getMorphClass() returns it — so a version row of a particle freezes the alias,
+        // NOT the FQCN, and the morph resolves both ways.
+        $this->assertSame('beam_particle', (new SchemaRecord)->getMorphClass());
+        $this->assertSame(SchemaRecord::class, Relation::getMorphedModel('beam_particle'));
+
+        $record = SchemaRecord::create([
+            'schema_ref' => self::CHEAP_REF,
+            'payload' => ['title' => 'V', 'body' => 'B', 'summary' => 'S'],
+        ]);
+
+        $version = $record->snapshotVersion('v1');
+
+        // The frozen morph value is the alias — the durability guarantee for the eventual class rename.
+        $this->assertSame('beam_particle', DB::table(Beam::table('versions'))
+            ->where('id', $version->id)->value('versionable_type'));
+
+        // …and the polymorphic relation still hydrates the concrete SchemaRecord back from that alias.
+        $this->assertInstanceOf(SchemaRecord::class, $version->fresh()->versionable);
+        $this->assertTrue($record->is($version->fresh()->versionable));
+    }
+
+    public function test_a_pre_existing_version_row_written_under_the_fqcn_resolves_via_the_alias(): void
+    {
+        // Simulate a row minted BEFORE the rename/morph-map landed: its versionable_type is the raw
+        // class-string. The additive morph map + getMorphClass keep it scoped-to and hydratable, and
+        // the app's one-shot data migration forward-aligns it to the alias.
+        $record = SchemaRecord::create([
+            'schema_ref' => self::CHEAP_REF,
+            'payload' => ['title' => 'Legacy', 'body' => 'B', 'summary' => 'S'],
+        ]);
+
+        DB::table(Beam::table('versions'))->insert([
+            'id' => (string) Str::uuid7(),
+            'versionable_type' => SchemaRecord::class, // the pre-rename FQCN morph value
+            'versionable_id' => $record->id,
+            'version' => 1,
+            'snapshot' => json_encode($record->toVersionSnapshot()),
+            'label' => 'legacy',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // The store scopes by getMorphClass() = `beam_particle`, so the FQCN row is invisible to it
+        // until forward-aligned. Prove the alias is what the store reads and the data migration writes.
+        $before = DB::table(Beam::table('versions'))
+            ->where('versionable_id', $record->id)->pluck('versionable_type')->all();
+        $this->assertContains(SchemaRecord::class, $before);
+
+        // Apply the same forward-alignment the app's data migration performs.
+        DB::table(Beam::table('versions'))
+            ->where('versionable_type', SchemaRecord::class)
+            ->update(['versionable_type' => 'beam_particle']);
+
+        // Now the pre-existing row is scoped-to and hydrates the concrete record via the alias.
+        $this->assertTrue($record->versions()->where('label', 'legacy')->exists());
+    }
+
+    public function test_migrate_on_read_reconciles_a_particle_written_under_a_pre_rename_schema_id(): void
+    {
+        // A particle persisted under an OLDER schema id (the shape before the record type advanced) must
+        // still cheap-upcast on read after the table rename — proving migrate-on-read survives T03.
+        $record = SchemaRecord::create([
+            'schema_ref' => self::CHEAP_REF,
+            'payload' => ['title' => 'Old', 'body' => 'Body', 'summary' => 'S'],
+        ]);
+
+        // Age it to the v1 id + a v1-shaped payload (missing the v2 `summary`) directly on the renamed
+        // table, bypassing the retrieved-hook, then read it back through the model.
+        DB::table(Beam::table('particles'))->where('id', $record->id)->update([
+            'schema_id' => $this->idAt(self::CHEAP_STEM, 1),
+            'migration_status' => MigrationStatus::Pending->value,
+            'payload' => json_encode(['title' => 'Old', 'body' => 'Body']),
+        ]);
+
+        $fresh = SchemaRecord::find($record->id);
+
+        // The cheap ladder upcasts to the current v2 shape, stamps the current id, and marks current.
+        $this->assertArrayHasKey('summary', $fresh->payload);
+        $this->assertSame($this->idAt(self::CHEAP_STEM, 2), $fresh->schema_id);
+        $this->assertSame(MigrationStatus::Current->value, $fresh->migration_status);
     }
 }

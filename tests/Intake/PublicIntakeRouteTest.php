@@ -10,6 +10,7 @@ use ReflectionClass;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Models\SchemaRecord;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV1;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV2;
@@ -85,7 +86,7 @@ class PublicIntakeRouteTest extends TestCase
         ]);
 
         $response->assertStatus(201)->assertJson(['schemaRef' => self::CHEAP_STEM.'/2']);
-        $this->assertDatabaseCount('schema_records', 1);
+        $this->assertDatabaseCount(Beam::table('particles'), 1);
 
         $record = SchemaRecord::firstOrFail();
         // Migrate-on-read wiring is live: the write stamped the current schema id + status.
@@ -109,7 +110,7 @@ class PublicIntakeRouteTest extends TestCase
         ]);
 
         $response->assertStatus(201);
-        $this->assertDatabaseCount('schema_records', 0);
+        $this->assertDatabaseCount(Beam::table('particles'), 0);
     }
 
     public function test_an_invalid_payload_is_rejected_with_422(): void
@@ -117,7 +118,7 @@ class PublicIntakeRouteTest extends TestCase
         $response = $this->postJson('beam/intake/contact', ['body' => 'no title']);
 
         $response->assertStatus(422)->assertJsonStructure(['message', 'errors']);
-        $this->assertDatabaseCount('schema_records', 0);
+        $this->assertDatabaseCount(Beam::table('particles'), 0);
     }
 
     public function test_a_schema_not_on_the_allow_list_is_refused_by_the_deny_default_gate(): void
@@ -127,13 +128,13 @@ class PublicIntakeRouteTest extends TestCase
         $response = $this->postJson('beam/intake/private', ['anything' => 'goes']);
 
         $response->assertStatus(403);
-        $this->assertDatabaseCount('schema_records', 0);
+        $this->assertDatabaseCount(Beam::table('particles'), 0);
     }
 
     public function test_an_unknown_form_is_a_404(): void
     {
         $this->postJson('beam/intake/does-not-exist', ['x' => 1])->assertStatus(404);
-        $this->assertDatabaseCount('schema_records', 0);
+        $this->assertDatabaseCount(Beam::table('particles'), 0);
     }
 
     public function test_the_route_is_throttled(): void
@@ -146,7 +147,7 @@ class PublicIntakeRouteTest extends TestCase
 
     private function createTables(): void
     {
-        Schema::create('schema_records', function (Blueprint $table) {
+        Schema::create(Beam::table('particles'), function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('schema_ref')->nullable()->index();
             $table->string('schema_id')->nullable()->index();
@@ -157,7 +158,7 @@ class PublicIntakeRouteTest extends TestCase
             $table->timestamps();
         });
 
-        Schema::create('versions', function (Blueprint $table) {
+        Schema::create(Beam::table('versions'), function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('versionable_type');
             $table->uuid('versionable_id');

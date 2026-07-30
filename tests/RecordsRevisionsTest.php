@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests;
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Beam;
 use Splicewire\Beam\Models\SchemaRecord;
 
 class RecordsRevisionsTest extends TestCase
@@ -12,7 +13,7 @@ class RecordsRevisionsTest extends TestCase
     {
         parent::setUp();
 
-        Schema::create('schema_records', function (Blueprint $table) {
+        Schema::create(Beam::table('particles'), function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('schema_ref')->nullable()->index();
             $table->string('schema_id')->nullable()->index();

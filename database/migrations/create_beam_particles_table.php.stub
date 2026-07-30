@@ -3,11 +3,14 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Beam;
 
 /**
- * The generic schema-record store — the narrow core, now schema-driven-CMS core (ADR-0138).
- * Populator-specific facts (generation provenance, submission context) belong in reference
- * tables keyed by `schema_records.id`, NOT as columns here (composition, not inheritance).
+ * The generic particle store — the narrow core, now schema-driven-CMS core (ADR-0138). Formerly
+ * `schema_records`, renamed to `beam_particles` (beam-particle-rename ticket 03) and routed through
+ * the single table-prefix seam {@see Beam::table()} so a retrofit host's one prefix override follows.
+ * Populator-specific facts (generation provenance, submission context) belong in reference tables keyed
+ * by `beam_particles.id`, NOT as columns here (composition, not inheritance).
  *
  * The versioning columns are the trait defaults: `schema_id` (the absolute `$id` the payload
  * was written under — the migrate-on-read version column), `migration_status`
@@ -18,7 +21,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('schema_records', function (Blueprint $table) {
+        Schema::create(Beam::table('particles'), function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('schema_ref')->nullable()->index();
             $table->string('schema_id')->nullable()->index();
@@ -32,6 +35,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('schema_records');
+        Schema::dropIfExists(Beam::table('particles'));
     }
 };
