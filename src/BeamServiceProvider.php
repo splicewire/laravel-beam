@@ -145,6 +145,11 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->bind(SchemaDataResolver::class, NullSchemaDataResolver::class);
         $this->app->bind(ParticleHydrator::class, PayloadParticleReader::class);
 
+        // Tenant resolvability (realm-architecture ticket 08): the re-home of the retired
+        // RealmDefinition::$tenancy flag. Default resolves the `tenant` realm when config('frame.tenancy')
+        // is on; a satellite / differently-keyed host binds its own resolver.
+        $this->app->bind(\Splicewire\Beam\Realm\Contracts\TenantResolver::class, \Splicewire\Beam\Realm\ConfigTenantResolver::class);
+
         // The generic particle REST surface (promoted from splicewire-app, ADR-0116). The two declaration
         // registries are container singletons so inline `Route::particleResource()` / `Route::particleOp()`
         // declarations survive across the request; the DEFAULT response seam is the neutral

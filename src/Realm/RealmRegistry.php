@@ -44,7 +44,6 @@ class RealmRegistry
             routeBase: '/admin',
             guard: 'root',
             central: true,
-            tenancy: false,
         );
     }
 
@@ -60,7 +59,6 @@ class RealmRegistry
             routeBase: '/',
             guard: null,
             central: false,
-            tenancy: false,
         );
     }
 
