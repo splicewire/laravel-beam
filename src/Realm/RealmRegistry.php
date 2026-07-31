@@ -37,11 +37,20 @@ class RealmRegistry
     /** @var array<string, RealmDefinition> */
     private array $realms = [];
 
+    /**
+     * Whether the config-driven `user` realm has been EXPLICITLY overridden since construction (by a
+     * capability package or attributed-realm discovery calling {@see register('user', …)}). While false,
+     * the `user` realm is re-derived from live config on read (its `stack` is `frame.collapse_user_realm`
+     * driven, slice E) — so a runtime config flip re-collapses/separates it even though the registry is
+     * now a boot singleton (slice D). Once overridden, the host's definition wins and is never re-synced.
+     */
+    private bool $userRealmOverridden = false;
+
     public function __construct()
     {
         $this->register($this->operator());
         $this->register($this->tenant());
-        $this->register($this->user());
+        $this->realms['user'] = $this->user();
     }
 
     /**
@@ -93,22 +102,32 @@ class RealmRegistry
     /** Contribute (or, last-wins, replace) a realm by key — the seam a capability package registers through. */
     public function register(RealmDefinition $realm): void
     {
+        if ($realm->key === 'user') {
+            $this->userRealmOverridden = true;
+        }
+
         $this->realms[$realm->key] = $realm;
     }
 
     public function get(string $key): ?RealmDefinition
     {
+        $this->syncUserRealm();
+
         return $this->realms[$key] ?? null;
     }
 
     public function has(string $key): bool
     {
+        $this->syncUserRealm();
+
         return isset($this->realms[$key]);
     }
 
     /** @return array<string, RealmDefinition> */
     public function all(): array
     {
+        $this->syncUserRealm();
+
         return $this->realms;
     }
 
@@ -117,6 +136,8 @@ class RealmRegistry
      */
     public function resolve(string $key): RealmDefinition
     {
+        $this->syncUserRealm();
+
         return $this->realms[$key]
             ?? throw new InvalidArgumentException("Unknown realm [{$key}] — no RealmDefinition registered.");
     }
@@ -151,5 +172,24 @@ class RealmRegistry
     private function collapsesUserRealm(): bool
     {
         return (bool) config('frame.collapse_user_realm', true);
+    }
+
+    /**
+     * Keep the stored `user` realm in step with live `frame.collapse_user_realm` config (slice E) — unless
+     * a host has EXPLICITLY overridden it via {@see register()}. This preserves the pre-singleton (slice D)
+     * behavior where each freshly-built registry re-read the config-driven stack, now that a single boot
+     * instance is shared. A no-op once `user` is overridden or when the stored stack already matches.
+     */
+    private function syncUserRealm(): void
+    {
+        if ($this->userRealmOverridden) {
+            return;
+        }
+
+        $expected = $this->user();
+
+        if (! isset($this->realms['user']) || $this->realms['user']->stack !== $expected->stack) {
+            $this->realms['user'] = $expected;
+        }
     }
 }

@@ -98,6 +98,23 @@ return [
     */
     'tenancy' => 'single',
 
+    /*
+    | Attributed realms (realm-architecture ticket 08 slice D). The RealmRegistry ships three imperative
+    | base realms (admin·tenant·user); a host CONTRIBUTES more — or overrides a base one — by placing a
+    | `#[Realm]`-family attribute (`#[AdminRealm]`/`#[UserRealm]`/`#[TenantRealm]`, or the generic
+    | `#[Realm]`) on a realm-marker class and listing it here (or dropping it under a scanned path). Boot
+    | discovery reflects each into a RealmDefinition and registers it additively (last-wins by key).
+    | Mirrors frame's `frame.resources` + `frame.discover_paths` #[AdminResource] wiring.
+    */
+    'realms' => [
+        // Explicit realm-marker class-strings to reflect at boot.
+        'classes' => [],
+
+        // Filesystem paths scanned at boot for `#[Realm]`-annotated classes (only attributed classes are
+        // registered, so a path may point at a whole directory).
+        'discover_paths' => [],
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 

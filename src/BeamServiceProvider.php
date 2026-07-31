@@ -10,6 +10,7 @@ use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Schemastud\Frame\Realm\RealmDefinition;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Concerns\PersistsSchemaRecord;
@@ -29,6 +30,10 @@ use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
 use Splicewire\Beam\Read\NullSchemaDataResolver;
 use Splicewire\Beam\Read\PayloadParticleReader;
+use Splicewire\Beam\Realm\ConfigTenantResolver;
+use Splicewire\Beam\Realm\Contracts\TenantResolver;
+use Splicewire\Beam\Realm\RealmDiscovery;
+use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
@@ -148,7 +153,14 @@ class BeamServiceProvider extends PackageServiceProvider
         // Tenant resolvability (realm-architecture ticket 08): the re-home of the retired
         // RealmDefinition::$tenancy flag. Default resolves the `tenant` realm when config('frame.tenancy')
         // is on; a satellite / differently-keyed host binds its own resolver.
-        $this->app->bind(\Splicewire\Beam\Realm\Contracts\TenantResolver::class, \Splicewire\Beam\Realm\ConfigTenantResolver::class);
+        $this->app->bind(TenantResolver::class, ConfigTenantResolver::class);
+
+        // The realm registry is a SINGLETON (realm-architecture ticket 08 slice D): its ctor registers the
+        // three imperative base realms (admin·tenant·user), and boot-time attributed-realm discovery
+        // (packageBooted) augments THAT instance additively — so a resolved registry carries both the base
+        // realms and any `#[Realm]`-declared ones. A capability package registering a realm from its own
+        // provider mutates the same shared instance.
+        $this->app->singleton(RealmRegistry::class, fn () => new RealmRegistry);
 
         // The generic particle REST surface (promoted from splicewire-app, ADR-0116). The two declaration
         // registries are container singletons so inline `Route::particleResource()` / `Route::particleOp()`
@@ -195,6 +207,28 @@ class BeamServiceProvider extends PackageServiceProvider
         if (config('beam.core.intake.enabled', false)) {
             $this->registerIntakeRoute();
         }
+
+        // Attributed-realm discovery (realm-architecture ticket 08 slice D). Reflect the configured
+        // realm-marker classes + scan the configured paths for `#[Realm]`-family attributes, projecting
+        // each into a RealmDefinition self-registered onto the singleton RealmRegistry — ADDITIVE onto the
+        // three imperative base realms (last-wins by key). Mirrors frame's #[AdminResource] discover wiring
+        // (config('frame.resources') + config('frame.discover_paths')); the realm vocabulary lives in beam.
+        $this->discoverRealms();
+    }
+
+    /**
+     * Boot-time attributed-realm discovery: feed the configured realm-marker classes + scan-paths into the
+     * singleton {@see RealmDiscovery}, which registers a
+     * {@see RealmDefinition} per attributed class onto the {@see RealmRegistry}.
+     */
+    protected function discoverRealms(): void
+    {
+        (new RealmDiscovery(
+            $this->app->make(RealmRegistry::class),
+        ))->discover(
+            config('beam.core.realms.classes', []),
+            config('beam.core.realms.discover_paths', []),
+        );
     }
 
     /**
