@@ -8,6 +8,7 @@
         "illuminate/contracts": "^11.0|^12.0|^13.0",
         "illuminate/support": "^11.0|^12.0|^13.0",
         "rushing/laravel-doctor": "*",
+        "rushing/laravel-popcorn": "dev-main",
         "rushing/laravel-versioning": "dev-main",
         "schemastud/laravel-data-schemas": "^1.0",
         "schemastud/laravel-frame": "dev-main",

@@ -17,9 +17,12 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Concerns\PersistsSchemaRecord;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
+use Splicewire\Beam\Console\FrameCacheCommand;
+use Splicewire\Beam\Console\FrameClearCommand;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Frame\AdminResourceRegistry;
+use Splicewire\Beam\Frame\FrameResourceManifest;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
@@ -32,7 +35,6 @@ use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
-use Splicewire\Beam\Realm\RealmDiscovery;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
@@ -160,6 +162,11 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->singleton(AdminResourceRegistry::class, fn () => new AdminResourceRegistry);
         $this->app->alias(AdminResourceRegistry::class, ResourceRegistry::class);
 
+        // The build-time #[AdminResource] manifest cache (mirrors bootstrap/cache/packages.php). When it
+        // exists, discoverResources() reads the cached class-strings instead of re-walking the filesystem
+        // each boot; `beam:frame-cache` writes it, `beam:frame-clear` / `optimize:clear` remove it.
+        $this->app->singleton(FrameResourceManifest::class, fn ($app) => new FrameResourceManifest($app));
+
         // Tenant resolvability (realm-architecture ticket 08): the re-home of the retired
         // RealmDefinition::$tenancy flag. Default resolves the `tenant` realm when config('frame.tenancy')
         // is on; a satellite / differently-keyed host binds its own resolver.
@@ -200,7 +207,17 @@ class BeamServiceProvider extends PackageServiceProvider
             $this->commands([
                 BeamDoctorCommand::class,
                 BeamInstallCommand::class,
+                FrameCacheCommand::class,
+                FrameClearCommand::class,
             ]);
+
+            // Wire the manifest into Laravel's `optimize` / `optimize:clear` so it builds and clears
+            // alongside the framework's own caches (the supported ServiceProvider hook).
+            $this->optimizes(
+                optimize: 'beam:frame-cache',
+                clear: 'beam:frame-clear',
+                key: 'beam-frame-resources',
+            );
         }
 
         // beam-core registers ITS OWN install step, core-first (order 0), like any consumer — the config
@@ -218,11 +235,12 @@ class BeamServiceProvider extends PackageServiceProvider
             $this->registerIntakeRoute();
         }
 
-        // Attributed-realm discovery (realm-architecture ticket 08 slice D). Reflect the configured
-        // realm-marker classes + scan the configured paths for `#[Realm]`-family attributes, projecting
-        // each into a RealmDefinition self-registered onto the singleton RealmRegistry — ADDITIVE onto the
-        // three imperative base realms (last-wins by key). The realm vocabulary lives in beam.
-        $this->discoverRealms();
+        // Attributed-realm registration (realm-architecture ticket 08 slice D). Realms are ~4
+        // (admin·tenant·user·docs), so a filesystem scan is overkill — register the configured
+        // realm-marker classes EXPLICITLY. Each is reflected for its `#[Realm]`-family attribute,
+        // projected into a RealmDefinition, and self-registered onto the singleton RealmRegistry —
+        // ADDITIVE onto the three imperative base realms (last-wins by key). Vocabulary lives in beam.
+        $this->registerRealms();
 
         // Resource DECLARATION discovery (ADR-0156). Reflect the configured #[AdminResource] classes +
         // scan the configured discover-paths into beam's singleton AdminResourceRegistry, which frame's
@@ -232,32 +250,56 @@ class BeamServiceProvider extends PackageServiceProvider
     }
 
     /**
-     * Boot-time attributed-realm discovery: feed the configured realm-marker classes + scan-paths into the
-     * singleton {@see RealmDiscovery}, which registers a
-     * {@see RealmDefinition} per attributed class onto the {@see RealmRegistry}.
+     * Explicit attributed-realm registration: reflect each configured realm-marker class and register its
+     * projected {@see RealmDefinition} onto the singleton {@see RealmRegistry}. No filesystem scan — realms
+     * are a small fixed set, so the host lists its marker classes in `beam.core.realms.classes`.
      */
-    protected function discoverRealms(): void
+    protected function registerRealms(): void
     {
-        (new RealmDiscovery(
-            $this->app->make(RealmRegistry::class),
-        ))->discover(
-            config('beam.core.realms.classes', []),
-            config('beam.core.realms.discover_paths', []),
-        );
+        $registry = $this->app->make(RealmRegistry::class);
+
+        foreach (config('beam.core.realms.classes', []) as $markerClass) {
+            $registry->registerClass($markerClass);
+        }
     }
 
     /**
-     * Boot-time #[AdminResource] discovery: reflect the configured resource classes + scan the configured
-     * discover-paths into beam's singleton {@see AdminResourceRegistry}. Reads `beam.core.resources.classes`
-     * / `.discover_paths`, falling back to frame's legacy `frame.resources` / `frame.discover_paths` config
-     * keys so a host that still declares them there keeps working through the move.
+     * Boot-time #[AdminResource] discovery into beam's singleton {@see AdminResourceRegistry}.
+     *
+     * The explicit `resources.classes` list is ALWAYS honoured (it is cheap). The discover-path SCAN is
+     * where the cost lives, so it is cached: when the {@see FrameResourceManifest} exists (a host ran
+     * `beam:frame-cache`), boot registers the cached class-strings directly — no `Finder` walk. Only when
+     * the cache is absent (dev) does it fall back to a live scan. Reads `beam.core.resources.classes` /
+     * `.discover_paths`, falling back to frame's legacy `frame.resources` / `frame.discover_paths` keys.
      */
     protected function discoverResources(): void
     {
-        $this->app->make(AdminResourceRegistry::class)->discover(
-            config('beam.core.resources.classes', config('frame.resources', [])),
+        $registry = $this->app->make(AdminResourceRegistry::class);
+
+        // The explicit list is always registered, cache or no cache.
+        $explicit = config('beam.core.resources.classes', config('frame.resources', []));
+
+        foreach ($explicit as $class) {
+            $registry->registerClass($class);
+        }
+
+        $cached = $this->app->make(FrameResourceManifest::class)->read();
+
+        if ($cached !== null) {
+            // Fast path: the cached manifest already resolved the scan — register directly, no filesystem walk.
+            foreach ($cached as $class) {
+                $registry->registerClass($class);
+            }
+
+            return;
+        }
+
+        // Dev fallback: no manifest — live-scan the discover-paths.
+        foreach ($registry->scanPaths(
             config('beam.core.resources.discover_paths', config('frame.discover_paths', [])),
-        );
+        ) as $class) {
+            $registry->registerClass($class);
+        }
     }
 
     /**

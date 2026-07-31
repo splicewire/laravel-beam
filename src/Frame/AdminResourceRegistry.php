@@ -6,11 +6,11 @@ namespace Splicewire\Beam\Frame;
 
 use InvalidArgumentException;
 use ReflectionClass;
+use Rushing\Popcorn\Discovery\AttributedClassScanner;
 use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Frame\Attributes\AdminResource;
-use Symfony\Component\Finder\Finder;
 
 /**
  * Beam's resource DECLARATION registry — the producer behind frame's agnostic
@@ -173,54 +173,18 @@ class AdminResourceRegistry implements ResourceRegistry
     }
 
     /**
-     * Find #[AdminResource]-annotated class-strings under the given paths. Only
-     * classes carrying the attribute are returned (others are ignored, not errors),
-     * so a discover path may point at a whole Data directory.
+     * Find #[AdminResource]-annotated class-strings under the given paths — the live filesystem
+     * walk. Delegates the generic file→FQCN→attribute machinery to popcorn's
+     * {@see AttributedClassScanner} (extracted from the copy that used to live here). Only classes
+     * carrying the attribute are returned (others ignored, not errors), so a discover path may point
+     * at a whole Data directory. `instanceof: false` preserves the original exact-match behaviour
+     * (the base #[AdminResource] has no preset subclasses).
      *
      * @param  array<int, string>  $paths
      * @return list<class-string>
      */
-    private function scanPaths(array $paths): array
+    public function scanPaths(array $paths): array
     {
-        $existing = array_filter($paths, 'file_exists');
-
-        if (empty($existing)) {
-            return [];
-        }
-
-        $found = [];
-
-        $finder = (new Finder)->files()->name('*.php')->in($existing);
-
-        foreach ($finder as $file) {
-            $class = $this->classNameFromFile($file->getRealPath());
-
-            if ($class === null || ! class_exists($class)) {
-                continue;
-            }
-
-            if ($this->readAttribute(new ReflectionClass($class)) !== null) {
-                $found[] = $class;
-            }
-        }
-
-        return $found;
-    }
-
-    private function classNameFromFile(string $path): ?string
-    {
-        $contents = file_get_contents($path);
-
-        if ($contents === false) {
-            return null;
-        }
-
-        $namespace = preg_match('/namespace\s+([^;]+);/', $contents, $ns) ? trim($ns[1]) : '';
-
-        if (! preg_match('/\bclass\s+(\w+)/', $contents, $cls)) {
-            return null;
-        }
-
-        return $namespace === '' ? $cls[1] : $namespace.'\\'.$cls[1];
+        return (new AttributedClassScanner)->scan($paths, AdminResource::class, instanceof: false);
     }
 }

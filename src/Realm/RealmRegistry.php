@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Splicewire\Beam\Realm;
 
 use InvalidArgumentException;
+use ReflectionAttribute;
+use ReflectionClass;
 use Schemastud\Frame\Realm\RealmDefinition;
+use Splicewire\Beam\Realm\Attributes\Realm;
 
 /**
  * The beam realm kit (ADR-0156): the concrete {@see RealmDefinition} instances the manifest builder and
@@ -107,6 +110,33 @@ class RealmRegistry
         }
 
         $this->realms[$realm->key] = $realm;
+    }
+
+    /**
+     * Reflect a `#[Realm]`-family marker class (the generic `#[Realm]` or a preset subclass
+     * `#[AdminRealm]`/`#[UserRealm]`/`#[TenantRealm]`) and {@see register()} its projected
+     * {@see RealmDefinition}. The explicit-registration path for attributed realms: the boot provider
+     * hands the configured marker-class LIST here — realms are ~4, so a filesystem scan is overkill
+     * (the retired `RealmDiscovery` did one). Additive/last-wins by key, exactly like `register()`.
+     *
+     * @param  class-string  $markerClass
+     */
+    public function registerClass(string $markerClass): void
+    {
+        if (! class_exists($markerClass)) {
+            throw new InvalidArgumentException("Realm marker class [{$markerClass}] does not exist.");
+        }
+
+        $attrs = (new ReflectionClass($markerClass))->getAttributes(Realm::class, ReflectionAttribute::IS_INSTANCEOF);
+
+        if ($attrs === []) {
+            throw new InvalidArgumentException(
+                "Class [{$markerClass}] is not annotated with #[Realm] (or a preset subclass); "
+                .'use register() for attribute-less realms.'
+            );
+        }
+
+        $this->register($attrs[0]->newInstance()->toDefinition());
     }
 
     public function get(string $key): ?RealmDefinition
