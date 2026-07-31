@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace Splicewire\Beam\Realm;
 
 use Schemastud\Frame\Realm\RealmDefinition;
-use Schemastud\Frame\Realm\RealmScope;
 
 /**
  * The beam realm kit (ADR-0156): the concrete {@see RealmDefinition} instances the manifest builder and
  * the SPA route generator read, plus the seam packages contribute more through. The realm *shape*
- * (`RealmDefinition` / `RealmScope`) stays in the agnostic foundation `schemastud/laravel-frame`; the
+ * (`RealmDefinition`) stays in the agnostic foundation `schemastud/laravel-frame`; the
  * concrete kit lives here in beam (legal now that `beam → frame`), so a self-hosted / satellite install
  * selects its realms from the package rather than hand-defining them.
  *
@@ -44,7 +43,7 @@ class RealmRegistry
             key: 'admin',
             routeBase: '/admin',
             guard: 'root',
-            scope: RealmScope::Central,
+            central: true,
             tenancy: false,
         );
     }
@@ -60,7 +59,7 @@ class RealmRegistry
             key: 'user',
             routeBase: '/',
             guard: null,
-            scope: RealmScope::User,
+            central: false,
             tenancy: false,
         );
     }
