@@ -10,22 +10,24 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use RuntimeException;
+use Schemastud\Frame\Registry\NavMetadata;
+use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Lazy;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
+use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Read\Cardinality;
-use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
-use Splicewire\Beam\Read\NullSchemaDataResolver;
 use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
  * The degenerate read seam (beam-write-pipeline ticket 13): beam-core's payload reader resolves a
- * record's Data class through the {@see SchemaDataResolver} port and builds a typed Data from the
- * record's reconciled payload — with NO data-filters dependency. It proves the payoff at the seam: ONE
- * `ReadContext::includes` list compiles to the spatie serialization partial (a Lazy prop appears only
- * when included), and that list queries are (deliberately) the query-composing host binding's job.
+ * record's Data class straight off beam's {@see AdminResourceRegistry} (ADR-0156 retired the
+ * SchemaDataResolver port) and builds a typed Data from the record's reconciled payload — with NO
+ * data-filters dependency. It proves the payoff at the seam: ONE `ReadContext::includes` list compiles to
+ * the spatie serialization partial (a Lazy prop appears only when included), and that list queries are
+ * (deliberately) the query-composing host binding's job.
  */
 class PayloadParticleReaderTest extends TestCase
 {
@@ -42,17 +44,31 @@ class PayloadParticleReaderTest extends TestCase
         });
     }
 
+    /**
+     * A reader over a registry that maps {@see ReaderFixtureModel} to $dataClass. Passing null yields an
+     * empty registry (nothing claims the record — the "no Data class resolves" path).
+     */
     private function reader(?string $dataClass): PayloadParticleReader
     {
-        return new PayloadParticleReader(new class($dataClass) implements SchemaDataResolver
-        {
-            public function __construct(private ?string $class) {}
+        $registry = new AdminResourceRegistry;
 
-            public function dataClassFor(object $record): ?string
-            {
-                return $this->class;
-            }
-        });
+        if ($dataClass !== null) {
+            $registry->register(new ResourceDefinition(
+                key: 'reader-fixture',
+                sourceKind: 'model',
+                model: ReaderFixtureModel::class,
+                source: null,
+                data: $dataClass,
+                creatable: true,
+                query: null,
+                editData: null,
+                policy: null,
+                form: 'bare',
+                nav: new NavMetadata(label: 'Reader Fixture'),
+            ));
+        }
+
+        return new PayloadParticleReader($registry);
     }
 
     public function test_it_hydrates_a_typed_data_from_the_records_payload(): void
@@ -97,8 +113,8 @@ class PayloadParticleReaderTest extends TestCase
 
         $this->expectException(RuntimeException::class);
 
-        // The beam-core default resolves nothing — a host must bind its projection policy.
-        (new PayloadParticleReader(new NullSchemaDataResolver))->hydrate($record, ReadContext::detail());
+        // An empty registry claims no record type — nothing resolves, so projection throws.
+        $this->reader(null)->hydrate($record, ReadContext::detail());
     }
 
     public function test_cardinality_is_a_mode_on_the_context(): void

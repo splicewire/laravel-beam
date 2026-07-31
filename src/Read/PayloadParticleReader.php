@@ -9,8 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
-use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
 
 /**
  * The degenerate {@see ParticleHydrator} default (beam-write-pipeline ticket 13, DESIGN §9a/§9d): the
@@ -18,15 +18,16 @@ use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
  * "Reader is the degenerate Hydrator" — one seam, not two.
  *
  * It needs NO `rushing/laravel-data-filters` dependency (that is the whole point of it living in
- * beam-core): it resolves the record's `Data` class through the {@see SchemaDataResolver} port and builds
- * a typed `Data`, applying `ReadContext::$includes` as the serialization partial. It does NOT compose
- * list queries — that is the query-composing host binding's job, so {@see self::query()} throws. This is
- * niche until the deferred storage-collapse (DESIGN §9a); the host binds a `DataFilterRecordHydrator` for
- * real model-backed lists.
+ * beam-core): it resolves the record's `Data` class straight off beam's own {@see AdminResourceRegistry}
+ * (ADR-0156 retired the `SchemaDataResolver` inversion port — beam owns the registry, so it reads it
+ * directly) and builds a typed `Data`, applying `ReadContext::$includes` as the serialization partial. It
+ * does NOT compose list queries — that is the query-composing host binding's job, so {@see self::query()}
+ * throws. This is niche until the deferred storage-collapse (DESIGN §9a); the host binds a
+ * `DataFilterRecordHydrator` for real model-backed lists.
  */
 final class PayloadParticleReader implements ParticleHydrator
 {
-    public function __construct(private readonly SchemaDataResolver $dataResolver) {}
+    public function __construct(private readonly AdminResourceRegistry $resources) {}
 
     public function hydrate(Model|array|string $source, ReadContext $ctx): Data
     {
@@ -41,11 +42,11 @@ final class PayloadParticleReader implements ParticleHydrator
 
     public function project(Model $record, ReadContext $ctx): Data
     {
-        $dataClass = $this->dataResolver->dataClassFor($record);
+        $dataClass = $this->dataClassFor($record);
 
         if ($dataClass === null) {
             throw new RuntimeException(
-                'No Data class resolved for ['.$record::class.'] — bind a SchemaDataResolver that knows this record type.',
+                'No Data class resolved for ['.$record::class.'] — register an #[AdminResource] whose `model` matches this record type.',
             );
         }
 
@@ -53,6 +54,25 @@ final class PayloadParticleReader implements ParticleHydrator
         $data = $dataClass::from($this->readableSource($record));
 
         return $ctx->includes === [] ? $data : $data->include(...$ctx->includes);
+    }
+
+    /**
+     * The record → projection Data class map, resolved off the registered #[AdminResource] definitions:
+     * the first model-backed definition whose `model` the record is an instance of wins (its annotated
+     * class IS `data`). Null when no definition claims the record type.
+     *
+     * @return class-string<Data>|null
+     */
+    private function dataClassFor(Model $record): ?string
+    {
+        foreach ($this->resources->all() as $definition) {
+            if ($definition->model !== null && $record instanceof $definition->model) {
+                /** @var class-string<Data> */
+                return $definition->data;
+            }
+        }
+
+        return null;
     }
 
     public function query(string $recordType, ReadContext $ctx): object

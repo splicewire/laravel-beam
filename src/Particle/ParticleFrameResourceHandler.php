@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
-use Schemastud\Frame\Registry\AdminResourceDefinition;
+use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -26,7 +26,7 @@ use Splicewire\Beam\Write\PolicyWriteGate;
  * Every Frame-served resource rides this: it runs the canonical CRUD through the beam seams — the
  * {@see ParticleWriter} write pipeline (validate→authorize→persist→emit) and a Data-class read
  * projection — so a Frame edit and a `ParticleController` REST call share ONE runtime. A resource that
- * declares only its `#[AdminResource]`-successor manifest works off the {@see AdminResourceDefinition}
+ * declares only its `#[AdminResource]`-successor manifest works off the {@see ResourceDefinition}
  * alone (the old zero-glue `DefaultResourceHandler` archetype); a resource that also registers a
  * {@see ParticleAdminResource} (or {@see ParticleResource}) under its key gets its enrichment —
  * `includes` eager-loads, a `project` custom projector, `prepare`/`afterWrite` hooks, and input DTO
@@ -45,7 +45,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         protected readonly ParticleResourceRegistry $registry,
     ) {}
 
-    public function index(AdminResourceDefinition $definition, array $params): array
+    public function index(ResourceDefinition $definition, array $params): array
     {
         return $this->query($definition)
             ->orderByDesc('created_at')
@@ -54,12 +54,12 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
             ->all();
     }
 
-    public function show(AdminResourceDefinition $definition, string $id): array
+    public function show(ResourceDefinition $definition, string $id): array
     {
         return $this->projectEdit($definition, $this->query($definition)->findOrFail($id));
     }
 
-    public function store(AdminResourceDefinition $definition, array $input): array
+    public function store(ResourceDefinition $definition, array $input): array
     {
         $modelClass = $definition->model;
         $model = new $modelClass;
@@ -71,7 +71,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         return $this->projectRead($definition, $model);
     }
 
-    public function update(AdminResourceDefinition $definition, string $id, array $input): array
+    public function update(ResourceDefinition $definition, string $id, array $input): array
     {
         $model = $this->query($definition)->findOrFail($id);
 
@@ -82,7 +82,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         return $this->projectRead($definition, $model->refresh());
     }
 
-    public function destroy(AdminResourceDefinition $definition, string $id): void
+    public function destroy(ResourceDefinition $definition, string $id): void
     {
         $this->query($definition)->findOrFail($id)->delete();
     }
@@ -94,13 +94,13 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      * ({@see ParticleResource::$includes} / `$project` / `$prepare` / `$afterWrite` / `$input`). Null for a
      * manifest-only resource (the zero-glue default).
      */
-    protected function resource(AdminResourceDefinition $definition): ?ParticleResource
+    protected function resource(ResourceDefinition $definition): ?ParticleResource
     {
         return $this->registry->has($definition->key) ? $this->registry->get($definition->key) : null;
     }
 
     /** A base query for the resource's model, eager-loading any declared includes. */
-    protected function query(AdminResourceDefinition $definition)
+    protected function query(ResourceDefinition $definition)
     {
         $query = $definition->model::query();
         $includes = $this->resource($definition)?->includes ?? [];
@@ -115,7 +115,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      * A {@see ParticleWriter} bound to this resource's write gate (its declared `policy`, or permissive
      * when none). Built per resource so the gate carries the right policy.
      */
-    protected function writer(AdminResourceDefinition $definition): ParticleWriter
+    protected function writer(ResourceDefinition $definition): ParticleWriter
     {
         return new ParticleWriter(
             new PolicyWriteGate($this->gate, $definition->policy),
@@ -125,7 +125,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         );
     }
 
-    protected function prepare(AdminResourceDefinition $definition, Model $model, mixed $input): void
+    protected function prepare(ResourceDefinition $definition, Model $model, mixed $input): void
     {
         $resource = $this->resource($definition);
         if ($resource?->prepare !== null) {
@@ -134,7 +134,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     }
 
     /** The after-persist relation-sync hook bound to this write's input, or null when none is declared. */
-    protected function afterHook(AdminResourceDefinition $definition, mixed $input): ?Closure
+    protected function afterHook(ResourceDefinition $definition, mixed $input): ?Closure
     {
         $resource = $this->resource($definition);
         if ($resource?->afterWrite === null) {
@@ -148,7 +148,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      * The parsed, VALIDATED input: the resource's input DTO via `validateAndCreate` (its rules run and
      * reject with 422), else the raw input array.
      */
-    protected function parseInput(AdminResourceDefinition $definition, array $input): mixed
+    protected function parseInput(ResourceDefinition $definition, array $input): mixed
     {
         $resource = $this->resource($definition);
 
@@ -183,7 +183,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         return $attributes;
     }
 
-    protected function projectRead(AdminResourceDefinition $definition, Model $model): array
+    protected function projectRead(ResourceDefinition $definition, Model $model): array
     {
         $resource = $this->resource($definition);
         if ($resource?->project !== null) {
@@ -196,7 +196,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         return $this->withId($dataClass::from($model)->toArray(), $model);
     }
 
-    protected function projectEdit(AdminResourceDefinition $definition, Model $model): array
+    protected function projectEdit(ResourceDefinition $definition, Model $model): array
     {
         /** @var class-string<Data> $editClass */
         $editClass = $definition->editData ?? $definition->data;

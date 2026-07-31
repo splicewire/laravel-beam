@@ -10,6 +10,7 @@ use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -18,6 +19,7 @@ use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Events\BeamParticlePersisted;
+use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
@@ -27,8 +29,6 @@ use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
-use Splicewire\Beam\Read\Contracts\SchemaDataResolver;
-use Splicewire\Beam\Read\NullSchemaDataResolver;
 use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
@@ -61,8 +61,10 @@ use Splicewire\Beam\Write\ParticleWriter;
  * multi-tenant host (splicewire-app) owns tenant-guarded copies in BOTH its central and per-tenant
  * migration sets, so records land in the tenant schema rather than falling through to central.
  *
- * Layering law (ADR-0082): frame -> beam, never beam -> frame. Nothing in this package may
- * reference the editor rung.
+ * Layering law (ADR-0156 inverted ADR-0082): beam -> frame, never frame -> beam. Beam is the paid
+ * CMS engine and MAY reference the agnostic `Schemastud\Frame\*` foundation directly (it owns the
+ * resource DECLARATION — `#[AdminResource]` + the registry — and feeds frame's generic manifest
+ * machinery through frame's ResourceRegistry port). Frame must never reference `Splicewire\Beam\*`.
  */
 class BeamServiceProvider extends PackageServiceProvider
 {
@@ -143,12 +145,20 @@ class BeamServiceProvider extends PackageServiceProvider
             $app->make(Dispatcher::class),
         ));
 
-        // The READ seam mirroring the write pipeline (ticket 13, DESIGN §9). The record → Data-class
-        // policy is host-owned (null default here); the DEFAULT hydrator is the degenerate payload reader
-        // — NO data-filters dependency. A host that wants query-composing list reads binds its own
-        // DataFilterRecordHydrator over the same ParticleHydrator port (port-in-base / binding-in-host).
-        $this->app->bind(SchemaDataResolver::class, NullSchemaDataResolver::class);
+        // The READ seam mirroring the write pipeline (ticket 13, DESIGN §9). The DEFAULT hydrator is the
+        // degenerate payload reader — NO data-filters dependency. It resolves a record → its projection
+        // Data class straight off beam's own AdminResourceRegistry (ADR-0156: the SchemaDataResolver port
+        // was retired; beam owns the registry, so it reads it directly rather than deferring to a host
+        // binding). A host that wants query-composing list reads binds its own DataFilterRecordHydrator
+        // over the same ParticleHydrator port (port-in-base / binding-in-host).
         $this->app->bind(ParticleHydrator::class, PayloadParticleReader::class);
+
+        // Beam's resource DECLARATION registry (ADR-0156: "frame has no concept of admin"). It is bound
+        // onto frame's agnostic ResourceRegistry port as a SINGLETON so boot-time #[AdminResource] discovery
+        // (packageBooted) persists across the request and both names resolve one shared instance. Frame's
+        // manifest machinery reads the port; it never imports this beam type (arrow points DOWN, beam → frame).
+        $this->app->singleton(AdminResourceRegistry::class, fn () => new AdminResourceRegistry);
+        $this->app->alias(AdminResourceRegistry::class, ResourceRegistry::class);
 
         // Tenant resolvability (realm-architecture ticket 08): the re-home of the retired
         // RealmDefinition::$tenancy flag. Default resolves the `tenant` realm when config('frame.tenancy')
@@ -211,9 +221,14 @@ class BeamServiceProvider extends PackageServiceProvider
         // Attributed-realm discovery (realm-architecture ticket 08 slice D). Reflect the configured
         // realm-marker classes + scan the configured paths for `#[Realm]`-family attributes, projecting
         // each into a RealmDefinition self-registered onto the singleton RealmRegistry — ADDITIVE onto the
-        // three imperative base realms (last-wins by key). Mirrors frame's #[AdminResource] discover wiring
-        // (config('frame.resources') + config('frame.discover_paths')); the realm vocabulary lives in beam.
+        // three imperative base realms (last-wins by key). The realm vocabulary lives in beam.
         $this->discoverRealms();
+
+        // Resource DECLARATION discovery (ADR-0156). Reflect the configured #[AdminResource] classes +
+        // scan the configured discover-paths into beam's singleton AdminResourceRegistry, which frame's
+        // manifest machinery reads through the ResourceRegistry port. This is the discovery wiring that used
+        // to live in frame's FrameServiceProvider — moved here because the #[AdminResource] opinion is beam's.
+        $this->discoverResources();
     }
 
     /**
@@ -228,6 +243,20 @@ class BeamServiceProvider extends PackageServiceProvider
         ))->discover(
             config('beam.core.realms.classes', []),
             config('beam.core.realms.discover_paths', []),
+        );
+    }
+
+    /**
+     * Boot-time #[AdminResource] discovery: reflect the configured resource classes + scan the configured
+     * discover-paths into beam's singleton {@see AdminResourceRegistry}. Reads `beam.core.resources.classes`
+     * / `.discover_paths`, falling back to frame's legacy `frame.resources` / `frame.discover_paths` config
+     * keys so a host that still declares them there keeps working through the move.
+     */
+    protected function discoverResources(): void
+    {
+        $this->app->make(AdminResourceRegistry::class)->discover(
+            config('beam.core.resources.classes', config('frame.resources', [])),
+            config('beam.core.resources.discover_paths', config('frame.discover_paths', [])),
         );
     }
 

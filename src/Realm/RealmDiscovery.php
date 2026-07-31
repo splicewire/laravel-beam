@@ -7,7 +7,7 @@ namespace Splicewire\Beam\Realm;
 use InvalidArgumentException;
 use ReflectionClass;
 use Schemastud\Frame\Realm\RealmDefinition;
-use Schemastud\Frame\Registry\AdminResourceRegistry;
+use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Realm\Attributes\Realm;
 use Symfony\Component\Finder\Finder;
 

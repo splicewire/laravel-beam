@@ -6,20 +6,20 @@ namespace Splicewire\Beam\Particle;
 
 use Closure;
 use RuntimeException;
-use Schemastud\Frame\Registry\AdminResourceDefinition;
 use Schemastud\Frame\Registry\NavMetadata;
+use Schemastud\Frame\Registry\ResourceDefinition;
 
 /**
  * An admin-editable particle resource: a {@see ParticleResource} (the REST/runtime core — model, data,
  * includes, hooks) **plus** the editor/manifest concerns (nav, layout, edit shape, policy, form mode) and
- * a projection into Frame's agnostic contract ({@see AdminResourceDefinition}).
+ * a projection into Frame's agnostic contract ({@see ResourceDefinition}).
  *
  * This is the ADR-0156 merge: the runtime half of the retired `#[AdminResource]` attribute fuses with
  * `ParticleResource`, and the whole declaration lives in **beam** (which now depends DOWN on frame, so it
  * may reference `Schemastud\Frame\*` directly). The honest subtype relation holds — every admin resource
  * IS a particle resource + a manifest; not every particle resource is an admin resource. A REST-only
  * surface declares {@see ParticleResource}; an editable one declares this and lights up BOTH transports
- * (the `@schemastud/frame` editor via {@see AdminResourceDefinition} + `ParticleController` REST) off one
+ * (the `@schemastud/frame` editor via {@see ResourceDefinition} + `ParticleController` REST) off one
  * object, over the one `ParticleWriter`/`ParticleHydrator` runtime.
  *
  * Scope: **model-backed** resources only. A union/aggregate surface (e.g. a review queue) is not a
@@ -85,7 +85,7 @@ class ParticleAdminResource extends ParticleResource
      * manifest machinery (Frame renders what it is handed; it never names a model). Model-backed ⇒
      * `sourceKind: 'model'`, creatable.
      */
-    public function toAdminResourceDefinition(): AdminResourceDefinition
+    public function toResourceDefinition(): ResourceDefinition
     {
         if ($this->data === null) {
             throw new RuntimeException(
@@ -93,7 +93,7 @@ class ParticleAdminResource extends ParticleResource
             );
         }
 
-        return new AdminResourceDefinition(
+        return new ResourceDefinition(
             key: $this->key,
             sourceKind: 'model',
             model: $this->model,
@@ -112,6 +112,7 @@ class ParticleAdminResource extends ParticleResource
                 navOrder: $this->navOrder,
                 routeName: $this->routeName,
             ),
+            layout: $this->layout,
         );
     }
 }

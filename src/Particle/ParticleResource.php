@@ -39,8 +39,8 @@ class ParticleResource
      * @param  string  $key  the registry key AND the data-filters resource key the list query rides
      *                       (`DataFilter::query($key)`), e.g. `'silo'`
      * @param  class-string  $model  the Eloquent model class
-     * @param  class-string|null  $data  the read/output spatie Data class; null ⇒ resolve via the
-     *                                   bound `SchemaDataResolver` (the Frame `#[AdminResource]` registry)
+     * @param  class-string|null  $data  the read/output spatie Data class; null ⇒ the hydrator resolves it
+     *                                   off beam's `#[AdminResource]` registry (record → its projection class)
      * @param  class-string|null  $input  the input spatie Data DTO (its `toModelAttributes()` maps the
      *                                    request to columns); null ⇒ snake-map the request body
      * @param  list<string>  $includes  default includes — compiled to BOTH the eager-load and the
