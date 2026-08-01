@@ -138,7 +138,13 @@ class AdminResourceRegistry implements ResourceRegistry
                 data: $dataClass,
                 creatable: false,
                 query: null,
-                editData: null,
+                // A service-backed resource is not writable THROUGH Frame (store/update/destroy 405), but
+                // it may still carry an `editData` create-SCHEMA escape hatch (ADR-0156 §83): the schema
+                // endpoint emits `editData ?? data`, and a host may render that create form while SUBMITTING
+                // it to a survivor REST endpoint (e.g. tenant provisioning). Purely a schema surface — it
+                // grants no Frame write path (creatable/editable/deletable stay false). Default null ⇒ every
+                // existing source-backed resource (review-queue, members) is unchanged.
+                editData: $attribute->editData,
                 policy: $attribute->policy,
                 form: $attribute->form,
                 nav: $nav,

@@ -89,13 +89,13 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         $dataClass = $definition->data;
 
         $query = new UnionQuery(
-            // `input('filter.…')` (dot-notation) so nested `filter[source]=…` keys resolve; the source
-            // interprets the facet bag, Frame does not. perPage floored at 1 to guard a paginator underflow.
-            filters: array_filter([
-                'source' => $request->input('filter.source'),
-                'parent_id' => $request->input('filter.parent_id'),
-                'keywords' => $request->input('filter.keywords'),
-            ]),
+            // The WHOLE `filter[...]` bag, passed through opaquely — the {@see UnionSource} owns its own
+            // facet semantics ({@see UnionQuery}: "opaque bag the service interprets"), Frame does not
+            // interpret it. Every source reads only the keys it knows (review-queue: `source`/`parent_id`/
+            // `keywords`; tenant: `period`) and ignores the rest, so forwarding the full bag is additive —
+            // a source is unaffected by facet keys it does not consume. perPage floored at 1 to guard a
+            // paginator underflow.
+            filters: array_filter((array) $request->input('filter', [])),
             cursor: $request->query('cursor'),
             perPage: max(1, (int) $request->integer('perPage', 25)),
         );
@@ -166,7 +166,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
         $resolved = $definition->resolveSource()->find($source, $id);
 
-        abort_if($resolved === null, 404, 'Review item not found.');
+        abort_if($resolved === null, 404, "No '{$definition->key}' record found.");
 
         return array_merge(
             $resolved->item->toArray(),
