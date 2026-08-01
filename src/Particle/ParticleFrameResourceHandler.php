@@ -8,9 +8,11 @@ use Closure;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
+use Schemastud\Frame\Contracts\UnionQuery;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleController;
@@ -52,11 +54,54 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     public function index(ResourceDefinition $definition, array $params): array
     {
+        // A service-backed (union) resource has no single model to query: its list is a MERGE of N
+        // sub-sources fused behind Frame's {@see UnionSource} port (ADR-0156 §57-58, §83 — widen the
+        // Particle to serve a UnionSource, never keep a bespoke handler). Resolve the source off the
+        // definition and flatten its paginated page to the flat row array this handler returns (the
+        // Frame socket wraps it into the `{data,…}` envelope). Model-backed resources are unaffected.
+        if ($definition->source !== null) {
+            return $this->unionIndex($definition);
+        }
+
         $query = $this->indexQuery($definition);
 
         return $query
             ->get()
             ->map(fn (Model $model) => $this->projectRead($definition, $model))
+            ->all();
+    }
+
+    /**
+     * The list for a service-backed union resource: build a {@see UnionQuery} from the request's opaque
+     * `filter[…]` facets + cursor/perPage, hand it to the definition's {@see UnionSource}, and project
+     * each merged item through the resource's read Data class (its spatie magic named constructor, e.g.
+     * `ReviewItemResourceData::fromReviewItem`, resolves off the item type). The source owns merge/sort/
+     * filter/pagination; Frame only wires it. Read-only by construction (`creatable: false` ⇒ store/
+     * update/destroy/show already 405 via {@see assertWritable}).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function unionIndex(ResourceDefinition $definition): array
+    {
+        $request = app(Request::class);
+
+        /** @var class-string<Data> $dataClass */
+        $dataClass = $definition->data;
+
+        $query = new UnionQuery(
+            // `input('filter.…')` (dot-notation) so nested `filter[source]=…` keys resolve; the source
+            // interprets the facet bag, Frame does not. perPage floored at 1 to guard a paginator underflow.
+            filters: array_filter([
+                'source' => $request->input('filter.source'),
+                'parent_id' => $request->input('filter.parent_id'),
+                'keywords' => $request->input('filter.keywords'),
+            ]),
+            cursor: $request->query('cursor'),
+            perPage: max(1, (int) $request->integer('perPage', 25)),
+        );
+
+        return collect($definition->resolveSource()->index($query)->items())
+            ->map(fn (mixed $item) => ($item instanceof Data ? $item : $dataClass::from($item))->toArray())
             ->all();
     }
 
@@ -89,6 +134,15 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     public function show(ResourceDefinition $definition, string $id): array
     {
+        // A service-backed (union) resource resolves ONE item by (source, id) through its UnionSource's
+        // `find()` — a payload-resolved detail (the `schemaRef` dereference seam), NOT a model edit
+        // projection. This runs BEFORE the read-only `assertWritable` guard: a union is not-creatable yet
+        // still exposes a detail view (unlike a read-only model browse, which is list-only). Model-backed
+        // resources fall through to the guarded edit projection below.
+        if ($definition->source !== null) {
+            return $this->unionShow($definition, $id);
+        }
+
         // A read-only (`! creatable`) resource is a LIST/inspection surface — machine-authored, with no
         // per-record edit projection — so a Frame `show` (records/{id}) is unavailable, exactly like the
         // retired bespoke read-only handlers which threw on `show` (ADR-0156 §83). The 405 fires BEFORE the
@@ -96,6 +150,27 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         $this->assertWritable($definition, 'show');
 
         return $this->projectEdit($definition, $this->query($definition)->findOrFail($id));
+    }
+
+    /**
+     * Detail for a service-backed union resource: keyed by (source, id) — the same row id can exist under
+     * either arm, so the `source` discriminator (a detail-route query param) disambiguates. The resolved
+     * item's envelope is merged with the payload-resolved `schemaRef`; a missing item 404s.
+     *
+     * @return array<string, mixed>
+     */
+    protected function unionShow(ResourceDefinition $definition, string $id): array
+    {
+        $source = (string) app(Request::class)->query('source', '');
+
+        $resolved = $definition->resolveSource()->find($source, $id);
+
+        abort_if($resolved === null, 404, 'Review item not found.');
+
+        return array_merge(
+            $resolved->item->toArray(),
+            ['schemaRef' => $resolved->schemaRef],
+        );
     }
 
     public function store(ResourceDefinition $definition, array $input): array
