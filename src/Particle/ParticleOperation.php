@@ -16,21 +16,23 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
  * in effect, a controller method that the framework calls) — so a Laravel dev keeps writing ordinary code
  * and simply returns a job for a Task or a response envelope for a read/write.
  *
- * The three-way {@see OperationKind} is what avoids over-engineering: read/write ops are plain sync
- * calls; only a Task rides the queue. A Task's `handle` returns a `ShouldQueue` job (the framework
- * dispatches it sync or async per `?async`) rather than doing the work inline, so the SAME operation can
- * run either way with no host branching — the `?async` dance controllers copy today (FragmentUrlBatch.run,
- * Composition.*) collapses to a convention.
+ * The {@see OperationKind} is what avoids over-engineering: read/write ops are plain sync calls; only a
+ * Task rides the queue. A Task's `handle` returns a `ShouldQueue` job (the framework dispatches it sync or
+ * async per `?async`) rather than doing the work inline, so the SAME operation can run either way with no
+ * host branching — the `?async` dance controllers copy today (FragmentUrlBatch.run, Composition.*)
+ * collapses to a convention. A Stream's `handle` instead receives an {@see Emitter} 4th arg and pushes
+ * framed events down a held connection; the framework owns the `StreamedResponse` (ADR-0160).
  */
 class ParticleOperation
 {
     /**
      * @param  string  $resource  the particle resource key this operation hangs off (for the route + auth)
      * @param  string  $name  the operation slug in the URL (`…/op/{name}`)
-     * @param  OperationKind  $kind  read | write | task — decides sync-call vs queueable-dispatch
+     * @param  OperationKind  $kind  read | write | task | stream — sync-call vs queueable-dispatch vs held-stream
      * @param  class-string  $model  the model the `{id}` resolves to
      * @param  Closure  $handle  host code. Task ⇒ returns a `ShouldQueue` job built from
-     *                           `($model, $request, $actor)`; Read/Write ⇒ returns a response envelope.
+     *                           `($model, $request, $actor)`; Read/Write ⇒ returns a response envelope;
+     *                           Stream ⇒ `($model, $request, $actor, Emitter $emit)`, pushes framed events.
      * @param  string|null  $ability  an authorization ability checked before the op runs (deny-default)
      * @param  class-string|null  $abilityModel  the model the ability is checked against; null ⇒ the
      *                                           resolved instance (a cross-model ability names its own,
