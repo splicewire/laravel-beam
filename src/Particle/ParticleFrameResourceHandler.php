@@ -13,9 +13,13 @@ use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Read\Contracts\ParticleHydrator;
+use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\PolicyWriteGate;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * The **one** beam-native implementation of Frame's {@see FrameResourceHandler} port (ADR-0156) — it
@@ -43,15 +47,44 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         protected readonly Dispatcher $events,
         protected readonly Gate $gate,
         protected readonly ParticleResourceRegistry $registry,
+        protected readonly ParticleHydrator $hydrator,
     ) {}
 
     public function index(ResourceDefinition $definition, array $params): array
     {
-        return $this->query($definition)
-            ->orderByDesc('created_at')
+        $query = $this->indexQuery($definition);
+
+        return $query
             ->get()
             ->map(fn (Model $model) => $this->projectRead($definition, $model))
             ->all();
+    }
+
+    /**
+     * The list query for a Frame index. A registered, `filterable` {@see ParticleResource} rides the
+     * data-filters builder ({@see ParticleHydrator::query}) — the SAME owner-scoped, `filter[...]`-aware,
+     * saved-filter-capable query the REST {@see ParticleController::index}
+     * uses — so a Frame list and a REST list are one read (a pinned `filter[circuit_id]` and per-caller
+     * row-scoping hold in the editor exactly as they do over REST). A manifest-only resource, a
+     * non-filterable one, or a host whose hydrator does not compose queries falls back to the plain
+     * includes-eager-loaded, newest-first query.
+     */
+    protected function indexQuery(ResourceDefinition $definition): object
+    {
+        $resource = $this->resource($definition);
+
+        if ($resource !== null && $resource->filterable) {
+            try {
+                return $this->hydrator->query(
+                    $resource->key,
+                    ReadContext::list($resource->includes, auth()->user()),
+                );
+            } catch (\LogicException) {
+                // The degenerate beam-core reader does not compose queries — fall through to the plain query.
+            }
+        }
+
+        return $this->query($definition)->orderByDesc('created_at');
     }
 
     public function show(ResourceDefinition $definition, string $id): array
@@ -61,6 +94,8 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     public function store(ResourceDefinition $definition, array $input): array
     {
+        $this->assertWritable($definition, 'store');
+
         $modelClass = $definition->model;
         $model = new $modelClass;
 
@@ -73,6 +108,8 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     public function update(ResourceDefinition $definition, string $id, array $input): array
     {
+        $this->assertWritable($definition, 'update');
+
         $model = $this->query($definition)->findOrFail($id);
 
         $parsed = $this->parseInput($definition, $input);
@@ -84,10 +121,29 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     public function destroy(ResourceDefinition $definition, string $id): void
     {
+        $this->assertWritable($definition, 'destroy');
+
         $this->query($definition)->findOrFail($id)->delete();
     }
 
     // ---- internals -----------------------------------------------------------------------------------
+
+    /**
+     * Refuse a write verb on a resource whose {@see ResourceDefinition} is not `creatable` — a
+     * read-only surface (declared `readOnly: true` on `#[AdminResource]` / {@see ParticleAdminResource},
+     * or a service-backed union) is machine-authored, so store/update/destroy are genuinely unavailable,
+     * not merely unauthorized (ADR-0156 §83 read-only widening). Renders as HTTP 405 — the same refusal
+     * the retired bespoke read-only handlers raised — so the Frame frontend gate and the API agree.
+     */
+    protected function assertWritable(ResourceDefinition $definition, string $action): void
+    {
+        if (! $definition->creatable) {
+            throw new HttpException(
+                405,
+                "The '{$action}' action is not supported for the '{$definition->key}' frame resource."
+            );
+        }
+    }
 
     /**
      * The registered particle declaration for this resource key, if any — carries the enrichment

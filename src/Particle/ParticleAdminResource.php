@@ -40,6 +40,7 @@ class ParticleAdminResource extends ParticleResource
      * @param  int|null  $navOrder  placement within the section
      * @param  string|null  $routeName  stable route identity a host binds the generated leaf under
      * @param  string|null  $layout  inner-layout grammar ('single'|'subnav'|'master-detail'); emitted on the ContextManifest
+     * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83). Projects `creatable: !$readOnly`; the generic {@see ParticleFrameResourceHandler} refuses store/update/destroy with a 405 when `! creatable`. Default false — writable.
      *
      * The remaining params are {@see ParticleResource}'s runtime core.
      */
@@ -65,6 +66,7 @@ class ParticleAdminResource extends ParticleResource
         public readonly ?int $navOrder = null,
         public readonly ?string $routeName = null,
         public readonly ?string $layout = null,
+        public readonly bool $readOnly = false,
     ) {
         parent::__construct(
             key: $key,
@@ -83,7 +85,7 @@ class ParticleAdminResource extends ParticleResource
     /**
      * Project into Frame's agnostic manifest contract. Beam reflects this declaration and *feeds* Frame's
      * manifest machinery (Frame renders what it is handed; it never names a model). Model-backed ⇒
-     * `sourceKind: 'model'`, creatable.
+     * `sourceKind: 'model'`, creatable unless declared `readOnly` (ADR-0156 §83).
      */
     public function toResourceDefinition(): ResourceDefinition
     {
@@ -99,7 +101,7 @@ class ParticleAdminResource extends ParticleResource
             model: $this->model,
             source: null,
             data: $this->data,
-            creatable: true,
+            creatable: ! $this->readOnly,
             query: $this->query,
             editData: $this->editData,
             policy: $this->policy,

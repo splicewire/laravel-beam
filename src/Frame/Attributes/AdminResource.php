@@ -8,6 +8,7 @@ use Attribute;
 use InvalidArgumentException;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Frame\AdminResourceRegistry;
+use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 
 /**
  * Marks a Data class as an editable admin resource — beam's single source of truth
@@ -55,6 +56,7 @@ class AdminResource
      * @param  int|null  $navOrder  placement within the section (lower first; null sorts after ordered siblings)
      * @param  string|null  $routeName  stable route identity a host binds the generated leaf under; null = the host derives one from `key`
      * @param  'single'|'subnav'|'master-detail'|null  $layout  the sanctioned inner-layout grammar this resource's surface uses (ticket 02); emitted on the ContextManifest so a host resolves the FrameLayout `variant` from the manifest. null = unspecified → the socket's `SingleColumn` fallback (ticket 09).
+     * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83 read-only widening). Projects `creatable: !$readOnly` into the {@see ResourceDefinition}; the generic {@see ParticleFrameResourceHandler} refuses store/update/destroy with a 405 when `! creatable`. Default false — every existing resource stays writable.
      */
     public function __construct(
         public string $key,
@@ -71,6 +73,7 @@ class AdminResource
         public ?int $navOrder = null,
         public ?string $routeName = null,
         public ?string $layout = null,
+        public bool $readOnly = false,
     ) {
         if ($this->layout !== null && ! in_array($this->layout, self::Layouts, true)) {
             throw new InvalidArgumentException(

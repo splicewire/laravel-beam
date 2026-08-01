@@ -152,7 +152,7 @@ class AdminResourceRegistry implements ResourceRegistry
             model: $attribute->model,
             source: null,
             data: $dataClass,
-            creatable: true,
+            creatable: ! $attribute->readOnly,
             query: $attribute->query,
             editData: $attribute->editData,
             policy: $attribute->policy,
