@@ -2,10 +2,10 @@
 
 namespace Splicewire\Beam\Tests\Doctor;
 
+use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
-use Splicewire\Beam\Doctor\DoctorAudit;
 use Splicewire\Beam\Tests\TestCase;
 
 /**

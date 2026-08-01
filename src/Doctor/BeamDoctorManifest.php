@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Splicewire\Beam\Doctor;
 
+use Rushing\Doctor\DoctorAudit;
+use Rushing\Doctor\DoctorRegistration;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Install\BeamInstallManifest;
 

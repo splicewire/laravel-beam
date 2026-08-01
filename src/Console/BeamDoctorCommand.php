@@ -3,12 +3,12 @@
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
+use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BeamManifestAudit;
-use Splicewire\Beam\Doctor\DoctorAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
