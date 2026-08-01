@@ -1,0 +1,65 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Beam;
+use Splicewire\Beam\Ownership\OwnershipEdgeType;
+
+/**
+ * The ownership / GC edge store (sourced-particles ticket 08, ADR-0161 Position 3 + MAP §Graphine).
+ *
+ * This is NOT audit-lineage. Audit-lineage (`Lineage`, tower-core) is a durability-first derivation
+ * LOG that SURVIVES producer deletion and cascades NOWHERE — its invariant is the OPPOSITE of this
+ * table's. This is a LIVE, refcounted, cascade-on-evict ownership graph: it answers "what dies /
+ * refreshes WITH me", not "where did this come from". The two provenance axes stay separate on purpose.
+ *
+ * TYPED, NOT MORPH. Both endpoints are `beam_particles.id` uuids (a single self-referential
+ * adjacency on ONE table). The cascade is a LIVE recursive CTE (staudenmeir-style, the same shape the
+ * silo hierarchy uses) and a uniform uuid node keeps that CTE a single self-join — a polymorphic
+ * (type,id) endpoint would fragment the recursion across tables and defeat the adjacency. If a future
+ * host must own a NON-particle node, add a nullable `owner_type`/`target_type` morph pair and branch
+ * the CTE per-type; deliberately NOT done now (YAGNI + CTE simplicity). See the OwnershipGraph docblock.
+ *
+ * Two edge types ({@see OwnershipEdgeType}):
+ *  - `owns` (a.k.a. derived) — cascade-eligible + refcounted. On evict, GC the target when its
+ *    in-degree from NON-EVICTED owners hits 0 (a second live owner keeps it alive).
+ *  - `references` — a link to a pre-existing locally-owned entity. NEVER cascades; the target
+ *    survives its owner's eviction unconditionally.
+ *
+ * Columns:
+ *  - `owner_id`  uuid  — the owning particle (the evict root's subtree walks DOWN this).
+ *  - `target_id` uuid  — the owned / referenced particle.
+ *  - `edge_type` string — `owns` | `references`.
+ *
+ * Indexes:
+ *  - UNIQUE (owner_id, target_id, edge_type) — one edge of a kind between a pair (idempotent record()).
+ *  - INDEX (owner_id) — forward walk (a node's out-edges), the cascade descent.
+ *  - INDEX (target_id, edge_type) — reverse refcount probe (in-degree of `owns` owners on a target).
+ *
+ * Publish-only STUB: beam ships this as a `.stub`; the HOST owns the runnable copy (central + tenant),
+ * mirroring `beam_particles`. Table name routes through {@see Beam::table()} so a retrofit host's one
+ * prefix override follows.
+ */
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create(Beam::table('ownership_edges'), function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('owner_id');
+            $table->uuid('target_id');
+            $table->string('edge_type')->default(OwnershipEdgeType::Owns->value);
+            $table->timestamps();
+
+            $table->unique(['owner_id', 'target_id', 'edge_type'], Beam::table('ownership_edges').'_pair_unique');
+            $table->index('owner_id', Beam::table('ownership_edges').'_owner_idx');
+            $table->index(['target_id', 'edge_type'], Beam::table('ownership_edges').'_target_type_idx');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists(Beam::table('ownership_edges'));
+    }
+};

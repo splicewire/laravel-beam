@@ -27,6 +27,9 @@ use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
 use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Ownership\Contracts\OwnershipEdgeStore;
+use Splicewire\Beam\Ownership\EloquentOwnershipEdgeStore;
+use Splicewire\Beam\Ownership\OwnershipGraph;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
@@ -80,7 +83,10 @@ class BeamServiceProvider extends PackageServiceProvider
             // beam.php file and a beam/ dir is the one real Laravel footgun this move avoids.
             ->hasConfigFile('beam/core')
             ->hasMigration('create_beam_particles_table')
-            ->hasMigration('create_beam_versions_table');
+            ->hasMigration('create_beam_versions_table')
+            // The ownership / GC edge store (sourced-particles ticket 08). Publish-only, like the two
+            // above — a host owns the runnable copy (central + tenant). NOT audit-lineage (tower-core).
+            ->hasMigration('create_beam_ownership_edges_table');
     }
 
     public function packageRegistered(): void
@@ -155,6 +161,16 @@ class BeamServiceProvider extends PackageServiceProvider
             $app->make(ParticleWriter::class),
             $app->make(SchemaTargetResolver::class),
             $app->make(ForeignSourceProjector::class),
+        ));
+
+        // The ownership / GC graph (ticket 08, ADR-0161 Position 3). The edge-store PORT binds to the
+        // shipping Eloquent store whose cascade is a LIVE recursive CTE (NOT graphine's snapshot driver —
+        // documented in OwnershipGraph). beam-core home: beam→graphine is legal and the graph is about
+        // particles, but the cascade takes NO graphine dep (live CTE over beam's own table), so nothing is
+        // added to beam's composer. NOT audit-lineage — the Lineage log (tower-core) is untouched.
+        $this->app->bind(OwnershipEdgeStore::class, EloquentOwnershipEdgeStore::class);
+        $this->app->bind(OwnershipGraph::class, fn ($app) => new OwnershipGraph(
+            $app->make(OwnershipEdgeStore::class),
         ));
 
         // The READ seam mirroring the write pipeline (ticket 13, DESIGN §9). The DEFAULT hydrator is the
