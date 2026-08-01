@@ -41,6 +41,7 @@ class ParticleAdminResource extends ParticleResource
      * @param  string|null  $routeName  stable route identity a host binds the generated leaf under
      * @param  string|null  $layout  inner-layout grammar ('single'|'subnav'|'master-detail'); emitted on the ContextManifest
      * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83). Projects `creatable: !$readOnly`; the generic {@see ParticleFrameResourceHandler} refuses store/update/destroy with a 405 when `! creatable`. Default false — writable.
+     * @param  bool|null  $deletable  whether Frame destroy is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 delete-independent widening) — for a prune-but-not-create/edit list. null (default) follows the create gate (`!$readOnly`); an explicit true opens destroy on an otherwise not-creatable resource.
      *
      * The remaining params are {@see ParticleResource}'s runtime core.
      */
@@ -67,6 +68,7 @@ class ParticleAdminResource extends ParticleResource
         public readonly ?string $routeName = null,
         public readonly ?string $layout = null,
         public readonly bool $readOnly = false,
+        public readonly ?bool $deletable = null,
     ) {
         parent::__construct(
             key: $key,
@@ -102,6 +104,7 @@ class ParticleAdminResource extends ParticleResource
             source: null,
             data: $this->data,
             creatable: ! $this->readOnly,
+            deletable: $this->deletable ?? ! $this->readOnly,
             query: $this->query,
             editData: $this->editData,
             policy: $this->policy,

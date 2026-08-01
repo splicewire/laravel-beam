@@ -57,6 +57,7 @@ class AdminResource
      * @param  string|null  $routeName  stable route identity a host binds the generated leaf under; null = the host derives one from `key`
      * @param  'single'|'subnav'|'master-detail'|null  $layout  the sanctioned inner-layout grammar this resource's surface uses (ticket 02); emitted on the ContextManifest so a host resolves the FrameLayout `variant` from the manifest. null = unspecified → the socket's `SingleColumn` fallback (ticket 09).
      * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83 read-only widening). Projects `creatable: !$readOnly` into the {@see ResourceDefinition}; the generic {@see ParticleFrameResourceHandler} refuses store/update/destroy with a 405 when `! creatable`. Default false — every existing resource stays writable.
+     * @param  bool|null  $deletable  whether Frame destroy is allowed, INDEPENDENT of $readOnly/$creatable (ADR-0156 §83 delete-independent widening) — for a list you may PRUNE but not create/edit (e.g. fragments: list + delete, with show/store/update 405). null (default) = follow the create gate (`!$readOnly`), so every existing resource is unchanged; set `true` alongside `readOnly: true` to open destroy on an otherwise not-creatable resource.
      */
     public function __construct(
         public string $key,
@@ -74,6 +75,7 @@ class AdminResource
         public ?string $routeName = null,
         public ?string $layout = null,
         public bool $readOnly = false,
+        public ?bool $deletable = null,
     ) {
         if ($this->layout !== null && ! in_array($this->layout, self::Layouts, true)) {
             throw new InvalidArgumentException(

@@ -143,6 +143,7 @@ class AdminResourceRegistry implements ResourceRegistry
                 form: $attribute->form,
                 nav: $nav,
                 layout: $attribute->layout,
+                deletable: false,
             );
         }
 
@@ -159,6 +160,10 @@ class AdminResourceRegistry implements ResourceRegistry
             form: $attribute->form,
             nav: $nav,
             layout: $attribute->layout,
+            // Delete gate is independent of create (ADR-0156 §83): null follows the create gate
+            // (every existing resource unchanged), an explicit true opens destroy on a not-creatable
+            // (readOnly) resource — the fragments "list + delete, no create/edit" shape.
+            deletable: $attribute->deletable ?? ! $attribute->readOnly,
         );
     }
 

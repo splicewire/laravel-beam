@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Splicewire\Beam\Particle;
 
 use Closure;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\LaravelData\Data;
 
@@ -54,6 +55,15 @@ class ParticleResource
      * @param  (Closure(Model): Data)|null  $project  a
      *                                                custom row→Data projector for a Data class with a named constructor (e.g.
      *                                                `ScaffoldPackData::fromScaffoldPack`); takes precedence over {@see $data}
+     * @param  (Closure(Builder): Builder)|null  $scope
+     *                                                   a row-level authorization scope applied to the SUBJECT-RESOLUTION base query the generic handler
+     *                                                   uses for `show`/`update`/`destroy` `findOrFail($id)` (ADR-0156 §83 mutation-scope widening). Absent
+     *                                                   the request-filter surface, this closure is the ONLY guard that keeps a Frame edit/revoke from
+     *                                                   reaching a row the caller may not touch — required for a resource whose model table is shared across
+     *                                                   callers/tenants (e.g. the central Sanctum token table: scope to the acting user's own tokens so a
+     *                                                   revoke-by-id can never delete another user's token). null (default) ⇒ the unscoped `model::query()`,
+     *                                                   so every existing resource is unchanged. Independent of {@see $filterable} (which scopes only the
+     *                                                   list index): a resource may scope both, either, or neither.
      */
     public function __construct(
         public readonly string $key,
@@ -66,5 +76,6 @@ class ParticleResource
         public readonly ?Closure $prepare = null,
         public readonly ?Closure $afterWrite = null,
         public readonly ?Closure $project = null,
+        public readonly ?Closure $scope = null,
     ) {}
 }

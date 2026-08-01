@@ -210,16 +210,23 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     // ---- internals -----------------------------------------------------------------------------------
 
     /**
-     * Refuse a non-read verb on a resource whose {@see ResourceDefinition} is not `creatable` — a
+     * Refuse a non-read verb on a resource whose {@see ResourceDefinition} does not permit it — a
      * read-only surface (declared `readOnly: true` on `#[AdminResource]` / {@see ParticleAdminResource},
      * or a service-backed union) is a machine-authored LIST/inspection surface, so store/update/destroy
      * AND the per-record `show` are genuinely unavailable, not merely unauthorized (ADR-0156 §83 read-only
      * widening). Renders as HTTP 405 — the same refusal the retired bespoke read-only handlers raised (they
      * were list-only: they threw on `show` too) — so the Frame frontend gate and the API agree.
+     *
+     * `destroy` gates on the INDEPENDENT `deletable` flag, not `creatable` (ADR-0156 §83 delete-independent
+     * widening): a resource may be prune-but-not-create/edit (fragments: `deletable: true` alongside
+     * `readOnly: true` ⇒ show/store/update 405 but DELETE works). `deletable` defaults to follow `creatable`,
+     * so every resource that never sets it is unchanged.
      */
     protected function assertWritable(ResourceDefinition $definition, string $action): void
     {
-        if (! $definition->creatable) {
+        $permitted = $action === 'destroy' ? $definition->deletable : $definition->creatable;
+
+        if (! $permitted) {
             throw new HttpException(
                 405,
                 "The '{$action}' action is not supported for the '{$definition->key}' frame resource."
@@ -237,13 +244,26 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         return $this->registry->has($definition->key) ? $this->registry->get($definition->key) : null;
     }
 
-    /** A base query for the resource's model, eager-loading any declared includes. */
+    /**
+     * A base query for the resource's model, eager-loading any declared includes. It is the
+     * SUBJECT-RESOLUTION base for `show`/`update`/`destroy` (`findOrFail($id)`), so a declared `scope`
+     * closure (ADR-0156 §83 mutation-scope widening) is applied here: it row-scopes the reachable set so a
+     * Frame edit/revoke cannot resolve a row the caller may not touch (e.g. another user's central Sanctum
+     * token). Default (no `scope`) ⇒ the unscoped `model::query()` — every existing resource is unchanged.
+     */
     protected function query(ResourceDefinition $definition)
     {
         $query = $definition->model::query();
-        $includes = $this->resource($definition)?->includes ?? [];
+
+        $resource = $this->resource($definition);
+
+        $includes = $resource?->includes ?? [];
         if ($includes !== []) {
             $query->with($includes);
+        }
+
+        if ($resource?->scope !== null) {
+            $query = ($resource->scope)($query) ?? $query;
         }
 
         return $query;
