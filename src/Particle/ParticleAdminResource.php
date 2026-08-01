@@ -42,6 +42,7 @@ class ParticleAdminResource extends ParticleResource
      * @param  string|null  $layout  inner-layout grammar ('single'|'subnav'|'master-detail'); emitted on the ContextManifest
      * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83). Projects `creatable: !$readOnly`; the generic {@see ParticleFrameResourceHandler} refuses store/update/destroy with a 405 when `! creatable`. Default false — writable.
      * @param  bool|null  $deletable  whether Frame destroy is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 delete-independent widening) — for a prune-but-not-create/edit list. null (default) follows the create gate (`!$readOnly`); an explicit true opens destroy on an otherwise not-creatable resource.
+     * @param  bool|null  $editable  whether Frame show/update (in-place edit) is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening) — for a create-and-delete-but-not-edit resource (e.g. invitations). null (default) follows the create gate (`!$readOnly`); an explicit false closes in-place edit on an otherwise creatable resource.
      *
      * The remaining params are {@see ParticleResource}'s runtime core.
      */
@@ -69,6 +70,7 @@ class ParticleAdminResource extends ParticleResource
         public readonly ?string $layout = null,
         public readonly bool $readOnly = false,
         public readonly ?bool $deletable = null,
+        public readonly ?bool $editable = null,
     ) {
         parent::__construct(
             key: $key,
@@ -105,6 +107,7 @@ class ParticleAdminResource extends ParticleResource
             data: $this->data,
             creatable: ! $this->readOnly,
             deletable: $this->deletable ?? ! $this->readOnly,
+            editable: $this->editable ?? ! $this->readOnly,
             query: $this->query,
             editData: $this->editData,
             policy: $this->policy,

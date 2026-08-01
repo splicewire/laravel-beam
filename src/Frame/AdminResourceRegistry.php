@@ -144,6 +144,7 @@ class AdminResourceRegistry implements ResourceRegistry
                 nav: $nav,
                 layout: $attribute->layout,
                 deletable: false,
+                editable: false,
             );
         }
 
@@ -164,6 +165,10 @@ class AdminResourceRegistry implements ResourceRegistry
             // (every existing resource unchanged), an explicit true opens destroy on a not-creatable
             // (readOnly) resource — the fragments "list + delete, no create/edit" shape.
             deletable: $attribute->deletable ?? ! $attribute->readOnly,
+            // Edit (show/update) gate is independent of create (ADR-0156 §83): null follows the create
+            // gate (every existing resource unchanged), an explicit false closes in-place edit on an
+            // otherwise creatable resource — the invitations "create + delete, no edit" shape.
+            editable: $attribute->editable ?? ! $attribute->readOnly,
         );
     }
 

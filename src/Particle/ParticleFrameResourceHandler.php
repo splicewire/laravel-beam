@@ -143,10 +143,11 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
             return $this->unionShow($definition, $id);
         }
 
-        // A read-only (`! creatable`) resource is a LIST/inspection surface — machine-authored, with no
-        // per-record edit projection — so a Frame `show` (records/{id}) is unavailable, exactly like the
-        // retired bespoke read-only handlers which threw on `show` (ADR-0156 §83). The 405 fires BEFORE the
-        // id lookup, so a syntactically invalid id can't leak a 500 through the read path.
+        // A non-editable (`! editable`) resource has no per-record edit projection — a read-only browse
+        // (machine-authored) OR a create-and-delete-but-not-edit resource (an invitation is sent + revoked,
+        // never edited in place) — so a Frame `show` (records/{id}) is unavailable, exactly like the retired
+        // bespoke handlers which threw on `show` (ADR-0156 §83). The 405 fires BEFORE the id lookup, so a
+        // syntactically invalid id can't leak a 500 through the read path.
         $this->assertWritable($definition, 'show');
 
         return $this->projectEdit($definition, $this->query($definition)->findOrFail($id));
@@ -217,14 +218,21 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      * widening). Renders as HTTP 405 — the same refusal the retired bespoke read-only handlers raised (they
      * were list-only: they threw on `show` too) — so the Frame frontend gate and the API agree.
      *
-     * `destroy` gates on the INDEPENDENT `deletable` flag, not `creatable` (ADR-0156 §83 delete-independent
-     * widening): a resource may be prune-but-not-create/edit (fragments: `deletable: true` alongside
-     * `readOnly: true` ⇒ show/store/update 405 but DELETE works). `deletable` defaults to follow `creatable`,
-     * so every resource that never sets it is unchanged.
+     * The three verb families ride three INDEPENDENT gates (ADR-0156 §83), each defaulting to follow the
+     * create gate so any resource that never sets them is unchanged:
+     *  - `store` → `creatable`;
+     *  - `show`/`update` (in-place edit) → `editable` — so a create-and-delete-but-not-edit resource
+     *    (invitations: sent + revoked, never edited) 405s show/update while `store`/`destroy` work;
+     *  - `destroy` → `deletable` — so a prune-but-not-create/edit list (fragments) 405s show/store/update
+     *    while DELETE works.
      */
     protected function assertWritable(ResourceDefinition $definition, string $action): void
     {
-        $permitted = $action === 'destroy' ? $definition->deletable : $definition->creatable;
+        $permitted = match ($action) {
+            'destroy' => $definition->deletable,
+            'show', 'update' => $definition->editable,
+            default => $definition->creatable,
+        };
 
         if (! $permitted) {
             throw new HttpException(
