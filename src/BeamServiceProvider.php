@@ -156,7 +156,7 @@ class BeamServiceProvider extends PackageServiceProvider
 
         // The build-time #[AdminResource] manifest cache (mirrors bootstrap/cache/packages.php). When it
         // exists, discoverResources() reads the cached class-strings instead of re-walking the filesystem
-        // each boot; `beam:frame-cache` writes it, `beam:frame-clear` / `optimize:clear` remove it.
+        // each boot; `splicewire:beam:frame-cache` writes it, `splicewire:beam:frame-clear` / `optimize:clear` remove it.
         $this->app->singleton(FrameResourceManifest::class, fn ($app) => new FrameResourceManifest($app));
 
         // Tenant resolvability (realm-architecture ticket 08): the re-home of the retired
@@ -206,8 +206,8 @@ class BeamServiceProvider extends PackageServiceProvider
             // Wire the manifest into Laravel's `optimize` / `optimize:clear` so it builds and clears
             // alongside the framework's own caches (the supported ServiceProvider hook).
             $this->optimizes(
-                optimize: 'beam:frame-cache',
-                clear: 'beam:frame-clear',
+                optimize: 'splicewire:beam:frame-cache',
+                clear: 'splicewire:beam:frame-clear',
                 key: 'beam-frame-resources',
             );
         }
@@ -260,7 +260,7 @@ class BeamServiceProvider extends PackageServiceProvider
      *
      * The explicit `resources.classes` list is ALWAYS honoured (it is cheap). The discover-path SCAN is
      * where the cost lives, so it is cached: when the {@see FrameResourceManifest} exists (a host ran
-     * `beam:frame-cache`), boot registers the cached class-strings directly — no `Finder` walk. Only when
+     * `splicewire:beam:frame-cache`), boot registers the cached class-strings directly — no `Finder` walk. Only when
      * the cache is absent (dev) does it fall back to a live scan. Reads `beam.core.resources.classes` /
      * `.discover_paths`, falling back to frame's legacy `frame.resources` / `frame.discover_paths` keys.
      */

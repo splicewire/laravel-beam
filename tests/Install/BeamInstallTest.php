@@ -69,10 +69,10 @@ class BeamInstallTest extends TestCase
         $this->app->make(BeamInstallManifest::class)->register('acme/late', ['acme-config'], order: 100);
 
         // Non-interactive (CI/scripted) install: no prompts, pure Phase-1 manifest mechanics. The bare
-        // `php artisan beam:install` in a TTY is now the Phase-2 wizard (covered below).
-        $this->artisan('beam:install', ['--no-interaction' => true])
-            ->expectsOutputToContain('beam:install → splicewire/laravel-beam (core)')
-            ->expectsOutputToContain('beam:install → acme/late')
+        // `php artisan splicewire:beam:install` in a TTY is now the Phase-2 wizard (covered below).
+        $this->artisan('splicewire:beam:install', ['--no-interaction' => true])
+            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam (core)')
+            ->expectsOutputToContain('splicewire:beam:install → acme/late')
             ->expectsOutputToContain('beam stack installed.')
             ->assertExitCode(0);
     }
@@ -86,13 +86,13 @@ class BeamInstallTest extends TestCase
      */
     public function test_answers_configure_the_stack_for_a_retrofit_host(): void
     {
-        $this->artisan('beam:install', [
+        $this->artisan('splicewire:beam:install', [
             '--prefix' => '',
             '--schema-sources' => 'file',
             '--tenancy' => 'multi',
             '--no-interaction' => true,
         ])
-            ->expectsOutputToContain('beam:install → splicewire/laravel-beam (core)')
+            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam (core)')
             ->assertExitCode(0);
 
         // The empty prefix means Beam::table() no longer prefixes — a retrofit host's tables stand as-is.
@@ -113,14 +113,14 @@ class BeamInstallTest extends TestCase
         $manifest->register('acme/wanted', ['wanted-config'], order: 100);
         $manifest->register('acme/skipped', ['skipped-config'], order: 100);
 
-        $this->artisan('beam:install', ['--modules' => 'wanted', '--no-interaction' => true])
-            ->expectsOutputToContain('beam:install → splicewire/laravel-beam (core)')
-            ->expectsOutputToContain('beam:install → acme/wanted')
+        $this->artisan('splicewire:beam:install', ['--modules' => 'wanted', '--no-interaction' => true])
+            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam (core)')
+            ->expectsOutputToContain('splicewire:beam:install → acme/wanted')
             ->doesntExpectOutputToContain('acme/skipped')
             ->assertExitCode(0);
 
-        $this->artisan('beam:install', ['--modules' => '', '--no-interaction' => true])
-            ->expectsOutputToContain('beam:install → splicewire/laravel-beam (core)')
+        $this->artisan('splicewire:beam:install', ['--modules' => '', '--no-interaction' => true])
+            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam (core)')
             ->doesntExpectOutputToContain('acme/wanted')
             ->assertExitCode(0);
     }

@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Install;
 /**
  * One beam-* package's install step in the {@see BeamInstallManifest} (beam-write-pipeline ticket 08):
  * the publish tags to run and whether the package contributes migrations, plus an ordering hint so
- * `beam:install` runs core-first then consumers.
+ * `splicewire:beam:install` runs core-first then consumers.
  */
 class InstallStep
 {

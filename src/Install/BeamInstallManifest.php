@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Install;
 /**
  * The beam-install self-registration manifest (beam-write-pipeline ticket 08). A container SINGLETON
  * every beam-* package pushes its own {@see InstallStep} into — from its OWN service provider — so
- * `beam:install` sets up the whole stack from ONE command instead of a per-package installer each.
+ * `splicewire:beam:install` sets up the whole stack from ONE command instead of a per-package installer each.
  *
  * The direction is load-bearing: consumers register DOWN into beam's manifest; **beam-core never learns
  * a consumer's name** (it just iterates whatever registered). That keeps the dependency graph acyclic —
@@ -48,7 +48,7 @@ class BeamInstallManifest
         return $steps;
     }
 
-    /** Whether any registered step contributes migrations (so `beam:install` migrates once at the end). */
+    /** Whether any registered step contributes migrations (so `splicewire:beam:install` migrates once at the end). */
     public function migrates(): bool
     {
         foreach ($this->steps as $step) {

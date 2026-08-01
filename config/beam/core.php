@@ -92,7 +92,7 @@ return [
     ],
 
     /*
-    | Tenancy mode, answered by the `beam:install` wizard (beam-particle-rename ticket 10): "single" (one
+    | Tenancy mode, answered by the `splicewire:beam:install` wizard (beam-particle-rename ticket 10): "single" (one
     | database) or "multi" (tenant-scoped). Declarative only — a multi-tenant host still wires its own
     | tenancy package; this records the operator's intent so tooling can branch on it.
     */

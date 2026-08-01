@@ -14,7 +14,7 @@ use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 /**
- * `beam:install` — the ONE command that stands up the whole beam stack.
+ * `splicewire:beam:install` — the ONE command that stands up the whole beam stack.
  *
  * Phase 1 (beam-write-pipeline ticket 08) made it manifest-driven: it iterates the
  * {@see BeamInstallManifest} core-first, runs each registered package's `vendor:publish` tags, then
@@ -31,7 +31,7 @@ use function Laravel\Prompts\text;
  */
 class BeamInstallCommand extends Command
 {
-    protected $signature = 'beam:install
+    protected $signature = 'splicewire:beam:install
         {--force : Overwrite any already-published files}
         {--prefix= : Beam table prefix (config beam.core.table_prefix); pass an empty string for no prefix}
         {--schema-sources= : Comma list of schema sources in read/write order, e.g. "db,file" or "file"}
@@ -45,7 +45,7 @@ class BeamInstallCommand extends Command
         $steps = $manifest->steps();
 
         if ($steps === []) {
-            $this->warn('beam:install — nothing registered in the manifest.');
+            $this->warn('splicewire:beam:install — nothing registered in the manifest.');
 
             return self::SUCCESS;
         }
@@ -53,7 +53,7 @@ class BeamInstallCommand extends Command
         $interactive = $this->input->isInteractive();
 
         if ($interactive) {
-            intro('beam:install');
+            intro('splicewire:beam:install');
             note($this->banner());
         }
 
@@ -203,7 +203,7 @@ class BeamInstallCommand extends Command
         $force = (bool) $this->option('force');
 
         foreach ($steps as $step) {
-            $this->line("beam:install → {$step->package}");
+            $this->line("splicewire:beam:install → {$step->package}");
 
             foreach ($step->publishTags as $tag) {
                 $this->callSilent('vendor:publish', array_merge(
@@ -244,7 +244,7 @@ class BeamInstallCommand extends Command
         $path = config_path('beam/core.php');
 
         if (! is_file($path) || ! is_writable($path)) {
-            $this->warn('beam:install — answered config kept for this run only; publish config/beam/core.php to persist it.');
+            $this->warn('splicewire:beam:install — answered config kept for this run only; publish config/beam/core.php to persist it.');
 
             return;
         }
