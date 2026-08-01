@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace Splicewire\Beam\Tests\Particle;
 
-use Illuminate\Database\Eloquent\Model;
 use Splicewire\Beam\Beam;
-use Splicewire\Beam\Concerns\PersistsBeamParticle;
-use Splicewire\Beam\Concerns\PersistsSchemaRecord;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
@@ -17,9 +14,10 @@ use Splicewire\Beam\Write\ParticleWriter;
 
 /**
  * The CONTRACT step of the particle rename (beam-particle-rename ticket 07): the `Particle`/`BeamParticle`
- * vocabulary is now CANONICAL — the physically-present class/interface/trait/event names — and the retired
- * `Record`/`SchemaRecord` names resolve back to them through the thin REVERSE back-compat shim, for the
- * external window (until T09 repoints satellites). Inverts T01's forward-alias expand step.
+ * vocabulary is the CANONICAL, physically-present class/interface/trait/event names. The retired
+ * `Record`/`SchemaRecord` reverse back-compat shim (the external-consumer window) was removed at T09 —
+ * `SchemaRecord` now survives only as a durable DB morph-value string (see the versions data path in
+ * BeamParticleVersioningTest) and in historical ADR prose.
  */
 class ParticleContractTest extends TestCase
 {
@@ -53,29 +51,5 @@ class ParticleContractTest extends TestCase
         $this->assertTrue(interface_exists(ParticleHydrator::class));
         $this->assertSame(PayloadParticleReader::class, (new \ReflectionClass(PayloadParticleReader::class))->getName());
         $this->assertTrue(class_exists(BeamParticlePersisted::class));
-    }
-
-    public function test_the_retired_record_names_resolve_back_to_the_particle_classes(): void
-    {
-        // Each retired name resolves (lazily aliased at boot) to its new particle class/interface, so an
-        // external consumer still type-hinting the old FQCN keeps resolving until T09.
-        $this->assertSame(BeamParticle::class, (new \ReflectionClass('Splicewire\Beam\Models\SchemaRecord'))->getName());
-        $this->assertSame(ParticleWriter::class, (new \ReflectionClass('Splicewire\Beam\Write\RecordWriter'))->getName());
-        $this->assertTrue(interface_exists('Splicewire\Beam\Read\Contracts\RecordHydrator'));
-        $this->assertSame(PayloadParticleReader::class, (new \ReflectionClass('Splicewire\Beam\Read\PayloadRecordReader'))->getName());
-        $this->assertSame(BeamParticlePersisted::class, (new \ReflectionClass('Splicewire\Beam\Events\SchemaRecordPersisted'))->getName());
-    }
-
-    public function test_the_retired_trait_name_composes_the_canonical_particle_trait(): void
-    {
-        $model = new class extends Model
-        {
-            use PersistsSchemaRecord;
-        };
-
-        // The retired-named back-compat trait yields the canonical particle-trait behaviour (the
-        // payload/meta cast seam still initializes through class_uses_recursive).
-        $this->assertContains(PersistsBeamParticle::class, class_uses(PersistsSchemaRecord::class));
-        $this->assertTrue(method_exists($model, 'fillFromSchemaPayload'));
     }
 }

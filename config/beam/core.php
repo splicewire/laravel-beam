@@ -20,11 +20,11 @@ return [
     | Swappable models (Spatie swappable-model pattern). A host that composes the beam
     | traits on its own particle model points this at its subclass.
     |
-    | The generic BeamSubmission REFERENCE model was retired (ADR-0138): a submission is
-    | exactly one thing — a FormSubmission (a beam particle). The two-model split was
-    | created-but-never-read; the FC-15 reference precedent is reversed. Renamed
-    | record → particle (ADR-0151); the retired `SchemaRecord` alias is gone once the
-    | back-compat shim is removed, so this key names the canonical BeamParticle directly.
+    | The generic REFERENCE model was retired (ADR-0138 amendment): a submission is
+    | exactly one thing — a BeamSubmission (a beam particle) homed in beam-core. The
+    | two-model split was created-but-never-read; the FC-15 reference precedent is reversed. Renamed
+    | record → particle (ADR-0151); the retired `SchemaRecord` reverse-alias shim was
+    | removed at T09, so this key names the canonical BeamParticle directly.
     */
     'models' => [
         'particle' => BeamParticle::class,

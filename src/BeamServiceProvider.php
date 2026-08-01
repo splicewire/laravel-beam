@@ -14,7 +14,6 @@ use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use Splicewire\Beam\Concerns\PersistsSchemaRecord;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\FrameCacheCommand;
@@ -84,13 +83,6 @@ class BeamServiceProvider extends PackageServiceProvider
 
     public function packageRegistered(): void
     {
-        // Reverse back-compat aliases (beam-particle-rename ticket 07, CONTRACT phase): the particle
-        // vocabulary is now CANONICAL. This publishes THIN aliases in the OTHER direction — the retired
-        // `Record`/`SchemaRecord` names resolve to their new particle classes — so an external satellite
-        // still type-hinting the old FQCNs keeps resolving until T09 repoints it. Inverts T01's forward
-        // autoloader; deleted once the external window closes.
-        $this->registerRecordBackCompatAliases();
-
         // Route beam's two BASE tables through the ONE table-prefix seam (beam-particle-rename T03):
         //
         //  - `beam_particles` — the BeamParticle model resolves its own table via Beam::table('particles')
@@ -300,40 +292,6 @@ class BeamServiceProvider extends PackageServiceProvider
         ) as $class) {
             $registry->registerClass($class);
         }
-    }
-
-    /**
-     * Lazily alias the RETIRED `Record`/`SchemaRecord` FQCNs onto their new particle classes +
-     * interfaces (beam-particle-rename ticket 07, CONTRACT phase — the INVERSE of T01). The particle
-     * names are now the canonical, physically-present symbols; this thin autoloader keeps the old names
-     * resolving for the external window (a satellite still on `Splicewire\Beam\Models\SchemaRecord` etc.
-     * until T09 repoints it). Registered as an autoloader so an alias resolves only when first referenced
-     * (no eager load of every target). Deleted once the external window closes.
-     *
-     * A trait cannot be `class_alias`'d, so the retired `PersistsSchemaRecord` trait ships as a thin
-     * back-compat trait ({@see PersistsSchemaRecord}) composing the canonical
-     * {@see PersistsBeamParticle}, NOT an alias.
-     *
-     * NOTE: the `BeamParticlePersisted` event alias helps only an external consumer that *type-hints*
-     * the old event name — it does NOT bridge a listener. Laravel matches listeners by concrete class
-     * name; beam-core now dispatches `BeamParticlePersisted`, so a listener registered under the old
-     * `SchemaRecordPersisted` name would never fire. Every in-tree listener is repointed atomically.
-     */
-    protected function registerRecordBackCompatAliases(): void
-    {
-        $aliases = [
-            'Splicewire\Beam\Models\SchemaRecord' => BeamParticle::class,
-            'Splicewire\Beam\Write\RecordWriter' => ParticleWriter::class,
-            'Splicewire\Beam\Read\Contracts\RecordHydrator' => ParticleHydrator::class,
-            'Splicewire\Beam\Read\PayloadRecordReader' => PayloadParticleReader::class,
-            'Splicewire\Beam\Events\SchemaRecordPersisted' => BeamParticlePersisted::class,
-        ];
-
-        spl_autoload_register(static function (string $class) use ($aliases): void {
-            if (isset($aliases[$class])) {
-                class_alias($aliases[$class], $class);
-            }
-        });
     }
 
     /**
