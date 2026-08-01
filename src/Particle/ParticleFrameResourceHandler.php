@@ -89,6 +89,12 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     public function show(ResourceDefinition $definition, string $id): array
     {
+        // A read-only (`! creatable`) resource is a LIST/inspection surface — machine-authored, with no
+        // per-record edit projection — so a Frame `show` (records/{id}) is unavailable, exactly like the
+        // retired bespoke read-only handlers which threw on `show` (ADR-0156 §83). The 405 fires BEFORE the
+        // id lookup, so a syntactically invalid id can't leak a 500 through the read path.
+        $this->assertWritable($definition, 'show');
+
         return $this->projectEdit($definition, $this->query($definition)->findOrFail($id));
     }
 
@@ -129,11 +135,12 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     // ---- internals -----------------------------------------------------------------------------------
 
     /**
-     * Refuse a write verb on a resource whose {@see ResourceDefinition} is not `creatable` — a
+     * Refuse a non-read verb on a resource whose {@see ResourceDefinition} is not `creatable` — a
      * read-only surface (declared `readOnly: true` on `#[AdminResource]` / {@see ParticleAdminResource},
-     * or a service-backed union) is machine-authored, so store/update/destroy are genuinely unavailable,
-     * not merely unauthorized (ADR-0156 §83 read-only widening). Renders as HTTP 405 — the same refusal
-     * the retired bespoke read-only handlers raised — so the Frame frontend gate and the API agree.
+     * or a service-backed union) is a machine-authored LIST/inspection surface, so store/update/destroy
+     * AND the per-record `show` are genuinely unavailable, not merely unauthorized (ADR-0156 §83 read-only
+     * widening). Renders as HTTP 405 — the same refusal the retired bespoke read-only handlers raised (they
+     * were list-only: they threw on `show` too) — so the Frame frontend gate and the API agree.
      */
     protected function assertWritable(ResourceDefinition $definition, string $action): void
     {
