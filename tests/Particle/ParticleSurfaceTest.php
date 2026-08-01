@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Tests\Particle;
 
 use Illuminate\Http\Request;

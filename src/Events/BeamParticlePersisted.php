@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Events;
 
 use Illuminate\Database\Eloquent\Model;
@@ -21,14 +19,14 @@ use Splicewire\Beam\Write\ParticleWriter;
  * (`schema_ref` — a bare stem or a versioned `$id`) the record was written under, or null for a record
  * type that carries no schema binding (a plain app model riding the pipeline).
  */
-final class BeamParticlePersisted
+class BeamParticlePersisted
 {
     /**
      * @param  array<string, mixed>  $payload  the schema-shaped content that was written
      */
     public function __construct(
-        public readonly Model $record,
-        public readonly array $payload,
-        public readonly ?string $schemaRef = null,
+        public Model $record,
+        public array $payload,
+        public ?string $schemaRef = null,
     ) {}
 }

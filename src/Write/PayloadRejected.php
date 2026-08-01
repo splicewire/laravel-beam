@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Write;
 
 use RuntimeException;
@@ -16,7 +14,7 @@ use RuntimeException;
  * route (ticket 04) layers on; beam-core keeps the pass/fail gate here and names the offending record
  * type so a caller can translate.
  */
-final class PayloadRejected extends RuntimeException
+class PayloadRejected extends RuntimeException
 {
     public static function for(string $recordType): self
     {

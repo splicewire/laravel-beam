@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Particle;
 
 use Closure;
@@ -41,14 +39,14 @@ class ParticleOperation
      *                                                 (given the refreshed model); null ⇒ a bare `{ queued: true|false }`
      */
     public function __construct(
-        public readonly string $resource,
-        public readonly string $name,
-        public readonly OperationKind $kind,
-        public readonly string $model,
-        public readonly Closure $handle,
-        public readonly ?string $ability = null,
-        public readonly ?string $abilityModel = null,
-        public readonly ?Closure $respond = null,
+        public string $resource,
+        public string $name,
+        public OperationKind $kind,
+        public string $model,
+        public Closure $handle,
+        public ?string $ability = null,
+        public ?string $abilityModel = null,
+        public ?Closure $respond = null,
     ) {}
 
     public function key(): string

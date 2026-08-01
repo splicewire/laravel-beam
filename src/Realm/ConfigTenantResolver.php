@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Realm;
 
 use Schemastud\Frame\Realm\RealmDefinition;
@@ -18,10 +16,10 @@ use Splicewire\Beam\Realm\Contracts\TenantResolver;
  * (default `['tenant']`), not a per-realm flag — a host with differently-keyed tenant realms binds its
  * own instance.
  */
-final class ConfigTenantResolver implements TenantResolver
+class ConfigTenantResolver implements TenantResolver
 {
     /** @param list<string> $tenantRealmKeys the realm keys that resolve a tenant when tenancy is on */
-    public function __construct(private readonly array $tenantRealmKeys = ['tenant']) {}
+    public function __construct(private array $tenantRealmKeys = ['tenant']) {}
 
     public function resolvesTenantFor(RealmDefinition $realm): bool
     {

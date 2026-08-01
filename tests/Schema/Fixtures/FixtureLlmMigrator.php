@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Tests\Schema\Fixtures;
 
 use RuntimeException;
@@ -15,14 +13,14 @@ use Schemastud\DataSchemas\Migration\Contracts\LlmMigrator;
  * or — with `$failIfCalled` — throws to PROVE the rung never invoked it when a gate
  * is closed. No real model, so the eager drain stays deterministic.
  */
-final class FixtureLlmMigrator implements LlmMigrator
+class FixtureLlmMigrator implements LlmMigrator
 {
     /**
      * @param  array<string, mixed>|null  $candidate  the fixed migrated candidate to return
      */
     public function __construct(
-        private readonly ?array $candidate = null,
-        private readonly bool $failIfCalled = false,
+        private ?array $candidate = null,
+        private bool $failIfCalled = false,
     ) {}
 
     public function name(): string

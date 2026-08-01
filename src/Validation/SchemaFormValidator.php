@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Validation;
 
 use Opis\JsonSchema\Errors\ErrorFormatter;
@@ -19,7 +17,7 @@ use stdClass;
  * which returns a field-keyed error map so the HTTP layer can render a 422 body. It is the door's
  * concern (a human submitting a form deserves per-field errors), not the pipeline's.
  */
-final class SchemaFormValidator
+class SchemaFormValidator
 {
     /**
      * Validate `$payload` against `$schema`, returning an empty array when valid or an opis-formatted

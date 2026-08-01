@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Intake;
 
 use Illuminate\Database\Eloquent\Model;
@@ -18,12 +16,12 @@ use Splicewire\Beam\Write\Contracts\WriteGate;
  * refused, so no record type is ever anonymously writable unless a host EXPLICITLY marks it public.
  * "Permissive" means "no policy required", never "open" — the allow-list is the whole authorization.
  */
-final class PublicIntakeWriteGate implements WriteGate
+class PublicIntakeWriteGate implements WriteGate
 {
     /**
      * @param  list<string>  $publicSchemas  the stems/`$id`s a host has marked publicly submittable
      */
-    public function __construct(private readonly array $publicSchemas) {}
+    public function __construct(private array $publicSchemas) {}
 
     public function authorizes(Model|string $subject, array $payload, mixed $actor = null): bool
     {

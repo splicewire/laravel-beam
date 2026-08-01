@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam;
 
 /**
@@ -15,7 +13,7 @@ namespace Splicewire\Beam;
  * Additive in ticket 01: the helper + the config knob exist, but no model/migration has been routed
  * through it yet (that is T03/T04, in batches). Default prefix `beam_`; a retrofit host may set `''`.
  */
-final class Beam
+class Beam
 {
     /**
      * The prefixed table name for a bare Beam table stem — `beam_particles`, `beam_schemas`, … under the

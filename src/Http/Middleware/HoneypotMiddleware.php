@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Http\Middleware;
 
 use Closure;
@@ -19,7 +17,7 @@ use Symfony\Component\HttpFoundation\Response;
  * present, the request is silently accepted — a 201 indistinguishable from a real submission — and the
  * pipeline is short-circuited, so **nothing persists** and the bot gets no signal that it was caught.
  */
-final class HoneypotMiddleware
+class HoneypotMiddleware
 {
     public function handle(Request $request, Closure $next): Response
     {

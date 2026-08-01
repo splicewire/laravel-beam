@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Write;
 
 use Illuminate\Contracts\Auth\Access\Gate;
@@ -24,9 +22,9 @@ use Splicewire\Beam\Write\Contracts\WriteGate;
  * `create` — but the public-intake world does not use THIS binding; it binds a permissive gate + a
  * schema allow-list (ticket 04). Here, a stem with no policy simply stays denied.
  */
-final class GateWriteGate implements WriteGate
+class GateWriteGate implements WriteGate
 {
-    public function __construct(private readonly Gate $gate) {}
+    public function __construct(private Gate $gate) {}
 
     public function authorizes(Model|string $subject, array $payload, mixed $actor = null): bool
     {

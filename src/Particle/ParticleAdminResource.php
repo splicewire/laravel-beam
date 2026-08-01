@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Particle;
 
 use Closure;
@@ -50,7 +48,7 @@ class ParticleAdminResource extends ParticleResource
         string $key,
         string $model,
         ?string $data = null,
-        public readonly string $label = '',
+        public string $label = '',
         ?string $input = null,
         array $includes = [],
         bool $filterable = true,
@@ -58,19 +56,19 @@ class ParticleAdminResource extends ParticleResource
         ?Closure $prepare = null,
         ?Closure $afterWrite = null,
         ?Closure $project = null,
-        public readonly string $form = 'bare',
-        public readonly ?string $editData = null,
-        public readonly ?string $policy = null,
-        public readonly ?string $query = null,
-        public readonly ?string $group = null,
-        public readonly ?string $icon = null,
-        public readonly ?string $section = null,
-        public readonly ?int $navOrder = null,
-        public readonly ?string $routeName = null,
-        public readonly ?string $layout = null,
-        public readonly bool $readOnly = false,
-        public readonly ?bool $deletable = null,
-        public readonly ?bool $editable = null,
+        public string $form = 'bare',
+        public ?string $editData = null,
+        public ?string $policy = null,
+        public ?string $query = null,
+        public ?string $group = null,
+        public ?string $icon = null,
+        public ?string $section = null,
+        public ?int $navOrder = null,
+        public ?string $routeName = null,
+        public ?string $layout = null,
+        public bool $readOnly = false,
+        public ?bool $deletable = null,
+        public ?bool $editable = null,
     ) {
         parent::__construct(
             key: $key,

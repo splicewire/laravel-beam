@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Read;
 
 use BadMethodCallException;
@@ -25,9 +23,9 @@ use Splicewire\Beam\Read\Contracts\ParticleHydrator;
  * throws. This is niche until the deferred storage-collapse (DESIGN §9a); the host binds a
  * `DataFilterRecordHydrator` for real model-backed lists.
  */
-final class PayloadParticleReader implements ParticleHydrator
+class PayloadParticleReader implements ParticleHydrator
 {
-    public function __construct(private readonly AdminResourceRegistry $resources) {}
+    public function __construct(private AdminResourceRegistry $resources) {}
 
     public function hydrate(Model|array|string $source, ReadContext $ctx): Data
     {

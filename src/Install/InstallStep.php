@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Install;
 
 /**
@@ -9,7 +7,7 @@ namespace Splicewire\Beam\Install;
  * the publish tags to run and whether the package contributes migrations, plus an ordering hint so
  * `beam:install` runs core-first then consumers.
  */
-final class InstallStep
+class InstallStep
 {
     /**
      * @param  string  $package  the registering package's name (for operator output only — beam never
@@ -19,9 +17,9 @@ final class InstallStep
      * @param  int  $order  lower runs first; beam-core registers at 0 (core-first), consumers default to 100
      */
     public function __construct(
-        public readonly string $package,
-        public readonly array $publishTags = [],
-        public readonly bool $migrates = false,
-        public readonly int $order = 100,
+        public string $package,
+        public array $publishTags = [],
+        public bool $migrates = false,
+        public int $order = 100,
     ) {}
 }

@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Particle;
 
 use Closure;
@@ -44,12 +42,12 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 class ParticleFrameResourceHandler implements FrameResourceHandler
 {
     public function __construct(
-        protected readonly SchemaTargetResolver $targets,
-        protected readonly AcceptanceGate $acceptance,
-        protected readonly Dispatcher $events,
-        protected readonly Gate $gate,
-        protected readonly ParticleResourceRegistry $registry,
-        protected readonly ParticleHydrator $hydrator,
+        protected SchemaTargetResolver $targets,
+        protected AcceptanceGate $acceptance,
+        protected Dispatcher $events,
+        protected Gate $gate,
+        protected ParticleResourceRegistry $registry,
+        protected ParticleHydrator $hydrator,
     ) {}
 
     public function index(ResourceDefinition $definition, array $params): array

@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Particle;
 
 use Closure;
@@ -66,16 +64,16 @@ class ParticleResource
      *                                                   list index): a resource may scope both, either, or neither.
      */
     public function __construct(
-        public readonly string $key,
-        public readonly string $model,
-        public readonly ?string $data = null,
-        public readonly ?string $input = null,
-        public readonly array $includes = [],
-        public readonly bool $filterable = true,
-        public readonly int $perPage = 20,
-        public readonly ?Closure $prepare = null,
-        public readonly ?Closure $afterWrite = null,
-        public readonly ?Closure $project = null,
-        public readonly ?Closure $scope = null,
+        public string $key,
+        public string $model,
+        public ?string $data = null,
+        public ?string $input = null,
+        public array $includes = [],
+        public bool $filterable = true,
+        public int $perPage = 20,
+        public ?Closure $prepare = null,
+        public ?Closure $afterWrite = null,
+        public ?Closure $project = null,
+        public ?Closure $scope = null,
     ) {}
 }

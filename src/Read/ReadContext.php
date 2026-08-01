@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Read;
 
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -23,16 +21,16 @@ use Splicewire\Beam\Read\Contracts\ParticleHydrator;
  * stay on the request/QueryBuilder (the context owns *projection*, never *selection*); field-level read
  * authz — an optional `ReadGate` decorator, not the base.
  */
-final class ReadContext
+class ReadContext
 {
     /**
      * @param  list<string>  $includes  dot-nested include names (compiles to eager-load AND serialization)
      */
     public function __construct(
-        public readonly array $includes = [],
-        public readonly Cardinality $cardinality = Cardinality::One,
-        public readonly ?Authenticatable $actor = null,
-        public readonly ?int $version = null,
+        public array $includes = [],
+        public Cardinality $cardinality = Cardinality::One,
+        public ?Authenticatable $actor = null,
+        public ?int $version = null,
     ) {}
 
     /**

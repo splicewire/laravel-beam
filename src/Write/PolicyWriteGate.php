@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Write;
 
 use Illuminate\Contracts\Auth\Access\Gate;
@@ -28,11 +26,11 @@ use Splicewire\Beam\Write\Contracts\WriteGate;
  * any resource that declares one, without imposing the anonymous deny-default on an already-authorized
  * edit.
  */
-final class PolicyWriteGate implements WriteGate
+class PolicyWriteGate implements WriteGate
 {
     public function __construct(
-        private readonly Gate $gate,
-        private readonly ?string $policy = null,
+        private Gate $gate,
+        private ?string $policy = null,
     ) {}
 
     public function authorizes(Model|string $subject, array $payload, mixed $actor = null): bool

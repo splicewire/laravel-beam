@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Schema;
 
 use Stringable;
@@ -28,12 +26,12 @@ use Stringable;
  * registry (`versionOf`/`stemOf`) and the payload migrator (`version`/`stem`):
  * both now consume this one parser.
  */
-final class SchemaId implements Stringable
+class SchemaId implements Stringable
 {
     private function __construct(
-        private readonly string $raw,
-        private readonly string $stem,
-        private readonly ?int $version,
+        private string $raw,
+        private string $stem,
+        private ?int $version,
     ) {}
 
     /**

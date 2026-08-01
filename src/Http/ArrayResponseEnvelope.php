@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Http;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -19,7 +17,7 @@ use Symfony\Component\HttpFoundation\Response;
  * The shape mirrors the common `{ data: … }` list/detail envelope so a host that adopts the default and a
  * host that binds its own DTO agree on the wire contract for the fields beam-core itself sets.
  */
-final class ArrayResponseEnvelope implements ResponseEnvelope
+class ArrayResponseEnvelope implements ResponseEnvelope
 {
     public function item(mixed $data): Responsable
     {

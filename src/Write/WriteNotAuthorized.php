@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Write;
 
 use Illuminate\Auth\Access\AuthorizationException;
@@ -15,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  * When it is raised, NOTHING has persisted: the gate is the first stage of the pipeline, before
  * validation and before the save.
  */
-final class WriteNotAuthorized extends AuthorizationException
+class WriteNotAuthorized extends AuthorizationException
 {
     public static function for(Model|string $subject): self
     {

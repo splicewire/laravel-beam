@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Install;
 
 /**
@@ -15,7 +13,7 @@ namespace Splicewire\Beam\Install;
  * {@see InstallStep::$order}, then registration order — `usort` is stable), so the substrate lands before
  * anything that composes it.
  */
-final class BeamInstallManifest
+class BeamInstallManifest
 {
     /** @var list<InstallStep> */
     private array $steps = [];

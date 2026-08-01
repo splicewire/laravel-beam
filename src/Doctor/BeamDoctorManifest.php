@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Doctor;
 
 use Rushing\Doctor\DoctorAudit;
@@ -23,7 +21,7 @@ use Splicewire\Beam\Install\BeamInstallManifest;
  * is stable). Each registration carries a gate/advisory flag so a consumer decides whether its own Fail
  * blocks the exit code, honouring the same gate-vs-advisory split beam-core already draws.
  */
-final class BeamDoctorManifest
+class BeamDoctorManifest
 {
     /** @var list<DoctorRegistration> */
     private array $registrations = [];

@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Http\Particle;
 
 use Closure;
@@ -49,10 +47,10 @@ class ParticleController extends Controller
     public const RESOURCE = '_particle';
 
     public function __construct(
-        protected readonly ParticleWriter $writer,
-        protected readonly ParticleHydrator $hydrator,
-        protected readonly ParticleResourceRegistry $registry,
-        protected readonly ResponseEnvelope $envelope,
+        protected ParticleWriter $writer,
+        protected ParticleHydrator $hydrator,
+        protected ParticleResourceRegistry $registry,
+        protected ResponseEnvelope $envelope,
     ) {}
 
     public function index(Request $request): Responsable

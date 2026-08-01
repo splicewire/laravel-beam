@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Http\Particle;
 
 use Illuminate\Contracts\Bus\Dispatcher;
@@ -40,9 +38,9 @@ class ParticleOperationController extends Controller
     public const NAME = '_particle_op_name';
 
     public function __construct(
-        protected readonly ParticleOperationRegistry $operations,
-        protected readonly Dispatcher $bus,
-        protected readonly ResponseEnvelope $envelope,
+        protected ParticleOperationRegistry $operations,
+        protected Dispatcher $bus,
+        protected ResponseEnvelope $envelope,
     ) {}
 
     public function invoke(Request $request, string $id): mixed

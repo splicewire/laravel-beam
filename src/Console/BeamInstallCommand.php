@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
@@ -31,7 +29,7 @@ use function Laravel\Prompts\text;
  * already owns its tables. Every answer is also exposed as an option, so the wizard is fully scripted for
  * non-interactive runs (CI, tests) — no prompt fires when `--no-interaction` is set.
  */
-final class BeamInstallCommand extends Command
+class BeamInstallCommand extends Command
 {
     protected $signature = 'beam:install
         {--force : Overwrite any already-published files}

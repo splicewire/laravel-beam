@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Tests\Schema\Fakes;
 
 use ReflectionClass;
@@ -28,11 +26,11 @@ use Splicewire\Beam\Schema\SchemaId;
  * chosen (or latest) version — enough for the seam tests, which only ever pass Data
  * class-strings.
  */
-final class FakeSchemaTargetResolver implements SchemaTargetResolver
+class FakeSchemaTargetResolver implements SchemaTargetResolver
 {
     public function __construct(
-        private readonly JsonSchemaGenerator $generator,
-        private readonly SchemaRegistry $registry,
+        private JsonSchemaGenerator $generator,
+        private SchemaRegistry $registry,
     ) {}
 
     /**

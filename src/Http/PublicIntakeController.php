@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Http;
 
 use Illuminate\Contracts\Events\Dispatcher;
@@ -36,13 +34,13 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  *
  * A "submission" is thus exactly a `BeamParticle` written through the public binding — no separate model.
  */
-final class PublicIntakeController
+class PublicIntakeController
 {
     public function __construct(
-        private readonly SchemaTargetResolver $targets,
-        private readonly SchemaFormValidator $validator,
-        private readonly AcceptanceGate $acceptance,
-        private readonly Dispatcher $events,
+        private SchemaTargetResolver $targets,
+        private SchemaFormValidator $validator,
+        private AcceptanceGate $acceptance,
+        private Dispatcher $events,
     ) {}
 
     public function __invoke(Request $request, string $form): JsonResponse

@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Read\Contracts;
 
 use Illuminate\Database\Eloquent\Model;

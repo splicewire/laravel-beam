@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Intake;
 
 use Splicewire\Beam\Models\BeamParticle;
@@ -18,17 +16,17 @@ use Splicewire\Beam\Models\BeamParticle;
  * A "submission" is therefore no longer a package or a model — it is a {@see BeamParticle}
  * written through the public binding, carrying these facets under `meta['intake']`.
  */
-final class IntakeProvenance
+class IntakeProvenance
 {
     /**
      * @param  array<string, mixed>  $context  request context (ip, user agent, …)
      */
     public function __construct(
-        public readonly string $submittedAt,
-        public readonly ?string $submittedBy = null,
-        public readonly ?string $source = null,
-        public readonly ?string $channel = null,
-        public readonly array $context = [],
+        public string $submittedAt,
+        public ?string $submittedBy = null,
+        public ?string $source = null,
+        public ?string $channel = null,
+        public array $context = [],
     ) {}
 
     /**

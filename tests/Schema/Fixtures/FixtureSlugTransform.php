@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Tests\Schema\Fixtures;
 
 use Rushing\Popcorn\Binding;
@@ -17,7 +15,7 @@ use Rushing\Popcorn\Contracts\Invocable;
  * migrator's TransformRegistry by the test — array in, array out (the popcorn
  * contract). Fully deterministic: NO LLM, so the eager drain is reproducible.
  */
-final class FixtureSlugTransform implements Invocable
+class FixtureSlugTransform implements Invocable
 {
     public function name(): string
     {

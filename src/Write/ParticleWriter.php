@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Write;
 
 use Closure;
@@ -35,13 +33,13 @@ use Splicewire\Beam\Write\Contracts\WriteGate;
  * It is named `ParticleWriter`, NOT `BeamParticleWriter`: it writes any persisting particle, not only the
  * base {@see BeamParticle}.
  */
-final class ParticleWriter
+class ParticleWriter
 {
     public function __construct(
-        private readonly WriteGate $gate,
-        private readonly SchemaTargetResolver $targets,
-        private readonly AcceptanceGate $acceptance,
-        private readonly Dispatcher $events,
+        private WriteGate $gate,
+        private SchemaTargetResolver $targets,
+        private AcceptanceGate $acceptance,
+        private Dispatcher $events,
     ) {}
 
     /**

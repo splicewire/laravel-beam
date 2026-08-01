@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Splicewire\Beam\Tests\Schema\Fixtures;
 
 use Schemastud\DataSchemas\Contracts\SchemaIdentity;
