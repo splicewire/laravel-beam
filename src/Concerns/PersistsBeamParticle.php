@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\SchemaId;
+use Splicewire\Beam\Source\SourceWriteTier;
 use Splicewire\Beam\Write\ParticleWriter;
 
 /**
@@ -39,6 +40,13 @@ trait PersistsBeamParticle
         $this->mergeCasts([
             'payload' => 'array',
             'meta' => 'array',
+
+            // Source provenance + lifecycle tier (sourced-particles ticket 06). Every particle model
+            // carries them via this trait, so a shadow is the SAME row marked with its origin + tier —
+            // no side-table. `source_tier` casts to the backed enum so `$record->source_tier->isShadow()`
+            // reads directly; the shadow writer stamps them, the WriteGate reads the tier off the enum.
+            'source_tier' => SourceWriteTier::class,
+            'fetched_at' => 'datetime',
         ]);
     }
 
@@ -89,5 +97,30 @@ trait PersistsBeamParticle
         $ref = $this->getAttribute('schema_ref');
 
         return is_string($ref) && $ref !== '' ? $ref : null;
+    }
+
+    /**
+     * The lifecycle tier this record sits in (sourced-particles ticket 06) — {@see SourceWriteTier::Local}
+     * for a first-class record this tenant authored, or one of the two shadow tiers for a source-derived
+     * one. Defaults to `Local` when the column is unset (a plain pre-ticket-06 row). The cast keeps the
+     * stored string an enum, but a raw/unhydrated value is coerced here so callers always get the enum.
+     */
+    public function sourceTier(): SourceWriteTier
+    {
+        $tier = $this->getAttribute('source_tier');
+
+        if ($tier instanceof SourceWriteTier) {
+            return $tier;
+        }
+
+        return is_string($tier) && $tier !== ''
+            ? SourceWriteTier::from($tier)
+            : SourceWriteTier::Local;
+    }
+
+    /** True iff this record is a shadow (either shadow tier) rather than a locally-authored record. */
+    public function isShadow(): bool
+    {
+        return $this->sourceTier()->isShadow();
     }
 }

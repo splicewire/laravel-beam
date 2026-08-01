@@ -2,8 +2,10 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Beam;
+use Splicewire\Beam\Source\SourceWriteTier;
 
 /**
  * The generic particle store — the narrow core, now schema-driven-CMS core (ADR-0138). Formerly
@@ -16,6 +18,19 @@ use Splicewire\Beam\Beam;
  * was written under — the migrate-on-read version column), `migration_status`
  * (current/pending/failed), and `head_version` (the Versionable snapshot HEAD pin). Distinct
  * from `schema_ref`, which stays the declared schema BINDING (a bare stem or versioned id).
+ *
+ * SOURCE PROVENANCE + LIFECYCLE TIER (sourced-particles ticket 06, ADR-0161 Position 1 +
+ * MAP §Decisions 5–7). A shadow is NOT a side-table — it is the SAME row, marked with WHERE it
+ * came from and WHICH tier it sits in, so the `federated_*` side tables dissolve into columns here:
+ *
+ *  - `source_tier`       — {@see SourceWriteTier}: `local` (default), `shadow-cached`, `shadow-pinned`.
+ *  - `external_ref`      — the item's opaque id at its foreign authority (null for a local row).
+ *  - `source_revision`   — the CONTENT pin: the foreign revision the shadow was fetched at.
+ *  - `projector_version` — the SHAPE pin: the projector/annotation version the payload was mapped through (the double-pin).
+ *  - `fetched_at`        — when the foreign payload was last pulled (staleness signal).
+ *
+ * The partial UNIQUE index `(external_ref, source_revision) WHERE external_ref IS NOT NULL` is the
+ * idempotency key: one shadow per foreign item per revision; NULL local rows are unconstrained.
  */
 return new class extends Migration
 {
@@ -29,12 +44,30 @@ return new class extends Migration
             $table->string('head_version')->nullable();
             $table->json('payload')->nullable();
             $table->json('meta')->nullable();
+
+            // Source provenance + lifecycle tier (ticket 06).
+            $table->string('source_tier')->default('local')->index();
+            $table->string('external_ref')->nullable();
+            $table->string('source_revision')->nullable();
+            $table->string('projector_version')->nullable();
+            $table->timestamp('fetched_at')->nullable();
+
             $table->timestamps();
         });
+
+        // Partial UNIQUE: one shadow per (external_ref, source_revision); local rows (NULL external_ref)
+        // are unconstrained. Raw statement — Blueprint has no partial-index DSL. Postgres-shaped (sqlite
+        // honours the same syntax); a host on another engine adapts its published copy.
+        DB::statement(
+            'CREATE UNIQUE INDEX '.Beam::table('particles').'_external_ref_source_revision_unique '
+            .'ON '.Beam::table('particles').' (external_ref, source_revision) '
+            .'WHERE external_ref IS NOT NULL'
+        );
     }
 
     public function down(): void
     {
+        DB::statement('DROP INDEX IF EXISTS '.Beam::table('particles').'_external_ref_source_revision_unique');
         Schema::dropIfExists(Beam::table('particles'));
     }
 };

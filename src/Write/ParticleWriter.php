@@ -10,6 +10,7 @@ use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
+use Splicewire\Beam\Source\ParticleShadower;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 
 /**
@@ -50,11 +51,17 @@ class ParticleWriter
      * @param  array<string, mixed>  $payload  the schema-shaped content to validate and persist
      * @param  mixed  $actor  the authenticated actor, or null for an anonymous write
      * @param  (Closure(Model): void)|null  $after  an after-persist hook (relation syncs)
+     * @param  bool  $emit  emit the post-persist {@see BeamParticlePersisted} signal (default true — the
+     *                      normal write). A LIGHT shadow-write ({@see ParticleShadower}
+     *                      cache tier, sourced-particles ticket 06) passes `false` to SUPPRESS the adoption
+     *                      side-effects the event drives (embedding jobs, indexing, notification); the full
+     *                      pipeline — including this signal — fires ONCE later on `promote()`. Additive and
+     *                      default-true, so every existing caller is unaffected.
      *
      * @throws WriteNotAuthorized the gate refused the write (nothing persisted)
      * @throws PayloadRejected the payload does not conform to its target schema (nothing persisted)
      */
-    public function write(Model|string $target, array $payload, mixed $actor = null, ?Closure $after = null): Model
+    public function write(Model|string $target, array $payload, mixed $actor = null, ?Closure $after = null, bool $emit = true): Model
     {
         $model = $target instanceof Model ? $target : new $target;
 
@@ -90,8 +97,11 @@ class ParticleWriter
             $after($model);
         }
 
-        // 5. One signal, every write path.
-        $this->events->dispatch(new BeamParticlePersisted($model, $payload, $this->bindingOf($model)));
+        // 5. One signal, every write path — UNLESS the caller suppressed it (a light shadow-write:
+        //    cache the particle now, fire the adoption side-effects once on promote()).
+        if ($emit) {
+            $this->events->dispatch(new BeamParticlePersisted($model, $payload, $this->bindingOf($model)));
+        }
 
         return $model;
     }

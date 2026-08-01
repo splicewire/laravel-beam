@@ -19,7 +19,6 @@ use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\FrameCacheCommand;
 use Splicewire\Beam\Console\FrameClearCommand;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
-use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Frame\FrameResourceManifest;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
@@ -38,6 +37,9 @@ use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
+use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
+use Splicewire\Beam\Source\LadderForeignSourceProjector;
+use Splicewire\Beam\Source\ParticleShadower;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -137,6 +139,22 @@ class BeamServiceProvider extends PackageServiceProvider
             $app->make(SchemaTargetResolver::class),
             new AcceptanceGate,
             $app->make(Dispatcher::class),
+        ));
+
+        // The source projection seam (sourced-particles ticket 06): the default projector maps a foreign
+        // payload onto a local target schema through ticket-04's ladder entry (the "ladder IS the wheel"
+        // verdict). No TransformRegistry by default — a headless beam app has no custom-transform rung;
+        // a host arms one by binding its own projector. Unschematized target → throws (ephemeral-only floor).
+        $this->app->bind(ForeignSourceProjector::class, fn () => new LadderForeignSourceProjector);
+
+        // The two-intensity shadow writer (ticket 06): projects → stamps provenance/tier → writes through
+        // the ParticleWriter. It writes under a SourceGrant + SourceWriteGate at the call site (the host
+        // passes the grant), so it composes the DEFAULT ParticleWriter here; only the tier chooses light vs
+        // full intensity. A source can never write the local tier (guarded on the grant).
+        $this->app->bind(ParticleShadower::class, fn ($app) => new ParticleShadower(
+            $app->make(ParticleWriter::class),
+            $app->make(SchemaTargetResolver::class),
+            $app->make(ForeignSourceProjector::class),
         ));
 
         // The READ seam mirroring the write pipeline (ticket 13, DESIGN §9). The DEFAULT hydrator is the
