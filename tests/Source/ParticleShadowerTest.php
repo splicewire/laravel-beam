@@ -135,6 +135,109 @@ class ParticleShadowerTest extends TestCase
         $this->assertSame(0, $writer->calls);
     }
 
+    public function test_shadow_stamps_associations_carrier_into_meta_shadow_associations(): void
+    {
+        $writer = new RecordingWriter;
+        $model = new FakeParticle('content/article');
+
+        $this->shadower($writer)->shadow(
+            $model,
+            [
+                'raw' => 'foreign',
+                '_associations' => [
+                    'tags' => [
+                        ['authority' => 'wikidata', 'naturalKey' => 'Q42', 'name' => 'Douglas Adams'],
+                        ['naturalKey' => 'sci-fi'], // authority omitted → defaults to source
+                    ],
+                    'silos' => [
+                        ['authority' => 'acme', 'natural_key' => 'org/eng', 'name' => 'Engineering'],
+                    ],
+                ],
+            ],
+            SourceGrant::for('federation:wikidata', ['content/article']),
+            SourceWriteTier::ShadowCached,
+            'frag-1',
+        );
+
+        $this->assertSame(
+            [
+                'tags' => [
+                    ['authority' => 'wikidata', 'naturalKey' => 'Q42', 'name' => 'Douglas Adams'],
+                    ['authority' => 'federation:wikidata', 'naturalKey' => 'sci-fi'],
+                ],
+                'silos' => [
+                    ['authority' => 'acme', 'naturalKey' => 'org/eng', 'name' => 'Engineering'],
+                ],
+            ],
+            $model->getAttribute('meta')['shadow_associations'],
+        );
+    }
+
+    public function test_shadow_without_associations_carrier_leaves_meta_absent(): void
+    {
+        $writer = new RecordingWriter;
+        $model = new FakeParticle('content/article');
+
+        $this->shadower($writer)->shadow(
+            $model,
+            ['raw' => 'foreign'], // no _associations carrier
+            SourceGrant::for('s', ['content/article']),
+            SourceWriteTier::ShadowCached,
+            'frag-1',
+        );
+
+        // No hollow key stamped — the host reader (ParticleAssociations::fromRecord) degrades to empty.
+        $meta = $model->getAttribute('meta');
+        $this->assertTrue($meta === null || ! isset($meta['shadow_associations']));
+    }
+
+    public function test_shadow_associations_preserve_existing_meta_keys(): void
+    {
+        $writer = new RecordingWriter;
+        $model = new FakeParticle('content/article');
+        $model->setAttribute('meta', ['keep' => 'me', 'shadow_derived' => ['x' => 1]]);
+
+        $this->shadower($writer)->shadow(
+            $model,
+            [
+                'raw' => 'foreign',
+                '_associations' => ['tags' => [['authority' => 'w', 'naturalKey' => 'Q1']]],
+            ],
+            SourceGrant::for('s', ['content/article']),
+            SourceWriteTier::ShadowCached,
+            'frag-1',
+        );
+
+        $meta = $model->getAttribute('meta');
+        $this->assertSame('me', $meta['keep']);
+        $this->assertSame(['x' => 1], $meta['shadow_derived']);
+        $this->assertSame(
+            [['authority' => 'w', 'naturalKey' => 'Q1']],
+            $meta['shadow_associations']['tags'],
+        );
+    }
+
+    public function test_shadow_associations_empty_arms_stamp_no_key(): void
+    {
+        $writer = new RecordingWriter;
+        $model = new FakeParticle('content/article');
+
+        $this->shadower($writer)->shadow(
+            $model,
+            [
+                'raw' => 'foreign',
+                // carrier present but every entry malformed (no naturalKey) → nothing normalizable
+                '_associations' => ['tags' => [['authority' => 'w']], 'silos' => 'nope'],
+            ],
+            SourceGrant::for('s', ['content/article']),
+            SourceWriteTier::ShadowCached,
+            'frag-1',
+        );
+
+        $meta = $model->getAttribute('meta');
+        $this->assertTrue($meta === null || ! isset($meta['shadow_associations']));
+    }
+
     public function test_an_unschematized_target_throws_before_any_write(): void
     {
         $writer = new RecordingWriter;

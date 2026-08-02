@@ -32,9 +32,33 @@ use Splicewire\Beam\Write\WriteNotAuthorized;
  *
  * migrate-on-read (the target model's {@see ReconcilesPayloadOnRead}) then
  * reconciles the stored payload to the local schema's current version on every read, for free.
+ *
+ * ── Association carrier (sourced-particles ticket 07 tail) ──────────────────────────────────────────
+ * The projector fills the target schema's REQUIRED field set; a foreign source's tag/silo associations
+ * are NOT target-schema fields, so they ride ALONGSIDE the payload on a documented out-of-band carrier
+ * key on the raw foreign payload: {@see self::ASSOCIATIONS_KEY} (`_associations`) — underscore-prefixed
+ * to mark it as non-schema metadata the projector deliberately ignores. Shape (both arms optional):
+ *
+ *   "_associations": {
+ *     "tags":  [{"authority"?: string, "naturalKey"|"natural_key": string, "name"?: string}, ...],
+ *     "silos": [{"authority"?: string, "naturalKey"|"natural_key": string, "name"?: string}, ...]
+ *   }
+ *
+ * On {@see self::shadow()}, after projection, this block is EXTRACTED, normalized to the shape ticket
+ * 07's host reader (`App\Sourced\ParticleAssociations::fromRecord()`) expects, and stamped into the
+ * record's `meta.shadow_associations` (existing `meta` keys preserved). It is stamped at SHADOW time —
+ * lossless and tier-agnostic (a `cached` record carries its carrier so a later `promote()` → materialize
+ * has real associations to reconcile); the associations are only ACTIONED at promote/materialize, which
+ * is host-side (ticket 07). A per-association `authority` is optional and DEFAULTS to the shadow's own
+ * source authority (the {@see SourceGrant}'s `sourceId`) — a foreign source's own associations belong to
+ * that source unless it says otherwise. A payload with NO carrier leaves `meta.shadow_associations`
+ * absent (the host reader degrades to an empty set — no empty-key noise, not an error).
  */
 class ParticleShadower
 {
+    /** The out-of-band carrier key on the raw foreign payload where a source declares its associations. */
+    public const ASSOCIATIONS_KEY = '_associations';
+
     public function __construct(
         private ParticleWriter $writer,
         private SchemaTargetResolver $targets,
@@ -84,6 +108,11 @@ class ParticleShadower
         // Stamp provenance + tier BEFORE the write so it persists in the same save(). The writer's
         // persist seam (fillFromSchemaPayload) only touches the payload column, so these survive.
         $this->stamp($model, $tier, $externalRef, $sourceRevision, $projectorVersion);
+
+        // Extract the foreign source's declared tag/silo associations (out-of-band carrier, NOT a schema
+        // field) and stamp them into meta.shadow_associations for a later promote()→materialize to
+        // reconcile (ticket 07). Absent carrier ⇒ no key stamped (host reader degrades to empty).
+        $this->stampAssociations($model, $foreignPayload, $actor);
 
         // ShadowCached is a LIGHT write (suppress the adoption signal); ShadowPinned is the full pipeline.
         $emit = $tier !== SourceWriteTier::ShadowCached;
@@ -135,6 +164,80 @@ class ParticleShadower
         $model->setAttribute('source_revision', $sourceRevision);
         $model->setAttribute('projector_version', $projectorVersion);
         $model->setAttribute('fetched_at', now());
+    }
+
+    /**
+     * Extract the foreign payload's association carrier ({@see self::ASSOCIATIONS_KEY}), normalize it to
+     * the `meta.shadow_associations` shape ticket 07's host reader expects, and merge it into `meta`
+     * (existing keys preserved). No carrier / nothing normalizable ⇒ `meta` is left untouched, so the
+     * host reader degrades to an empty set (correct — not an error).
+     *
+     * @param  array<string, mixed>  $foreignPayload
+     */
+    private function stampAssociations(Model $model, array $foreignPayload, SourceGrant $actor): void
+    {
+        $carrier = $foreignPayload[self::ASSOCIATIONS_KEY] ?? null;
+        if (! is_array($carrier)) {
+            return;
+        }
+
+        $associations = array_filter([
+            'tags' => $this->normalizeAssociations($carrier['tags'] ?? null, $actor->sourceId),
+            'silos' => $this->normalizeAssociations($carrier['silos'] ?? null, $actor->sourceId),
+        ]);
+
+        // Both arms empty ⇒ don't stamp a hollow key (no empty-key noise).
+        if ($associations === []) {
+            return;
+        }
+
+        $meta = $model->getAttribute('meta');
+        $meta = is_array($meta) ? $meta : [];
+        $meta['shadow_associations'] = $associations;
+
+        $model->setAttribute('meta', $meta);
+    }
+
+    /**
+     * Normalize one association arm to a list of `{authority, naturalKey, name?}` maps. Each entry needs a
+     * non-empty `naturalKey` (or `natural_key`); a per-entry `authority` is optional and DEFAULTS to
+     * `$defaultAuthority` (the shadow's own source). `name` is carried through only when a non-empty string.
+     *
+     * @return list<array<string, string>>
+     */
+    private function normalizeAssociations(mixed $items, string $defaultAuthority): array
+    {
+        if (! is_array($items)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $naturalKey = $item['naturalKey'] ?? $item['natural_key'] ?? null;
+            if (! is_string($naturalKey) || $naturalKey === '') {
+                continue;
+            }
+
+            $authority = $item['authority'] ?? null;
+            $authority = is_string($authority) && $authority !== '' ? $authority : $defaultAuthority;
+
+            $entry = [
+                'authority' => $authority,
+                'naturalKey' => $naturalKey,
+            ];
+
+            if (isset($item['name']) && is_string($item['name']) && $item['name'] !== '') {
+                $entry['name'] = $item['name'];
+            }
+
+            $out[] = $entry;
+        }
+
+        return $out;
     }
 
     /** The target's record type (schema stem) used to resolve its schema — null when it carries no binding. */
