@@ -9,12 +9,12 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 
 /**
  * The beam response seam — the ONE app-coupling the promoted {@see ParticleController}
- * used to carry (the app's `App\Data\ResponseBody`) hoisted behind a port so beam-core owes nothing upward.
+ * used to carry (the app's `Splicewire\Beam\Data\ResponseBody`) hoisted behind a port so beam-core owes nothing upward.
  *
  * The generic particle controllers speak only this interface to build their `{ data: … }` JSON. A headless
  * beam app gets the neutral {@see ArrayResponseEnvelope} default (a plain
  * `{ data: … }` / `{ data, limit, offset, total }` `JsonResponse`); a richer host (splicewire-app) BINDS
- * its own adapter over its response DTO — `App\Data\ResponseBody` — so the existing responses stay
+ * its own adapter over its response DTO — `Splicewire\Beam\Data\ResponseBody` — so the existing responses stay
  * byte-compatible (port-in-base / binding-in-host, the same shape the write/read seams already use).
  *
  * Each method returns a {@see Responsable} so a controller can hand it straight back as its return value.

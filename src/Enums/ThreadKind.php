@@ -10,7 +10,7 @@ namespace Splicewire\Beam\Enums;
  *
  * Moved DOWN to beam-core (recohere T02): the ChatBase generic conversation model and
  * the generic embed subsystem both discriminate on it, so the enum lives with the
- * substrate. The former App\Enums\ThreadKind is a bridge alias onto this FQCN.
+ * substrate. The former Splicewire\Beam\Enums\ThreadKind is a bridge alias onto this FQCN.
  */
 enum ThreadKind: string
 {

@@ -35,7 +35,7 @@ use Splicewire\Beam\Write\ParticleWriter;
  *   - **extension** — `class SiloController extends ParticleController` overrides {@see ParticleResource()}
  *     and adds bespoke actions that call the inherited internals (`writeParticle`, `findParticle`, …).
  *
- * The ONE app-coupling this surface used to carry — the app's `App\Data\ResponseBody` — is hoisted behind
+ * The ONE app-coupling this surface used to carry — the app's `Splicewire\Beam\Data\ResponseBody` — is hoisted behind
  * the {@see ResponseEnvelope} port (ADR-0116): beam-core builds its `{ data: … }` JSON through the seam,
  * and a host binds its own envelope adapter so its responses stay byte-compatible.
  */

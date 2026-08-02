@@ -15,7 +15,7 @@ namespace Splicewire\Beam\Schema\Contracts;
  *  - TENANT schema — a bare stem with no PHP class: the target is RESOLVED from the
  *    registry (`latest(stem)` by default, or the explicit `$version`).
  *
- * The app's `App\Schema\TargetSchemaResolver` satisfies this port with no behaviour
+ * The app's `Splicewire\Tower\Schema\TargetSchemaResolver` satisfies this port with no behaviour
  * change; beam ships a registry-backed default resolver for the plain schema-record
  * case, which a richer host overrides by binding its own implementation.
  */
