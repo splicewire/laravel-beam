@@ -47,8 +47,10 @@ class BeamInstallTest extends TestCase
         $core = $steps[0];
         $this->assertSame(0, $core->order, 'beam-core registers core-first (order 0)');
         $this->assertStringContainsString('laravel-beam', $core->package);
-        $this->assertContains('laravel-beam-config', $core->publishTags);
-        $this->assertContains('laravel-beam-migrations', $core->publishTags);
+        // package-tools strips the `laravel-` prefix (Package::shortName() → `beam`), so the real
+        // vendor:publish group names are `beam-config` / `beam-migrations` (NOT `laravel-beam-*`).
+        $this->assertContains('beam-config', $core->publishTags);
+        $this->assertContains('beam-migrations', $core->publishTags);
         $this->assertTrue($core->migrates);
     }
 

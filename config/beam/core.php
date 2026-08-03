@@ -82,16 +82,6 @@ return [
     'table_prefix' => 'beam_',
 
     /*
-    | UBIQUITOUS MIGRATION PROVISIONING (recohere T10). The beam base tables (beam_particles,
-    | beam_versions, beam_ownership_edges, beam_submissions) are package-owned shared migrations under
-    | the package's database/migrations/shared/, auto-run in BOTH the central and every tenant pass by
-    | BeamServiceProvider::bootMigrations(). DEFAULTS ON — beam-core is required by everything, so the
-    | substrate provisions everywhere. A RETROFIT host that hand-owns these tables (or provisions them
-    | some other way) sets this to false to opt out of the auto-registration.
-    */
-    'register_migrations' => true,
-
-    /*
     | The schema-definition store's read/write source order (consumed by the registry collapse, T02):
     | an ordered list, e.g. ['db','file'] (DB-first, filesystem fallback) or ['file'] (filesystem only).
     | The trio of Filesystem/Database/Chained registries collapses onto one config-driven class reading

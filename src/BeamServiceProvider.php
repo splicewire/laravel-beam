@@ -68,11 +68,13 @@ use Splicewire\Beam\Write\ParticleWriter;
  * beam port.
  *
  * The substrate migrations (beam_particles, beam_versions, beam_ownership_edges, beam_submissions)
- * are package-owned shared migrations under database/migrations/shared/ (recohere T10): bootMigrations()
- * registers that ONE dir into BOTH the central pass (loadMigrationsFrom) and the tenant pass (Stancl's
- * `--path` array), so the tables provision identically in central and every tenant with no host-owned
- * shim. No `vendor:publish` step, no `.stub` copies — a single-tenant host and a multi-tenant host both
- * just migrate.
+ * ship as PUBLISH-ONLY spatie/laravel-package-tools stubs — the idiomatic pattern for a
+ * PackageServiceProvider. `runsMigrations` is FALSE, so beam-core never loads them at runtime;
+ * `vendor:publish --tag=beam-migrations` (or `splicewire:beam:install`) drops timestamped
+ * copies into the HOST, which runs them. Each table is ubiquitous (central + every tenant), so it
+ * ships as two stubs — a flat one (publishes to database/migrations/, central pass) and a `tenant/`
+ * twin (publishes to database/migrations/tenant/, Stancl tenant pass) — registered together via
+ * `->hasMigrations([...])` in configurePackage().
  *
  * Layering law (ADR-0156 inverted ADR-0082): beam -> frame, never frame -> beam. Beam is the paid
  * CMS engine and MAY reference the agnostic `Schemastud\Frame\*` foundation directly (it owns the
@@ -88,15 +90,32 @@ class BeamServiceProvider extends PackageServiceProvider
             // Nested config namespace (beam-write-pipeline ticket 07): publishes config/beam/core.php,
             // merged + read as config('beam.core.*'). Never a flat config/beam.php — having both a
             // beam.php file and a beam/ dir is the one real Laravel footgun this move avoids.
-            ->hasConfigFile('beam/core');
-
-        // NOTE (recohere T10): the beam base tables (beam_particles, beam_versions,
-        // beam_ownership_edges, beam_submissions) are NO LONGER publish-only `.stub` templates a host
-        // copies + runs. They are package-owned shared migrations under
-        // database/migrations/shared/, provisioned UBIQUITOUSLY (central + every tenant) by
-        // bootMigrations() below — see its docblock. The host no longer owns rename/create shims for
-        // them, so there is no `->hasMigration(...)` here and the `laravel-beam-migrations` publish tag
-        // is retired.
+            ->hasConfigFile('beam/core')
+            // beam's base tables ship as PUBLISH-ONLY spatie/laravel-package-tools stubs (the idiomatic
+            // pattern for a PackageServiceProvider — restored from the non-idiomatic recohere-T10
+            // runtime loadMigrationsFrom). `runsMigrations` stays FALSE (the package-tools default), so
+            // beam-core does NOT auto-load these at runtime — `vendor:publish --tag=beam-migrations`
+            // drops timestamped copies into the HOST and the host runs them. Publish re-stamps each stub
+            // via generateMigrationName (auto-timestamp + sequence); the `.stub` extension keeps the
+            // framework migrator from ever loading them in place.
+            //
+            // Every table is UBIQUITOUS (central + every tenant), so each ships TWICE — once flat and
+            // once under `tenant/`. `hasMigrations([...])` (NOT `discoversMigrations()`, whose ->files()
+            // is non-recursive and would miss the tenant/ subdir) lists both: the flat name publishes to
+            // `database/migrations/` (central pass) and the `tenant/…` name publishes to
+            // `database/migrations/tenant/` (package-tools' generateMigrationName routes on dirname; the
+            // host's Stancl `tenancy.migration_parameters.--path` runs that dir per tenant). Same DDL,
+            // two stubs, so the table shapes are identical central + tenant.
+            ->hasMigrations([
+                'create_beam_particles_table',
+                'tenant/create_beam_particles_table',
+                'create_beam_versions_table',
+                'tenant/create_beam_versions_table',
+                'create_beam_submissions_table',
+                'tenant/create_beam_submissions_table',
+                'create_beam_ownership_edges_table',
+                'tenant/create_beam_ownership_edges_table',
+            ]);
     }
 
     public function packageRegistered(): void
@@ -238,12 +257,6 @@ class BeamServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
-        // The beam base tables — ubiquitous, context-following (recohere T10). MUST run first so the
-        // substrate exists before anything composes it. beam-core is required by EVERYTHING, so this is
-        // NOT gated off by default (unlike a leaf capability): a plain `migrate` / `tenants:migrate`
-        // provisions beam_particles + beam_versions + beam_ownership_edges + beam_submissions everywhere.
-        $this->bootMigrations();
-
         // The `Route::particleResource()` / `Route::particleOp()` route macros — the declarative mount for
         // the generic particle REST + operation surface, so a host stops hand-mounting the generic
         // controllers against the RESOURCE/NAME route defaults.
@@ -268,15 +281,16 @@ class BeamServiceProvider extends PackageServiceProvider
             );
         }
 
-        // beam-core registers ITS OWN install step, core-first (order 0), like any consumer — the config.
-        // Consumers self-register their steps from their own providers (ticket 08). The substrate
-        // migrations are NO LONGER published (recohere T10): they are package-owned shared migrations that
-        // auto-run, so the `laravel-beam-migrations` tag is gone from publishTags. `migrates: true` stays —
-        // `splicewire:beam:install` still runs a single `migrate` at the end, which now discovers the
-        // shared dir directly (no publish step for the tables).
+        // beam-core registers ITS OWN install step, core-first (order 0), like any consumer — the config
+        // AND the publish-only substrate migrations. Consumers self-register their steps from their own
+        // providers (ticket 08). The publish tags are package-tools' auto-generated group names, which
+        // STRIP the `laravel-` prefix (Package::shortName() → `beam`): the config group is `beam-config`
+        // and the migrations group is `beam-migrations` (NOT `laravel-beam-*`). `beam-migrations` publishes
+        // the base-table stubs into the host (flat → database/migrations/, tenant/ → database/migrations/tenant/);
+        // `migrates: true` then runs a single `migrate` at the end so the freshly-published copies apply.
         $this->app->make(BeamInstallManifest::class)->register(
             package: 'splicewire/laravel-beam (core)',
-            publishTags: ['laravel-beam-config'],
+            publishTags: ['beam-config', 'beam-migrations'],
             migrates: true,
             order: 0,
         );
@@ -482,50 +496,5 @@ class BeamServiceProvider extends PackageServiceProvider
             ->where('schema', '.*')
             ->middleware($middleware)
             ->name('beam.intake.submit');
-    }
-
-    /**
-     * Home beam's base tables with a **ubiquitous, context-following** shape (recohere T10): the SAME
-     * migration dir runs in BOTH migration passes, so `beam_particles`, `beam_versions`,
-     * `beam_ownership_edges`, and `beam_submissions` exist identically in central and every tenant.
-     *
-     * The mechanism mirrors beam-ux's BeamUxServiceProvider::bootMigrations() (a downstream consumer —
-     * named in prose, not imported, since beam-core depends on nothing above it):
-     *
-     *  - CENTRAL — {@see loadMigrationsFrom()} registers the shared dir with the framework migrator, so
-     *    a plain `migrate` runs it against the central connection.
-     *  - TENANT — Stancl tenancy has no auto-discovery; `tenants:migrate` reads the ARRAY at
-     *    `config('tenancy.migration_parameters.--path')` at runtime. We push the SAME shared dir onto
-     *    that array (install-location-agnostic, idempotent), so tenant provisioning runs it too. Boot
-     *    runs well before the command reads config, so ordering holds. (The app test harness's
-     *    `migrateTenantPathIntoPublic()` reads this same array, so the shared tables land on the test
-     *    DB via the tenant pass as well.)
-     *
-     * The shared migrations carry no timestamp, so the framework sorts them lexically — `create_beam_*`
-     * sorts before any dated app migration, so the substrate is created before anything composes it.
-     *
-     * Gated by `config('beam.core.register_migrations', true)` — DEFAULTS ON, and beam-core is required
-     * by everything, so the substrate provisions everywhere unless a retrofit host that hand-owns these
-     * tables explicitly opts out.
-     */
-    protected function bootMigrations(): void
-    {
-        if (! config('beam.core.register_migrations', true)) {
-            return;
-        }
-
-        $sharedDir = realpath(__DIR__.'/../database/migrations/shared')
-            ?: __DIR__.'/../database/migrations/shared';
-
-        // Central estate — auto-discovered by `migrate`.
-        $this->loadMigrationsFrom($sharedDir);
-
-        // Tenant estate — pushed onto Stancl's `--path` array (no auto-discovery). Same dir, so the
-        // table shapes are identical central + tenant.
-        $paths = config('tenancy.migration_parameters.--path', []);
-
-        if (! in_array($sharedDir, $paths, true)) {
-            config()->push('tenancy.migration_parameters.--path', $sharedDir);
-        }
     }
 }

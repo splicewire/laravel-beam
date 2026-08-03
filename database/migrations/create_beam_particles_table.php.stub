@@ -8,14 +8,16 @@ use Splicewire\Beam\Beam;
 use Splicewire\Beam\Source\SourceWriteTier;
 
 /**
- * The generic particle store — beam's narrow schema-driven-CMS core (ADR-0138). Package-owned,
- * ubiquitously provisioned (recohere T10): the SAME migration dir runs in BOTH migration passes
- * (central via {@see BeamServiceProvider::bootMigrations()} → loadMigrationsFrom, tenant via the
- * pushed `tenancy.migration_parameters.--path` array), so `beam_particles` exists identically in
- * central and every tenant schema. This SQUASHES the host-owned `schema_records`→`beam_particles`
- * rename shim + the shadow-provenance ALTER into one clean greenfield create (there is no legacy
- * `schema_records` to rename anymore). Populator-specific facts belong in reference tables keyed by
- * `beam_particles.id`, NOT columns here (composition, not inheritance).
+ * The generic particle store — beam's narrow schema-driven-CMS core (ADR-0138). Shipped as a
+ * publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE): the package publishes a
+ * timestamped copy into the host (`vendor:publish --tag=beam-migrations`), the framework
+ * re-stamps + sequences it, and the HOST runs it. beam-core never loadMigrationsFrom's it at runtime.
+ *
+ * UBIQUITOUS table (central + every tenant): this same DDL ships as TWO stubs — this flat one lands
+ * in the host's `database/migrations/` (central pass) and its `tenant/` twin lands in
+ * `database/migrations/tenant/` (Stancl tenant pass) — so `beam_particles` exists identically in the
+ * central schema and every tenant schema. The BeamParticle model pins NO connection (it follows the
+ * ambient central/tenant connection).
  *
  * The versioning columns are the trait defaults: `schema_id` (the absolute `$id` the payload was
  * written under — the migrate-on-read version column), `migration_status` (current/pending/failed),

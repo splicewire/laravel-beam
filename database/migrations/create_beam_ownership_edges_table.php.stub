@@ -8,8 +8,13 @@ use Splicewire\Beam\Ownership\OwnershipEdgeType;
 
 /**
  * The ownership / GC edge store (sourced-particles ticket 08, ADR-0161 Position 3 + MAP §Graphine).
- * Package-owned, ubiquitously provisioned (recohere T10): the same shared dir runs central + every
- * tenant. This SQUASHES the host-owned runnable copies (central + tenant twin) into one clean create.
+ * Shipped as a publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE): the host
+ * publishes + runs it; beam-core never loadMigrationsFrom's it.
+ *
+ * UBIQUITOUS table (central + every tenant): ships as TWO stubs (this flat one → central pass; its
+ * `tenant/` twin → Stancl tenant pass), so the edge store exists identically wherever `beam_particles`
+ * does — both endpoints are `beam_particles.id` uuids, so the graph is co-located with the particles
+ * it governs.
  *
  * NOT audit-lineage. Audit-lineage (`Lineage`, tower-core) is a durability-first derivation LOG that
  * SURVIVES producer deletion and cascades NOWHERE. This is a LIVE, refcounted, cascade-on-evict

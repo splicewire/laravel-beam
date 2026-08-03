@@ -8,16 +8,19 @@ use Splicewire\Beam\Models\BeamSubmission;
 
 /**
  * The shared submission ledger — beam-core's first schema-driven-CMS consumer (ADR-0138). One
- * {@see BeamSubmission} model that migrates-on-read as its form schema evolves.
- * Package-owned, ubiquitously provisioned (recohere T10): the same shared dir runs central + every
- * tenant, so `beam_submissions` exists identically in both (marketing leads / relay inbound land
- * central; circuit intake lands tenant-side inside its own isolation). This SQUASHES the host-owned
- * `form_submissions`→`beam_submissions` rename shim (central + tenant twin) into one clean greenfield
- * create.
+ * {@see BeamSubmission} model that migrates-on-read as its form schema evolves. Shipped as a
+ * publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE): the host publishes +
+ * runs it; beam-core never loadMigrationsFrom's it.
+ *
+ * UBIQUITOUS table (central + every tenant): ships as TWO stubs (this flat one → central pass; its
+ * `tenant/` twin → Stancl tenant pass), so `beam_submissions` exists identically in both (marketing
+ * leads / relay inbound land central; circuit intake lands tenant-side inside its own isolation). A
+ * fresh store starts empty, so the retired `form_submissions`→`beam_submissions` rename shim is
+ * dropped — this is a clean greenfield create.
  *
  * Homed in beam-CORE (research/01 C14): the retired `laravel-beam-submissions` package's model became
- * beam-core's {@see BeamSubmission}, whose getTable() resolves
- * `Beam::table('submissions')`, so the table's create belongs with it.
+ * beam-core's {@see BeamSubmission}, whose getTable() resolves `Beam::table('submissions')`, so the
+ * table's create belongs with it.
  *
  * Migrate-on-read (ADR-0138): `schema_id` = the absolute `$id` the payload was captured under;
  * `migration_status` = current/pending/failed. No `head_version` — a submission is migrate-on-read
