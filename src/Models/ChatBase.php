@@ -20,7 +20,7 @@ use Splicewire\Beam\Enums\ThreadKind;
  * The generic conversation base (recohere T02): a schema-typed, versioned `threads` row carrying
  * ONLY the verified-generic Thread machinery — UUIDs, ownership (HasUserId), visibility cascade,
  * flags, spatie model-status, and the versionable snapshot/restore of the conversation config.
- * The tower {@see \App\Models\Thread} extends this and layers on the KNOWLEDGE-grounding traits
+ * The tower {@see \Splicewire\Tower\Models\Thread} extends this and layers on the KNOWLEDGE-grounding traits
  * (HasFragments / HasSilos / HasContextScopes / HasInstructionsProvider), tagging (HasTags — kept on
  * Thread to avoid the beam⇄beam-taxonomy cycle), AI orchestration, and the assistant relation.
  *
@@ -29,8 +29,9 @@ use Splicewire\Beam\Enums\ThreadKind;
  * stays a tower-Thread concern.
  *
  * Relations that reach tower-tier / beam-embed models ({@see messages()}, {@see visitor()}) are
- * declared by class-STRING so Eloquent resolves them lazily at call time — no autoload-time
- * dependency from beam-core UP onto tower-core or beam-embed.
+ * declared by class-STRING (the message model is CONFIG-resolved via `config('embed.message_model')`)
+ * so Eloquent resolves them lazily at call time — no autoload-time dependency from beam-core UP onto
+ * tower-core or beam-embed.
  */
 class ChatBase extends Model implements Versionable
 {
@@ -104,9 +105,13 @@ class ChatBase extends Model implements Versionable
 
     public function messages(): HasMany
     {
-        // Explicit FK: Eloquent would otherwise derive `chat_base_id` from this base class name,
-        // but the column is `thread_id` (the relation used to live on the tower Thread). Recohere T02.
-        return $this->hasMany(\App\Models\ThreadMessage::class, 'thread_id')->orderBy('created_at');
+        // Config-resolve the host's message model (recohere follow-up): beam-core is the BOTTOM tier
+        // and must NOT reference the host application namespace / tower. The host binds its concrete message class behind
+        // `config('embed.message_model')` — mirroring the `config('embed.base_model')` seam T02
+        // established for the base Thread. A bare beam site can leave it unset (null ⇒ Eloquent
+        // derives it from this class, which a beam-only deployment never actually calls).
+        // Explicit FK: the column is `thread_id` (the relation used to live on the tower Thread).
+        return $this->hasMany(config('embed.message_model'), 'thread_id')->orderBy('created_at');
     }
 
     // -------------------------------------------------------------------------
