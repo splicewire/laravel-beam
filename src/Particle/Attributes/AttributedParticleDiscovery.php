@@ -102,6 +102,7 @@ class AttributedParticleDiscovery
             includes: $attribute->includes,
             filterable: $attribute->filterable,
             perPage: $attribute->perPage,
+            defaultSort: $attribute->defaultSort,
             prepare: $this->convention($class, 'prepare'),
             afterWrite: $this->convention($class, 'afterWrite'),
             project: $this->convention($class, 'project'),

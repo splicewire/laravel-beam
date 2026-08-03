@@ -60,7 +60,7 @@ class ParticleController extends Controller
 
         $query = $resource->filterable
             ? $this->hydrator->query($resource->key, $ctx)
-            : $resource->model::query()->latest();
+            : $resource->model::query()->latest($resource->defaultSort);
 
         // Row-level authorization for the non-filterable list (ADR-0156 §83): a `filterable:false` resource
         // has no data-filters query to gate its index, so its owner/inverse `scope` closure is the ONLY read

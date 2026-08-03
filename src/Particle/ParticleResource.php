@@ -48,6 +48,11 @@ class ParticleResource
      *                            true; a plain `latest()` query otherwise (for resources with no declared
      *                            filter surface)
      * @param  int  $perPage  default page size
+     * @param  string|null  $defaultSort  the column the NON-filterable index orders by (descending, via
+     *                                    `->latest($col)`); null ⇒ `created_at` (the framework `latest()`
+     *                                    default). A filterable resource ignores this — its data-filters
+     *                                    query owns ordering. Lets a resource whose list is "most recently
+     *                                    EDITED first" declare `updated_at` instead of the create default.
      * @param  (Closure(mixed $model, mixed $input, mixed $actor): void)|null  $prepare  before-write hook
      * @param  (Closure(mixed $model, mixed $input): void)|null  $afterWrite  after-write relation-sync hook
      * @param  (Closure(Model): Data)|null  $project  a
@@ -71,6 +76,7 @@ class ParticleResource
         public array $includes = [],
         public bool $filterable = true,
         public int $perPage = 20,
+        public ?string $defaultSort = null,
         public ?Closure $prepare = null,
         public ?Closure $afterWrite = null,
         public ?Closure $project = null,

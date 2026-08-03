@@ -55,6 +55,37 @@ class ParticleControllerScopeTest extends TestCase
         return $request;
     }
 
+    public function test_a_non_filterable_index_orders_by_default_sort(): void
+    {
+        Schema::create('sorted_widgets', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+
+        // 'new-edit' is created EARLIEST but edited LATEST — an updated_at sort must surface it first,
+        // a created_at (default) sort would not.
+        SortedWidget::create(['name' => 'old-edit', 'created_at' => '2020-01-02', 'updated_at' => '2020-01-02']);
+        SortedWidget::create(['name' => 'new-edit', 'created_at' => '2020-01-01', 'updated_at' => '2020-06-01']);
+
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'sorted-widget',
+            model: SortedWidget::class,
+            data: SortedWidgetData::class,
+            filterable: false,
+            defaultSort: 'updated_at',
+        ));
+
+        $request = Request::create('/sorted-widgets');
+        $route = new Route('GET', '/sorted-widgets', []);
+        $route->defaults(ParticleController::RESOURCE, 'sorted-widget');
+        $request->setRouteResolver(fn () => $route);
+
+        $data = $this->app->make(ParticleController::class)->index($request)->toResponse($request)->getData(true)['data'];
+
+        $this->assertSame('new-edit', $data[0]['name']);
+    }
+
     public function test_a_non_filterable_index_is_gated_by_scope(): void
     {
         $response = $this->app->make(ParticleController::class)
@@ -108,6 +139,18 @@ class ScopeWidget extends Model
 }
 
 class ScopeWidgetData extends \Spatie\LaravelData\Data
+{
+    public function __construct(public int $id, public string $name) {}
+}
+
+class SortedWidget extends Model
+{
+    protected $table = 'sorted_widgets';
+
+    protected $guarded = [];
+}
+
+class SortedWidgetData extends \Spatie\LaravelData\Data
 {
     public function __construct(public int $id, public string $name) {}
 }

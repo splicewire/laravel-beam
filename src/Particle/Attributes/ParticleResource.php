@@ -45,6 +45,8 @@ class ParticleResource
      * @param  list<string>  $includes  default includes (eager-load + serialization axis)
      * @param  bool  $filterable  index rides the data-filters builder when true; plain `latest()` otherwise
      * @param  int  $perPage  default page size
+     * @param  string|null  $defaultSort  the column the non-filterable index orders by (descending); null ⇒
+     *                                    `created_at`. Use `updated_at` for a "most-recently-edited first" list.
      */
     public function __construct(
         public string $key,
@@ -54,5 +56,6 @@ class ParticleResource
         public array $includes = [],
         public bool $filterable = true,
         public int $perPage = 20,
+        public ?string $defaultSort = null,
     ) {}
 }
