@@ -23,7 +23,7 @@ use Attribute;
  * the closures are resolved by CONVENTION from `public static` methods on the SAME annotated class, wired
  * in by {@see AttributedParticleDiscovery} when present (each is optional):
  *
- *   - `public static function scope(\Illuminate\Database\Eloquent\Builder $q, ?\Illuminate\Contracts\Auth\Authenticatable $actor): \Illuminate\Database\Eloquent\Builder`
+ *   - `public static function scope(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder`  (actor via the `Auth` facade — the beam scope convention)
  *   - `public static function project(\Illuminate\Database\Eloquent\Model $model): \Spatie\LaravelData\Data`
  *   - `public static function prepare(\Illuminate\Database\Eloquent\Model $model, mixed $input, mixed $actor): void`
  *   - `public static function afterWrite(\Illuminate\Database\Eloquent\Model $model, mixed $input): void`

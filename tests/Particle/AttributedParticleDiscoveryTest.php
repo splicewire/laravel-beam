@@ -131,7 +131,7 @@ class FixtureInput {}
 )]
 class FixtureLyricResource
 {
-    public static function scope(Builder $q, $actor): Builder
+    public static function scope(Builder $q): Builder
     {
         return $q;
     }

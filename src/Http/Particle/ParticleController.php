@@ -62,6 +62,14 @@ class ParticleController extends Controller
             ? $this->hydrator->query($resource->key, $ctx)
             : $resource->model::query()->latest();
 
+        // Row-level authorization for the non-filterable list (ADR-0156 §83): a `filterable:false` resource
+        // has no data-filters query to gate its index, so its owner/inverse `scope` closure is the ONLY read
+        // guard — without it the list would return every row across all callers. Applied here (not for the
+        // filterable path, whose data-filters query is its own gate). Mirrors ParticleFrameResourceHandler.
+        if (! $resource->filterable && $resource->scope !== null) {
+            $query = ($resource->scope)($query) ?? $query;
+        }
+
         $page = $query->paginate($request->integer('per_page', $resource->perPage), ['*'], 'page');
         $page->through(fn (Model $record) => $this->projectRecord($resource, $record, $ctx));
 
@@ -152,6 +160,15 @@ class ParticleController extends Controller
     protected function findParticle(ParticleResource $resource, string $id): Model
     {
         $query = $resource->model::query();
+
+        // Row-level authorization for subject resolution (ADR-0156 §83): the resource's `scope` closure
+        // gates the show/update/destroy `findOrFail`, so a resolve-by-id can never reach a row the caller
+        // may not touch (e.g. another user's own-scoped record → 404, not 403-after-load). Mirrors
+        // ParticleFrameResourceHandler; null scope ⇒ the unscoped query (every existing resource unchanged).
+        if ($resource->scope !== null) {
+            $query = ($resource->scope)($query) ?? $query;
+        }
+
         if ($resource->includes !== []) {
             $query->with($resource->includes);
         }
