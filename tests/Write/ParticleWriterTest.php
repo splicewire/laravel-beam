@@ -18,8 +18,8 @@ use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV1;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV2;
 use Splicewire\Beam\Tests\TestCase;
-use Splicewire\Beam\Write\PayloadRejected;
 use Splicewire\Beam\Write\ParticleWriter;
+use Splicewire\Beam\Write\PayloadRejected;
 use Splicewire\Beam\Write\WriteNotAuthorized;
 
 /**

@@ -2,9 +2,11 @@
 
 namespace Splicewire\Beam\Schema\Contracts;
 
+use Splicewire\Beam\Schema\SchemaLadderMigrator;
+
 /**
  * The beam-core port for "resolve the target schema document for a record type at
- * an optional version." The migration adapter ({@see \Splicewire\Beam\Schema\SchemaLadderMigrator})
+ * an optional version." The migration adapter ({@see SchemaLadderMigrator})
  * depends on this port, NOT on any host class, so it can live in beam while the
  * *policy* for resolving a target stays host-owned.
  *

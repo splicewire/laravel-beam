@@ -2,9 +2,11 @@
 
 namespace Splicewire\Beam\Particle;
 
+use Splicewire\Beam\Http\Particle\SseEmitter;
+
 /**
  * The sink a {@see OperationKind::Stream} operation pushes framed events into (ADR-0160). Transport-
- * agnostic by design: the HTTP {@see \Splicewire\Beam\Http\Particle\SseEmitter} writes SSE frames today;
+ * agnostic by design: the HTTP {@see SseEmitter} writes SSE frames today;
  * a broadcast emitter (the Task broadcast facet, ADR-0160 §4) can implement the SAME seam tomorrow, and a
  * test spy can capture frames — the operation's `handle` never knows which transport backs it.
  *

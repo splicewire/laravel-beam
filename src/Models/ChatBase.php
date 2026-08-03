@@ -15,12 +15,13 @@ use Spatie\ModelFlags\Models\Concerns\HasFlags;
 use Spatie\ModelStatus\HasStatuses;
 use Spatie\SchemalessAttributes\Casts\SchemalessAttributes;
 use Splicewire\Beam\Enums\ThreadKind;
+use Splicewire\Tower\Models\Thread;
 
 /**
  * The generic conversation base (recohere T02): a schema-typed, versioned `threads` row carrying
  * ONLY the verified-generic Thread machinery — UUIDs, ownership (HasUserId), visibility cascade,
  * flags, spatie model-status, and the versionable snapshot/restore of the conversation config.
- * The tower {@see \Splicewire\Tower\Models\Thread} extends this and layers on the KNOWLEDGE-grounding traits
+ * The tower {@see Thread} extends this and layers on the KNOWLEDGE-grounding traits
  * (HasFragments / HasSilos / HasContextScopes / HasInstructionsProvider), tagging (HasTags — kept on
  * Thread to avoid the beam⇄beam-taxonomy cycle), AI orchestration, and the assistant relation.
  *

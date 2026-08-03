@@ -3,13 +3,14 @@
 namespace Splicewire\Beam\Http\Particle;
 
 use Splicewire\Beam\Particle\Emitter;
+use Splicewire\Beam\Particle\OperationKind;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * The SSE-backed {@see Emitter}: writes one `text/event-stream` frame per call and flushes it down the
  * held response. This is the copy-pasted `echo "event: …" / "data: …" / ob_flush / flush` block — the one
  * every hand-rolled `StreamedResponse` duplicated (CircuitController::run/resume) — extracted to ONE place
- * so a {@see \Splicewire\Beam\Particle\OperationKind::Stream} operation's `handle` just pushes frames
+ * so a {@see OperationKind::Stream} operation's `handle` just pushes frames
  * (ADR-0160 §2/§3).
  *
  * {@see self::stream()} is the matching `StreamedResponse` factory — it owns the SSE headers so the
