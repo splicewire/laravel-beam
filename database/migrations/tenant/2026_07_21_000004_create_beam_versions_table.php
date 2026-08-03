@@ -8,13 +8,15 @@ use Splicewire\Beam\Beam;
 /**
  * The polymorphic durable-version store that `rushing/laravel-versioning`'s Versionable / VersionStore
  * read and write — the frozen snapshots (milestones) a particle can be rolled back to. Shipped as a
- * publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE): the host publishes +
- * runs it; beam-core never loadMigrationsFrom's it.
+ * publish-only migration (`runsMigrations` FALSE): the package ships this real-timestamped copy and
+ * publishes it VERBATIM into the host via native `publishesMigrations` (natural timestamp preserved,
+ * no re-stamp); the host runs it. beam-core never loadMigrationsFrom's it.
  *
- * UBIQUITOUS table (central + every tenant): ships as TWO stubs (this flat one → central pass; its
- * `tenant/` twin → Stancl tenant pass), so `beam_versions` exists identically in both. A fresh store
- * starts empty, so the retired `versions`→`beam_versions` rename shim + the `alias_particle_morph`
- * data-migration are dropped — this is a clean greenfield create.
+ * TENANT TWIN of the ubiquitous `beam_versions` table. Identical DDL to the flat
+ * the flat `create_beam_versions_table.php`; this copy publishes into `database/migrations/tenant/` (Stancl
+ * tenant pass) while the flat copy covers the central pass, so `beam_versions` exists identically in
+ * both. A fresh store starts empty, so the retired `versions`→`beam_versions` rename shim + the
+ * `alias_particle_morph` data-migration are dropped — this is a clean greenfield create.
  *
  * Homed in beam-CORE, not beam-versioning (research/01 C13/C15 — "versioning is beam tier"): beam-core
  * owns the `Beam::table()` prefix seam and sets `config('versioning.table')` to this name in
@@ -30,6 +32,14 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Ubiquitous-table guard: a host that migrates BOTH the central and the tenant pass into ONE
+        // schema (the shared-test-DB harness) would otherwise re-create this table. In production the
+        // passes target separate schemas, so the guard is simply false. Mirrors the app's own ubiquitous
+        // tables (e.g. tenant/create_users_table).
+        if (Schema::hasTable(Beam::table('versions'))) {
+            return;
+        }
+
         Schema::create(Beam::table('versions'), function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('versionable_type');       // the morph — the record this version belongs to

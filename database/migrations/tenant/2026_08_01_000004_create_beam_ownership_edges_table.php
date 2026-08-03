@@ -8,12 +8,13 @@ use Splicewire\Beam\Ownership\OwnershipEdgeType;
 
 /**
  * The ownership / GC edge store (sourced-particles ticket 08, ADR-0161 Position 3 + MAP §Graphine).
- * Shipped as a publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE): the host
- * publishes + runs it; beam-core never loadMigrationsFrom's it.
+ * Shipped as a publish-only migration (`runsMigrations` FALSE): the package ships this real-timestamped
+ * copy and publishes it VERBATIM into the host via native `publishesMigrations` (natural timestamp
+ * preserved, no re-stamp); the host runs it. beam-core never loadMigrationsFrom's it.
  *
  * TENANT TWIN of the ubiquitous ownership-edge store. Identical DDL to the flat
- * `create_beam_ownership_edges_table.php.stub`; this copy publishes into `database/migrations/tenant/`
- * (Stancl tenant pass) while the flat stub covers the central pass, so the edge store exists
+ * the flat `create_beam_ownership_edges_table.php`; this copy publishes into `database/migrations/tenant/`
+ * (Stancl tenant pass) while the flat copy covers the central pass, so the edge store exists
  * identically wherever `beam_particles` does — both endpoints are `beam_particles.id` uuids, so the
  * graph is co-located with the particles it governs.
  *

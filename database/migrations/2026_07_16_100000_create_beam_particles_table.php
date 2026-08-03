@@ -9,11 +9,12 @@ use Splicewire\Beam\Source\SourceWriteTier;
 
 /**
  * The generic particle store — beam's narrow schema-driven-CMS core (ADR-0138). Shipped as a
- * publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE): the package publishes a
- * timestamped copy into the host (`vendor:publish --tag=beam-migrations`), the framework
- * re-stamps + sequences it, and the HOST runs it. beam-core never loadMigrationsFrom's it at runtime.
+ * publish-only migration (`runsMigrations` FALSE): the package ships this real-timestamped copy and
+ * publishes it VERBATIM into the host via native `publishesMigrations` (`vendor:publish
+ * --tag=beam-migrations`) — natural timestamp preserved, no re-stamp — and the HOST runs it. beam-core
+ * never loadMigrationsFrom's it at runtime.
  *
- * UBIQUITOUS table (central + every tenant): this same DDL ships as TWO stubs — this flat one lands
+ * UBIQUITOUS table (central + every tenant): this same DDL ships as TWO copies — this flat one lands
  * in the host's `database/migrations/` (central pass) and its `tenant/` twin lands in
  * `database/migrations/tenant/` (Stancl tenant pass) — so `beam_particles` exists identically in the
  * central schema and every tenant schema. The BeamParticle model pins NO connection (it follows the

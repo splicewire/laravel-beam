@@ -9,10 +9,11 @@ use Splicewire\Beam\Models\BeamSubmission;
 /**
  * The shared submission ledger — beam-core's first schema-driven-CMS consumer (ADR-0138). One
  * {@see BeamSubmission} model that migrates-on-read as its form schema evolves. Shipped as a
- * publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE): the host publishes +
- * runs it; beam-core never loadMigrationsFrom's it.
+ * publish-only migration (`runsMigrations` FALSE): the package ships this real-timestamped copy and
+ * publishes it VERBATIM into the host via native `publishesMigrations` (natural timestamp preserved,
+ * no re-stamp); the host runs it. beam-core never loadMigrationsFrom's it.
  *
- * UBIQUITOUS table (central + every tenant): ships as TWO stubs (this flat one → central pass; its
+ * UBIQUITOUS table (central + every tenant): ships as TWO copies (this flat one → central pass; its
  * `tenant/` twin → Stancl tenant pass), so `beam_submissions` exists identically in both (marketing
  * leads / relay inbound land central; circuit intake lands tenant-side inside its own isolation). A
  * fresh store starts empty, so the retired `form_submissions`→`beam_submissions` rename shim is

@@ -68,13 +68,18 @@ use Splicewire\Beam\Write\ParticleWriter;
  * beam port.
  *
  * The substrate migrations (beam_particles, beam_versions, beam_ownership_edges, beam_submissions)
- * ship as PUBLISH-ONLY spatie/laravel-package-tools stubs — the idiomatic pattern for a
- * PackageServiceProvider. `runsMigrations` is FALSE, so beam-core never loads them at runtime;
- * `vendor:publish --tag=beam-migrations` (or `splicewire:beam:install`) drops timestamped
- * copies into the HOST, which runs them. Each table is ubiquitous (central + every tenant), so it
- * ships as two stubs — a flat one (publishes to database/migrations/, central pass) and a `tenant/`
- * twin (publishes to database/migrations/tenant/, Stancl tenant pass) — registered together via
- * `->hasMigrations([...])` in configurePackage().
+ * are PUBLISH-ONLY. `runsMigrations` stays FALSE, so beam-core never loads them at runtime;
+ * `vendor:publish --tag=beam-migrations` (or `splicewire:beam:install`) drops copies into the HOST,
+ * which runs them. Each table is ubiquitous (central + every tenant), so it ships as two
+ * real-timestamped files — a flat one (publishes to database/migrations/, central pass) and a
+ * `tenant/` twin (publishes to database/migrations/tenant/, Stancl tenant pass).
+ *
+ * beam-core STAYS a spatie/laravel-package-tools PackageServiceProvider (for its config file etc.),
+ * but migrations are NOT registered via package-tools' `->hasMigrations([...])` — that re-stamps each
+ * file to now on publish, which drifts the natural dev-sequence dates and breaks uniformity with the
+ * estate's other eight packages. Instead they ship as real-timestamped `.php` and publish VERBATIM via
+ * Laravel's native `ServiceProvider::publishesMigrations()` (see {@see self::bootMigrations()}), so the
+ * natural timestamps survive — the one keep-natural pattern all nine packages now share.
  *
  * Layering law (ADR-0156 inverted ADR-0082): beam -> frame, never frame -> beam. Beam is the paid
  * CMS engine and MAY reference the agnostic `Schemastud\Frame\*` foundation directly (it owns the
@@ -90,32 +95,13 @@ class BeamServiceProvider extends PackageServiceProvider
             // Nested config namespace (beam-write-pipeline ticket 07): publishes config/beam/core.php,
             // merged + read as config('beam.core.*'). Never a flat config/beam.php — having both a
             // beam.php file and a beam/ dir is the one real Laravel footgun this move avoids.
-            ->hasConfigFile('beam/core')
-            // beam's base tables ship as PUBLISH-ONLY spatie/laravel-package-tools stubs (the idiomatic
-            // pattern for a PackageServiceProvider — restored from the non-idiomatic recohere-T10
-            // runtime loadMigrationsFrom). `runsMigrations` stays FALSE (the package-tools default), so
-            // beam-core does NOT auto-load these at runtime — `vendor:publish --tag=beam-migrations`
-            // drops timestamped copies into the HOST and the host runs them. Publish re-stamps each stub
-            // via generateMigrationName (auto-timestamp + sequence); the `.stub` extension keeps the
-            // framework migrator from ever loading them in place.
-            //
-            // Every table is UBIQUITOUS (central + every tenant), so each ships TWICE — once flat and
-            // once under `tenant/`. `hasMigrations([...])` (NOT `discoversMigrations()`, whose ->files()
-            // is non-recursive and would miss the tenant/ subdir) lists both: the flat name publishes to
-            // `database/migrations/` (central pass) and the `tenant/…` name publishes to
-            // `database/migrations/tenant/` (package-tools' generateMigrationName routes on dirname; the
-            // host's Stancl `tenancy.migration_parameters.--path` runs that dir per tenant). Same DDL,
-            // two stubs, so the table shapes are identical central + tenant.
-            ->hasMigrations([
-                'create_beam_particles_table',
-                'tenant/create_beam_particles_table',
-                'create_beam_versions_table',
-                'tenant/create_beam_versions_table',
-                'create_beam_submissions_table',
-                'tenant/create_beam_submissions_table',
-                'create_beam_ownership_edges_table',
-                'tenant/create_beam_ownership_edges_table',
-            ]);
+            ->hasConfigFile('beam/core');
+
+        // Migrations are DELIBERATELY not registered via package-tools' `->hasMigrations([...])`: that
+        // re-stamps each file to now on publish (breaking the natural dev-sequence dates + estate
+        // uniformity). beam-core keeps its natural timestamps by publishing verbatim through Laravel's
+        // native `publishesMigrations` instead — see {@see self::bootMigrations()}. `runsMigrations`
+        // stays FALSE (the package never loads them at runtime).
     }
 
     public function packageRegistered(): void
@@ -265,6 +251,10 @@ class BeamServiceProvider extends PackageServiceProvider
         // Base-tier readiness command. Moat-free (never touches the satellite); the
         // frame/schema-forms/data-schemas checks it runs are advisory + presence-conditional.
         if ($this->app->runningInConsole()) {
+            // The publish-only substrate migrations, via native `publishesMigrations` (keep-natural
+            // timestamps — the estate-wide pattern). Console-only, like every publish.
+            $this->bootMigrations();
+
             $this->commands([
                 BeamDoctorCommand::class,
                 BeamInstallCommand::class,
@@ -283,11 +273,12 @@ class BeamServiceProvider extends PackageServiceProvider
 
         // beam-core registers ITS OWN install step, core-first (order 0), like any consumer — the config
         // AND the publish-only substrate migrations. Consumers self-register their steps from their own
-        // providers (ticket 08). The publish tags are package-tools' auto-generated group names, which
-        // STRIP the `laravel-` prefix (Package::shortName() → `beam`): the config group is `beam-config`
-        // and the migrations group is `beam-migrations` (NOT `laravel-beam-*`). `beam-migrations` publishes
-        // the base-table stubs into the host (flat → database/migrations/, tenant/ → database/migrations/tenant/);
-        // `migrates: true` then runs a single `migrate` at the end so the freshly-published copies apply.
+        // providers (ticket 08). `beam-config` is package-tools' auto-generated config group (shortName
+        // strips `laravel-` → `beam`); `beam-migrations` is the tag beam-core declares on its native
+        // `publishesMigrations` call ({@see self::bootMigrations()}) — same tag as before, now fed by
+        // native publishesMigrations rather than package-tools' hasMigrations, so the copies land VERBATIM
+        // (flat → database/migrations/, tenant/ → database/migrations/tenant/) with their natural dates
+        // intact. `migrates: true` then runs a single `migrate` at the end so the fresh copies apply.
         $this->app->make(BeamInstallManifest::class)->register(
             package: 'splicewire/laravel-beam (core)',
             publishTags: ['beam-config', 'beam-migrations'],
@@ -320,6 +311,40 @@ class BeamServiceProvider extends PackageServiceProvider
         // instead of hand-registering it from a provider. Closures the attribute can't carry are resolved
         // from `public static` convention methods on the annotated class.
         $this->discoverParticleAttributes();
+    }
+
+    /**
+     * PUBLISH-ONLY migrations for beam-core's four **ubiquitous** substrate tables (`beam_particles`,
+     * `beam_versions`, `beam_submissions`, `beam_ownership_edges`) — via Laravel's native
+     * {@see ServiceProvider::publishesMigrations()}, the estate-wide keep-natural pattern (mirrors the
+     * plain-provider beam-ux / beam-workflows exemplars). beam-core is a package-tools
+     * PackageServiceProvider, but it does NOT hand these to `->hasMigrations([...])`: that re-stamps the
+     * filename to now on publish, drifting the natural dev-sequence dates. Publishing verbatim keeps them.
+     *
+     * `runsMigrations` stays FALSE — the package never runs these at runtime. `vendor:publish
+     * --tag=beam-migrations` drops the copies into the HOST's `database/migrations/` (central pass) +
+     * `database/migrations/tenant/` (Stancl tenant pass), and the host runs each pass.
+     *
+     * **UBIQUITOUS (central + every tenant).** Each table ships TWICE under the SAME source dir: a flat
+     * copy at `database/migrations/<ts>_<name>.php` (→ `database/migrations/`, central) and a `tenant/`
+     * twin (identical DDL) at `database/migrations/tenant/<ts>_<name>.php` (→ `database/migrations/tenant/`,
+     * tenant). ONE directory mapping covers both — `publishes()` copies the source dir RECURSIVELY,
+     * preserving each file's relative subpath, so the flat copies land in `migrations/` and the twins in
+     * `migrations/tenant/`. The tenant twins carry a `Schema::hasTable()` dup-guard so a host that migrates
+     * BOTH passes into ONE schema (the shared-test-DB harness) does not re-create; production targets
+     * separate schemas, so the guard is simply false there.
+     *
+     * The sources carry real, natural timestamp prefixes (submissions `2026_07_08`, particles
+     * `2026_07_16`, versions `2026_07_21`, ownership-edges `2026_08_01`) — `beam_particles` lands BEFORE
+     * beam-ux's `beam_ux_entries` (`2026_08_03_170000`, which has-a particle body). With
+     * `database.migrations.update_date_on_publish` at its default (false), `publishesMigrations` copies
+     * each file verbatim — one correctly-timestamped migration per file, no double-stamp, order preserved.
+     */
+    protected function bootMigrations(): void
+    {
+        $this->publishesMigrations([
+            __DIR__.'/../database/migrations' => $this->app->databasePath('migrations'),
+        ], 'beam-migrations');
     }
 
     /**
