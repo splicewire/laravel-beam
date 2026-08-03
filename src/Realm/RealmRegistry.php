@@ -23,6 +23,11 @@ use Splicewire\Beam\Realm\Attributes\Realm;
  *    `/settings`. Composes THROUGH the tenant realm when collapsed (`stack: ['tenant']`) — a
  *    single-tenant install resolves a user's Settings within their workspace; a future cross-workspace
  *    SaaS drops the stack so `user` sources its own account manifest.
+ *  - **`site`**   — the PUBLIC content realm (ADR-0165, beamux-entry-charter S3): rooted at the domain
+ *    `/`, **unguarded by default** (`guard: null`). Public content is not an authenticated admin
+ *    surface, so it is deliberately NOT the `tenant` realm — it is the root of a `BeamUxEntry`
+ *    containment tree, from which the public URL of every entry is inherited (decoupled from the
+ *    build-grouping `namespace`).
  *
  * A capability package CONTRIBUTES further realms via {@see register()} — e.g.
  * `laravel-satellite-multi-tenancy` re-registers a differently-shaped `tenant` realm. Contribution is
@@ -51,6 +56,7 @@ class RealmRegistry
     {
         $this->register($this->operator());
         $this->register($this->tenant());
+        $this->register($this->site());
         $this->realms['user'] = $this->user();
     }
 
@@ -97,6 +103,25 @@ class RealmRegistry
             guard: null,
             central: false,
             stack: $this->collapsesUserRealm() ? ['tenant'] : [],
+        );
+    }
+
+    /**
+     * The PUBLIC content realm (ADR-0165, beamux-entry-charter S3) — the root of the public site's
+     * `BeamUxEntry` containment tree, mounted at the domain root `/` and **unguarded by default**
+     * (`guard: null`): public content is not an authenticated surface. Distinct from the `tenant` realm
+     * (same route base, but that is the authenticated workspace); the two coexist by key. This is the
+     * realm/sitemap root from which entry URLs are inherited, decoupled from the build-grouping
+     * `namespace` (disk-only, S2). Not `central` — a site is per-deployment public content, not the
+     * operator console.
+     */
+    public function site(): RealmDefinition
+    {
+        return new RealmDefinition(
+            key: 'site',
+            routeBase: '/',
+            guard: null,
+            central: false,
         );
     }
 
