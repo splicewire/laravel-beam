@@ -5,6 +5,8 @@ namespace Splicewire\Beam;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Routing\Route as RouteInstance;
+use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
@@ -24,6 +26,8 @@ use Splicewire\Beam\Frame\FrameResourceManifest;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
+use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Models\BeamParticle;
@@ -211,11 +215,12 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->singleton(RealmRegistry::class, fn () => new RealmRegistry);
 
         // The generic particle REST surface (promoted from splicewire-app, ADR-0116). The two declaration
-        // registries are container singletons so inline `Route::particleResource()` / `Route::particleOp()`
-        // declarations survive across the request; the DEFAULT response seam is the neutral
-        // {@see ArrayResponseEnvelope} (a plain `{ data: … }` JsonResponse). A richer host BINDS its own
-        // envelope adapter over its response DTO — and, when it subclasses the registries for its own
-        // container FQN, re-aliases these singletons to the same instance (port-in-base / binding-in-host).
+        // registries are container singletons so the `Route::particleResource()` / `Route::particleOp()`
+        // route macros (defined in packageBooted below) survive across the request; the DEFAULT response
+        // seam is the neutral {@see ArrayResponseEnvelope} (a plain `{ data: … }` JsonResponse). A richer
+        // host BINDS its own envelope adapter over its response DTO — and, when it subclasses the registries
+        // for its own container FQN, re-aliases these singletons to the same instance (port-in-base /
+        // binding-in-host).
         $this->app->singleton(ParticleResourceRegistry::class);
         $this->app->singleton(ParticleOperationRegistry::class);
         $this->app->bind(ResponseEnvelope::class, ArrayResponseEnvelope::class);
@@ -237,6 +242,11 @@ class BeamServiceProvider extends PackageServiceProvider
         // NOT gated off by default (unlike a leaf capability): a plain `migrate` / `tenants:migrate`
         // provisions beam_particles + beam_versions + beam_ownership_edges + beam_submissions everywhere.
         $this->bootMigrations();
+
+        // The `Route::particleResource()` / `Route::particleOp()` route macros — the declarative mount for
+        // the generic particle REST + operation surface, so a host stops hand-mounting the generic
+        // controllers against the RESOURCE/NAME route defaults.
+        $this->bootParticleRouteMacros();
 
         // Base-tier readiness command. Moat-free (never touches the satellite); the
         // frame/schema-forms/data-schemas checks it runs are advisory + presence-conditional.
@@ -288,6 +298,89 @@ class BeamServiceProvider extends PackageServiceProvider
         // manifest machinery reads through the ResourceRegistry port. This is the discovery wiring that used
         // to live in frame's FrameServiceProvider — moved here because the #[AdminResource] opinion is beam's.
         $this->discoverResources();
+    }
+
+    /**
+     * Register the two particle route macros so a host mounts the generic particle surface declaratively
+     * instead of hand-wiring {@see ParticleController} / {@see ParticleOperationController} against their
+     * `RESOURCE`/`NAME` route defaults:
+     *
+     *   Route::particleResource('timeline-projects', 'timeline-projects', only: ['show'])
+     *      → GET    {uri}         → index    ({resourceKey}.index)
+     *        GET    {uri}/{id}    → show     ({resourceKey}.show)
+     *        POST   {uri}         → store    ({resourceKey}.store)
+     *        PATCH  {uri}/{id}    → update   ({resourceKey}.update)
+     *        DELETE {uri}/{id}    → destroy  ({resourceKey}.destroy)
+     *      each stamped with `->defaults(ParticleController::RESOURCE, $resourceKey)`; `$only` selects the
+     *      verb subset (read-only is `['index','show']`, write-only is `['store']`, etc.).
+     *
+     *   Route::particleOp('timeline-projects', 'timeline-projects', 'regenerate')
+     *      → POST   {uri}/{id}/op/{op} → invoke ({resourceKey}.{op})
+     *      stamped with the operation controller's RESOURCE + NAME defaults.
+     *
+     * The `{id}` segment carries a uuid constraint by default (`$idConstraint`), matching how the generic
+     * particle keys resolve; pass any other value to skip it.
+     */
+    protected function bootParticleRouteMacros(): void
+    {
+        if (Route::hasMacro('particleResource')) {
+            return;
+        }
+
+        Route::macro('particleResource', function (
+            string $uri,
+            string $resourceKey,
+            array $only = ['index', 'show', 'store', 'update', 'destroy'],
+            string $idConstraint = 'uuid',
+        ): void {
+            /** @var Router $this */
+            $withId = function (RouteInstance $route) use ($idConstraint): RouteInstance {
+                return $idConstraint === 'uuid' ? $route->whereUuid('id') : $route;
+            };
+
+            $stamp = function (RouteInstance $route, string $verb) use ($resourceKey): RouteInstance {
+                return $route
+                    ->defaults(ParticleController::RESOURCE, $resourceKey)
+                    ->name("{$resourceKey}.{$verb}");
+            };
+
+            if (in_array('index', $only, true)) {
+                $stamp($this->get($uri, [ParticleController::class, 'index']), 'index');
+            }
+
+            if (in_array('show', $only, true)) {
+                $stamp($withId($this->get("{$uri}/{id}", [ParticleController::class, 'show'])), 'show');
+            }
+
+            if (in_array('store', $only, true)) {
+                $stamp($this->post($uri, [ParticleController::class, 'store']), 'store');
+            }
+
+            if (in_array('update', $only, true)) {
+                $stamp($withId($this->patch("{$uri}/{id}", [ParticleController::class, 'update'])), 'update');
+            }
+
+            if (in_array('destroy', $only, true)) {
+                $stamp($withId($this->delete("{$uri}/{id}", [ParticleController::class, 'destroy'])), 'destroy');
+            }
+        });
+
+        Route::macro('particleOp', function (
+            string $uri,
+            string $resourceKey,
+            string $op,
+            string $idConstraint = 'uuid',
+        ): void {
+            /** @var Router $this */
+            $route = $this->post("{$uri}/{id}/op/{$op}", [ParticleOperationController::class, 'invoke'])
+                ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
+                ->defaults(ParticleOperationController::NAME, $op)
+                ->name("{$resourceKey}.{$op}");
+
+            if ($idConstraint === 'uuid') {
+                $route->whereUuid('id');
+            }
+        });
     }
 
     /**
