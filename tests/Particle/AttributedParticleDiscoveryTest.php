@@ -1,0 +1,176 @@
+<?php
+
+namespace Splicewire\Beam\Tests\Particle;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
+use InvalidArgumentException;
+use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
+use Splicewire\Beam\Particle\Attributes\ParticleOp;
+use Splicewire\Beam\Particle\Attributes\ParticleResource;
+use Splicewire\Beam\Particle\OperationKind;
+use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Tests\TestCase;
+
+/**
+ * The attributed REST/op discovery — the runtime twin of #[AdminResource] discovery. Asserts a
+ * `#[ParticleResource]` / `#[ParticleOp]` Data class reflects into the two particle registries with its
+ * scalar declaration AND its closure hooks wired from `public static` convention methods.
+ */
+class AttributedParticleDiscoveryTest extends TestCase
+{
+    private function discovery(): AttributedParticleDiscovery
+    {
+        return new AttributedParticleDiscovery(
+            $this->app->make(ParticleResourceRegistry::class),
+            $this->app->make(ParticleOperationRegistry::class),
+        );
+    }
+
+    public function test_a_resource_attribute_registers_its_scalar_declaration(): void
+    {
+        $this->discovery()->registerClass(FixtureLyricResource::class);
+
+        $resource = $this->app->make(ParticleResourceRegistry::class)->get('library-lyrics');
+
+        $this->assertSame('library-lyrics', $resource->key);
+        $this->assertSame(FixtureModel::class, $resource->model);
+        $this->assertSame(FixtureInput::class, $resource->input);
+        $this->assertSame(['tags'], $resource->includes);
+        $this->assertFalse($resource->filterable);
+        $this->assertSame(50, $resource->perPage);
+    }
+
+    public function test_data_defaults_to_the_annotated_class_when_absent(): void
+    {
+        $this->discovery()->registerClass(FixtureLyricResource::class);
+
+        $this->assertSame(
+            FixtureLyricResource::class,
+            $this->app->make(ParticleResourceRegistry::class)->get('library-lyrics')->data,
+        );
+    }
+
+    public function test_convention_static_methods_are_wired_as_closures(): void
+    {
+        $this->discovery()->registerClass(FixtureLyricResource::class);
+
+        $resource = $this->app->make(ParticleResourceRegistry::class)->get('library-lyrics');
+
+        // Present convention methods → non-null closures.
+        $this->assertNotNull($resource->scope);
+        $this->assertNotNull($resource->prepare);
+        $this->assertNotNull($resource->project);
+        // afterWrite is NOT declared on the fixture → stays null.
+        $this->assertNull($resource->afterWrite);
+    }
+
+    public function test_a_resource_without_a_scope_method_leaves_the_hook_null(): void
+    {
+        $this->discovery()->registerClass(FixtureBareResource::class);
+
+        $resource = $this->app->make(ParticleResourceRegistry::class)->get('bare');
+
+        $this->assertNull($resource->scope);
+        $this->assertNull($resource->prepare);
+        $this->assertNull($resource->project);
+    }
+
+    public function test_an_op_attribute_registers_with_its_handle_wired(): void
+    {
+        $this->discovery()->registerClass(FixtureRegenerateOp::class);
+
+        $op = $this->app->make(ParticleOperationRegistry::class)->get('library-lyrics', 'regenerate');
+
+        $this->assertSame('library-lyrics:regenerate', $op->key());
+        $this->assertSame(OperationKind::Task, $op->kind);
+        $this->assertSame('update', $op->ability);
+        $this->assertNotNull($op->respond);
+    }
+
+    public function test_an_op_without_a_handle_method_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('must declare a');
+
+        $this->discovery()->registerClass(FixtureHandlelessOp::class);
+    }
+
+    public function test_a_class_with_neither_attribute_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('carries neither');
+
+        $this->discovery()->registerClass(FixtureModel::class);
+    }
+
+    public function test_discovery_is_idempotent_by_key(): void
+    {
+        $registry = $this->app->make(ParticleResourceRegistry::class);
+
+        $this->discovery()->discover(classes: [FixtureLyricResource::class]);
+        $this->discovery()->discover(classes: [FixtureLyricResource::class]);
+
+        // Re-registering the same key overwrites, never duplicates — still resolvable.
+        $this->assertSame('library-lyrics', $registry->get('library-lyrics')->key);
+    }
+}
+
+class FixtureModel {}
+
+class FixtureInput {}
+
+#[ParticleResource(
+    key: 'library-lyrics',
+    model: FixtureModel::class,
+    input: FixtureInput::class,
+    includes: ['tags'],
+    filterable: false,
+    perPage: 50,
+)]
+class FixtureLyricResource
+{
+    public static function scope(Builder $q, $actor): Builder
+    {
+        return $q;
+    }
+
+    public static function prepare($model, $input, $actor): void {}
+
+    public static function project($model)
+    {
+        return $model;
+    }
+}
+
+#[ParticleResource(key: 'bare', model: FixtureModel::class)]
+class FixtureBareResource {}
+
+#[ParticleOp(
+    resource: 'library-lyrics',
+    name: 'regenerate',
+    kind: OperationKind::Task,
+    model: FixtureModel::class,
+    ability: 'update',
+)]
+class FixtureRegenerateOp
+{
+    public static function handle($model, Request $request, $actor)
+    {
+        return null;
+    }
+
+    public static function respond($model): array
+    {
+        return ['data' => null];
+    }
+}
+
+#[ParticleOp(
+    resource: 'library-lyrics',
+    name: 'broken',
+    kind: OperationKind::Write,
+    model: FixtureModel::class,
+)]
+class FixtureHandlelessOp {}

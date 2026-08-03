@@ -121,6 +121,24 @@ return [
         'classes' => [],
     ],
 
+    /*
+    | Attributed REST particle discovery (ADR-0116/0160) — the runtime twin of the #[AdminResource]
+    | `resources` config. A host declares a REST resource / named op ON its Data class with
+    | `#[ParticleResource]` / `#[ParticleOp]` and lists the class here (or points `discover_paths` at its
+    | Data directory) instead of hand-registering from a provider. Closures the attribute can't carry are
+    | resolved from `public static` convention methods on the annotated class (scope/project/prepare/
+    | afterWrite; handle/respond for an op). Empty by default — the imperative provider registration seam
+    | still works and the two coexist. UNLIKE #[AdminResource], this has no build-cache yet: a `discover_paths`
+    | scan walks the filesystem each boot, so prefer the explicit `classes` list until the cache lands.
+    */
+    'particle' => [
+        // Explicit #[ParticleResource]/#[ParticleOp] class-strings to reflect and register at boot.
+        'classes' => [],
+
+        // Filesystem paths scanned for annotated classes (dev convenience; no boot cache yet).
+        'discover_paths' => [],
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 

@@ -34,6 +34,7 @@ use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Ownership\Contracts\OwnershipEdgeStore;
 use Splicewire\Beam\Ownership\EloquentOwnershipEdgeStore;
 use Splicewire\Beam\Ownership\OwnershipGraph;
+use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
@@ -298,6 +299,34 @@ class BeamServiceProvider extends PackageServiceProvider
         // manifest machinery reads through the ResourceRegistry port. This is the discovery wiring that used
         // to live in frame's FrameServiceProvider — moved here because the #[AdminResource] opinion is beam's.
         $this->discoverResources();
+
+        // Attributed REST/op discovery (ADR-0116/0160): the runtime twin of #[AdminResource] discovery.
+        // Reflect the configured #[ParticleResource] / #[ParticleOp] Data classes (+ discover-paths) into
+        // the two particle registries, so a host declares a REST resource / named op ON its Data class
+        // instead of hand-registering it from a provider. Closures the attribute can't carry are resolved
+        // from `public static` convention methods on the annotated class.
+        $this->discoverParticleAttributes();
+    }
+
+    /**
+     * Boot-time #[ParticleResource] / #[ParticleOp] discovery into the two particle registries — the
+     * REST/op sibling of {@see self::discoverResources()} (which feeds the admin manifest). Reads
+     * `beam.core.particle.classes` / `.discover_paths`. Absent config ⇒ no-op (every existing host that
+     * hand-registers its resources from a provider is unchanged; the two seams coexist).
+     */
+    protected function discoverParticleAttributes(): void
+    {
+        $classes = config('beam.core.particle.classes', []);
+        $paths = config('beam.core.particle.discover_paths', []);
+
+        if ($classes === [] && $paths === []) {
+            return;
+        }
+
+        (new AttributedParticleDiscovery(
+            $this->app->make(ParticleResourceRegistry::class),
+            $this->app->make(ParticleOperationRegistry::class),
+        ))->discover($classes, $paths);
     }
 
     /**
