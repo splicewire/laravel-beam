@@ -40,7 +40,6 @@ use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
-use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
@@ -50,6 +49,7 @@ use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
 use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
 use Splicewire\Beam\Source\LadderForeignSourceProjector;
+use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Source\ParticleShadower;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\GateWriteGate;
@@ -391,21 +391,23 @@ class BeamServiceProvider extends PackageServiceProvider
      * instead of hand-wiring {@see ParticleController} / {@see ParticleOperationController} against their
      * `RESOURCE`/`NAME` route defaults:
      *
-     *   Route::particleResource('timeline-projects', 'timeline-projects', only: ['show'])
-     *      → GET    {uri}         → index    ({resourceKey}.index)
-     *        GET    {uri}/{id}    → show     ({resourceKey}.show)
-     *        POST   {uri}         → store    ({resourceKey}.store)
-     *        PATCH  {uri}/{id}    → update   ({resourceKey}.update)
-     *        DELETE {uri}/{id}    → destroy  ({resourceKey}.destroy)
-     *      each stamped with `->defaults(ParticleController::RESOURCE, $resourceKey)`; `$only` selects the
-     *      verb subset (read-only is `['index','show']`, write-only is `['store']`, etc.).
+     *   Route::particleResource('timeline-projects', 'timeline_project', ['only' => ['index', 'show']])
+     *      → GET       {uri}      → index    ({names}.index)
+     *        GET    {uri}/{id}    → show     ({names}.show)
+     *        POST      {uri}      → store    ({names}.store)
+     *        PUT|PATCH {uri}/{id} → update   ({names}.update)   (+ POST when 'legacyPostUpdate' => true)
+     *        DELETE {uri}/{id}    → destroy  ({names}.destroy)
+     *      each stamped with `->defaults(ParticleController::RESOURCE, $resourceKey)`. Options:
+     *        - 'only'             verb subset (default all five; read-only is `['index','show']`, etc.)
+     *        - 'names'            route-name prefix (default: the resource key with '-' → '_')
+     *        - 'legacyPostUpdate' also accept POST {uri}/{id} for update, so a hand-rolled CRUD controller
+     *                             can be dissolved WITHOUT changing its public URLs
+     *        - 'idConstraint'     'uuid' to constrain {id} with whereUuid (default: unconstrained)
      *
-     *   Route::particleOp('timeline-projects', 'timeline-projects', 'regenerate')
-     *      → POST   {uri}/{id}/op/{op} → invoke ({resourceKey}.{op})
-     *      stamped with the operation controller's RESOURCE + NAME defaults.
-     *
-     * The `{id}` segment carries a uuid constraint by default (`$idConstraint`), matching how the generic
-     * particle keys resolve; pass any other value to skip it.
+     *   Route::particleOp('timeline-projects', 'timeline_project', 'regenerate', ['name' => '...'])
+     *      → POST {uri}/{id}/op/{op} → invoke  ({resourceKey}.op.{op}, or the 'name' override)
+     *      stamped with the operation controller's RESOURCE + NAME defaults. Options: 'method' (default
+     *      'post'), 'name' (route-name override), 'idConstraint'.
      */
     protected function bootParticleRouteMacros(): void
     {
@@ -416,18 +418,21 @@ class BeamServiceProvider extends PackageServiceProvider
         Route::macro('particleResource', function (
             string $uri,
             string $resourceKey,
-            array $only = ['index', 'show', 'store', 'update', 'destroy'],
-            string $idConstraint = 'uuid',
+            array $options = [],
         ): void {
             /** @var Router $this */
+            $only = $options['only'] ?? ['index', 'show', 'store', 'update', 'destroy'];
+            $name = $options['names'] ?? str_replace('-', '_', $resourceKey);
+            $idConstraint = $options['idConstraint'] ?? null;
+
             $withId = function (RouteInstance $route) use ($idConstraint): RouteInstance {
                 return $idConstraint === 'uuid' ? $route->whereUuid('id') : $route;
             };
 
-            $stamp = function (RouteInstance $route, string $verb) use ($resourceKey): RouteInstance {
+            $stamp = function (RouteInstance $route, string $verb) use ($resourceKey, $name): RouteInstance {
                 return $route
                     ->defaults(ParticleController::RESOURCE, $resourceKey)
-                    ->name("{$resourceKey}.{$verb}");
+                    ->name("{$name}.{$verb}");
             };
 
             if (in_array('index', $only, true)) {
@@ -443,7 +448,8 @@ class BeamServiceProvider extends PackageServiceProvider
             }
 
             if (in_array('update', $only, true)) {
-                $stamp($withId($this->patch("{$uri}/{id}", [ParticleController::class, 'update'])), 'update');
+                $verbs = ($options['legacyPostUpdate'] ?? false) ? ['put', 'patch', 'post'] : ['put', 'patch'];
+                $stamp($withId($this->match($verbs, "{$uri}/{id}", [ParticleController::class, 'update'])), 'update');
             }
 
             if (in_array('destroy', $only, true)) {
@@ -455,15 +461,17 @@ class BeamServiceProvider extends PackageServiceProvider
             string $uri,
             string $resourceKey,
             string $op,
-            string $idConstraint = 'uuid',
+            array $options = [],
         ): void {
             /** @var Router $this */
-            $route = $this->post("{$uri}/{id}/op/{$op}", [ParticleOperationController::class, 'invoke'])
+            $verb = strtolower($options['method'] ?? 'post');
+
+            $route = $this->{$verb}("{$uri}/{id}/op/{$op}", [ParticleOperationController::class, 'invoke'])
                 ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
                 ->defaults(ParticleOperationController::NAME, $op)
-                ->name("{$resourceKey}.{$op}");
+                ->name($options['name'] ?? "{$resourceKey}.op.{$op}");
 
-            if ($idConstraint === 'uuid') {
+            if (($options['idConstraint'] ?? null) === 'uuid') {
                 $route->whereUuid('id');
             }
         });

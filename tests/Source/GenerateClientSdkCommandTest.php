@@ -103,7 +103,7 @@ class GenerateClientSdkCommandTest extends TestCase
         ));
 
         Route::prefix('resources')->group(function () {
-            Route::particleResource('widgets', 'widgets', only: ['index', 'update']);
+            Route::particleResource('widgets', 'widgets', ['only' => ['index', 'update']]);
         });
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
@@ -117,7 +117,9 @@ class GenerateClientSdkCommandTest extends TestCase
         $this->assertTrue($manifest['widgets.index']['returnsMany']);
         $this->assertSame('App.Data.WidgetData', $manifest['widgets.update']['returns']);
         $this->assertArrayNotHasKey('returnsMany', $manifest['widgets.update']);
-        $this->assertSame(['PATCH'], $manifest['widgets.update']['methods']);
+        // The unified macro widens update to PUT+PATCH (absorbing the app's convention), so a legacy CRUD
+        // controller can be dissolved onto it without dropping the PUT verb its clients used.
+        $this->assertSame(['PUT', 'PATCH'], $manifest['widgets.update']['methods']);
     }
 }
 
