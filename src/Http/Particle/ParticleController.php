@@ -6,9 +6,12 @@ use Closure;
 use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
@@ -179,10 +182,31 @@ class ParticleController extends Controller
     /**
      * The parsed, VALIDATED input: the resource's input DTO via `validateAndCreate` (so its rules — a
      * spatie `rules()` method or inferred from types — run and reject with 422), else the raw request.
+     *
+     * A validation failure is rendered as the STANDARD Laravel JSON 422 envelope
+     * (`{ message, errors: { field: [msg…] } }`, byte-identical to what a FormRequest returns) so a JS
+     * client can surface per-field errors and `assertJsonValidationErrors` passes — regardless of the
+     * host's `shouldRenderJsonWhen` config, which would otherwise redirect a `web`-group write. We rethrow
+     * a `ValidationException` whose `response` is that JSON 422: the host's exception handler renders the
+     * carried response verbatim (never the redirect branch, never an app envelope wrapper), so every
+     * particle write resource gets the standard shape without an app binding. The success path is untouched.
      */
     protected function parseInput(ParticleResource $resource, Request $request): mixed
     {
-        return $resource->input !== null ? $resource->input::validateAndCreate($request) : $request;
+        if ($resource->input === null) {
+            return $request;
+        }
+
+        try {
+            return $resource->input::validateAndCreate($request);
+        } catch (ValidationException $e) {
+            throw new HttpResponseException(
+                new JsonResponse(
+                    ['message' => $e->getMessage(), 'errors' => $e->errors()],
+                    $e->status,
+                ),
+            );
+        }
     }
 
     /**
