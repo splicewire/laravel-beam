@@ -42,7 +42,9 @@ class ParticleAdminResource extends ParticleResource
      * @param  bool|null  $deletable  whether Frame destroy is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 delete-independent widening) — for a prune-but-not-create/edit list. null (default) follows the create gate (`!$readOnly`); an explicit true opens destroy on an otherwise not-creatable resource.
      * @param  bool|null  $editable  whether Frame show/update (in-place edit) is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening) — for a create-and-delete-but-not-edit resource (e.g. invitations). null (default) follows the create gate (`!$readOnly`); an explicit false closes in-place edit on an otherwise creatable resource.
      *
-     * The remaining params are {@see ParticleResource}'s runtime core.
+     * The remaining params are {@see ParticleResource}'s runtime core — including the optional `$scope`
+     * list/subject-resolution closure (forwarded to the parent), so an admin resource may row-scope its
+     * Frame list + edit base query (e.g. a report queue that lists only OPEN reports).
      */
     public function __construct(
         string $key,
@@ -56,6 +58,7 @@ class ParticleAdminResource extends ParticleResource
         ?Closure $prepare = null,
         ?Closure $afterWrite = null,
         ?Closure $project = null,
+        ?Closure $scope = null,
         public string $form = 'bare',
         public ?string $editData = null,
         public ?string $policy = null,
@@ -81,6 +84,7 @@ class ParticleAdminResource extends ParticleResource
             prepare: $prepare,
             afterWrite: $afterWrite,
             project: $project,
+            scope: $scope,
         );
     }
 
