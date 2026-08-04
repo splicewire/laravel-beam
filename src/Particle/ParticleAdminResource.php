@@ -40,7 +40,8 @@ class ParticleAdminResource extends ParticleResource
      * @param  string|null  $layout  inner-layout grammar ('single'|'subnav'|'master-detail'); emitted on the ContextManifest
      * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83). Projects `creatable: !$readOnly`; the generic {@see ParticleFrameResourceHandler} refuses store/update/destroy with a 405 when `! creatable`. Default false — writable.
      * @param  bool|null  $deletable  whether Frame destroy is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 delete-independent widening) — for a prune-but-not-create/edit list. null (default) follows the create gate (`!$readOnly`); an explicit true opens destroy on an otherwise not-creatable resource.
-     * @param  bool|null  $editable  whether Frame show/update (in-place edit) is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening) — for a create-and-delete-but-not-edit resource (e.g. invitations). null (default) follows the create gate (`!$readOnly`); an explicit false closes in-place edit on an otherwise creatable resource.
+     * @param  bool|null  $editable  whether Frame update (in-place edit) is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening) — for a create-and-delete-but-not-edit resource (e.g. invitations). null (default) follows the create gate (`!$readOnly`); an explicit false closes in-place edit on an otherwise creatable resource.
+     * @param  bool  $showable  whether Frame serves a per-record detail (`records/{id}`, show), INDEPENDENT of $readOnly and $editable (F04 show-independent widening) — so a `readOnly` INSPECT resource (e.g. `operator-customers`) still exposes a detail view (account state + a ledger) even though it 405s store/update/destroy. Defaults true (readable ⇒ showable); set false to make a resource genuinely list-only (no detail route).
      *
      * The remaining params are {@see ParticleResource}'s runtime core — including the optional `$scope`
      * list/subject-resolution closure (forwarded to the parent), so an admin resource may row-scope its
@@ -72,6 +73,7 @@ class ParticleAdminResource extends ParticleResource
         public bool $readOnly = false,
         public ?bool $deletable = null,
         public ?bool $editable = null,
+        public bool $showable = true,
     ) {
         parent::__construct(
             key: $key,
@@ -110,6 +112,7 @@ class ParticleAdminResource extends ParticleResource
             creatable: ! $this->readOnly,
             deletable: $this->deletable ?? ! $this->readOnly,
             editable: $this->editable ?? ! $this->readOnly,
+            showable: $this->showable,
             query: $this->query,
             editData: $this->editData,
             policy: $this->policy,

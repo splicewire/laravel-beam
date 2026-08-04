@@ -134,21 +134,29 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     {
         // A service-backed (union) resource resolves ONE item by (source, id) through its UnionSource's
         // `find()` — a payload-resolved detail (the `schemaRef` dereference seam), NOT a model edit
-        // projection. This runs BEFORE the read-only `assertWritable` guard: a union is not-creatable yet
-        // still exposes a detail view (unlike a read-only model browse, which is list-only). Model-backed
-        // resources fall through to the guarded edit projection below.
+        // projection. This runs BEFORE the `assertWritable` guard: a union is always detail-capable
+        // regardless of its (never-set) `showable`. Model-backed resources fall through to the `showable`-
+        // gated projection below (which, post-F04, serves a read-only browse's detail too).
         if ($definition->source !== null) {
             return $this->unionShow($definition, $id);
         }
 
-        // A non-editable (`! editable`) resource has no per-record edit projection — a read-only browse
-        // (machine-authored) OR a create-and-delete-but-not-edit resource (an invitation is sent + revoked,
-        // never edited in place) — so a Frame `show` (records/{id}) is unavailable, exactly like the retired
-        // bespoke handlers which threw on `show` (ADR-0156 §83). The 405 fires BEFORE the id lookup, so a
-        // syntactically invalid id can't leak a 500 through the read path.
+        // A per-record detail (`records/{id}`, show) rides the `showable` gate, INDEPENDENT of `editable`
+        // (F04 / ADR-0156 §83 show-independent widening): a read-only resource (no create/edit/delete) can
+        // still expose a detail view, and an editable resource always shows. `showable` defaults true
+        // (readable ⇒ showable), so only a producer that explicitly closes it 405s here. The gate fires
+        // BEFORE the id lookup, so a syntactically invalid id can't leak a 500 through the read path.
         $this->assertWritable($definition, 'show');
 
-        return $this->projectEdit($definition, $this->query($definition)->findOrFail($id));
+        // A read-only resource has no separate edit shape — project detail through the SAME read projection
+        // as its list rows (the resource's `project` closure, e.g. CustomerData::fromModel), so a detail row
+        // matches a list row. An editable resource keeps its edit projection (`editData ?? data`) to pre-fill
+        // the form.
+        $model = $this->query($definition)->findOrFail($id);
+
+        return $definition->editable
+            ? $this->projectEdit($definition, $model)
+            : $this->projectRead($definition, $model);
     }
 
     /**
@@ -216,19 +224,23 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      * widening). Renders as HTTP 405 — the same refusal the retired bespoke read-only handlers raised (they
      * were list-only: they threw on `show` too) — so the Frame frontend gate and the API agree.
      *
-     * The three verb families ride three INDEPENDENT gates (ADR-0156 §83), each defaulting to follow the
-     * create gate so any resource that never sets them is unchanged:
+     * The verb families ride INDEPENDENT gates (ADR-0156 §83 / F04), each defaulting so any resource that
+     * never sets them is unchanged:
      *  - `store` → `creatable`;
-     *  - `show`/`update` (in-place edit) → `editable` — so a create-and-delete-but-not-edit resource
-     *    (invitations: sent + revoked, never edited) 405s show/update while `store`/`destroy` work;
-     *  - `destroy` → `deletable` — so a prune-but-not-create/edit list (fragments) 405s show/store/update
-     *    while DELETE works.
+     *  - `update` (in-place edit) → `editable` — so a create-and-delete-but-not-edit resource
+     *    (invitations: sent + revoked, never edited) 405s update while `store`/`destroy` work;
+     *  - `destroy` → `deletable` — so a prune-but-not-create/edit list (fragments) 405s store/update
+     *    while DELETE works;
+     *  - `show` (per-record detail) → `showable`, INDEPENDENT of `editable` (F04 show-independent widening),
+     *    defaulting true (readable ⇒ showable) — so a read-only resource (no create/edit/delete) still
+     *    serves a detail view. A producer closes it explicitly to make a resource genuinely list-only.
      */
     protected function assertWritable(ResourceDefinition $definition, string $action): void
     {
         $permitted = match ($action) {
             'destroy' => $definition->deletable,
-            'show', 'update' => $definition->editable,
+            'show' => $definition->showable,
+            'update' => $definition->editable,
             default => $definition->creatable,
         };
 
