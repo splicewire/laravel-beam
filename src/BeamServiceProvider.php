@@ -20,6 +20,8 @@ use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\FrameCacheCommand;
 use Splicewire\Beam\Console\FrameClearCommand;
+use Splicewire\Beam\Console\GenerateAssetsCommand;
+use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Frame\FrameResourceManifest;
@@ -38,6 +40,7 @@ use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
+use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
@@ -95,7 +98,9 @@ class BeamServiceProvider extends PackageServiceProvider
             // Nested config namespace (beam-write-pipeline ticket 07): publishes config/beam/core.php,
             // merged + read as config('beam.core.*'). Never a flat config/beam.php — having both a
             // beam.php file and a beam/ dir is the one real Laravel footgun this move avoids.
-            ->hasConfigFile('beam/core');
+            // `beam/core.php` → `beam.core.*`; `beam/client.php` → `beam.client.*` (the promoted client-SDK
+            // codegen's config: out_dir, emit_stores, the http-client/route module specifiers, sources).
+            ->hasConfigFile(['beam/core', 'beam/client']);
 
         // Migrations are DELIBERATELY not registered via package-tools' `->hasMigrations([...])`: that
         // re-stamps each file to now on publish (breaking the natural dev-sequence dates + estate
@@ -231,6 +236,13 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->singleton(ParticleOperationRegistry::class);
         $this->app->bind(ResponseEnvelope::class, ArrayResponseEnvelope::class);
 
+        // The client-SDK codegen's default tenant source: reads mounted particle routes off the live route
+        // table (the `router` singleton) + resolves each read route's output DTO via the resource registry.
+        $this->app->bind(ParticleRouteManifestSource::class, fn ($app) => new ParticleRouteManifestSource(
+            $app->make('router'),
+            $app->make(ParticleResourceRegistry::class),
+        ));
+
         // The beam-install self-registration manifest (ticket 08): a singleton every beam-* package
         // pushes its own install step into, from its own provider. beam-core never learns consumer names.
         $this->app->singleton(BeamInstallManifest::class);
@@ -260,6 +272,12 @@ class BeamServiceProvider extends PackageServiceProvider
                 BeamInstallCommand::class,
                 FrameCacheCommand::class,
                 FrameClearCommand::class,
+                // The client-SDK codegen (promoted from the platform app) + its umbrella. Source-agnostic:
+                // a host binds a RouteManifestSource per realm into `beam.client.sources`. The default
+                // tenant binding is the particle-route source (below), so a fresh satellite generates from
+                // its mounted `#[ParticleResource]` routes with no further wiring.
+                GenerateClientSdkCommand::class,
+                GenerateAssetsCommand::class,
             ]);
 
             // Wire the manifest into Laravel's `optimize` / `optimize:clear` so it builds and clears
