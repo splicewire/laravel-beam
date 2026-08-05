@@ -115,7 +115,10 @@ class SaloonConnectorGenerator implements Generator
         $ctor = $classType->addMethod('__construct');
         $ctor->addPromotedParameter('params')->setType('array')->setDefaultValue([])->setPublic();
         if ($isWrite) {
-            $ctor->addPromotedParameter('body')->setType('array')->setDefaultValue([])->setPublic();
+            // NOT `body`: Saloon's HasJsonBody trait already declares a `$body` property (a body
+            // repository), so a promoted `public array $body` collides ("same property defined
+            // incompatibly" — a class-load fatal). Name it `payload` and feed it through defaultBody().
+            $ctor->addPromotedParameter('payload')->setType('array')->setDefaultValue([])->setPublic();
         }
 
         $endpoint = $this->endpointExpression($op['path']);
@@ -126,7 +129,7 @@ class SaloonConnectorGenerator implements Generator
         if ($isWrite) {
             $classType->addMethod('defaultBody')
                 ->setReturnType('array')
-                ->setBody('return $this->body;');
+                ->setBody('return $this->payload;');
         }
 
         return $file;
