@@ -63,6 +63,21 @@ The **exit code is non-zero only on a dependency-contract Fail** (`lock path-fre
 `repos git-resolved`). Every other check is advisory and never turns the run red — a headless
 beam app with no editor rung installed is a valid, green configuration (ADR-0082 / ADR-0095).
 
+## Frame operator seams — OOTB default bindings
+
+`beam → frame` (ADR-0156): beam owns the model-backed CRUD driver behind Frame's agnostic
+operator/admin sockets. Two of Frame's host-facing seams ship **out of the box** from
+`BeamServiceProvider`, so a fresh host gets a working operator area with **no `app/Frame/` glue**:
+
+| Frame contract | beam default | what it does |
+| --- | --- | --- |
+| `Schemastud\Frame\Contracts\FrameResourceHandlerResolver` | `Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver` | a constant map — every registered particle-resource key → the ONE `ParticleFrameResourceHandler` (which applies a registered `ParticleResource`'s enrichment when one exists under the key) |
+| `Schemastud\Frame\Contracts\FrameFilterProvider` | `Splicewire\Beam\Frame\NullFrameFilterProvider` | an empty facet schema, so the ListShell's `filter-schema` / `filter-options` socket mounts without erroring (a resource declaring no data-filters `query` has no facets) |
+
+Both are **overridable by the host** (last-binding-wins — an app provider registers after
+beam-core's): bind your own `FrameResourceHandlerResolver` to map some keys to bespoke handlers,
+or a real `FrameFilterProvider` (e.g. one derived from a data-filters query class) for a faceted list.
+
 ## Conventions
 
 Matches the `rushing/*` / `schemastud/*` house style: **no `strict_types`, no

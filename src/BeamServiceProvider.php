@@ -12,6 +12,8 @@ use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Schemastud\Frame\Contracts\FrameFilterProvider;
+use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Spatie\LaravelPackageTools\Package;
@@ -24,7 +26,9 @@ use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Frame\AdminResourceRegistry;
+use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Frame\FrameResourceManifest;
+use Splicewire\Beam\Frame\NullFrameFilterProvider;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
@@ -212,6 +216,24 @@ class BeamServiceProvider extends PackageServiceProvider
         // exists, discoverResources() reads the cached class-strings instead of re-walking the filesystem
         // each boot; `splicewire:beam:frame-cache` writes it, `splicewire:beam:frame-clear` / `optimize:clear` remove it.
         $this->app->singleton(FrameResourceManifest::class, fn ($app) => new FrameResourceManifest($app));
+
+        // Frame's two host-facing seams, promoted OOTB (beam-ux-uplift ticket 09) so a fresh host gets a
+        // working operator area with NO `app/Frame/` glue — retiring the host-local
+        // BeamFrameResourceHandlerResolver + NullFrameFilterProvider whose docblocks said "neither
+        // laravel-frame nor laravel-beam binds this — the host does." Beam already ships the singular
+        // ParticleFrameResourceHandler (ADR-0156), so the default resolver is a constant map: every
+        // registered particle key → that one handler. The default filter provider answers an empty facet
+        // schema (a particle resource declaring no data-filters `query` has no facets), so the ListShell's
+        // filter-schema/filter-options socket mounts without erroring.
+        //
+        // Both are OVERRIDABLE by the host: an app provider registers AFTER beam-core's, so a host that
+        // binds its own FrameResourceHandlerResolver (bespoke handlers per key) or a real FrameFilterProvider
+        // (faceted lists) wins — the same override mechanism as the schema-migration defaults above.
+        $this->app->bind(
+            FrameResourceHandlerResolver::class,
+            DefaultParticleResourceHandlerResolver::class,
+        );
+        $this->app->bind(FrameFilterProvider::class, NullFrameFilterProvider::class);
 
         // Tenant resolvability (realm-architecture ticket 08): the re-home of the retired
         // RealmDefinition::$tenancy flag. Default resolves the `tenant` realm when config('frame.tenancy')
