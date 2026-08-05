@@ -73,8 +73,8 @@ use Splicewire\Beam\Write\ParticleWriter;
  * boots headless (frame, the editor rung, depends on beam, never the reverse — ADR-0082) and
  * publishes a config file plus the substrate migrations.
  *
- * The generic model traits (BeamParticle / PersistsBeamParticle, the revision trait, media traits)
- * and the host-hook registries land here via the leaf-extraction tickets; this provider is their
+ * The generic model traits (BeamParticle / PersistsBeamParticle, the revision trait) and the
+ * host-hook registries land here via the leaf-extraction tickets; this provider is their
  * boot destination. The schema-migration adapter (SchemaLadderMigrator) + the SchemaId grammar
  * live under Splicewire\Beam\Schema; the host binds its own SchemaTargetResolver policy behind the
  * beam port.
