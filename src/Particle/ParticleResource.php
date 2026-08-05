@@ -5,6 +5,9 @@ namespace Splicewire\Beam\Particle;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use RuntimeException;
+use Schemastud\Frame\Registry\NavMetadata;
+use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 
 /**
@@ -31,6 +34,22 @@ use Spatie\LaravelData\Data;
  *   - {@see $prepare} runs on the fresh/loaded model BEFORE the write — for defaults and pre-save
  *     relation association (e.g. `->owner()->associate($user)`) that mass-fill can't set.
  *   - {@see $afterWrite} runs AFTER the write — for relation syncs (`->sync()`, `attachTags`, …).
+ *
+ * ## Editor/manifest fields (RDU-01 — the expand half of the expand→contract retire)
+ *
+ * `ParticleResource` is now the ONE class describing an editable, model-backed resource: on top of the
+ * REST/runtime core above it carries the optional **manifest** fields ({@see $label}, {@see $form},
+ * {@see $editData}, {@see $policy}, {@see $query}, {@see $group}, {@see $icon}, {@see $section},
+ * {@see $navOrder}, {@see $routeName}, {@see $layout}, {@see $readOnly}, {@see $deletable},
+ * {@see $editable}, {@see $showable}) and can project itself into Frame's agnostic contract via
+ * {@see toResourceDefinition()}. These were previously carried by `ParticleAdminResource`, which is now a
+ * thin delegating subclass kept only for backward compatibility (RDU-07 retires it) — see
+ * {@see ParticleAdminResource}.
+ *
+ * A resource is **framed** — i.e. it lights up the `@schemastud/frame` editor in addition to REST — when
+ * {@see isFramed()} is true (a non-empty {@see $label}, unless overridden by the explicit {@see $frame}
+ * boolean). A REST-only surface leaves `label` empty; it stays a plain particle resource. Beam depends
+ * DOWN on frame (ADR-0156), so this class may reference `Schemastud\Frame\*` directly.
  */
 class ParticleResource
 {
@@ -67,6 +86,26 @@ class ParticleResource
      *                                                   revoke-by-id can never delete another user's token). null (default) ⇒ the unscoped `model::query()`,
      *                                                   so every existing resource is unchanged. Independent of {@see $filterable} (which scopes only the
      *                                                   list index): a resource may scope both, either, or neither.
+     *
+     * The remaining params are the optional editor/**manifest** concerns — a resource that declares a
+     * non-empty {@see $label} is {@see isFramed() framed} and projects into Frame via
+     * {@see toResourceDefinition()}. A REST-only resource leaves them at their defaults.
+     * @param  string  $label  nav label; a non-empty label marks the resource {@see isFramed() framed} (navigable)
+     * @param  string  $form  per-resource default form mode: 'enriched' | 'bare'
+     * @param  class-string|null  $editData  rare escape-hatch edit DTO (input-shape divergence)
+     * @param  string|null  $policy  ability/policy key the injected can() resolves against
+     * @param  class-string|null  $query  data-filters query class the ListShell facets bar rides (manifest)
+     * @param  string|null  $group  nav group heading
+     * @param  string|null  $icon  nav icon key
+     * @param  string|null  $section  host sitemap section this resource auto-attaches into; null = not in primary nav
+     * @param  int|null  $navOrder  placement within the section
+     * @param  string|null  $routeName  stable route identity a host binds the generated leaf under
+     * @param  string|null  $layout  inner-layout grammar ('single'|'subnav'|'master-detail'); emitted on the ContextManifest
+     * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83). Projects `creatable: !$readOnly`; the generic {@see ParticleFrameResourceHandler} refuses store/update/destroy with a 405 when `! creatable`. Default false — writable.
+     * @param  bool|null  $deletable  whether Frame destroy is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 delete-independent widening) — for a prune-but-not-create/edit list. null (default) follows the create gate (`!$readOnly`); an explicit true opens destroy on an otherwise not-creatable resource.
+     * @param  bool|null  $editable  whether Frame update (in-place edit) is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening) — for a create-and-delete-but-not-edit resource (e.g. invitations). null (default) follows the create gate (`!$readOnly`); an explicit false closes in-place edit on an otherwise creatable resource.
+     * @param  bool  $showable  whether Frame serves a per-record detail (`records/{id}`, show), INDEPENDENT of $readOnly and $editable (F04 show-independent widening) — so a `readOnly` INSPECT resource (e.g. `operator-customers`) still exposes a detail view even though it 405s store/update/destroy. Defaults true (readable ⇒ showable); set false to make a resource genuinely list-only (no detail route).
+     * @param  bool|null  $frame  explicit override for the {@see isFramed() framed} predicate: `true` forces the resource framed even with an empty label, `false` forces it REST-only even with a label; null (default) ⇒ framed iff the label is non-empty.
      */
     public function __construct(
         public string $key,
@@ -81,5 +120,77 @@ class ParticleResource
         public ?Closure $afterWrite = null,
         public ?Closure $project = null,
         public ?Closure $scope = null,
+        public string $label = '',
+        public string $form = 'bare',
+        public ?string $editData = null,
+        public ?string $policy = null,
+        public ?string $query = null,
+        public ?string $group = null,
+        public ?string $icon = null,
+        public ?string $section = null,
+        public ?int $navOrder = null,
+        public ?string $routeName = null,
+        public ?string $layout = null,
+        public bool $readOnly = false,
+        public ?bool $deletable = null,
+        public ?bool $editable = null,
+        public bool $showable = true,
+        public ?bool $frame = null,
     ) {}
+
+    /**
+     * Is this resource **framed** — i.e. does it light up the `@schemastud/frame` editor (nav + edit
+     * surface via {@see toResourceDefinition()}) in addition to the REST transport?
+     *
+     * By default a resource is framed iff it declares a non-empty {@see $label} (an editable resource is
+     * navigable). The explicit {@see $frame} boolean overrides that heuristic in either direction: pass
+     * `frame: true` to frame a label-less resource, `frame: false` to keep a labelled one REST-only.
+     */
+    public function isFramed(): bool
+    {
+        return $this->frame ?? $this->label !== '';
+    }
+
+    /**
+     * Project into Frame's agnostic manifest contract. Beam reflects this declaration and *feeds* Frame's
+     * manifest machinery (Frame renders what it is handed; it never names a model). Model-backed ⇒
+     * `sourceKind: 'model'`, creatable unless declared {@see $readOnly} (ADR-0156 §83).
+     *
+     * @param  string|null  $realm  ACCEPTED but IGNORED for now (RDU-01) — the projection is identical for
+     *                              every realm. The param exists so later issues (realm-addressable
+     *                              projection) can vary the contract without changing this signature.
+     */
+    public function toResourceDefinition(?string $realm = null): ResourceDefinition
+    {
+        if ($this->isFramed() && $this->data === null) {
+            throw new RuntimeException(
+                "ParticleResource [{$this->key}] is framed but has no read Data class; a framed resource must declare one (the SchemaDataResolver fallback was removed by ADR-0156)."
+            );
+        }
+
+        return new ResourceDefinition(
+            key: $this->key,
+            sourceKind: 'model',
+            model: $this->model,
+            source: null,
+            data: $this->data,
+            creatable: ! $this->readOnly,
+            deletable: $this->deletable ?? ! $this->readOnly,
+            editable: $this->editable ?? ! $this->readOnly,
+            showable: $this->showable,
+            query: $this->query,
+            editData: $this->editData,
+            policy: $this->policy,
+            form: $this->form,
+            nav: new NavMetadata(
+                label: $this->label,
+                group: $this->group,
+                icon: $this->icon,
+                section: $this->section,
+                navOrder: $this->navOrder,
+                routeName: $this->routeName,
+            ),
+            layout: $this->layout,
+        );
+    }
 }

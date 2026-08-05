@@ -3,22 +3,20 @@
 namespace Splicewire\Beam\Particle;
 
 use Closure;
-use RuntimeException;
-use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 
 /**
- * An admin-editable particle resource: a {@see ParticleResource} (the REST/runtime core — model, data,
- * includes, hooks) **plus** the editor/manifest concerns (nav, layout, edit shape, policy, form mode) and
- * a projection into Frame's agnostic contract ({@see ResourceDefinition}).
+ * @deprecated (RDU-01) An interim thin alias of {@see ParticleResource}. The manifest fields and the
+ * {@see ResourceDefinition} projection this class used to own have moved UP onto {@see ParticleResource}
+ * (RDU-01, the expand half of the expand→contract retire); this subclass now only forwards its
+ * constructor, so every existing `new ParticleAdminResource(...)` registration/import compiles and
+ * behaves IDENTICALLY. RDU-07 (the contract half) will delete this class and the `#[AdminResource]`
+ * attribute. Prefer {@see ParticleResource} directly in new code.
  *
- * This is the ADR-0156 merge: the runtime half of the retired `#[AdminResource]` attribute fuses with
- * `ParticleResource`, and the whole declaration lives in **beam** (which now depends DOWN on frame, so it
- * may reference `Schemastud\Frame\*` directly). The honest subtype relation holds — every admin resource
- * IS a particle resource + a manifest; not every particle resource is an admin resource. A REST-only
- * surface declares {@see ParticleResource}; an editable one declares this and lights up BOTH transports
- * (the `@schemastud/frame` editor via {@see ResourceDefinition} + `ParticleController` REST) off one
- * object, over the one `ParticleWriter`/`ParticleHydrator` runtime.
+ * An admin-editable particle resource: a {@see ParticleResource} carrying the editor/manifest concerns
+ * (nav, layout, edit shape, policy, form mode) and a projection into Frame's agnostic contract
+ * ({@see ResourceDefinition}). The honest subtype relation held — every admin resource IS a particle
+ * resource + a manifest — which is why the two classes have now merged.
  *
  * Scope: **model-backed** resources only. A union/aggregate surface (e.g. a review queue) is not a
  * particle resource — it has no single model and no write path — and stays a Frame `UnionSource` (the gap
@@ -27,6 +25,11 @@ use Schemastud\Frame\Registry\ResourceDefinition;
 class ParticleAdminResource extends ParticleResource
 {
     /**
+     * Historically this constructor placed the manifest params (label, form, …) DIRECTLY after `data`.
+     * The merged {@see ParticleResource} appends them AFTER the runtime hooks instead, so this subclass
+     * keeps the old positional order and forwards by NAME — preserving every existing call site
+     * (positional or named) unchanged.
+     *
      * @param  string  $label  nav label (required — an admin resource is navigable)
      * @param  string  $form  per-resource default form mode: 'enriched' | 'bare'
      * @param  class-string|null  $editData  rare escape-hatch edit DTO (input-shape divergence)
@@ -37,21 +40,20 @@ class ParticleAdminResource extends ParticleResource
      * @param  string|null  $section  host sitemap section this resource auto-attaches into; null = not in primary nav
      * @param  int|null  $navOrder  placement within the section
      * @param  string|null  $routeName  stable route identity a host binds the generated leaf under
-     * @param  string|null  $layout  inner-layout grammar ('single'|'subnav'|'master-detail'); emitted on the ContextManifest
-     * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83). Projects `creatable: !$readOnly`; the generic {@see ParticleFrameResourceHandler} refuses store/update/destroy with a 405 when `! creatable`. Default false — writable.
-     * @param  bool|null  $deletable  whether Frame destroy is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 delete-independent widening) — for a prune-but-not-create/edit list. null (default) follows the create gate (`!$readOnly`); an explicit true opens destroy on an otherwise not-creatable resource.
-     * @param  bool|null  $editable  whether Frame update (in-place edit) is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening) — for a create-and-delete-but-not-edit resource (e.g. invitations). null (default) follows the create gate (`!$readOnly`); an explicit false closes in-place edit on an otherwise creatable resource.
-     * @param  bool  $showable  whether Frame serves a per-record detail (`records/{id}`, show), INDEPENDENT of $readOnly and $editable (F04 show-independent widening) — so a `readOnly` INSPECT resource (e.g. `operator-customers`) still exposes a detail view (account state + a ledger) even though it 405s store/update/destroy. Defaults true (readable ⇒ showable); set false to make a resource genuinely list-only (no detail route).
+     * @param  string|null  $layout  inner-layout grammar ('single'|'subnav'|'master-detail')
+     * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83)
+     * @param  bool|null  $deletable  Frame destroy gate, INDEPENDENT of $readOnly (ADR-0156 §83 delete-independent widening)
+     * @param  bool|null  $editable  Frame update gate, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening)
+     * @param  bool  $showable  Frame per-record detail gate, INDEPENDENT of $readOnly and $editable (F04 show-independent widening)
      *
      * The remaining params are {@see ParticleResource}'s runtime core — including the optional `$scope`
-     * list/subject-resolution closure (forwarded to the parent), so an admin resource may row-scope its
-     * Frame list + edit base query (e.g. a report queue that lists only OPEN reports).
+     * list/subject-resolution closure (forwarded to the parent).
      */
     public function __construct(
         string $key,
         string $model,
         ?string $data = null,
-        public string $label = '',
+        string $label = '',
         ?string $input = null,
         array $includes = [],
         bool $filterable = true,
@@ -60,20 +62,20 @@ class ParticleAdminResource extends ParticleResource
         ?Closure $afterWrite = null,
         ?Closure $project = null,
         ?Closure $scope = null,
-        public string $form = 'bare',
-        public ?string $editData = null,
-        public ?string $policy = null,
-        public ?string $query = null,
-        public ?string $group = null,
-        public ?string $icon = null,
-        public ?string $section = null,
-        public ?int $navOrder = null,
-        public ?string $routeName = null,
-        public ?string $layout = null,
-        public bool $readOnly = false,
-        public ?bool $deletable = null,
-        public ?bool $editable = null,
-        public bool $showable = true,
+        string $form = 'bare',
+        ?string $editData = null,
+        ?string $policy = null,
+        ?string $query = null,
+        ?string $group = null,
+        ?string $icon = null,
+        ?string $section = null,
+        ?int $navOrder = null,
+        ?string $routeName = null,
+        ?string $layout = null,
+        bool $readOnly = false,
+        ?bool $deletable = null,
+        ?bool $editable = null,
+        bool $showable = true,
     ) {
         parent::__construct(
             key: $key,
@@ -87,45 +89,21 @@ class ParticleAdminResource extends ParticleResource
             afterWrite: $afterWrite,
             project: $project,
             scope: $scope,
-        );
-    }
-
-    /**
-     * Project into Frame's agnostic manifest contract. Beam reflects this declaration and *feeds* Frame's
-     * manifest machinery (Frame renders what it is handed; it never names a model). Model-backed ⇒
-     * `sourceKind: 'model'`, creatable unless declared `readOnly` (ADR-0156 §83).
-     */
-    public function toResourceDefinition(): ResourceDefinition
-    {
-        if ($this->data === null) {
-            throw new RuntimeException(
-                "ParticleAdminResource [{$this->key}] has no read Data class; an admin resource must declare one (the SchemaDataResolver fallback was removed by ADR-0156)."
-            );
-        }
-
-        return new ResourceDefinition(
-            key: $this->key,
-            sourceKind: 'model',
-            model: $this->model,
-            source: null,
-            data: $this->data,
-            creatable: ! $this->readOnly,
-            deletable: $this->deletable ?? ! $this->readOnly,
-            editable: $this->editable ?? ! $this->readOnly,
-            showable: $this->showable,
-            query: $this->query,
-            editData: $this->editData,
-            policy: $this->policy,
-            form: $this->form,
-            nav: new NavMetadata(
-                label: $this->label,
-                group: $this->group,
-                icon: $this->icon,
-                section: $this->section,
-                navOrder: $this->navOrder,
-                routeName: $this->routeName,
-            ),
-            layout: $this->layout,
+            label: $label,
+            form: $form,
+            editData: $editData,
+            policy: $policy,
+            query: $query,
+            group: $group,
+            icon: $icon,
+            section: $section,
+            navOrder: $navOrder,
+            routeName: $routeName,
+            layout: $layout,
+            readOnly: $readOnly,
+            deletable: $deletable,
+            editable: $editable,
+            showable: $showable,
         );
     }
 }
