@@ -14,6 +14,7 @@ use Rushing\Versioning\Contracts\Versionable;
 use Spatie\ModelFlags\Models\Concerns\HasFlags;
 use Spatie\ModelStatus\HasStatuses;
 use Spatie\SchemalessAttributes\Casts\SchemalessAttributes;
+use Splicewire\Beam\Contracts\Conversation;
 use Splicewire\Beam\Enums\ThreadKind;
 use Splicewire\Tower\Models\Thread;
 
@@ -34,7 +35,7 @@ use Splicewire\Tower\Models\Thread;
  * so Eloquent resolves them lazily at call time — no autoload-time dependency from beam-core UP onto
  * tower-core or beam-embed.
  */
-class ChatBase extends Model implements Versionable
+class ChatBase extends Model implements Conversation, Versionable
 {
     use HasFlags;
     use HasStatuses;
