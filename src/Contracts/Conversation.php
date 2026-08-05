@@ -7,14 +7,15 @@ use Rushing\Versioning\Contracts\Versionable;
 use Rushing\Versioning\Models\Version;
 
 /**
- * The conversation surface the embed subsystem depends on — extracted from ChatBase (TH-07 step 1) so
- * consumers depend on the ROLE, not the concrete beam-core model; ChatBase implements it, tower Thread +
- * beam-embed Embed inherit it. The concrete-model removal is TH-08 (AI-tier + column migration onto the
- * beam-threads particle).
+ * The conversation surface the embed subsystem depends on — extracted from the former `ChatBase` (TH-07
+ * step 1) so consumers depend on the ROLE, not a concrete model. TH-07 then DELETED `ChatBase`: the shared
+ * machinery moved to the beam-threads `ConversationParticle` trait, and tower Thread + beam-embed Embed
+ * `use` it and implement THIS interface directly. The column/AI-tier migration onto the beam-threads
+ * particle is TH-08.
  *
- * A role interface, deliberately NOT a mirror of the whole ChatBase model: it declares ONLY the methods
- * the embed/tower seams actually call on their `ChatBase` parameters. It extends {@see Versionable}
- * (ChatBase already implements it) because the embed publish/spawn path reads and advances the
+ * A role interface, deliberately NOT a mirror of the whole conversation model: it declares ONLY the methods
+ * the embed/tower seams actually call on their `Conversation` parameters. It extends {@see Versionable}
+ * (the conversation particle already implements it) because the embed publish/spawn path reads and advances the
  * conversation-config version HEAD; it adds {@see headVersion()}/{@see snapshotVersion()} (supplied by the
  * versioning trait, not the base contract) and the embed-kind + message-relation surface the seams touch.
  *
@@ -22,7 +23,8 @@ use Rushing\Versioning\Models\Version;
  * `template_version`, `retention_days`, `id`, `visitor_id`, `published_from_id`, `title`, `created_at`)
  * are dynamic on the concrete Eloquent model and are not declared here — an interface cannot honestly
  * declare magic properties. Likewise the concrete `::query()` / `newInstance()` runtime plumbing stays on
- * the concrete model (ChatBase) until TH-08; this role only covers the instance methods the seams invoke.
+ * the host's concrete conversation model (config-resolved `embed.base_model`) until TH-08; this role only
+ * covers the instance methods the seams invoke.
  */
 interface Conversation extends Versionable
 {
