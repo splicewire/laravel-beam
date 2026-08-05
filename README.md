@@ -78,6 +78,63 @@ Both are **overridable by the host** (last-binding-wins — an app provider regi
 beam-core's): bind your own `FrameResourceHandlerResolver` to map some keys to bespoke handlers,
 or a real `FrameFilterProvider` (e.g. one derived from a data-filters query class) for a faceted list.
 
+## Particle route macros
+
+The generic particle surface ({@see ParticleController} / {@see ParticleOperationController}) is mounted
+declaratively through a family of `Route::` macros registered by `BeamServiceProvider`. A host writes no
+controller — it declares the resource/op and mounts it, keeping its **own** middleware/prefix `group()`.
+
+| Macro | Mounts | Notes |
+| --- | --- | --- |
+| `Route::particleResource($uri, $key, $opts)` | the CRUD verbs (`index`/`show`/`store`/`update`/`destroy`) | `only`, `names`, `legacyPostUpdate`, `idConstraint` options |
+| `Route::particleOp($uri, $key, $op, $opts)` | one named op at `POST {uri}/{id}/op/{op}` | `method`, `name`, `idConstraint` |
+| `Route::particleOps($uri, $key, $ops, $opts)` | **a LIST** of ops (loop-collapse) | see below |
+| `Route::particleRelative($uri, $model, $via, $routes, $opts)` | a bound-relative mount (nested URL) | see below |
+
+### `Route::particleOps` — the plural loop-collapse (HTTP-02)
+
+The sibling of `particleOp` that takes a **list** and registers + mounts each in one call — collapsing the
+hand-rolled `foreach ([...]) { Route::particleOp(...); }` boilerplate. Each `$ops` entry is one of three
+forms, the op **name derived from the declaration** (you pass the list, not a restated name per route):
+
+```php
+Route::middleware(['web', 'auth'])->prefix('resources')->group(function () use ($ops) {
+    Route::particleOps('songs', 'songs', [
+        new ParticleOperation(name: 'share', …),   // an inline object — registered here + mounted
+        DownloadMedia::class,                       // a #[ParticleOp] class-string — discovered + mounted
+        'reorder',                                  // a bare name — already registered elsewhere; mounted
+    ]);
+});
+```
+
+### `Route::particleRelative` — the bound-relative mount (HTTP-02)
+
+Mounts a particle **through** a route-model-bound **relative** — the related model an operation is
+scoped/associated through (parent is the common flavor; `hasManyThrough`, pivot, or an arbitrary scope are
+all relatives). The SAME particle class can mount both **standalone** (`/media/{uuid}`) and **relative**
+(`/albums/{album}/photos`) — the relative mount is *additive*, not a competing shape.
+
+```php
+Route::particleRelative('albums', Album::class, via: 'photos', routes: function () {
+    Route::particleResource('photos', 'photos', ['only' => ['index', 'store']]);
+});
+```
+
+`$via` is **relation-or-closure**:
+
+- **`via: 'photos'`** (a relation name) — the controller bases `index`/`show`/`update`/`destroy` on
+  `$relative->photos()` and, on **create**, associates the FK **structurally** through
+  `$relative->photos()->make()` (never a forgeable body field). Covers `hasMany` / `hasManyThrough` /
+  `belongsToMany` — Eloquent handles "through" for free.
+- **`via: fn ($album, $q) => $q->where(...)`** (a scope closure) — an arbitrary scope (computed joins,
+  polymorphic, cross-tenant). It **scopes** listing/resolution but **cannot** auto-associate on create, so
+  it pairs with the resource's own `prepare` hook for the FK.
+
+The bound relative is route-model-bound (`findOrFail` → a stranger parent id 404s); authorize it with a
+`can:` middleware on the caller's `group()` (resolved once, children inherit). The relative context is
+carried in the route defaults (`ParticleController::RELATIVE` / `::RELATIVE_MODEL` / `::VIA`) and read by
+the controller — **the standalone (no-relative) path is byte-for-byte unchanged.**
+
 ## Conventions
 
 Matches the `rushing/*` / `schemastud/*` house style: **no `strict_types`, no

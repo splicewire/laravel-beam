@@ -49,6 +49,18 @@ class ParticleController extends Controller
     /** Route-default key naming the {@see ParticleResource} for the inline tier. */
     public const RESOURCE = '_particle';
 
+    /**
+     * Route-default keys naming the optional **relative** context (HTTP-02). When present, the resource is
+     * mounted *through* a route-model-bound relative (e.g. `/fragments/{fragment}/media`): {@see RELATIVE}
+     * carries the bound parent model instance, {@see VIA} the relation name (string) or scope (Closure) the
+     * child list/create is based on. Absent (the default) ⇒ the standalone path, byte-for-byte today's code.
+     */
+    public const RELATIVE = '_particle_relative';
+
+    public const RELATIVE_MODEL = '_particle_relative_model';
+
+    public const VIA = '_particle_via';
+
     public function __construct(
         protected ParticleWriter $writer,
         protected ParticleHydrator $hydrator,
@@ -61,9 +73,15 @@ class ParticleController extends Controller
         $resource = $this->particleResource($request);
         $ctx = ReadContext::list($resource->includes, $request->user());
 
+        // Relative mount (HTTP-02): when the route bound a relative, the index is a listing THROUGH it
+        // (`$relative->{via}()` / the scope closure) instead of `model::query()` — the child rows a caller
+        // sees are exactly the ones hanging off the (already-authorized) parent. Absent a relative, this is
+        // null and the standalone path below is byte-for-byte today's code.
+        $relativeQuery = $this->relativeBaseQuery($request);
+
         $query = $resource->filterable
             ? $this->hydrator->query($resource->key, $ctx)
-            : $resource->model::query()->latest($resource->defaultSort);
+            : ($relativeQuery ?? $resource->model::query()->latest($resource->defaultSort));
 
         // Row-level authorization for the non-filterable list (ADR-0156 §83): a `filterable:false` resource
         // has no data-filters query to gate its index, so its owner/inverse `scope` closure is the ONLY read
@@ -82,7 +100,7 @@ class ParticleController extends Controller
     public function show(Request $request, string $id): Responsable
     {
         $resource = $this->particleResource($request);
-        $model = $this->findParticle($resource, $id);
+        $model = $this->findParticle($resource, $id, $request);
         $this->authorize('view', $model);
 
         return $this->respond($resource, $model, $request);
@@ -102,7 +120,12 @@ class ParticleController extends Controller
         $resource = $this->particleResource($request);
         $input = $this->parseInput($resource, $request);
 
-        $model = new $resource->model;
+        // Relative mount (HTTP-02): create THROUGH the bound relation so the FK is set from the bound parent
+        // — structural association, never a forgeable body field. `newRelativeModel` returns a fresh model
+        // whose inverse is pre-associated (the relation-name `via:` form); a scope-closure `via:` can't
+        // auto-associate, so it falls back to a plain `new` and pairs with the resource's own prepare hook.
+        // Absent a relative, this is a plain `new $resource->model` — today's exact code path.
+        $model = $this->newRelativeModel($request) ?? new $resource->model;
         if ($resource->prepare !== null) {
             ($resource->prepare)($model, $input, $request->user());
         }
@@ -116,7 +139,7 @@ class ParticleController extends Controller
     {
         $resource = $this->particleResource($request);
         $input = $this->parseInput($resource, $request);
-        $model = $this->findParticle($resource, $id);
+        $model = $this->findParticle($resource, $id, $request);
 
         if ($resource->prepare !== null) {
             ($resource->prepare)($model, $input, $request->user());
@@ -130,7 +153,7 @@ class ParticleController extends Controller
     public function destroy(Request $request, string $id): Responsable
     {
         $resource = $this->particleResource($request);
-        $model = $this->findParticle($resource, $id);
+        $model = $this->findParticle($resource, $id, $request);
         $this->authorize('delete', $model);
         $model->delete();
 
@@ -154,15 +177,85 @@ class ParticleController extends Controller
         return $this->registry->get($key);
     }
 
+    /**
+     * The optional **relative** context (HTTP-02): the route-model-bound parent + the `via` (relation name
+     * or scope closure) a `Route::particleRelative` mount stamped into the route defaults, or
+     * `[null, null]` when the resource is mounted standalone (every existing resource — today's exact path).
+     *
+     * The macro stamps the binding PARAM NAME (`RELATIVE`) into defaults; the bound Model itself is resolved
+     * per-request off the route parameter (Laravel's route-model binding), read here.
+     *
+     * @return array{0: ?Model, 1: string|Closure|null}
+     */
+    protected function relativeContext(Request $request): array
+    {
+        $route = $request->route();
+        $binding = $route?->defaults[static::RELATIVE] ?? null;
+        $model = $route?->defaults[static::RELATIVE_MODEL] ?? null;
+        $via = $route?->defaults[static::VIA] ?? null;
+
+        if ($route === null || $binding === null || $via === null || $model === null) {
+            return [null, null];
+        }
+
+        // The route-model binding may already have substituted a Model (when SubstituteBindings ran); else
+        // the parameter is the raw id — resolve it here (findOrFail → the same 404 a stranger parent gets).
+        $bound = $route->parameter($binding);
+        $relative = $bound instanceof Model ? $bound : $model::query()->findOrFail($bound);
+
+        return [$relative, $via];
+    }
+
+    /**
+     * The list/resolve base query THROUGH the bound relative, or null when there is no relative context.
+     * A relation-name `via:` bases on `$relative->{via}()` (Eloquent handles hasMany / hasManyThrough /
+     * belongsToMany "through" for free); a closure `via:` applies `($via)($relative, model::query())`.
+     */
+    protected function relativeBaseQuery(Request $request): mixed
+    {
+        [$relative, $via] = $this->relativeContext($request);
+
+        if ($relative === null || $via === null) {
+            return null;
+        }
+
+        if ($via instanceof Closure) {
+            $resource = $this->particleResource($request);
+
+            return $via($relative, $resource->model::query());
+        }
+
+        return $relative->{$via}()->getQuery();
+    }
+
+    /**
+     * A fresh model with its inverse pre-associated to the bound relative, for a relative CREATE — or null
+     * when there is no relative, or the `via:` is a scope closure (which cannot auto-associate). The
+     * relation-name form uses `$relative->{via}()->make()` so the FK is stamped structurally at save.
+     */
+    protected function newRelativeModel(Request $request): ?Model
+    {
+        [$relative, $via] = $this->relativeContext($request);
+
+        if ($relative === null || ! is_string($via)) {
+            return null;
+        }
+
+        return $relative->{$via}()->make();
+    }
+
     /** Persist through the beam write pipeline: WriteGate authorize → persist → after-hook → emit. */
     protected function writeParticle(ParticleResource $resource, Model $model, mixed $input, mixed $actor): Model
     {
         return $this->writer->write($model, $this->toAttributes($input), $actor, $this->afterHook($resource, $input));
     }
 
-    protected function findParticle(ParticleResource $resource, string $id): Model
+    protected function findParticle(ParticleResource $resource, string $id, ?Request $request = null): Model
     {
-        $query = $resource->model::query();
+        // Relative mount (HTTP-02): resolve the `{id}` THROUGH the bound relative when present, so a
+        // show/update/destroy can only reach a child hanging off the (authorized) parent — a cross-parent id
+        // 404s (never resolves). Absent a relative, `$query` is the unscoped base — today's exact code path.
+        $query = ($request !== null ? $this->relativeBaseQuery($request) : null) ?? $resource->model::query();
 
         // Row-level authorization for subject resolution (ADR-0156 §83): the resource's `scope` closure
         // gates the show/update/destroy `findOrFail`, so a resolve-by-id can never reach a row the caller
