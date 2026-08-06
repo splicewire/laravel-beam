@@ -78,7 +78,8 @@ class SdkNaming
         $resource = $isItem ? ($segments[count($segments) - 2] ?? $last) : $last;
 
         $prefix = match (true) {
-            $verb === 'POST' => 'Create',
+            $verb === 'POST' && $isItem => 'Update',   // POST to an ITEM is an update (this estate posts updates)
+            $verb === 'POST' => 'Create',              // POST to a COLLECTION creates
             $verb === 'GET' && $isItem => 'Get',
             $verb === 'GET' => 'List',
             $verb === 'PUT', $verb === 'PATCH' => 'Update',
