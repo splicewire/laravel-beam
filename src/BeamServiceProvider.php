@@ -11,6 +11,10 @@ use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Rushing\PermissionCascade\Contracts\EntitlementResolver;
+use Rushing\Surgeon\Audit\PackageGraph;
+use Rushing\Surgeon\Operation\Operation;
+use Rushing\Surgeon\Operation\SuggestsOperations;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
@@ -24,12 +28,15 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
+use Splicewire\Beam\Console\DocblockCommand;
 use Splicewire\Beam\Console\FrameCacheCommand;
 use Splicewire\Beam\Console\FrameClearCommand;
 use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
+use Splicewire\Beam\Console\HouseStyleCommand;
 use Splicewire\Beam\Console\ManifestIndexCommand;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Frame\FrameResourceManifest;
@@ -68,6 +75,9 @@ use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
 use Splicewire\Beam\Source\LadderForeignSourceProjector;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Source\ParticleShadower;
+use Splicewire\Beam\Surgeon\DocblockTierAudit;
+use Splicewire\Beam\Surgeon\HouseStyleAudit;
+use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -312,6 +322,81 @@ class BeamServiceProvider extends PackageServiceProvider
         // on the registries themselves. Every registry/manifest describes itself in, so `beam:manifests`
         // lists the estate's injection points. beam-core self-describes its own set in packageBooted().
         $this->app->singleton(ManifestIndex::class);
+
+        $this->registerSurgeonAudits();
+    }
+
+    /**
+     * The estate-POLICY surgeon audits beam owns (ADR-0092 direction: beam depends DOWN on surgeon, the
+     * foundation byte-splice engine). Each nominates a generic surgeon operation via the
+     * Finding→Operation bridge (`Rushing\Surgeon\Operation\SuggestsOperations`) and self-registers into
+     * {@see BeamDoctorManifest} so surgeon's conformance sweep (`surgeon:audit`) discovers them through
+     * the host's `ConformanceManifest` port — exactly like any other consumer audit.
+     *
+     * Guarded on surgeon actually being installed (it is a dev-only dependency): a host that composes
+     * beam WITHOUT rushing/laravel-surgeon autoloads nothing here and pays nothing — beam degrades
+     * gracefully, mirroring the host provider's `interface_exists(ConformanceManifest::class)` guard.
+     */
+    protected function registerSurgeonAudits(): void
+    {
+        if (! interface_exists(SuggestsOperations::class)) {
+            return;
+        }
+
+        // Bind each audit with its default host-scoped construction so the manifest can resolve it by
+        // class-string (the sweep does `$app->make($audit)`): the house-style scan defaults to the app
+        // base path; the SDK-drift audit points at the co-dev splicewire/client checkout; the docblock
+        // tier-audit scans the app base path and places FQNs via the surgeon PackageGraph.
+        $this->app->bind(HouseStyleAudit::class, fn ($app) => new HouseStyleAudit([$app->basePath()]));
+        $this->app->bind(SdkEndpointDriftAudit::class, fn () => SdkEndpointDriftAudit::forClientPackage());
+        $this->app->bind(DocblockTierAudit::class, function ($app) {
+            $root = $app->basePath();
+            $graph = PackageGraph::fromRoots([$root]);
+
+            return new DocblockTierAudit($this->phpFilesUnder($root), $graph->packageForRoot($root) ?? 'app', $graph);
+        });
+
+        $manifest = $this->app->make(BeamDoctorManifest::class);
+        $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
+        $manifest->register('splicewire/laravel-beam', SdkEndpointDriftAudit::class);
+        $manifest->register('splicewire/laravel-beam', DocblockTierAudit::class);
+    }
+
+    /**
+     * Absolute paths of every `.php` file under a root (skipping `vendor`/`node_modules`/`.git`) — the
+     * file set {@see DocblockTierAudit} scans. Mirrors the moved `surgeon:docblock` command's own walk.
+     *
+     * @return list<string>
+     */
+    protected function phpFilesUnder(string $root): array
+    {
+        if (! is_dir($root)) {
+            return [];
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveCallbackFilterIterator(
+                new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
+                static function (\SplFileInfo $current): bool {
+                    if ($current->isDir()) {
+                        return ! in_array($current->getFilename(), ['vendor', 'node_modules', '.git'], true);
+                    }
+
+                    return $current->getExtension() === 'php';
+                },
+            ),
+        );
+
+        $files = [];
+        foreach ($iterator as $entry) {
+            /** @var \SplFileInfo $entry */
+            if ($entry->isFile()) {
+                $files[] = $entry->getPathname();
+            }
+        }
+        sort($files);
+
+        return $files;
     }
 
     public function packageBooted(): void
@@ -343,6 +428,20 @@ class BeamServiceProvider extends PackageServiceProvider
                 // described itself in, with its injection-point shape and how to register into it.
                 ManifestIndexCommand::class,
             ]);
+
+            // The estate-POLICY surgeon commands relocated DOWN from surgeon (they hard-code estate
+            // opinions over surgeon's generic byte-splice mechanisms — the mechanism stays in surgeon,
+            // policy + its runner move to beam): `surgeon:house-style` (the "no strict_types/final/readonly"
+            // strip) and `surgeon:docblock` (the "no up-tier {@see}" tier-audit; it still imports the
+            // surgeon-resident DocblockDerefOperation — the legal downward edge). Guarded on surgeon being
+            // installed — the commands construct surgeon-resident classes, so a host without surgeon
+            // simply doesn't get them.
+            if (interface_exists(Operation::class)) {
+                $this->commands([
+                    HouseStyleCommand::class,
+                    DocblockCommand::class,
+                ]);
+            }
 
             // Wire the manifest into Laravel's `optimize` / `optimize:clear` so it builds and clears
             // alongside the framework's own caches (the supported ServiceProvider hook).
@@ -410,7 +509,7 @@ class BeamServiceProvider extends PackageServiceProvider
 
     /**
      * Frame OS ticket 08 (ADR-0013 §2/§4): define an `entitlement:{key}` Gate ability per known feature
-     * key, each delegating to the {@see \Splicewire\Beam\Entitlements\EntitlementGate}. The key universe is
+     * key, each delegating to the {@see EntitlementGate}. The key universe is
      * `array_keys(config('app.entitlements'))` ∪ any beam-known feature keys the host lists under
      * `beam.core.entitlements.keys`. The ability ignores the resolved user argument and asks the gate for
      * the ambient principal ($user) so both a request-time user and a null/tenant principal route through
@@ -419,7 +518,7 @@ class BeamServiceProvider extends PackageServiceProvider
      */
     protected function registerEntitlementAbilities(): void
     {
-        if (! $this->app->bound(\Rushing\PermissionCascade\Contracts\EntitlementResolver::class)) {
+        if (! $this->app->bound(EntitlementResolver::class)) {
             return;
         }
 
@@ -433,7 +532,7 @@ class BeamServiceProvider extends PackageServiceProvider
         foreach ($keys as $key) {
             $gate->define(
                 'entitlement:'.$key,
-                fn ($user = null) => $this->app->make(\Splicewire\Beam\Entitlements\EntitlementGate::class)
+                fn ($user = null) => $this->app->make(EntitlementGate::class)
                     ->allows($key, $user),
             );
         }

@@ -9,6 +9,7 @@
         "illuminate/support": "^11.0|^12.0|^13.0",
         "nette/php-generator": "^3.4|^4.0",
         "rushing/codegen": "dev-main",
+        "rushing/laravel-data-filters": "*",
         "rushing/laravel-doctor": "*",
         "rushing/laravel-permission-cascade": "*",
         "rushing/laravel-popcorn": "dev-main",
@@ -26,6 +27,7 @@
         "laravel/pint": "^1.0",
         "orchestra/testbench": "^9.0|^10.0|^11.0",
         "phpunit/phpunit": "^11.0|^12.0",
+        "rushing/laravel-surgeon": "*",
         "wikimedia/composer-merge-plugin": "^2.1"
     },
     "autoload": {
