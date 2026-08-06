@@ -26,7 +26,7 @@ use Splicewire\Beam\Source\RouteManifestSource;
  */
 class GenerateClientSdkCommand extends Command
 {
-    protected $signature = 'splicewire:beam:generate-client';
+    protected $signature = 'splicewire:beam:generate:client';
 
     protected $description = 'Generate the committed client SDK (route map + typed access layer) from the route manifest';
 

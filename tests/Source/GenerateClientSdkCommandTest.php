@@ -49,12 +49,12 @@ class GenerateClientSdkCommandTest extends TestCase
 
     public function test_command_is_registered(): void
     {
-        $this->assertArrayHasKey('splicewire:beam:generate-client', $this->app[Kernel::class]->all());
+        $this->assertArrayHasKey('splicewire:beam:generate:client', $this->app[Kernel::class]->all());
     }
 
     public function test_it_emits_a_typed_route_map_and_hooks_from_a_fake_source(): void
     {
-        $this->artisan('splicewire:beam:generate-client')->assertSuccessful();
+        $this->artisan('splicewire:beam:generate:client')->assertSuccessful();
 
         // routes.ts — the RouteMap-typed name→path map, importing the configured routes runtime.
         $routes = file_get_contents($this->outDir.'/routes.ts');
@@ -86,7 +86,7 @@ class GenerateClientSdkCommandTest extends TestCase
 
     public function test_stores_are_off_by_default(): void
     {
-        $this->artisan('splicewire:beam:generate-client')->assertSuccessful();
+        $this->artisan('splicewire:beam:generate:client')->assertSuccessful();
 
         $this->assertDirectoryDoesNotExist($this->outDir.'/stores');
     }

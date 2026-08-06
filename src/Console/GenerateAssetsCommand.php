@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
  *
  *   - `typescript:transform`             — `#[TypeScript]` Data classes → the TS types (Spatie)
  *   - `schemas:generate`                 — versioned `#[SchemaIdentity]` Data → JSON schema artifacts (schemastud)
- *   - `splicewire:beam:generate-client`  — the route manifest → route map + typed hooks (this package)
+ *   - `splicewire:beam:generate:client`  — the route manifest → route map + typed hooks (this package)
  *
  * The list is a **seam**: everything upstream registers into the same layer by appending to the
  * `beam.client.assets.generators` config, so "generate everything" stays one command as the stack grows —
@@ -21,7 +21,7 @@ use Illuminate\Console\Command;
  */
 class GenerateAssetsCommand extends Command
 {
-    protected $signature = 'splicewire:beam:generate-assets';
+    protected $signature = 'splicewire:beam:generate:assets';
 
     protected $description = 'Generate every committed BE→FE contract artifact: TypeScript types, JSON schemas, and the route/hook client';
 
@@ -29,7 +29,7 @@ class GenerateAssetsCommand extends Command
     private const DEFAULT_GENERATORS = [
         'typescript:transform',
         'schemas:generate',
-        'splicewire:beam:generate-client',
+        'splicewire:beam:generate:client',
     ];
 
     public function handle(): int

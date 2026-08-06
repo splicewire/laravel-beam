@@ -8,7 +8,7 @@ return [
     |--------------------------------------------------------------------------
     | beam client SDK (client-sdk-codegen, promoted from the platform app)
     |--------------------------------------------------------------------------
-    | `splicewire:beam:generate-client` reads the enriched route manifest and
+    | `splicewire:beam:generate:client` reads the enriched route manifest and
     | emits the committed client access layer (route map + typed react-query
     | hooks + friendly aliases). This file config-drives the app-specific bits
     | so one generator serves a Tower platform AND a satellite alike.
@@ -52,7 +52,7 @@ return [
     ],
 
     /*
-    | The umbrella `splicewire:beam:generate-assets` pipeline, in dependency order (shapes →
+    | The umbrella `splicewire:beam:generate:assets` pipeline, in dependency order (shapes →
     | schemas → the client that references both). A generator not registered in this host is
     | skipped with a note, never a hard failure — so a satellite without schemastud still runs.
     */
@@ -60,7 +60,7 @@ return [
         'generators' => [
             'typescript:transform',
             'schemas:generate',
-            'splicewire:beam:generate-client',
+            'splicewire:beam:generate:client',
         ],
     ],
 
