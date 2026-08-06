@@ -11,6 +11,7 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -64,6 +65,27 @@ class AttributedParticleDiscoveryTest extends TestCase
         $this->assertNotNull($resource->project);
         // afterWrite is NOT declared on the fixture → stays null.
         $this->assertNull($resource->afterWrite);
+    }
+
+    public function test_the_attributes_manifest_fields_are_read_into_the_declaration(): void
+    {
+        // RDU-02: the #[ParticleResource] attribute now carries the manifest fields, so a resource is
+        // fully describable declaratively. They must round-trip onto the runtime declaration.
+        $resource = AttributedParticleDiscovery::resourceFromAttribute(FixtureFramedResource::class);
+
+        $this->assertSame('Widgets', $resource->label);
+        $this->assertSame('enriched', $resource->form);
+        $this->assertSame('App\\Data\\WidgetEditData', $resource->editData);
+        $this->assertSame('widget', $resource->policy);
+        $this->assertSame('App\\Queries\\WidgetQuery', $resource->query);
+        $this->assertSame('Catalog', $resource->group);
+        $this->assertSame('cube', $resource->icon);
+        $this->assertSame('admin', $resource->section);
+        $this->assertSame(7, $resource->navOrder);
+        $this->assertSame('widgets.index', $resource->routeName);
+        $this->assertSame('master-detail', $resource->layout);
+        $this->assertTrue($resource->readOnly);
+        $this->assertTrue($resource->isFramed(), 'a labelled resource is framed');
     }
 
     public function test_a_resource_without_a_scope_method_leaves_the_hook_null(): void
@@ -146,6 +168,25 @@ class FixtureLyricResource
 
 #[ParticleResource(key: 'bare', model: FixtureModel::class)]
 class FixtureBareResource {}
+
+#[ParticleResource(
+    key: 'framed-widgets',
+    model: FixtureModel::class,
+    data: WidgetGateData::class,
+    label: 'Widgets',
+    form: 'enriched',
+    editData: 'App\\Data\\WidgetEditData',
+    policy: 'widget',
+    query: 'App\\Queries\\WidgetQuery',
+    group: 'Catalog',
+    icon: 'cube',
+    section: 'admin',
+    navOrder: 7,
+    routeName: 'widgets.index',
+    layout: 'master-detail',
+    readOnly: true,
+)]
+class FixtureFramedResource {}
 
 #[ParticleOp(
     resource: 'library-lyrics',

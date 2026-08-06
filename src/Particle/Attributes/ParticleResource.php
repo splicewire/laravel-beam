@@ -3,14 +3,16 @@
 namespace Splicewire\Beam\Particle\Attributes;
 
 use Attribute;
+use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
  * Marks a Data class as a **REST particle resource** — the attribute twin of the imperative
  * `$registry->register(new ParticleResource(...))` call (ADR-0116). Placed on the resource's read/index
  * projection Data class; boot-time discovery reflects it into a runtime
  * {@see \Splicewire\Beam\Particle\ParticleResource} and registers that into the
- * {@see \Splicewire\Beam\Particle\ParticleResourceRegistry}, so the generic
- * {@see \Splicewire\Beam\Http\Particle\ParticleController} serves it — no per-resource controller AND no
+ * {@see ParticleResourceRegistry}, so the generic
+ * {@see ParticleController} serves it — no per-resource controller AND no
  * per-resource provider registration.
  *
  * This is the REST/runtime sibling of frame's `#[AdminResource]` (which feeds the admin *manifest*,
@@ -47,6 +49,30 @@ class ParticleResource
      * @param  int  $perPage  default page size
      * @param  string|null  $defaultSort  the column the non-filterable index orders by (descending); null ⇒
      *                                    `created_at`. Use `updated_at` for a "most-recently-edited first" list.
+     *
+     * The remaining params are the optional editor/**manifest** concerns (RDU-02), mirroring the runtime
+     * {@see \Splicewire\Beam\Particle\ParticleResource} one-for-one — so a resource can be fully described
+     * declaratively ON its Data class (nav + edit surface + gates), not just its REST core. A resource that
+     * declares a non-empty {@see $label} is FRAMED (it lights up the `@schemastud/frame` editor) and projects
+     * into Frame's manifest; a REST-only surface leaves them at their defaults. The closure hooks stay
+     * resolved from `public static` convention methods (attributes can't carry closures); these scalar
+     * manifest fields are carried directly.
+     * @param  string  $label  nav label; a non-empty label marks the resource framed (navigable)
+     * @param  'enriched'|'bare'  $form  per-resource default form mode
+     * @param  class-string|null  $editData  rare escape-hatch edit DTO (input-shape divergence)
+     * @param  string|null  $policy  ability/policy key the injected can() resolves against
+     * @param  class-string|null  $query  data-filters query class the ListShell facets bar rides (manifest)
+     * @param  string|null  $group  nav group heading
+     * @param  string|null  $icon  nav icon key
+     * @param  string|null  $section  host sitemap section this resource auto-attaches into; null = not in primary nav
+     * @param  int|null  $navOrder  placement within the section
+     * @param  string|null  $routeName  stable route identity a host binds the generated leaf under
+     * @param  'single'|'subnav'|'master-detail'|null  $layout  inner-layout grammar emitted on the ContextManifest
+     * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83)
+     * @param  bool|null  $deletable  Frame destroy gate, INDEPENDENT of $readOnly (ADR-0156 §83 delete-independent widening); null follows the create gate
+     * @param  bool|null  $editable  Frame update gate, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening); null follows the create gate
+     * @param  bool  $showable  Frame per-record detail gate, INDEPENDENT of $readOnly/$editable (F04 show-independent widening); defaults true
+     * @param  bool|null  $frame  explicit override for the framed predicate: true forces framed even with an empty label, false forces REST-only even with a label; null ⇒ framed iff the label is non-empty
      */
     public function __construct(
         public string $key,
@@ -57,5 +83,21 @@ class ParticleResource
         public bool $filterable = true,
         public int $perPage = 20,
         public ?string $defaultSort = null,
+        public string $label = '',
+        public string $form = 'bare',
+        public ?string $editData = null,
+        public ?string $policy = null,
+        public ?string $query = null,
+        public ?string $group = null,
+        public ?string $icon = null,
+        public ?string $section = null,
+        public ?int $navOrder = null,
+        public ?string $routeName = null,
+        public ?string $layout = null,
+        public bool $readOnly = false,
+        public ?bool $deletable = null,
+        public ?bool $editable = null,
+        public bool $showable = true,
+        public ?bool $frame = null,
     ) {}
 }

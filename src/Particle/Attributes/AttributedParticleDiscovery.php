@@ -6,6 +6,7 @@ use Closure;
 use InvalidArgumentException;
 use ReflectionClass;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
+use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Particle\ParticleOperation as ParticleOperationRuntime;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource as ParticleResourceRuntime;
@@ -13,7 +14,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
  * The reflect→register machinery behind {@see ParticleResource}/{@see ParticleOp} — the attribute twin of
- * the imperative `$registry->register(...)` provider block. It mirrors {@see \Splicewire\Beam\Frame\AdminResourceRegistry}
+ * the imperative `$registry->register(...)` provider block. It mirrors {@see AdminResourceRegistry}
  * (the `#[AdminResource]` discovery), but targets the REST/op registries instead of the admin manifest.
  *
  * Because attributes cannot carry closures, the runtime `ParticleResource`/`ParticleOperation`'s closures
@@ -91,9 +92,24 @@ class AttributedParticleDiscovery
      */
     private function registerResourceClass(string $class): void
     {
+        $this->resources->register(self::resourceFromAttribute($class));
+    }
+
+    /**
+     * Reflect a `#[ParticleResource]`-annotated class into a runtime {@see ParticleResourceRuntime}
+     * DECLARATION — the SINGLE place the attribute is read (RDU-02). It carries both the REST/runtime
+     * core AND the optional manifest fields the attribute now declares (RDU-02), plus the closure hooks
+     * resolved by CONVENTION from `public static` methods (attributes can't carry closures). Static so
+     * beam's {@see AdminResourceRegistry} can project the SAME declaration into
+     * the admin manifest — one attribute, one reader, two consumers (the REST registry + the manifest).
+     *
+     * @param  class-string  $class
+     */
+    public static function resourceFromAttribute(string $class): ParticleResourceRuntime
+    {
         $attribute = (new ReflectionClass($class))->getAttributes(ParticleResource::class)[0]->newInstance();
 
-        $this->resources->register(new ParticleResourceRuntime(
+        return new ParticleResourceRuntime(
             key: $attribute->key,
             model: $attribute->model,
             // Single-class default: absent an explicit read Data class, the annotated class IS the projection.
@@ -103,11 +119,29 @@ class AttributedParticleDiscovery
             filterable: $attribute->filterable,
             perPage: $attribute->perPage,
             defaultSort: $attribute->defaultSort,
-            prepare: $this->convention($class, 'prepare'),
-            afterWrite: $this->convention($class, 'afterWrite'),
-            project: $this->convention($class, 'project'),
-            scope: $this->convention($class, 'scope'),
-        ));
+            prepare: self::conventionOn($class, 'prepare'),
+            afterWrite: self::conventionOn($class, 'afterWrite'),
+            project: self::conventionOn($class, 'project'),
+            scope: self::conventionOn($class, 'scope'),
+            // The manifest fields the attribute now carries (RDU-02) — projected into Frame's
+            // ResourceDefinition when this declaration is a framed admin resource.
+            label: $attribute->label,
+            form: $attribute->form,
+            editData: $attribute->editData,
+            policy: $attribute->policy,
+            query: $attribute->query,
+            group: $attribute->group,
+            icon: $attribute->icon,
+            section: $attribute->section,
+            navOrder: $attribute->navOrder,
+            routeName: $attribute->routeName,
+            layout: $attribute->layout,
+            readOnly: $attribute->readOnly,
+            deletable: $attribute->deletable,
+            editable: $attribute->editable,
+            showable: $attribute->showable,
+            frame: $attribute->frame,
+        );
     }
 
     /**
@@ -145,6 +179,17 @@ class AttributedParticleDiscovery
      * @param  class-string  $class
      */
     private function convention(string $class, string $method): ?Closure
+    {
+        return self::conventionOn($class, $method);
+    }
+
+    /**
+     * Static twin of {@see self::convention()} — so {@see self::resourceFromAttribute()} (static, shared
+     * with the admin manifest producer) can wrap the same `public static` convention methods.
+     *
+     * @param  class-string  $class
+     */
+    private static function conventionOn(string $class, string $method): ?Closure
     {
         return method_exists($class, $method)
             ? Closure::fromCallable([$class, $method])
