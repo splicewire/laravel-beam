@@ -46,6 +46,9 @@
             "mustRequire": [
                 "schemastud/laravel-frame"
             ],
+            "mustRequireDev": [
+                "rushing/laravel-surgeon"
+            ],
             "policy": {
                 "noRequire": [
                     {
