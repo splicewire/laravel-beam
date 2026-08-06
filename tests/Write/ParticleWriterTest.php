@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Write;
 
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Event;
@@ -11,15 +12,22 @@ use ReflectionClass;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
+use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Splicewire\Beam\Beam;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV1;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV2;
 use Splicewire\Beam\Tests\TestCase;
+use Splicewire\Beam\Write\Contracts\WriteGate;
+use Splicewire\Beam\Write\Contracts\WriteStage;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\PayloadRejected;
+use Splicewire\Beam\Write\Stages\AuthorizeStage;
+use Splicewire\Beam\Write\Stages\PersistStage;
+use Splicewire\Beam\Write\WriteContext;
 use Splicewire\Beam\Write\WriteNotAuthorized;
 
 /**
@@ -171,6 +179,40 @@ class ParticleWriterTest extends TestCase
         $this->assertNotNull($seen, 'the after-persist hook should have run');
         $this->assertTrue($seen->is($record));
         $this->assertTrue($seen->exists, 'the hook runs AFTER the save, on the persisted model');
+    }
+
+    public function test_a_host_composes_a_custom_stage_into_the_write_chain(): void
+    {
+        $this->allowWrites();
+
+        // A host inserts its own pipe BEFORE persist — the chainable write seam (DESIGN §3a). Here a
+        // tenancy/audit-style stage stamps the payload; the persisted record proves it ran mid-chain, not
+        // as an after-the-fact wrapper.
+        $stamp = new class implements WriteStage
+        {
+            public function handle(WriteContext $context, \Closure $next): WriteContext
+            {
+                $context->payload['body'] = 'stamped';
+
+                return $next($context);
+            }
+        };
+
+        $writer = new ParticleWriter(
+            $this->app->make(WriteGate::class),
+            $this->app->make(SchemaTargetResolver::class),
+            new AcceptanceGate,
+            $this->app->make(Dispatcher::class),
+            stages: [
+                new AuthorizeStage($this->app->make(WriteGate::class)),
+                $stamp,
+                new PersistStage,
+            ],
+        );
+
+        $record = $writer->write(new AppRecordFixture, ['title' => 'Composed', 'body' => 'original']);
+
+        $this->assertDatabaseHas('app_records', ['id' => $record->id, 'title' => 'Composed', 'body' => 'stamped']);
     }
 
     /** Resolve a fresh writer (after any Event::fake / Gate::define) so it binds the current dispatcher. */

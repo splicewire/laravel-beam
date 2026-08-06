@@ -4,28 +4,38 @@ namespace Splicewire\Beam\Read;
 
 use BadMethodCallException;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Pipeline\Pipeline;
 use InvalidArgumentException;
-use RuntimeException;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
+use Splicewire\Beam\Read\Contracts\ReadStage;
+use Splicewire\Beam\Read\Stages\ProjectStage;
 
 /**
  * The degenerate {@see ParticleHydrator} default (beam-write-pipeline ticket 13, DESIGN §9a/§9d): the
  * direct-from-source reader. A record's reconciled payload IS the data → `Data::from(reconcile($payload))`.
- * "Reader is the degenerate Hydrator" — one seam, not two.
+ * "Reader is the degenerate Hydrator" — the shipped read chain is a SINGLE {@see ProjectStage}.
  *
- * It needs NO `rushing/laravel-data-filters` dependency (that is the whole point of it living in
- * beam-core): it resolves the record's `Data` class straight off beam's own {@see AdminResourceRegistry}
- * (ADR-0156 retired the `SchemaDataResolver` inversion port — beam owns the registry, so it reads it
- * directly) and builds a typed `Data`, applying `ReadContext::$includes` as the serialization partial. It
- * does NOT compose list queries — that is the query-composing host binding's job, so {@see self::query()}
- * throws. This is niche until the deferred storage-collapse (DESIGN §9a); the host binds a
- * `DataFilterRecordHydrator` for real model-backed lists.
+ * Projection runs as a {@see ReadStage} chain over one {@see ReadPass}: the fine-grained read seam. A host
+ * composes a pipe AFTER the project stage to redact fields or apply actor-scoped visibility WITHOUT replacing
+ * the whole hydrator (the coarser read seam stays the {@see ParticleHydrator} port — swap in a query-composing
+ * `DataFilterRecordHydrator`). Passing no `$stages` runs the shipped single-stage chain, so every existing
+ * caller is unchanged.
+ *
+ * It needs NO `rushing/laravel-data-filters` dependency (that is the whole point of it living in beam-core):
+ * the default {@see ProjectStage} resolves the record's `Data` class straight off beam's own
+ * {@see AdminResourceRegistry} (ADR-0156 retired the `SchemaDataResolver` inversion port — beam owns the
+ * registry, so it reads it directly). It does NOT compose list queries — that is the query-composing host
+ * binding's job, so {@see self::query()} throws.
  */
 class PayloadParticleReader implements ParticleHydrator
 {
-    public function __construct(private AdminResourceRegistry $resources) {}
+    /**
+     * @param  list<ReadStage>|null  $stages  the read chain; null ⇒ the shipped single {@see ProjectStage}
+     *                                        built from this reader's own registry
+     */
+    public function __construct(private AdminResourceRegistry $resources, private ?array $stages = null) {}
 
     public function hydrate(Model|array|string $source, ReadContext $ctx): Data
     {
@@ -40,37 +50,22 @@ class PayloadParticleReader implements ParticleHydrator
 
     public function project(Model $record, ReadContext $ctx): Data
     {
-        $dataClass = $this->dataClassFor($record);
+        $pass = (new Pipeline)
+            ->send(new ReadPass($record, $ctx))
+            ->through($this->stages ?? $this->defaultStages())
+            ->then(fn (ReadPass $pass) => $pass);
 
-        if ($dataClass === null) {
-            throw new RuntimeException(
-                'No Data class resolved for ['.$record::class.'] — register an #[ParticleResource] whose `model` matches this record type.',
-            );
-        }
-
-        /** @var Data $data */
-        $data = $dataClass::from($this->readableSource($record));
-
-        return $ctx->includes === [] ? $data : $data->include(...$ctx->includes);
+        return $pass->data;
     }
 
     /**
-     * The record → projection Data class map, resolved off the registered #[ParticleResource] definitions:
-     * the first model-backed definition whose `model` the record is an instance of wins (its annotated
-     * class IS `data`). Null when no definition claims the record type.
+     * The shipped default chain — a single {@see ProjectStage} built from this reader's own registry.
      *
-     * @return class-string<Data>|null
+     * @return list<ReadStage>
      */
-    private function dataClassFor(Model $record): ?string
+    private function defaultStages(): array
     {
-        foreach ($this->resources->all() as $definition) {
-            if ($definition->model !== null && $record instanceof $definition->model) {
-                /** @var class-string<Data> */
-                return $definition->data;
-            }
-        }
-
-        return null;
+        return [new ProjectStage($this->resources)];
     }
 
     public function query(string $recordType, ReadContext $ctx): object
@@ -78,15 +73,5 @@ class PayloadParticleReader implements ParticleHydrator
         throw new BadMethodCallException(
             'The payload reader does not compose list queries; bind a query-composing ParticleHydrator (DataFilterRecordHydrator).',
         );
-    }
-
-    /**
-     * A schema record's reconciled `payload` IS the data; a plain model projects from itself.
-     */
-    private function readableSource(Model $record): mixed
-    {
-        $payload = $record->getAttribute('payload');
-
-        return is_array($payload) ? $payload : $record;
     }
 }

@@ -15,8 +15,11 @@ use Spatie\LaravelData\Lazy;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Read\Cardinality;
+use Splicewire\Beam\Read\Contracts\ReadStage;
 use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Read\ReadContext;
+use Splicewire\Beam\Read\ReadPass;
+use Splicewire\Beam\Read\Stages\ProjectStage;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -119,6 +122,39 @@ class PayloadParticleReaderTest extends TestCase
     {
         $this->assertSame(Cardinality::One, ReadContext::detail()->cardinality);
         $this->assertSame(Cardinality::Many, ReadContext::list()->cardinality);
+    }
+
+    public function test_a_host_composes_a_stage_after_projection(): void
+    {
+        $record = ReaderFixtureModel::create(['payload' => ['title' => 'Secret']]);
+
+        // A host inserts a redaction pipe AFTER the shipped ProjectStage — the fine-grained read seam
+        // (DESIGN §9d). The stage receives the built Data on the pass and transforms it.
+        $registry = new AdminResourceRegistry;
+        $registry->register(new ResourceDefinition(
+            key: 'reader-fixture', sourceKind: 'model', model: ReaderFixtureModel::class, source: null,
+            data: ReaderFixtureData::class, creatable: true, query: null, editData: null, policy: null,
+            form: 'bare', nav: new NavMetadata(label: 'Reader Fixture'),
+        ));
+
+        $redact = new class implements ReadStage
+        {
+            public function handle(ReadPass $pass, \Closure $next): ReadPass
+            {
+                $pass->data->title = 'REDACTED';
+
+                return $next($pass);
+            }
+        };
+
+        $reader = new PayloadParticleReader($registry, stages: [
+            new ProjectStage($registry),
+            $redact,
+        ]);
+
+        $data = $reader->hydrate($record, ReadContext::detail());
+
+        $this->assertSame('REDACTED', $data->title);
     }
 }
 
