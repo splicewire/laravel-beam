@@ -20,15 +20,17 @@ use Saloon\Traits\Body\HasJsonBody;
  * untyped self-client (`App\Generated\Saloon`); this one reproduces the hand-curated, domain-namespaced,
  * per-field-typed, prose-documented published package.
  *
- * Naming is CONVENTION-FIRST with a per-route hint escape hatch (the locked decision):
+ * Naming is CONVENTION-ONLY, delegated to the shared {@see SdkNaming} helper (the client-sdk-regen pivot:
+ * the convention IS the standard, so there is no name-override any more):
  *  - domain = the `@group` tag (`meta['tags'][0]`) → `Requests/<Domain>/…`, class `Resource\<Domain>`;
  *  - request class = derived from path+verb (`POST …/ideas` → `CreateIdea`, a trailing action segment
  *    like `generate-composition` → `GenerateComposition`);
  *  - constructor = path params then body fields as typed per-field `protected` params (`idea_id` → `$ideaId`),
  *    with `defaultBody()` mapping each back to its wire key; `@param` prose comes from the spec (the #03
  *    `@bodyParam` migration), so the doc rides for free.
- * A per-route hint (`options['requests']["{VERB} {path}"]`) overrides the miss cases — a bespoke class name,
- * a body collapsed into one opaque array param, or a renamed path param — WITHOUT re-encoding the whole SDK.
+ * A per-route hint (`options['requests']["{VERB} {path}"]`) still carries the STRUCTURAL escape hatches —
+ * a body collapsed into one opaque array param (`collapseBody`) or a renamed path param (`pathParams`) —
+ * WITHOUT re-encoding the SDK. The `class` name-override key is no longer honored; convention wins.
  *
  * The SYNTACTIC builder (nette/php-generator) lives HERE in the driver, never in the shared codegen core.
  */
@@ -77,16 +79,8 @@ class SplicewireClientGenerator implements Generator
                 continue;
             }
             $hint = $hints["{$op['method']} {$op['path']}"] ?? [];
-            $hinted = isset($hint['class']);
-            $class = (string) ($hint['class'] ?? $this->classNameFor($op));
-
-            // A convention-named op must never clobber a class an explicit hint already claimed — two ops
-            // can convention-collide on one name within a domain (the #05 "explained superset"), so an
-            // un-hinted late arrival would otherwise overwrite a hinted golden request. Hinted wins.
-            if (isset($byDomain[$domain][$class]) && ! $hinted && ($byDomain[$domain][$class]['hinted'] ?? false)) {
-                continue;
-            }
-            $byDomain[$domain][$class] = ['op' => $op, 'hint' => $hint, 'hinted' => $hinted];
+            $class = $this->classNameFor($op);
+            $byDomain[$domain][$class] = ['op' => $op, 'hint' => $hint];
         }
 
         $printer = new PsrPrinter;
@@ -468,9 +462,7 @@ class SplicewireClientGenerator implements Generator
      */
     private function domainOf(array $op): ?string
     {
-        $tag = $op['meta']['tags'][0] ?? null;
-
-        return is_string($tag) && $tag !== '' ? Str::studly($tag) : null;
+        return (new SdkNaming)->domainFor($op);
     }
 
     /**
@@ -506,34 +498,7 @@ class SplicewireClientGenerator implements Generator
      */
     private function classNameFor(array $op): string
     {
-        $segments = array_values(array_filter(
-            explode('/', trim((string) $op['path'], '/')),
-            fn ($s) => $s !== '' && $s !== 'api' && ! preg_match('/^v\d+$/', $s),
-        ));
-        $last = end($segments) ?: 'resource';
-
-        // A trailing action segment (a hyphenated verb like `generate-composition`) names itself.
-        if (str_contains($last, '-')) {
-            return Str::studly($last);
-        }
-
-        $verb = strtoupper((string) $op['method']);
-        $isItem = str_contains((string) $op['path'], '{');
-        $resource = $isItem
-            ? ($segments[count($segments) - 2] ?? $last)
-            : $last;
-        $noun = Str::studly(Str::singular(str_replace(['{', '}'], '', $resource)));
-
-        $prefix = match (true) {
-            $verb === 'POST' => 'Create',
-            $verb === 'GET' && $isItem => 'Get',
-            $verb === 'GET' => 'List',
-            $verb === 'PUT', $verb === 'PATCH' => 'Update',
-            $verb === 'DELETE' => 'Delete',
-            default => Str::studly(strtolower($verb)),
-        };
-
-        return $prefix.$noun;
+        return (new SdkNaming)->classNameFor($op);
     }
 
     /**

@@ -78,6 +78,7 @@ use Splicewire\Beam\Source\ParticleShadower;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
+use Splicewire\Beam\Surgeon\SdkNameConventionAudit;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -349,6 +350,7 @@ class BeamServiceProvider extends PackageServiceProvider
         // tier-audit scans the app base path and places FQNs via the surgeon PackageGraph.
         $this->app->bind(HouseStyleAudit::class, fn ($app) => new HouseStyleAudit([$app->basePath()]));
         $this->app->bind(SdkEndpointDriftAudit::class, fn () => SdkEndpointDriftAudit::forClientPackage());
+        $this->app->bind(SdkNameConventionAudit::class, fn () => SdkNameConventionAudit::forClientPackage());
         $this->app->bind(DocblockTierAudit::class, function ($app) {
             $root = $app->basePath();
             $graph = PackageGraph::fromRoots([$root]);
@@ -359,6 +361,7 @@ class BeamServiceProvider extends PackageServiceProvider
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkEndpointDriftAudit::class);
+        $manifest->register('splicewire/laravel-beam', SdkNameConventionAudit::class);
         $manifest->register('splicewire/laravel-beam', DocblockTierAudit::class);
     }
 
