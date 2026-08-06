@@ -58,6 +58,7 @@ use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
+use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
@@ -260,6 +261,15 @@ class BeamServiceProvider extends PackageServiceProvider
         // realms and any `#[Realm]`-declared ones. A capability package registering a realm from its own
         // provider mutates the same shared instance.
         $this->app->singleton(RealmRegistry::class, fn () => new RealmRegistry);
+
+        // The realm OVERLAY registry (Frame OS ticket 14, ADR-0014 §A2) — the seam a capability/satellite
+        // tier registers an ADDITIVE realm overlay through. A SINGLETON so a package registering an overlay
+        // from its own provider mutates the shared instance the RealmManifestProjector reads BEFORE it
+        // emits the manifest. beam knows only "overlays" here (keyed by realm key), never "satellites", so
+        // the frame stays satellite-agnostic. Ships EMPTY ⇒ INERT: no overlay ⇒ the manifest is byte-for-
+        // byte. Unlike RealmRegistry it has no realm-creation verb — an overlay can only enrich a realm
+        // RealmRegistry already ships, never conjure a new realm/tile.
+        $this->app->singleton(RealmOverlayRegistry::class, fn () => new RealmOverlayRegistry);
 
         // The per-realm presentation-override registry (RDU-03) — the overlay layer behind the `?realm`
         // seam. A SINGLETON hydrated from `frame.realm_resource_overrides` at resolution (the default
