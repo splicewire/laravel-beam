@@ -12,6 +12,7 @@ use Splicewire\Beam\Frame\Attributes\AdminResource;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
 use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Realm\RealmResourceRegistry;
 
 /**
  * Beam's resource DECLARATION registry — the producer behind frame's agnostic
@@ -27,9 +28,9 @@ use Splicewire\Beam\Particle\ParticleResource;
  * already-built {@see ResourceDefinition} — and calls {@see ParticleResource::toResourceDefinition()}
  * with the target realm when the manifest for a realm is built ({@see self::all()} / {@see self::get()}).
  * The realm seam is therefore LIVE: the projection is recomputed at build, not baked at registration.
- * The projection is realm-identical today (the `$realm` param is accepted-but-ignored until the
- * presentation-override overlay lands in RDU-03), so a resource appears in the manifest exactly as
- * before.
+ * After the realm-agnostic projection, the {@see RealmResourceRegistry} presentation-override overlay
+ * (RDU-03) is applied for the target realm — INERT (identity) by default, so with no overlay configured a
+ * resource appears in the manifest exactly as before, identically in every realm.
  *
  * ## Discovery is unified onto `#[ParticleResource]`, with a temporary `#[AdminResource]` dual-read
  *
@@ -55,6 +56,19 @@ class AdminResourceRegistry implements ResourceRegistry
      * @var array<string, ParticleResource|ResourceDefinition>
      */
     private array $declarations = [];
+
+    /**
+     * The per-realm presentation-override overlay layer (RDU-03). Applied AFTER a declaration projects
+     * into a {@see ResourceDefinition} for a realm — so a realm may present the same resource differently
+     * (label/group/form/read-only gate) without the declaration naming a realm. Null (the bare test ctor)
+     * or an empty overlay registry ⇒ INERT: identity projection in every realm.
+     */
+    private ?RealmResourceRegistry $overrides;
+
+    public function __construct(?RealmResourceRegistry $overrides = null)
+    {
+        $this->overrides = $overrides;
+    }
 
     /**
      * Reflect an attributed Data class and register its DECLARATION. Reads whichever of the two
@@ -212,9 +226,17 @@ class AdminResourceRegistry implements ResourceRegistry
      */
     private function project(ParticleResource|ResourceDefinition $declaration, ?string $realm): ResourceDefinition
     {
-        return $declaration instanceof ParticleResource
+        $definition = $declaration instanceof ParticleResource
             ? $declaration->toResourceDefinition($realm)
             : $declaration;
+
+        // RDU-03: overlay the realm's presentation overrides AFTER the realm-agnostic projection —
+        // `$overrides->apply($particle->toResourceDefinition($realm), $realm)`. Inert (identity) when no
+        // overlay is registered for this `(realm, key)`, so a raw ResourceDefinition escape hatch and a
+        // no-overlay install are both returned unchanged.
+        return $this->overrides === null
+            ? $definition
+            : $this->overrides->apply($definition, $realm);
     }
 
     /**

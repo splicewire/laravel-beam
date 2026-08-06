@@ -78,6 +78,53 @@ Both are **overridable by the host** (last-binding-wins — an app provider regi
 beam-core's): bind your own `FrameResourceHandlerResolver` to map some keys to bespoke handlers,
 or a real `FrameFilterProvider` (e.g. one derived from a data-filters query class) for a faceted list.
 
+## Per-realm resource presentation overrides (RDU-03)
+
+A realm may PRESENT the same resource differently — a different label, group, form, layout, or a
+read-only gate — **without the resource declaration ever naming a realm** (declarations stay
+realm-agnostic; frame stays agnostic). This is a separate **overlay layer** behind the `?realm` seam
+that `AdminResourceRegistry` applies AFTER its realm-agnostic projection, so
+`ParticleResource`/`#[AdminResource]` never gain per-realm fields.
+
+- **`Splicewire\Beam\Realm\RealmResourceOverride`** — a partial overlay of PRESENTATION fields only
+  (`label`, `group`, `icon`, `section`, `navOrder`, `routeName`, `form`, `layout`, `editData`, `policy`,
+  `query`, `readOnly`, `deletable`, `editable`, `showable`); a non-null field overlays the base, null
+  inherits. `readOnly` derives the three write gates (`creatable`/`editable`/`deletable` = `!readOnly`),
+  yielding to an explicit `editable`/`deletable` in the same overlay. **No runtime fields** —
+  model/data/hooks never vary by realm. Merges onto a base via frame's agnostic
+  `ResourceDefinition::withOverrides(...)` (named `withOverrides`, not `with()`, since spatie's `Data`
+  base reserves `with()`).
+- **`Splicewire\Beam\Realm\RealmResourceRegistry`** — holds overlays by `(key, realm)`;
+  `apply($base, $realm)` resolves following the SAME `RealmRegistry::effective()`/stack order (the
+  realm's `[...stack, self]` chain, merged bottom→top so the requested realm wins) and returns the base
+  **UNCHANGED** when no overlay exists.
+
+### Config surface
+
+```php
+// config/frame.php — ships EMPTY (inert: identity projection in every realm)
+'realm_resource_overrides' => [
+    'user' => [
+        'members' => ['label' => 'My Teams', 'readOnly' => true],
+        'tokens'  => ['label' => 'Personal Access Tokens', 'group' => 'Security'],
+    ],
+    // realms not listed (e.g. 'tenant') keep the base declaration's presentation.
+],
+```
+
+The registry is a singleton hydrated from this config at boot. A host may also register overlays
+imperatively — the fluent escape hatch:
+
+```php
+app(RealmResourceRegistry::class)->override('tokens', 'user', new RealmResourceOverride(
+    label: 'Personal Access Tokens',
+    group: 'Security',
+));
+```
+
+INERT by default: with no overlay configured for a `(realm, key)`, every realm gets the identical
+projection — a simple spin-up is untouched.
+
 ## Particle route macros
 
 The generic particle surface ({@see ParticleController} / {@see ParticleOperationController}) is mounted

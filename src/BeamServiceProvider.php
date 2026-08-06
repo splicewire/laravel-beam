@@ -53,6 +53,7 @@ use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmRegistry;
+use Splicewire\Beam\Realm\RealmResourceRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
@@ -214,7 +215,9 @@ class BeamServiceProvider extends PackageServiceProvider
         // onto frame's agnostic ResourceRegistry port as a SINGLETON so boot-time #[AdminResource] discovery
         // (packageBooted) persists across the request and both names resolve one shared instance. Frame's
         // manifest machinery reads the port; it never imports this beam type (arrow points DOWN, beam → frame).
-        $this->app->singleton(AdminResourceRegistry::class, fn () => new AdminResourceRegistry);
+        $this->app->singleton(AdminResourceRegistry::class, fn ($app) => new AdminResourceRegistry(
+            $app->make(RealmResourceRegistry::class),
+        ));
         $this->app->alias(AdminResourceRegistry::class, ResourceRegistry::class);
 
         // The build-time #[AdminResource] manifest cache (mirrors bootstrap/cache/packages.php). When it
@@ -251,6 +254,16 @@ class BeamServiceProvider extends PackageServiceProvider
         // realms and any `#[Realm]`-declared ones. A capability package registering a realm from its own
         // provider mutates the same shared instance.
         $this->app->singleton(RealmRegistry::class, fn () => new RealmRegistry);
+
+        // The per-realm presentation-override registry (RDU-03) — the overlay layer behind the `?realm`
+        // seam. A SINGLETON hydrated from `frame.realm_resource_overrides` at resolution (the default
+        // config ships EMPTY, so it is INERT — identity projection in every realm — until RDU-05 seeds
+        // real overlays). Beam's AdminResourceRegistry applies it when it projects a declaration for a
+        // realm; frame never sees it (the realm concept lives entirely in beam). A host may also register
+        // overlays imperatively via `->override($key, $realm, new RealmResourceOverride(...))`.
+        $this->app->singleton(RealmResourceRegistry::class, fn ($app) => (new RealmResourceRegistry(
+            $app->make(RealmRegistry::class),
+        ))->loadConfig((array) config('frame.realm_resource_overrides', [])));
 
         // The generic particle REST surface (promoted from splicewire-app, ADR-0116). The two declaration
         // registries are container singletons so the `Route::particleResource()` / `Route::particleOp()`
