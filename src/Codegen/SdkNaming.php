@@ -54,22 +54,22 @@ class SdkNaming
             fn ($s) => $s !== '' && $s !== 'api' && ! preg_match('/^v\d+$/', $s),
         ));
         $isParam = fn (string $s): bool => str_starts_with($s, '{');
+        $isPlural = fn (string $s): bool => Str::singular($s) !== $s;
         $last = end($segments) ?: 'resource';
         $prevIsParam = count($segments) >= 2 && $isParam($segments[count($segments) - 2]);
 
-        // A trailing ACTION segment: a non-param last segment that either is multi-word (hyphenated) or
-        // follows a `{param}` (…/{id}/render). It names the operation rather than addressing a resource.
-        if (! $isParam($last) && (str_contains($last, '-') || $prevIsParam)) {
-            $action = Str::studly($last);
-
-            // Multi-word actions are self-describing; a single-word action appends the resource noun so it
-            // reads as `<Action><Resource>` (`render` on a composition → `RenderComposition`).
-            if (str_contains($last, '-')) {
-                return $action;
-            }
+        // A trailing ACTION segment names the operation rather than addressing a resource:
+        //  - a multi-word (hyphenated) verb is self-describing (`generate-composition` → GenerateComposition);
+        //  - a SINGULAR word right after a `{param}` is an item action (`…/{id}/render` → RenderComposition).
+        // A PLURAL trailing segment is NOT an action — it is a sub-resource collection (`…/{id}/cells`),
+        // handled by the resource-addressed branch below (→ ListCell).
+        if (! $isParam($last) && str_contains($last, '-')) {
+            return Str::studly($last);
+        }
+        if (! $isParam($last) && $prevIsParam && ! $isPlural($last)) {
             $resource = $segments[count($segments) - 3] ?? $segments[count($segments) - 2];
 
-            return $action.$this->noun($resource);
+            return Str::studly($last).$this->noun($resource);
         }
 
         $verb = strtoupper((string) $op['method']);
