@@ -64,6 +64,11 @@ class SplicewireClientGenerator implements Generator
 
         $only = (array) ($this->options['domains'] ?? []);
 
+        // #06 spine-DTO mapping — OpenAPI response component (short-name) → the client DTO's spine-wire
+        // base FQN. A component present here gets a generated `Data/<X>.php` thin adapter, and a resource
+        // method whose op returns it gets a typed dual method alongside the raw one.
+        $dataMap = (array) ($this->options['data'] ?? []);
+
         // Group the client-relevant operations by domain (skip the untagged / out-of-scope).
         $byDomain = [];
         foreach ($input['model']['operations'] ?? [] as $op) {
@@ -72,25 +77,85 @@ class SplicewireClientGenerator implements Generator
                 continue;
             }
             $hint = $hints["{$op['method']} {$op['path']}"] ?? [];
+            $hinted = isset($hint['class']);
             $class = (string) ($hint['class'] ?? $this->classNameFor($op));
-            $byDomain[$domain][$class] = ['op' => $op, 'hint' => $hint];
+
+            // A convention-named op must never clobber a class an explicit hint already claimed — two ops
+            // can convention-collide on one name within a domain (the #05 "explained superset"), so an
+            // un-hinted late arrival would otherwise overwrite a hinted golden request. Hinted wins.
+            if (isset($byDomain[$domain][$class]) && ! $hinted && ($byDomain[$domain][$class]['hinted'] ?? false)) {
+                continue;
+            }
+            $byDomain[$domain][$class] = ['op' => $op, 'hint' => $hint, 'hinted' => $hinted];
         }
 
         $printer = new PsrPrinter;
         $files = [];
 
+        // The mapped components an in-scope typed op actually returns — only these get a `Data/*` adapter.
+        $referencedComponents = [];
+
         foreach ($byDomain as $domain => $requests) {
             foreach ($requests as $class => $spec) {
                 $files["Requests/{$domain}/{$class}.php"] =
                     $printer->printFile($this->buildRequest($namespace, $domain, $class, $spec['op'], $spec['hint']));
+
+                $component = $this->returnComponent($spec['op']);
+                if ($component !== null && isset($dataMap[$component])) {
+                    $referencedComponents[$component] = $dataMap[$component];
+                }
             }
             $files["Resource/{$domain}.php"] =
-                $printer->printFile($this->buildResource($namespace, $domain, $requests));
+                $printer->printFile($this->buildResource($namespace, $domain, $requests, $dataMap));
+        }
+
+        foreach ($referencedComponents as $component => $spineFqn) {
+            $dtoName = $this->dtoShortName($component, (string) $spineFqn);
+            $files["Data/{$dtoName}.php"] =
+                $printer->printFile($this->buildDataAdapter($namespace, $dtoName, (string) $spineFqn));
         }
 
         $files['GeneratedConnector.php'] = $printer->printFile($this->buildConnector($namespace, $byDomain));
 
-        return ['files' => $files];
+        return ['files' => $this->applyDenyList($files)];
+    }
+
+    /**
+     * Drop any emitted path matching a `options['deny']` glob — the #09 residue seam. Regeneration must
+     * NEVER stomp a hand-written file with no spec home (the hand connector subclass, the webhook verifier,
+     * the non-trivial DTO adapters). The generated base (`GeneratedConnector`) is emitted; its hand subclass
+     * (`SplicewireConnector`) is denied. This runs in the GENERATOR (not the writer) so a denied path never
+     * even reaches disk, and the FileWriter stays SDK-agnostic.
+     *
+     * @param  array<string, string>  $files
+     * @return array<string, string>
+     */
+    private function applyDenyList(array $files): array
+    {
+        $deny = (array) ($this->options['deny'] ?? []);
+        if ($deny === []) {
+            return $files;
+        }
+
+        return array_filter(
+            $files,
+            fn (string $path) => ! $this->isDenied($path, $deny),
+            ARRAY_FILTER_USE_KEY,
+        );
+    }
+
+    /**
+     * @param  array<int, string>  $deny
+     */
+    private function isDenied(string $path, array $deny): bool
+    {
+        foreach ($deny as $glob) {
+            if (Str::is($glob, $path)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -249,8 +314,9 @@ class SplicewireClientGenerator implements Generator
 
     /**
      * @param  array<string, array<string, mixed>>  $requests  class => ['op'=>…, 'hint'=>…]
+     * @param  array<string, string>  $dataMap  component short-name → spine-wire FQN (#06)
      */
-    private function buildResource(string $namespace, string $domain, array $requests): PhpFile
+    private function buildResource(string $namespace, string $domain, array $requests, array $dataMap): PhpFile
     {
         $file = new PhpFile;
         $file->setStrictTypes(false);
@@ -264,18 +330,95 @@ class SplicewireClientGenerator implements Generator
             $ns->addUse($namespace.'\\Requests\\'.$domain.'\\'.$className);
             [$ctorParams] = $this->constructorPlan($spec['op'], $spec['hint']);
 
-            $method = $class->addMethod(Str::camel($className));
+            // The RAW method — the untyped `Response` send. Its name is the request class camelCased.
+            $rawName = Str::camel($className);
+            $rawMethod = $class->addMethod($rawName);
             $args = [];
             foreach ($ctorParams as $p) {
-                $mp = $method->addParameter($p['name'])->setType($p['php']);
+                $mp = $rawMethod->addParameter($p['name'])->setType($p['php']);
                 if (array_key_exists('default', $p)) {
                     $mp->setDefaultValue($p['default']);
                 }
                 $args[] = '$'.$p['name'];
             }
-            $method->setReturnType('Saloon\\Http\\Response')
+            $rawMethod->setReturnType('Saloon\\Http\\Response')
                 ->setBody("return \$this->connector->send(new {$className}(".implode(', ', $args).'));');
+
+            // The TYPED dual method (#06): present only when the op returns a MAPPED component. It unwraps
+            // the raw `Response` through the spine-DTO adapter's `fromResponse`.
+            $component = $this->returnComponent($spec['op']);
+            if ($component === null || ! isset($dataMap[$component])) {
+                continue;
+            }
+
+            $dtoName = $this->dtoShortName($component, (string) $dataMap[$component]);
+            $ns->addUse($namespace.'\\Data\\'.$dtoName);
+
+            $typedName = $this->typedMethodName($rawName, $domain);
+            $typedMethod = $class->addMethod($typedName)->addComment('Typed view over the `{data: {...}}` envelope.');
+            $callArgs = [];
+            foreach ($ctorParams as $p) {
+                $mp = $typedMethod->addParameter($p['name'])->setType($p['php']);
+                if (array_key_exists('default', $p)) {
+                    $mp->setDefaultValue($p['default']);
+                }
+                $callArgs[] = '$'.$p['name'];
+            }
+            $typedMethod->setReturnType($namespace.'\\Data\\'.$dtoName)
+                ->setBody("return {$dtoName}::fromResponse(\$this->{$rawName}(".implode(', ', $callArgs).'));');
         }
+
+        return $file;
+    }
+
+    /**
+     * The typed dual-method name: the raw name with a trailing domain-singular suffix stripped
+     * (`getComposition` → `get` in the `Compositions` domain), else the raw name with a `Typed` suffix to
+     * avoid colliding with the raw method.
+     */
+    private function typedMethodName(string $rawName, string $domain): string
+    {
+        $suffix = Str::studly(Str::singular($domain));
+        if ($suffix !== '' && str_ends_with($rawName, $suffix) && $rawName !== Str::camel($suffix)) {
+            $trimmed = Str::camel(substr($rawName, 0, -strlen($suffix)));
+            if ($trimmed !== '') {
+                return $trimmed;
+            }
+        }
+
+        return $rawName.'Typed';
+    }
+
+    /**
+     * The client `Data\*` adapter (#06): a THIN subclass of the spine-wire DTO adding only the Saloon
+     * `Response` → DTO unwrap (`static::fromArray($response->json('data') ?? [])`). No second field copy —
+     * the wire vocabulary + `fromArray` live in the licensed spine tier (ADR-0093).
+     */
+    private function buildDataAdapter(string $namespace, string $dtoName, string $spineFqn): PhpFile
+    {
+        $file = new PhpFile;
+        $file->setStrictTypes(false);
+        $ns = $file->addNamespace($namespace.'\\Data');
+        $ns->addUse('Saloon\\Http\\Response');
+
+        // Alias the spine base to `Spine<Name>` (the golden import convention) when the short-names collide.
+        $spineShort = $this->shortName($spineFqn);
+        $alias = $spineShort === $dtoName ? 'Spine'.$dtoName : null;
+        $ns->addUse($spineFqn, $alias);
+        $baseRef = $alias ?? $spineShort;
+
+        $class = $ns->addClass($dtoName)->setExtends($spineFqn);
+        $class->addComment(
+            "Connector-side Saloon adapter over the shared spine {@see {$baseRef}} (ADR-0093): the wire\n".
+            "vocabulary + its `fromArray` live in the licensed spine tier; this thin subclass adds ONLY the\n".
+            'Saloon Response->DTO unwrap, so there is no drift-prone second field copy here.'
+        );
+
+        $method = $class->addMethod('fromResponse')
+            ->setStatic()
+            ->setReturnType('self')
+            ->setBody("return static::fromArray(\$response->json('data') ?? []);");
+        $method->addParameter('response')->setType('Saloon\\Http\\Response');
 
         return $file;
     }
@@ -315,6 +458,34 @@ class SplicewireClientGenerator implements Generator
         $tag = $op['meta']['tags'][0] ?? null;
 
         return is_string($tag) && $tag !== '' ? Str::studly($tag) : null;
+    }
+
+    /**
+     * The response component short-name an op returns (a `ref` Type), or null when the op is untyped.
+     *
+     * @param  array<string, mixed>  $op
+     */
+    private function returnComponent(array $op): ?string
+    {
+        $returns = $op['returns'] ?? null;
+
+        return is_array($returns) && ($returns['kind'] ?? null) === 'ref'
+            ? (string) $returns['ref']
+            : null;
+    }
+
+    /**
+     * The client DTO short-name for a mapped component — the spine base's short-name (`CompositionData` →
+     * `Composition`, matching the hand package), so `Data\Composition extends …\Wire\Composition`.
+     */
+    private function dtoShortName(string $component, string $spineFqn): string
+    {
+        return $this->shortName($spineFqn);
+    }
+
+    private function shortName(string $fqn): string
+    {
+        return (string) Str::afterLast($fqn, '\\');
     }
 
     /**
