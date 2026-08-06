@@ -247,9 +247,21 @@ class SplicewireClientGenerator implements Generator
             return [$params, $name];
         }
 
+        $taken = array_column($params, 'name');
+
         $bodyMap = [];
         foreach ($op['body']['fields'] ?? [] as $field) {
             $name = Str::camel($field['name']);
+
+            // A body field whose camelCased name collides with a path param (e.g. path `{id}` + a body
+            // `id` field) must NOT emit a second constructor arg — the path param owns the arg; the body
+            // key just maps back to it in defaultBody.
+            if (in_array($name, $taken, true)) {
+                $bodyMap[$field['name']] = $name;
+
+                continue;
+            }
+
             $param = [
                 'name' => $name,
                 'wire' => $field['name'],
@@ -261,6 +273,7 @@ class SplicewireClientGenerator implements Generator
                 $param['default'] = $this->phpType($field['type']) === 'array' ? [] : null;
             }
             $params[] = $param;
+            $taken[] = $name;
             $bodyMap[$field['name']] = $name;
         }
 
