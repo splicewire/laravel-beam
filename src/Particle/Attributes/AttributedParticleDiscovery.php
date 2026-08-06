@@ -15,7 +15,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 /**
  * The reflect→register machinery behind {@see ParticleResource}/{@see ParticleOp} — the attribute twin of
  * the imperative `$registry->register(...)` provider block. It mirrors {@see AdminResourceRegistry}
- * (the `#[AdminResource]` discovery), but targets the REST/op registries instead of the admin manifest.
+ * (the `#[ParticleResource]` discovery), but targets the REST/op registries instead of the admin manifest.
  *
  * Because attributes cannot carry closures, the runtime `ParticleResource`/`ParticleOperation`'s closures
  * are resolved by CONVENTION from `public static` methods on the annotated class (see the attribute

@@ -356,7 +356,7 @@ class ParticleController extends Controller
 
     /**
      * Project one record to its typed Data: the resource's DECLARED Data class when it names one (the
-     * extension tier, e.g. `SiloData`), else the hydrator resolves it off beam's `#[AdminResource]`
+     * extension tier, e.g. `SiloData`), else the hydrator resolves it off beam's `#[ParticleResource]`
      * registry (ADR-0156: the record → Data-class map is read straight from the registry, not a port).
      */
     protected function projectRecord(ParticleResource $resource, Model $model, ReadContext $ctx): Data

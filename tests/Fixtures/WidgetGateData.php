@@ -3,9 +3,10 @@
 namespace Splicewire\Beam\Tests\Fixtures;
 
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Particle\ParticleResource;
 
 /**
- * A minimal read Data class so {@see \Splicewire\Beam\Particle\ParticleAdminResource::toResourceDefinition()}
+ * A minimal read Data class so {@see ParticleResource::toResourceDefinition()}
  * has a non-null `data` shape (an admin resource must declare one) — used by the gate-mapping tests.
  */
 class WidgetGateData extends Data

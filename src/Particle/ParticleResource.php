@@ -26,7 +26,7 @@ use Spatie\LaravelData\Data;
  *   2. **extension** — a controller `extends ParticleController`, returns its resource from
  *      {@see ParticleController::particleResource()}, inherits the CRUD verbs, and adds bespoke actions
  *      that ride the inherited internals.
- *   3. **frame** — a zero-glue admin resource skips this entirely and declares a Frame `#[AdminResource]`,
+ *   3. **frame** — a zero-glue admin resource skips this entirely and declares a Frame `#[ParticleResource]`,
  *      served by the existing generic `FrameResourceController` (a sibling surface over the same
  *      `ParticleWriter`).
  *
@@ -42,9 +42,8 @@ use Spatie\LaravelData\Data;
  * {@see $editData}, {@see $policy}, {@see $query}, {@see $group}, {@see $icon}, {@see $section},
  * {@see $navOrder}, {@see $routeName}, {@see $layout}, {@see $readOnly}, {@see $deletable},
  * {@see $editable}, {@see $showable}) and can project itself into Frame's agnostic contract via
- * {@see toResourceDefinition()}. These were previously carried by `ParticleAdminResource`, which is now a
- * thin delegating subclass kept only for backward compatibility (RDU-07 retires it) — see
- * {@see ParticleAdminResource}.
+ * {@see toResourceDefinition()}. These were previously carried by a separate admin-resource subtype,
+ * which RDU-01 merged UP into this one class and RDU-07 deleted.
  *
  * A resource is **framed** — i.e. it lights up the `@schemastud/frame` editor in addition to REST — when
  * {@see isFramed()} is true (a non-empty {@see $label}, unless overridden by the explicit {@see $frame}
@@ -58,7 +57,7 @@ class ParticleResource
      *                       (`DataFilter::query($key)`), e.g. `'silo'`
      * @param  class-string  $model  the Eloquent model class
      * @param  class-string|null  $data  the read/output spatie Data class; null ⇒ the hydrator resolves it
-     *                                   off beam's `#[AdminResource]` registry (record → its projection class)
+     *                                   off beam's `#[ParticleResource]` registry (record → its projection class)
      * @param  class-string|null  $input  the input spatie Data DTO (its `toModelAttributes()` maps the
      *                                    request to columns); null ⇒ snake-map the request body
      * @param  list<string>  $includes  default includes — compiled to BOTH the eager-load and the

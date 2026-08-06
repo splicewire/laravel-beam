@@ -15,7 +15,7 @@ use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * The attributed REST/op discovery — the runtime twin of #[AdminResource] discovery. Asserts a
+ * The attributed REST/op discovery — the runtime twin of #[ParticleResource] discovery. Asserts a
  * `#[ParticleResource]` / `#[ParticleOp]` Data class reflects into the two particle registries with its
  * scalar declaration AND its closure hooks wired from `public static` convention methods.
  */

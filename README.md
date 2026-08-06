@@ -84,7 +84,7 @@ A realm may PRESENT the same resource differently — a different label, group, 
 read-only gate — **without the resource declaration ever naming a realm** (declarations stay
 realm-agnostic; frame stays agnostic). This is a separate **overlay layer** behind the `?realm` seam
 that `AdminResourceRegistry` applies AFTER its realm-agnostic projection, so
-`ParticleResource`/`#[AdminResource]` never gain per-realm fields.
+`ParticleResource`/`#[ParticleResource]` never gain per-realm fields.
 
 - **`Splicewire\Beam\Realm\RealmResourceOverride`** — a partial overlay of PRESENTATION fields only
   (`label`, `group`, `icon`, `section`, `navOrder`, `routeName`, `form`, `layout`, `editData`, `policy`,

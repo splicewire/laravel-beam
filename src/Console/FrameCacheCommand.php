@@ -8,7 +8,7 @@ use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Frame\FrameResourceManifest;
 
 /**
- * `php artisan splicewire:beam:frame:cache` — build the cached `#[AdminResource]` manifest.
+ * `php artisan splicewire:beam:frame:cache` — build the cached `#[ParticleResource]` manifest.
  *
  * Mirrors Laravel's `package:discover` → `bootstrap/cache/packages.php` pattern: run the
  * popcorn {@see AttributedClassScanner} once over the configured
@@ -20,7 +20,7 @@ class FrameCacheCommand extends Command
 {
     protected $signature = 'splicewire:beam:frame:cache';
 
-    protected $description = 'Cache the discovered #[AdminResource] class manifest (skips the per-boot filesystem scan).';
+    protected $description = 'Cache the discovered #[ParticleResource] class manifest (skips the per-boot filesystem scan).';
 
     public function handle(AdminResourceRegistry $registry, FrameResourceManifest $manifest): int
     {

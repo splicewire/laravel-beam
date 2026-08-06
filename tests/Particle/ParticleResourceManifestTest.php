@@ -9,8 +9,8 @@ use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * RDU-01 — {@see ParticleResource} now carries the manifest fields (previously on
- * `ParticleAdminResource`), knows whether it is {@see ParticleResource::isFramed() framed}, and projects
+ * RDU-01 — {@see ParticleResource} now carries the manifest fields (previously on a separate
+ * admin-resource subtype, deleted in RDU-07), knows whether it is {@see ParticleResource::isFramed() framed}, and projects
  * into Frame's agnostic {@see ResourceDefinition}. The `$realm` param on the projection is accepted but
  * ignored for now (identical output for every realm).
  */

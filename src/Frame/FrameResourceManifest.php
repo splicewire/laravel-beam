@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Frame;
 use Illuminate\Contracts\Foundation\Application;
 
 /**
- * The build-time cache of discovered `#[AdminResource]` class-strings — beam's mirror of Laravel's
+ * The build-time cache of discovered `#[ParticleResource]` class-strings — beam's mirror of Laravel's
  * `bootstrap/cache/packages.php` package-discovery manifest.
  *
  * The PER-BOOT filesystem walk (`AttributedClassScanner` over the configured discover-paths) is the

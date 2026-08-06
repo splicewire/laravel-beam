@@ -6,9 +6,7 @@ use InvalidArgumentException;
 use ReflectionClass;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
 use Schemastud\Frame\Contracts\ResourceRegistry;
-use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
-use Splicewire\Beam\Frame\Attributes\AdminResource;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -32,19 +30,18 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
  * (RDU-03) is applied for the target realm — INERT (identity) by default, so with no overlay configured a
  * resource appears in the manifest exactly as before, identically in every realm.
  *
- * ## Discovery is unified onto `#[ParticleResource]`, with a temporary `#[AdminResource]` dual-read
+ * ## Discovery is unified onto `#[ParticleResource]`
  *
- * {@see self::registerClass()} reads whichever attribute an annotated class carries:
- *   - `#[ParticleResource]` — the unified path (RDU); reflected into a {@see ParticleResource}
- *     declaration via {@see AttributedParticleDiscovery}.
- *   - `#[AdminResource]` — the legacy path, kept TEMPORARILY as a DUAL-READ so existing annotated
- *     classes keep registering. A model-backed `#[AdminResource]` becomes a {@see ParticleResource}
- *     declaration too (so it projects per-realm); a `source`-backed (union) one has no model, so it
- *     stays a frozen {@see ResourceDefinition}. RDU-07 deletes this dual-read (and the attribute).
+ * {@see self::registerClass()} reads the `#[ParticleResource]` attribute an annotated class carries and
+ * reflects it into a {@see ParticleResource} declaration via {@see AttributedParticleDiscovery} (RDU;
+ * the legacy attribute dual-read was removed in RDU-07 — the registry now ingests only
+ * `#[ParticleResource]` declarations + imperative {@see self::register()} definitions).
  *
  * Plus a {@see self::register()} escape hatch for attribute-less resources (a raw `ResourceDefinition`,
- * e.g. a Frame union `source`). Beam binds this onto frame's `ResourceRegistry::class` port so frame
- * never imports a beam type — the arrow points DOWN (beam → frame), never up.
+ * e.g. a Frame union `source` — the model-required `#[ParticleResource]` attribute can't express a
+ * source-backed resource, so those register imperatively). Beam binds this onto frame's
+ * `ResourceRegistry::class` port so frame never imports a beam type — the arrow points DOWN
+ * (beam → frame), never up.
  */
 class AdminResourceRegistry implements ResourceRegistry
 {
@@ -71,9 +68,7 @@ class AdminResourceRegistry implements ResourceRegistry
     }
 
     /**
-     * Reflect an attributed Data class and register its DECLARATION. Reads whichever of the two
-     * attributes the class carries — the unified `#[ParticleResource]` or the legacy `#[AdminResource]`
-     * (dual-read, RDU-07 removes it).
+     * Reflect a `#[ParticleResource]`-annotated Data class and register its DECLARATION.
      *
      * @param  class-string  $dataClass
      */
@@ -85,45 +80,19 @@ class AdminResourceRegistry implements ResourceRegistry
 
         $reflection = new ReflectionClass($dataClass);
 
-        // Unified path: a `#[ParticleResource]`-annotated class is projected into a runtime
-        // ParticleResource declaration (including its manifest fields) by the particle discovery, and
-        // that runtime object is handed to us. Reflecting it here (rather than going through the
-        // particle registry) keeps this the single admin-manifest producer.
+        // A `#[ParticleResource]`-annotated class is projected into a runtime ParticleResource
+        // declaration (including its manifest fields) by the particle discovery, and that runtime object
+        // is handed to us. Reflecting it here (rather than going through the particle registry) keeps
+        // this the single admin-manifest producer.
         if ($this->readParticleAttribute($reflection) !== null) {
             $this->registerDeclaration(self::particleFromAttribute($dataClass));
 
             return;
         }
 
-        // Legacy dual-read (RDU-07 deletes this branch): a `#[AdminResource]`-annotated class.
-        $attribute = $this->readAdminAttribute($reflection);
-
-        if ($attribute === null) {
-            throw new InvalidArgumentException(
-                "Class [{$dataClass}] is not annotated with #[ParticleResource] or #[AdminResource]; use register() for attribute-less resources."
-            );
-        }
-
-        $hasModel = $attribute->model !== null;
-        $hasSource = $attribute->source !== null;
-
-        if ($hasModel === $hasSource) {
-            throw new InvalidArgumentException(
-                "Admin resource [{$attribute->key}] must set exactly one of `model` or `source`; "
-                .($hasModel ? 'both were set.' : 'neither was set.')
-            );
-        }
-
-        // A model-backed #[AdminResource] becomes a ParticleResource DECLARATION, so it projects
-        // per-realm like every unified resource. A source-backed (union) one has no model — it can't
-        // be a ParticleResource — so it stays a frozen ResourceDefinition (realm-invariant).
-        if ($hasModel) {
-            $this->registerDeclaration(self::particleFromAdminAttribute($dataClass, $attribute));
-
-            return;
-        }
-
-        $this->register(self::toDefinition($dataClass, $attribute));
+        throw new InvalidArgumentException(
+            "Class [{$dataClass}] is not annotated with #[ParticleResource]; use register() for attribute-less resources."
+        );
     }
 
     /**
@@ -146,8 +115,8 @@ class AdminResourceRegistry implements ResourceRegistry
     }
 
     /**
-     * Scan configured class-strings and discover-paths for `#[ParticleResource]` / `#[AdminResource]`
-     * classes. Idempotent — re-scanning overwrites by key, never duplicates.
+     * Scan configured class-strings and discover-paths for `#[ParticleResource]` classes.
+     * Idempotent — re-scanning overwrites by key, never duplicates.
      *
      * @param  array<int, class-string>  $classes  explicit resource class list
      * @param  array<int, string>  $paths  filesystem paths to scan for annotated classes
@@ -252,112 +221,6 @@ class AdminResourceRegistry implements ResourceRegistry
     }
 
     /**
-     * Bridge a model-backed legacy `#[AdminResource]` into a {@see ParticleResource} DECLARATION, so
-     * it projects per-realm like every unified resource (RDU-07 removes this bridge with the attribute).
-     * The annotated class itself is the read `data` (the single-class default).
-     *
-     * @param  class-string  $dataClass
-     */
-    private static function particleFromAdminAttribute(string $dataClass, AdminResource $attribute): ParticleResource
-    {
-        return new ParticleResource(
-            key: $attribute->key,
-            model: $attribute->model,
-            data: $dataClass,
-            label: $attribute->label,
-            form: $attribute->form,
-            editData: $attribute->editData,
-            policy: $attribute->policy,
-            query: $attribute->query,
-            group: $attribute->group,
-            icon: $attribute->icon,
-            section: $attribute->section,
-            navOrder: $attribute->navOrder,
-            routeName: $attribute->routeName,
-            layout: $attribute->layout,
-            readOnly: $attribute->readOnly,
-            deletable: $attribute->deletable,
-            editable: $attribute->editable,
-            // An #[AdminResource] is navigable/framed by construction (it carries a label); force it so
-            // even a label-less legacy declaration still projects as framed.
-            frame: true,
-        );
-    }
-
-    /**
-     * Project a `source`-backed (union) legacy `#[AdminResource]` into frame's agnostic
-     * {@see ResourceDefinition}. A `source` yields a `service` union resource (model null,
-     * editData/query preserved for the create-schema escape hatch, not creatable). Model-backed
-     * #[AdminResource]s no longer route through here — they become {@see ParticleResource}s
-     * ({@see self::particleFromAdminAttribute()}).
-     *
-     * @param  class-string  $dataClass
-     */
-    public static function toDefinition(string $dataClass, AdminResource $attribute): ResourceDefinition
-    {
-        $nav = new NavMetadata(
-            label: $attribute->label,
-            group: $attribute->group,
-            icon: $attribute->icon,
-            section: $attribute->section,
-            navOrder: $attribute->navOrder,
-            routeName: $attribute->routeName,
-        );
-
-        if ($attribute->source !== null) {
-            return new ResourceDefinition(
-                key: $attribute->key,
-                sourceKind: 'service',
-                model: null,
-                source: $attribute->source,
-                data: $dataClass,
-                creatable: false,
-                query: null,
-                // A service-backed resource is not writable THROUGH Frame (store/update/destroy 405), but
-                // it may still carry an `editData` create-SCHEMA escape hatch (ADR-0156 §83): the schema
-                // endpoint emits `editData ?? data`, and a host may render that create form while SUBMITTING
-                // it to a survivor REST endpoint (e.g. tenant provisioning). Purely a schema surface — it
-                // grants no Frame write path (creatable/editable/deletable stay false). Default null ⇒ every
-                // existing source-backed resource (review-queue, members) is unchanged.
-                editData: $attribute->editData,
-                policy: $attribute->policy,
-                form: $attribute->form,
-                nav: $nav,
-                layout: $attribute->layout,
-                deletable: false,
-                editable: false,
-            );
-        }
-
-        return new ResourceDefinition(
-            key: $attribute->key,
-            sourceKind: 'model',
-            model: $attribute->model,
-            source: null,
-            data: $dataClass,
-            creatable: ! $attribute->readOnly,
-            query: $attribute->query,
-            editData: $attribute->editData,
-            policy: $attribute->policy,
-            form: $attribute->form,
-            nav: $nav,
-            layout: $attribute->layout,
-            deletable: $attribute->deletable ?? ! $attribute->readOnly,
-            editable: $attribute->editable ?? ! $attribute->readOnly,
-        );
-    }
-
-    /**
-     * @param  ReflectionClass<object>  $class
-     */
-    private function readAdminAttribute(ReflectionClass $class): ?AdminResource
-    {
-        $attrs = $class->getAttributes(AdminResource::class);
-
-        return empty($attrs) ? null : $attrs[0]->newInstance();
-    }
-
-    /**
      * @param  ReflectionClass<object>  $class
      */
     private function readParticleAttribute(ReflectionClass $class): ?ParticleResourceAttribute
@@ -368,10 +231,10 @@ class AdminResourceRegistry implements ResourceRegistry
     }
 
     /**
-     * Find `#[ParticleResource]` / `#[AdminResource]`-annotated class-strings under the given paths —
-     * the live filesystem walk. Delegates the generic file→FQCN→attribute machinery to popcorn's
-     * {@see AttributedClassScanner}. Only classes carrying one of the attributes are returned (others
-     * ignored, not errors), so a discover path may point at a whole Data directory. `instanceof: false`
+     * Find `#[ParticleResource]`-annotated class-strings under the given paths — the live filesystem
+     * walk. Delegates the generic file→FQCN→attribute machinery to popcorn's
+     * {@see AttributedClassScanner}. Only classes carrying the attribute are returned (others ignored,
+     * not errors), so a discover path may point at a whole Data directory. `instanceof: false`
      * preserves the original exact-match behaviour.
      *
      * @param  array<int, string>  $paths
@@ -381,9 +244,8 @@ class AdminResourceRegistry implements ResourceRegistry
     {
         $scanner = new AttributedClassScanner;
 
-        return array_values(array_unique([
-            ...$scanner->scan($paths, ParticleResourceAttribute::class, instanceof: false),
-            ...$scanner->scan($paths, AdminResource::class, instanceof: false),
-        ]));
+        return array_values(array_unique(
+            $scanner->scan($paths, ParticleResourceAttribute::class, instanceof: false),
+        ));
     }
 }

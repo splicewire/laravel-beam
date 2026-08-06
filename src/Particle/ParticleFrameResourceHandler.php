@@ -30,9 +30,9 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * Every Frame-served resource rides this: it runs the canonical CRUD through the beam seams — the
  * {@see ParticleWriter} write pipeline (validate→authorize→persist→emit) and a Data-class read
  * projection — so a Frame edit and a `ParticleController` REST call share ONE runtime. A resource that
- * declares only its `#[AdminResource]`-successor manifest works off the {@see ResourceDefinition}
+ * declares only its `#[ParticleResource]` manifest works off the {@see ResourceDefinition}
  * alone (the old zero-glue `DefaultResourceHandler` archetype); a resource that also registers a
- * {@see ParticleAdminResource} (or {@see ParticleResource}) under its key gets its enrichment —
+ * {@see ParticleResource} under its key gets its enrichment —
  * `includes` eager-loads, a `project` custom projector, `prepare`/`afterWrite` hooks, and input DTO
  * validation — applied identically to the REST transport.
  *
@@ -218,8 +218,8 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     /**
      * Refuse a non-read verb on a resource whose {@see ResourceDefinition} does not permit it — a
-     * read-only surface (declared `readOnly: true` on `#[AdminResource]` / {@see ParticleAdminResource},
-     * or a service-backed union) is a machine-authored LIST/inspection surface, so store/update/destroy
+     * read-only surface (declared `readOnly: true` on a `#[ParticleResource]`, or a service-backed union)
+     * is a machine-authored LIST/inspection surface, so store/update/destroy
      * AND the per-record `show` are genuinely unavailable, not merely unauthorized (ADR-0156 §83 read-only
      * widening). Renders as HTTP 405 — the same refusal the retired bespoke read-only handlers raised (they
      * were list-only: they threw on `show` too) — so the Frame frontend gate and the API agree.

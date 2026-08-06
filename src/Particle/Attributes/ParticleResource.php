@@ -15,7 +15,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * {@see ParticleController} serves it — no per-resource controller AND no
  * per-resource provider registration.
  *
- * This is the REST/runtime sibling of frame's `#[AdminResource]` (which feeds the admin *manifest*,
+ * This is the REST/runtime sibling of frame's `#[ParticleResource]` (which feeds the admin *manifest*,
  * `ResourceDefinition`). The two are independent transports over the same `ParticleWriter`/hydrator: a
  * surface may carry BOTH (editable admin + REST) or just this one (headless REST).
  *
@@ -32,7 +32,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *
  * The attribute is DECLARATION-only: it registers the resource into the registry. It does NOT mount routes
  * — routing (uri + middleware group) stays a host concern via `Route::particleResource($uri, $key, only:)`,
- * exactly as `#[AdminResource]` registers a declaration while the host mounts the admin leaf.
+ * exactly as `#[ParticleResource]` registers a declaration while the host mounts the admin leaf.
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 class ParticleResource

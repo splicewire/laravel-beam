@@ -2,21 +2,22 @@
 
 namespace Splicewire\Beam\Tests\Particle;
 
-use Splicewire\Beam\Particle\ParticleAdminResource;
+use Schemastud\Frame\Registry\ResourceDefinition;
+use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * How {@see ParticleAdminResource} projects the four Frame gates onto the agnostic
- * {@see \Schemastud\Frame\Registry\ResourceDefinition} (ADR-0156 §83 + F04). `readOnly` closes the three
+ * How a {@see ParticleResource} projects the four Frame gates onto the agnostic
+ * {@see ResourceDefinition} (ADR-0156 §83 + F04). `readOnly` closes the three
  * WRITE gates (create/edit/delete) while `showable` — the F04 show-independent widening — stays open by
  * default, so a read-only INSPECT resource still serves a per-record detail (`records/{id}`).
  */
-class ParticleAdminResourceGatesTest extends TestCase
+class ParticleResourceGatesTest extends TestCase
 {
-    private function resource(array $overrides = []): ParticleAdminResource
+    private function resource(array $overrides = []): ParticleResource
     {
-        return new ParticleAdminResource(...array_merge([
+        return new ParticleResource(...array_merge([
             'key' => 'widgets',
             'model' => 'App\\Models\\Widget',
             'data' => WidgetGateData::class,

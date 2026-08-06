@@ -6,7 +6,6 @@ use InvalidArgumentException;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Frame\AdminResourceRegistry;
-use Splicewire\Beam\Frame\Attributes\AdminResource;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResource as ParticleResourceRuntime;
 use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
@@ -16,8 +15,9 @@ use Splicewire\Beam\Tests\TestCase;
  * RDU-02 — the registry no longer FREEZES one {@see ResourceDefinition} per key at registration. It stores
  * the resource DECLARATION (a {@see ParticleResourceRuntime}) and projects it PER-REALM at manifest-build
  * time via {@see ParticleResourceRuntime::toResourceDefinition()}. Discovery is unified onto
- * `#[ParticleResource]`; `#[AdminResource]` stays a temporary DUAL-READ (RDU-07 removes it). A framed
- * resource appears in the manifest exactly as before; a REST-only one does not — no behavior change.
+ * `#[ParticleResource]` (RDU-07 removed the legacy dual-read); a source-backed (union) resource — which
+ * the model-required attribute can't express — registers imperatively via {@see AdminResourceRegistry::register()}.
+ * A framed resource appears in the manifest exactly as before; a REST-only one does not — no behavior change.
  */
 class AdminResourceRegistryTest extends TestCase
 {
@@ -105,32 +105,37 @@ class AdminResourceRegistryTest extends TestCase
         $this->assertSame('framed-particle', $manifest[0]->key);
     }
 
-    public function test_a_legacy_admin_resource_class_still_registers_via_dual_read(): void
+    public function test_a_source_backed_union_resource_registers_imperatively_as_a_frozen_definition(): void
     {
+        // The model-required #[ParticleResource] attribute can't express a source-backed union resource,
+        // so it registers imperatively as a raw ResourceDefinition (RDU-07) — served as-is, realm-invariant.
         $registry = new AdminResourceRegistry;
-        // No #[ParticleResource] here — only the legacy #[AdminResource]. The dual-read must still register it.
-        $registry->registerClass(FixtureLegacyAdminResource::class);
+        $definition = new ResourceDefinition(
+            key: 'union-admin',
+            sourceKind: 'service',
+            model: null,
+            source: 'App\\Sources\\ReviewQueue',
+            data: WidgetGateData::class,
+            creatable: false,
+            query: null,
+            editData: null,
+            policy: null,
+            form: 'bare',
+            nav: new NavMetadata(label: 'Union Admin'),
+            deletable: false,
+            editable: false,
+        );
 
-        $this->assertTrue($registry->has('legacy-admin'));
+        $registry->register($definition);
 
-        $def = $registry->get('legacy-admin');
-        $this->assertSame('legacy-admin', $def->key);
-        $this->assertSame('model', $def->sourceKind);
-        $this->assertSame('App\\Models\\Legacy', $def->model);
-        $this->assertSame('Legacy Admin', $def->nav->label);
-        // The annotated class itself is the read `data` (single-class default).
-        $this->assertSame(FixtureLegacyAdminResource::class, $def->data);
-    }
-
-    public function test_a_source_backed_legacy_admin_resource_stays_a_frozen_definition(): void
-    {
-        $registry = new AdminResourceRegistry;
-        $registry->registerClass(FixtureUnionAdminResource::class);
+        $this->assertTrue($registry->has('union-admin'));
 
         $def = $registry->get('union-admin');
         $this->assertSame('service', $def->sourceKind);
         $this->assertSame('App\\Sources\\ReviewQueue', $def->source);
         $this->assertFalse($def->creatable);
+        $this->assertFalse($def->deletable);
+        $this->assertFalse($def->editable);
     }
 
     public function test_the_imperative_register_escape_hatch_serves_a_raw_definition(): void
@@ -162,7 +167,7 @@ class AdminResourceRegistryTest extends TestCase
         $registry = new AdminResourceRegistry;
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('not annotated with #[ParticleResource] or #[AdminResource]');
+        $this->expectExceptionMessage('not annotated with #[ParticleResource]');
         $registry->registerClass(FixtureUnannotated::class);
     }
 }
@@ -177,19 +182,5 @@ class FixtureFramedParticleResource {}
 
 #[ParticleResource(key: 'rest-only', model: 'App\\Models\\Widget')]
 class FixtureRestOnlyParticleResource {}
-
-#[AdminResource(
-    key: 'legacy-admin',
-    label: 'Legacy Admin',
-    model: 'App\\Models\\Legacy',
-)]
-class FixtureLegacyAdminResource extends WidgetGateData {}
-
-#[AdminResource(
-    key: 'union-admin',
-    label: 'Union Admin',
-    source: 'App\\Sources\\ReviewQueue',
-)]
-class FixtureUnionAdminResource extends WidgetGateData {}
 
 class FixtureUnannotated {}

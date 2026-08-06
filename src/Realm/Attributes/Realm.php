@@ -13,7 +13,7 @@ use Splicewire\Beam\Realm\RealmRegistry;
  * single source of truth from which {@see RealmDiscovery} reflects a
  * {@see RealmDefinition} at boot and self-registers it onto the {@see RealmRegistry},
  * ADDITIVELY onto the three imperative base realms (last-wins by key). Mirrors frame's
- * `#[AdminResource]` mechanism, but for realms — and lives in **beam**, never frame: frame owns the
+ * `#[ParticleResource]` mechanism, but for realms — and lives in **beam**, never frame: frame owns the
  * agnostic {@see RealmDefinition} *shape* and must never learn the realm names "admin"/"tenant"/"user".
  *
  * This base attribute carries the full realm parameter surface with neutral defaults; the sibling

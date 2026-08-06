@@ -44,7 +44,7 @@ class PayloadParticleReader implements ParticleHydrator
 
         if ($dataClass === null) {
             throw new RuntimeException(
-                'No Data class resolved for ['.$record::class.'] — register an #[AdminResource] whose `model` matches this record type.',
+                'No Data class resolved for ['.$record::class.'] — register an #[ParticleResource] whose `model` matches this record type.',
             );
         }
 
@@ -55,7 +55,7 @@ class PayloadParticleReader implements ParticleHydrator
     }
 
     /**
-     * The record → projection Data class map, resolved off the registered #[AdminResource] definitions:
+     * The record → projection Data class map, resolved off the registered #[ParticleResource] definitions:
      * the first model-backed definition whose `model` the record is an instance of wins (its annotated
      * class IS `data`). Null when no definition claims the record type.
      *

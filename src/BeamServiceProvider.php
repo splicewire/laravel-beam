@@ -96,7 +96,7 @@ use Splicewire\Beam\Write\ParticleWriter;
  *
  * Layering law (ADR-0156 inverted ADR-0082): beam -> frame, never frame -> beam. Beam is the paid
  * CMS engine and MAY reference the agnostic `Schemastud\Frame\*` foundation directly (it owns the
- * resource DECLARATION — `#[AdminResource]` + the registry — and feeds frame's generic manifest
+ * resource DECLARATION — `#[ParticleResource]` + the registry — and feeds frame's generic manifest
  * machinery through frame's ResourceRegistry port). Frame must never reference `Splicewire\Beam\*`.
  */
 class BeamServiceProvider extends PackageServiceProvider
@@ -212,7 +212,7 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->bind(ParticleHydrator::class, PayloadParticleReader::class);
 
         // Beam's resource DECLARATION registry (ADR-0156: "frame has no concept of admin"). It is bound
-        // onto frame's agnostic ResourceRegistry port as a SINGLETON so boot-time #[AdminResource] discovery
+        // onto frame's agnostic ResourceRegistry port as a SINGLETON so boot-time #[ParticleResource] discovery
         // (packageBooted) persists across the request and both names resolve one shared instance. Frame's
         // manifest machinery reads the port; it never imports this beam type (arrow points DOWN, beam → frame).
         $this->app->singleton(AdminResourceRegistry::class, fn ($app) => new AdminResourceRegistry(
@@ -220,7 +220,7 @@ class BeamServiceProvider extends PackageServiceProvider
         ));
         $this->app->alias(AdminResourceRegistry::class, ResourceRegistry::class);
 
-        // The build-time #[AdminResource] manifest cache (mirrors bootstrap/cache/packages.php). When it
+        // The build-time #[ParticleResource] manifest cache (mirrors bootstrap/cache/packages.php). When it
         // exists, discoverResources() reads the cached class-strings instead of re-walking the filesystem
         // each boot; `splicewire:beam:frame:cache` writes it, `splicewire:beam:frame:clear` / `optimize:clear` remove it.
         $this->app->singleton(FrameResourceManifest::class, fn ($app) => new FrameResourceManifest($app));
@@ -357,13 +357,13 @@ class BeamServiceProvider extends PackageServiceProvider
         // ADDITIVE onto the three imperative base realms (last-wins by key). Vocabulary lives in beam.
         $this->registerRealms();
 
-        // Resource DECLARATION discovery (ADR-0156). Reflect the configured #[AdminResource] classes +
+        // Resource DECLARATION discovery (ADR-0156). Reflect the configured #[ParticleResource] classes +
         // scan the configured discover-paths into beam's singleton AdminResourceRegistry, which frame's
         // manifest machinery reads through the ResourceRegistry port. This is the discovery wiring that used
-        // to live in frame's FrameServiceProvider — moved here because the #[AdminResource] opinion is beam's.
+        // to live in frame's FrameServiceProvider — moved here because the #[ParticleResource] opinion is beam's.
         $this->discoverResources();
 
-        // Attributed REST/op discovery (ADR-0116/0160): the runtime twin of #[AdminResource] discovery.
+        // Attributed REST/op discovery (ADR-0116/0160): the runtime twin of #[ParticleResource] discovery.
         // Reflect the configured #[ParticleResource] / #[ParticleOp] Data classes (+ discover-paths) into
         // the two particle registries, so a host declares a REST resource / named op ON its Data class
         // instead of hand-registering it from a provider. Closures the attribute can't carry are resolved
@@ -613,7 +613,7 @@ class BeamServiceProvider extends PackageServiceProvider
     }
 
     /**
-     * Boot-time #[AdminResource] discovery into beam's singleton {@see AdminResourceRegistry}.
+     * Boot-time #[ParticleResource] discovery into beam's singleton {@see AdminResourceRegistry}.
      *
      * The explicit `resources.classes` list is ALWAYS honoured (it is cheap). The discover-path SCAN is
      * where the cost lives, so it is cached: when the {@see FrameResourceManifest} exists (a host ran
