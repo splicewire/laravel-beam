@@ -616,6 +616,9 @@ class BeamServiceProvider extends PackageServiceProvider
      *        - 'legacyPostUpdate' also accept POST {uri}/{id} for update, so a hand-rolled CRUD controller
      *                             can be dissolved WITHOUT changing its public URLs
      *        - 'idConstraint'     'uuid' to constrain {id} with whereUuid (default: unconstrained)
+     *        - 'controller'       route through a dedicated ParticleController subclass instead of the
+     *                             generic {@see ParticleController} (still stamped with the `_particle`
+     *                             default, so it keeps the auto-`@group`); default: the generic controller
      *
      *   Route::particleOp('timeline-projects', 'timeline_project', 'regenerate', ['name' => '...'])
      *      → POST {uri}/{id}/op/{op} → invoke  ({resourceKey}.op.{op}, or the 'name' override)
@@ -637,6 +640,10 @@ class BeamServiceProvider extends PackageServiceProvider
             $only = $options['only'] ?? ['index', 'show', 'store', 'update', 'destroy'];
             $name = $options['names'] ?? str_replace('-', '_', $resourceKey);
             $idConstraint = $options['idConstraint'] ?? null;
+            // 'controller' — route THROUGH a dedicated ParticleController subclass (e.g. SiloController) so it
+            // gets the `_particle` default + auto-`@group` like the generic surface, instead of hand-rolled
+            // explicit routes. Defaults to the generic controller (fully backward-compatible).
+            $controller = $options['controller'] ?? ParticleController::class;
 
             $withId = function (RouteInstance $route) use ($idConstraint): RouteInstance {
                 return $idConstraint === 'uuid' ? $route->whereUuid('id') : $route;
@@ -649,24 +656,24 @@ class BeamServiceProvider extends PackageServiceProvider
             };
 
             if (in_array('index', $only, true)) {
-                $stamp($this->get($uri, [ParticleController::class, 'index']), 'index');
+                $stamp($this->get($uri, [$controller, 'index']), 'index');
             }
 
             if (in_array('show', $only, true)) {
-                $stamp($withId($this->get("{$uri}/{id}", [ParticleController::class, 'show'])), 'show');
+                $stamp($withId($this->get("{$uri}/{id}", [$controller, 'show'])), 'show');
             }
 
             if (in_array('store', $only, true)) {
-                $stamp($this->post($uri, [ParticleController::class, 'store']), 'store');
+                $stamp($this->post($uri, [$controller, 'store']), 'store');
             }
 
             if (in_array('update', $only, true)) {
                 $verbs = ($options['legacyPostUpdate'] ?? false) ? ['put', 'patch', 'post'] : ['put', 'patch'];
-                $stamp($withId($this->match($verbs, "{$uri}/{id}", [ParticleController::class, 'update'])), 'update');
+                $stamp($withId($this->match($verbs, "{$uri}/{id}", [$controller, 'update'])), 'update');
             }
 
             if (in_array('destroy', $only, true)) {
-                $stamp($withId($this->delete("{$uri}/{id}", [ParticleController::class, 'destroy'])), 'destroy');
+                $stamp($withId($this->delete("{$uri}/{id}", [$controller, 'destroy'])), 'destroy');
             }
         });
 
