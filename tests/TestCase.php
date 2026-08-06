@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests;
 
 use Orchestra\Testbench\TestCase as Orchestra;
+use Rushing\PermissionCascade\PermissionCascadeServiceProvider;
 use Rushing\Versioning\VersioningServiceProvider;
 use Schemastud\DataSchemas\LaravelDataSchemasServiceProvider;
 use Spatie\Activitylog\ActivitylogServiceProvider;
@@ -34,6 +35,11 @@ abstract class TestCase extends Orchestra
             // not rungs above beam.
             VersioningServiceProvider::class,
             LaravelDataSchemasServiceProvider::class,
+            // The entitlement kernel seam (Frame OS ticket 07/08): binds the kernel EntitlementResolver
+            // (NullEntitlementResolver by default). beam is the authority that registers the entitlement
+            // Gate abilities + can-map/manifest projection over this seam. A declared dependency DOWN
+            // (beam → permission-cascade), not a rung above beam.
+            PermissionCascadeServiceProvider::class,
         ];
     }
 }

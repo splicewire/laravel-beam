@@ -112,6 +112,36 @@ return [
     ],
 
     /*
+    | Realm entitlement gates (Frame OS ticket 08, ADR-0013 §4/§5). The RealmDefinition DTO carries no
+    | gating (it is a shared schemastud shape); realm→entitlement gating rides HERE, keyed by realm key,
+    | and is read by the RealmManifestProjector. Each entry: [ 'entitlement' => key, 'mode' => 'hard'|'soft',
+    | 'upsell' => [...]? ]. Empty (the default) gates NOTHING — every realm always projects, so an existing
+    | host stays byte-for-byte until it declares gates. Two modes:
+    |
+    |  - 'hard' → protection by construction: an unentitled principal does NOT see the realm at all (the
+    |    descriptor is OMITTED from the projected manifest).
+    |  - 'soft' → monetization: an unentitled principal STILL sees the realm, carrying `locked: true` + the
+    |    `upsell` metadata, so a launcher can render it as lockable.
+    |
+    | Example:
+    |   'admin'  => ['entitlement' => 'app-operator', 'mode' => 'hard'],
+    |   'studio' => ['entitlement' => 'go-songwriter', 'mode' => 'soft',
+    |               'upsell' => ['title' => 'Go Songwriter', 'cta' => 'Upgrade']],
+    */
+    'realm_gates' => [],
+
+    /*
+    | Entitlement (feature-plane) wiring (Frame OS ticket 08, ADR-0013 §2). beam is the authority that
+    | unifies the two authorization planes: it registers a Laravel Gate ability per known feature key
+    | (`entitlement:{key}`) delegating to the entitlement gate, which consults the bound kernel
+    | EntitlementResolver. The key universe is `array_keys(config('app.entitlements'))` ∪ these extra
+    | beam-known feature keys (for a key a host has not mirrored into `app.entitlements`). Empty by default.
+    */
+    'entitlements' => [
+        'keys' => [],
+    ],
+
+    /*
     | Attributed REST particle discovery (ADR-0116/0160) — the runtime twin of the #[ParticleResource]
     | `resources` config. A host declares a REST resource / named op ON its Data class with
     | `#[ParticleResource]` / `#[ParticleOp]` and lists the class here (or points `discover_paths` at its

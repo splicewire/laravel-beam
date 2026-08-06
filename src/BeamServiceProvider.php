@@ -388,6 +388,45 @@ class BeamServiceProvider extends PackageServiceProvider
         // instead of hand-registering it from a provider. Closures the attribute can't carry are resolved
         // from `public static` convention methods on the annotated class.
         $this->discoverParticleAttributes();
+
+        // Frame OS ticket 08 (ADR-0013 §2): beam is the authority that unifies the two authorization
+        // planes. Register a Laravel Gate ability per KNOWN feature key (`entitlement:{key}`) delegating to
+        // the entitlement gate (which consults the bound kernel EntitlementResolver) — so the feature plane
+        // (`Gate::allows('entitlement:workbench.enter')`) and the per-action plane (`Gate::allows('song',
+        // $song)`) answer one uniform predicate. Inert by default: with no `app.entitlements` configured
+        // and the null resolver, no abilities register that would ever pass.
+        $this->registerEntitlementAbilities();
+    }
+
+    /**
+     * Frame OS ticket 08 (ADR-0013 §2/§4): define an `entitlement:{key}` Gate ability per known feature
+     * key, each delegating to the {@see \Splicewire\Beam\Entitlements\EntitlementGate}. The key universe is
+     * `array_keys(config('app.entitlements'))` ∪ any beam-known feature keys the host lists under
+     * `beam.core.entitlements.keys`. The ability ignores the resolved user argument and asks the gate for
+     * the ambient principal ($user) so both a request-time user and a null/tenant principal route through
+     * the one resolver. Skipped entirely when the kernel resolver contract is unbound (a bare install
+     * without permission-cascade) — the gate stays byte-for-byte inert.
+     */
+    protected function registerEntitlementAbilities(): void
+    {
+        if (! $this->app->bound(\Rushing\PermissionCascade\Contracts\EntitlementResolver::class)) {
+            return;
+        }
+
+        $gate = $this->app->make(Gate::class);
+
+        $keys = array_values(array_unique([
+            ...array_keys((array) config('app.entitlements', [])),
+            ...(array) config('beam.core.entitlements.keys', []),
+        ]));
+
+        foreach ($keys as $key) {
+            $gate->define(
+                'entitlement:'.$key,
+                fn ($user = null) => $this->app->make(\Splicewire\Beam\Entitlements\EntitlementGate::class)
+                    ->allows($key, $user),
+            );
+        }
     }
 
     /**
