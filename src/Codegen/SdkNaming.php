@@ -58,15 +58,16 @@ class SdkNaming
         $last = end($segments) ?: 'resource';
         $prevIsParam = count($segments) >= 2 && $isParam($segments[count($segments) - 2]);
 
-        // A trailing ACTION segment names the operation rather than addressing a resource:
-        //  - a multi-word (hyphenated) verb is self-describing (`generate-composition` → GenerateComposition);
-        //  - a SINGULAR word right after a `{param}` is an item action (`…/{id}/render` → RenderComposition).
-        // A PLURAL trailing segment is NOT an action — it is a sub-resource collection (`…/{id}/cells`),
-        // handled by the resource-addressed branch below (→ ListCell).
-        if (! $isParam($last) && str_contains($last, '-')) {
-            return Str::studly($last);
-        }
+        // A trailing ACTION segment names an operation on an item — it comes right after a `{param}`
+        // (`…/{id}/render`, `…/{id}/generate-composition`). A multi-word (hyphenated) action is
+        // self-describing (`GenerateComposition`); a SINGULAR word gets the resource appended
+        // (`RenderComposition`). A PLURAL segment after `{param}` is a sub-resource collection
+        // (`…/{id}/cells` → `ListCell`), handled below. A hyphenated segment that is NOT after a
+        // `{param}` is a hyphenated RESOURCE name (`context-scopes`, `thread-messages`), not an action.
         if (! $isParam($last) && $prevIsParam && ! $isPlural($last)) {
+            if (str_contains($last, '-')) {
+                return Str::studly($last);
+            }
             $resource = $segments[count($segments) - 3] ?? $segments[count($segments) - 2];
 
             return Str::studly($last).$this->noun($resource);
