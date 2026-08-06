@@ -34,10 +34,10 @@ class RealmOverlay
      * @param  string  $realmKey  the EXISTING realm this overlay enriches (must be registered already).
      * @param  OverlayDocument  $document  the data-schema overlay folded into the realm descriptor.
      * @param  list<RealmOverlayCapability>  $capabilities  entitlement-gated capabilities the overlay adds;
-     *                                                       each soft-locks (present + upsell) when unheld.
+     *                                                      each soft-locks (present + upsell) when unheld.
      * @param  string|null  $satelliteKey  optional provenance tag for the REGISTRAR's own bookkeeping
-     *                                      (diagnostics/doctor). Deliberately NOT projected into the
-     *                                      manifest — the frame must learn no satellite identity.
+     *                                     (diagnostics/doctor). Deliberately NOT projected into the
+     *                                     manifest — the frame must learn no satellite identity.
      */
     public function __construct(
         public readonly string $realmKey,

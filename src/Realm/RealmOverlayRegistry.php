@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Realm;
 
+use Splicewire\Beam\BeamServiceProvider;
+
 /**
  * Frame OS ticket 14 (ADR-0014 §A2): the registry the {@see RealmManifestProjector} consults to fold
  * additive realm OVERLAYS into their target realm's descriptor BEFORE the manifest emits.
@@ -13,7 +15,7 @@ namespace Splicewire\Beam\Realm;
  * this registry as one more input, so overlay resolution happens PHP-side, before emit, mirroring how a
  * tenant scope is resolved wholly PHP-side.
  *
- * A SINGLETON (bound in {@see \Splicewire\Beam\BeamServiceProvider}), so a capability package
+ * A SINGLETON (bound in {@see BeamServiceProvider}), so a capability package
  * registering from its own provider mutates the shared instance the projector reads.
  *
  * Inert by default: an empty registry folds nothing, so every realm descriptor is byte-for-byte
