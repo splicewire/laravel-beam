@@ -268,6 +268,11 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      * closure (ADR-0156 §83 mutation-scope widening) is applied here: it row-scopes the reachable set so a
      * Frame edit/revoke cannot resolve a row the caller may not touch (e.g. another user's central Sanctum
      * token). Default (no `scope`) ⇒ the unscoped `model::query()` — every existing resource is unchanged.
+     *
+     * The resolved editor realm rides along as `$scope`'s second arg (the same `route()->defaults['realm']`
+     * seam a host's Frame manifest controller reads to resolve nav context) — a shared resource can vary
+     * its row-level scope by realm (e.g. "My Teams" vs "Members" over the same table). Beam depends DOWN
+     * on nothing app-namespaced, so this stays prose, not a `@see` reference to a host class.
      */
     protected function query(ResourceDefinition $definition)
     {
@@ -281,7 +286,9 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         }
 
         if ($resource?->scope !== null) {
-            $query = ($resource->scope)($query) ?? $query;
+            $realm = app(Request::class)->route()?->defaults['realm'] ?? null;
+
+            $query = ($resource->scope)($query, $realm) ?? $query;
         }
 
         return $query;

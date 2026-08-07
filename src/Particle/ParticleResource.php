@@ -66,25 +66,24 @@ class ParticleResource
      *                            true; a plain `latest()` query otherwise (for resources with no declared
      *                            filter surface)
      * @param  int  $perPage  default page size
-     * @param  string|null  $defaultSort  the column the NON-filterable index orders by (descending, via
-     *                                    `->latest($col)`); null ⇒ `created_at` (the framework `latest()`
-     *                                    default). A filterable resource ignores this — its data-filters
-     *                                    query owns ordering. Lets a resource whose list is "most recently
-     *                                    EDITED first" declare `updated_at` instead of the create default.
      * @param  (Closure(mixed $model, mixed $input, mixed $actor): void)|null  $prepare  before-write hook
      * @param  (Closure(mixed $model, mixed $input): void)|null  $afterWrite  after-write relation-sync hook
      * @param  (Closure(Model): Data)|null  $project  a
      *                                                custom row→Data projector for a Data class with a named constructor (e.g.
      *                                                `ScaffoldPackData::fromScaffoldPack`); takes precedence over {@see $data}
-     * @param  (Closure(Builder): Builder)|null  $scope
-     *                                                   a row-level authorization scope applied to the SUBJECT-RESOLUTION base query the generic handler
-     *                                                   uses for `show`/`update`/`destroy` `findOrFail($id)` (ADR-0156 §83 mutation-scope widening). Absent
-     *                                                   the request-filter surface, this closure is the ONLY guard that keeps a Frame edit/revoke from
-     *                                                   reaching a row the caller may not touch — required for a resource whose model table is shared across
-     *                                                   callers/tenants (e.g. the central Sanctum token table: scope to the acting user's own tokens so a
-     *                                                   revoke-by-id can never delete another user's token). null (default) ⇒ the unscoped `model::query()`,
-     *                                                   so every existing resource is unchanged. Independent of {@see $filterable} (which scopes only the
-     *                                                   list index): a resource may scope both, either, or neither.
+     * @param  (Closure(Builder, ?string $realm): Builder)|null  $scope
+     *                                                                   a row-level authorization scope applied to the SUBJECT-RESOLUTION base query the generic handler
+     *                                                                   uses for `show`/`update`/`destroy` `findOrFail($id)` (ADR-0156 §83 mutation-scope widening). Absent
+     *                                                                   the request-filter surface, this closure is the ONLY guard that keeps a Frame edit/revoke from
+     *                                                                   reaching a row the caller may not touch — required for a resource whose model table is shared across
+     *                                                                   callers/tenants (e.g. the central Sanctum token table: scope to the acting user's own tokens so a
+     *                                                                   revoke-by-id can never delete another user's token). null (default) ⇒ the unscoped `model::query()`,
+     *                                                                   so every existing resource is unchanged. Independent of {@see $filterable} (which scopes only the
+     *                                                                   list index): a resource may scope both, either, or neither. The optional second `$realm` param
+     *                                                                   carries the resolved editor realm (e.g. `'admin'` vs `'tenant'`) so a shared resource can vary its
+     *                                                                   row-level scope by realm (e.g. "My Teams" vs "Members" reading the same table under different
+     *                                                                   realms); a closure that only declares one param is still called correctly — PHP ignores the
+     *                                                                   uncalled extra arg.
      *
      * The remaining params are the optional editor/**manifest** concerns — a resource that declares a
      * non-empty {@see $label} is {@see isFramed() framed} and projects into Frame via
@@ -114,7 +113,6 @@ class ParticleResource
         public array $includes = [],
         public bool $filterable = true,
         public int $perPage = 20,
-        public ?string $defaultSort = null,
         public ?Closure $prepare = null,
         public ?Closure $afterWrite = null,
         public ?Closure $project = null,

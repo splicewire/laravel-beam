@@ -6,7 +6,7 @@ use Rushing\Doctor\Finding;
 
 /**
  * Advisory, presence-conditional: if the frame editor rung is installed AND its
- * AdminResourceRegistry is bound in the container, resolve it and report how many
+ * ResourceRegistry port is bound in the container, resolve it and report how many
  * resources it carries. On a headless beam app the editor rung is absent — that is a
  * valid configuration (ADR-0082: frame depends on beam, never the reverse), so this
  * PASSes with a skip note. Never FAILs.
@@ -16,7 +16,7 @@ class FrameManifestAudit
     public function run(): Finding
     {
         $check = 'frame manifest';
-        $registryClass = 'Schemastud\\Frame\\Registry\\AdminResourceRegistry';
+        $registryClass = 'Schemastud\\Frame\\Contracts\\ResourceRegistry';
 
         if (! class_exists($registryClass) || ! app()->bound($registryClass)) {
             return Finding::pass($check, 'frame not installed — editor rung absent (headless beam is valid).');

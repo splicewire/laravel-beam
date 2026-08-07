@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pipeline\Pipeline;
 use InvalidArgumentException;
 use Spatie\LaravelData\Data;
-use Splicewire\Beam\Frame\AdminResourceRegistry;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\Contracts\ReadStage;
 use Splicewire\Beam\Read\Stages\ProjectStage;
@@ -25,7 +25,7 @@ use Splicewire\Beam\Read\Stages\ProjectStage;
  *
  * It needs NO `rushing/laravel-data-filters` dependency (that is the whole point of it living in beam-core):
  * the default {@see ProjectStage} resolves the record's `Data` class straight off beam's own
- * {@see AdminResourceRegistry} (ADR-0156 retired the `SchemaDataResolver` inversion port — beam owns the
+ * {@see ParticleResourceRegistry} (ADR-0156 retired the `SchemaDataResolver` inversion port — beam owns the
  * registry, so it reads it directly). It does NOT compose list queries — that is the query-composing host
  * binding's job, so {@see self::query()} throws.
  */
@@ -35,7 +35,7 @@ class PayloadParticleReader implements ParticleHydrator
      * @param  list<ReadStage>|null  $stages  the read chain; null ⇒ the shipped single {@see ProjectStage}
      *                                        built from this reader's own registry
      */
-    public function __construct(private AdminResourceRegistry $resources, private ?array $stages = null) {}
+    public function __construct(private ParticleResourceRegistry $resources, private ?array $stages = null) {}
 
     public function hydrate(Model|array|string $source, ReadContext $ctx): Data
     {

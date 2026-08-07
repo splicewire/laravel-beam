@@ -6,14 +6,14 @@ use Closure;
 use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 use Spatie\LaravelData\Data;
-use Splicewire\Beam\Frame\AdminResourceRegistry;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ReadStage;
 use Splicewire\Beam\Read\ReadPass;
 
 /**
  * The shipped terminal (and, by default, only) read stage (DESIGN §9d): the direct-from-source projection.
  * A record's reconciled payload IS the data → `Data::from(readableSource($record))`, resolved to the record's
- * `Data` class straight off beam's own {@see AdminResourceRegistry} (ADR-0156 retired the `SchemaDataResolver`
+ * `Data` class straight off beam's own {@see ParticleResourceRegistry} (ADR-0156 retired the `SchemaDataResolver`
  * inversion port — beam owns the registry, so it reads it directly), then `ReadContext::$includes` applied as
  * the serialization partial.
  *
@@ -22,7 +22,7 @@ use Splicewire\Beam\Read\ReadPass;
  */
 class ProjectStage implements ReadStage
 {
-    public function __construct(private AdminResourceRegistry $resources) {}
+    public function __construct(private ParticleResourceRegistry $resources) {}
 
     public function handle(ReadPass $pass, Closure $next): ReadPass
     {
@@ -51,7 +51,7 @@ class ProjectStage implements ReadStage
      */
     private function dataClassFor(Model $record): ?string
     {
-        foreach ($this->resources->all() as $definition) {
+        foreach ($this->resources->definitions() as $definition) {
             if ($definition->model !== null && $record instanceof $definition->model) {
                 /** @var class-string<Data> */
                 return $definition->data;

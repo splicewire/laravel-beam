@@ -13,7 +13,7 @@ use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Lazy;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
-use Splicewire\Beam\Frame\AdminResourceRegistry;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Cardinality;
 use Splicewire\Beam\Read\Contracts\ReadStage;
 use Splicewire\Beam\Read\PayloadParticleReader;
@@ -24,7 +24,7 @@ use Splicewire\Beam\Tests\TestCase;
 
 /**
  * The degenerate read seam (beam-write-pipeline ticket 13): beam-core's payload reader resolves a
- * record's Data class straight off beam's {@see AdminResourceRegistry} (ADR-0156 retired the
+ * record's Data class straight off beam's {@see ParticleResourceRegistry} (ADR-0156 retired the
  * SchemaDataResolver port) and builds a typed Data from the record's reconciled payload — with NO
  * data-filters dependency. It proves the payoff at the seam: ONE `ReadContext::includes` list compiles to
  * the spatie serialization partial (a Lazy prop appears only when included), and that list queries are
@@ -51,10 +51,10 @@ class PayloadParticleReaderTest extends TestCase
      */
     private function reader(?string $dataClass): PayloadParticleReader
     {
-        $registry = new AdminResourceRegistry;
+        $registry = new ParticleResourceRegistry;
 
         if ($dataClass !== null) {
-            $registry->register(new ResourceDefinition(
+            $registry->registerDefinition(new ResourceDefinition(
                 key: 'reader-fixture',
                 sourceKind: 'model',
                 model: ReaderFixtureModel::class,
@@ -130,8 +130,8 @@ class PayloadParticleReaderTest extends TestCase
 
         // A host inserts a redaction pipe AFTER the shipped ProjectStage — the fine-grained read seam
         // (DESIGN §9d). The stage receives the built Data on the pass and transforms it.
-        $registry = new AdminResourceRegistry;
-        $registry->register(new ResourceDefinition(
+        $registry = new ParticleResourceRegistry;
+        $registry->registerDefinition(new ResourceDefinition(
             key: 'reader-fixture', sourceKind: 'model', model: ReaderFixtureModel::class, source: null,
             data: ReaderFixtureData::class, creatable: true, query: null, editData: null, policy: null,
             form: 'bare', nav: new NavMetadata(label: 'Reader Fixture'),

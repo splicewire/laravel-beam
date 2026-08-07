@@ -6,7 +6,6 @@ use Closure;
 use InvalidArgumentException;
 use ReflectionClass;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
-use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Particle\ParticleOperation as ParticleOperationRuntime;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource as ParticleResourceRuntime;
@@ -14,8 +13,8 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
  * The reflect→register machinery behind {@see ParticleResource}/{@see ParticleOp} — the attribute twin of
- * the imperative `$registry->register(...)` provider block. It mirrors {@see AdminResourceRegistry}
- * (the `#[ParticleResource]` discovery), but targets the REST/op registries instead of the admin manifest.
+ * the imperative `$registry->register(...)` provider block. It mirrors {@see ParticleResourceRegistry::registerClass()}
+ * (the `#[ParticleResource]` discovery) for the REST/op registries specifically.
  *
  * Because attributes cannot carry closures, the runtime `ParticleResource`/`ParticleOperation`'s closures
  * are resolved by CONVENTION from `public static` methods on the annotated class (see the attribute
@@ -100,8 +99,8 @@ class AttributedParticleDiscovery
      * DECLARATION — the SINGLE place the attribute is read (RDU-02). It carries both the REST/runtime
      * core AND the optional manifest fields the attribute now declares (RDU-02), plus the closure hooks
      * resolved by CONVENTION from `public static` methods (attributes can't carry closures). Static so
-     * beam's {@see AdminResourceRegistry} can project the SAME declaration into
-     * the admin manifest — one attribute, one reader, two consumers (the REST registry + the manifest).
+     * beam's {@see ParticleResourceRegistry} can project the SAME declaration into
+     * Frame's manifest — one attribute, one reader, two transports (REST + Frame) off one registration.
      *
      * @param  class-string  $class
      */
@@ -118,7 +117,6 @@ class AttributedParticleDiscovery
             includes: $attribute->includes,
             filterable: $attribute->filterable,
             perPage: $attribute->perPage,
-            defaultSort: $attribute->defaultSort,
             prepare: self::conventionOn($class, 'prepare'),
             afterWrite: self::conventionOn($class, 'afterWrite'),
             project: self::conventionOn($class, 'project'),
@@ -185,7 +183,7 @@ class AttributedParticleDiscovery
 
     /**
      * Static twin of {@see self::convention()} — so {@see self::resourceFromAttribute()} (static, shared
-     * with the admin manifest producer) can wrap the same `public static` convention methods.
+     * with the Frame manifest projection) can wrap the same `public static` convention methods.
      *
      * @param  class-string  $class
      */

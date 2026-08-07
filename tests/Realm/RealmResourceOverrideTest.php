@@ -3,8 +3,8 @@
 namespace Splicewire\Beam\Tests\Realm;
 
 use Schemastud\Frame\Registry\ResourceDefinition;
-use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Particle\ParticleResource as ParticleResourceRuntime;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceOverride;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
@@ -19,11 +19,11 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class RealmResourceOverrideTest extends TestCase
 {
-    private function registry(?RealmResourceRegistry $overrides = null): AdminResourceRegistry
+    private function registry(?RealmResourceRegistry $overrides = null): ParticleResourceRegistry
     {
-        $registry = new AdminResourceRegistry($overrides ?? new RealmResourceRegistry(new RealmRegistry));
+        $registry = new ParticleResourceRegistry($overrides ?? new RealmResourceRegistry(new RealmRegistry));
 
-        $registry->registerDeclaration(new ParticleResourceRuntime(
+        $registry->register(new ParticleResourceRuntime(
             key: 'widgets',
             model: 'App\\Models\\Widget',
             data: WidgetGateData::class,
@@ -42,10 +42,10 @@ class RealmResourceOverrideTest extends TestCase
         // is inert. Base (null realm), operator, tenant, and user all yield an equal ResourceDefinition.
         $registry = $this->registry();
 
-        $base = $registry->get('widgets');
-        $operator = $registry->get('widgets', 'operator');
-        $tenant = $registry->get('widgets', 'tenant');
-        $user = $registry->get('widgets', 'user');
+        $base = $registry->definition('widgets');
+        $operator = $registry->definition('widgets', 'operator');
+        $tenant = $registry->definition('widgets', 'tenant');
+        $user = $registry->definition('widgets', 'user');
 
         $this->assertEquals($base, $operator);
         $this->assertEquals($base, $tenant);
@@ -65,7 +65,7 @@ class RealmResourceOverrideTest extends TestCase
 
         $registry = $this->registry($overrides);
 
-        $operator = $registry->get('widgets', 'operator');
+        $operator = $registry->definition('widgets', 'operator');
         $this->assertSame('Operator Widgets', $operator->nav->label);
         $this->assertSame('Platform', $operator->nav->group);
         $this->assertFalse($operator->creatable, 'readOnly overlay closes create');
@@ -73,12 +73,12 @@ class RealmResourceOverrideTest extends TestCase
         $this->assertFalse($operator->deletable, 'readOnly overlay closes delete');
 
         // Only the operator realm changed — tenant + base are the untouched declaration.
-        $tenant = $registry->get('widgets', 'tenant');
+        $tenant = $registry->definition('widgets', 'tenant');
         $this->assertSame('Widgets', $tenant->nav->label);
         $this->assertSame('Workspace', $tenant->nav->group);
         $this->assertTrue($tenant->creatable);
 
-        $base = $registry->get('widgets');
+        $base = $registry->definition('widgets');
         $this->assertSame('Widgets', $base->nav->label);
         $this->assertTrue($base->creatable);
     }
@@ -93,7 +93,7 @@ class RealmResourceOverrideTest extends TestCase
             new RealmResourceOverride(readOnly: true, deletable: true),
         );
 
-        $def = $this->registry($overrides)->get('widgets', 'operator');
+        $def = $this->registry($overrides)->definition('widgets', 'operator');
 
         $this->assertFalse($def->creatable);
         $this->assertFalse($def->editable);
@@ -116,12 +116,12 @@ class RealmResourceOverrideTest extends TestCase
 
         // In the user realm: label comes from the most-specific `user` overlay; group/icon are inherited
         // from the `tenant` overlay lower in the stack (proving the stack IS walked, not just the leaf).
-        $user = $registry->get('widgets', 'user');
+        $user = $registry->definition('widgets', 'user');
         $this->assertSame('My Widgets', $user->nav->label, 'user overlay (topmost) wins the label');
         $this->assertSame('building', $user->nav->icon, 'tenant overlay (in the stack) still applies');
 
         // In the tenant realm itself: only the tenant overlay applies (its own key, no stack).
-        $tenant = $registry->get('widgets', 'tenant');
+        $tenant = $registry->definition('widgets', 'tenant');
         $this->assertSame('Tenant Widgets', $tenant->nav->label);
     }
 
@@ -137,8 +137,8 @@ class RealmResourceOverrideTest extends TestCase
 
         $registry = $this->registry($overrides);
 
-        $tenant = $registry->get('widgets', 'tenant');
-        $operator = $registry->get('widgets', 'operator');
+        $tenant = $registry->definition('widgets', 'tenant');
+        $operator = $registry->definition('widgets', 'operator');
 
         foreach ([$tenant, $operator] as $def) {
             $this->assertInstanceOf(ResourceDefinition::class, $def);
@@ -161,7 +161,7 @@ class RealmResourceOverrideTest extends TestCase
         $this->assertTrue($overrides->has('gadgets', 'user'), 'stack chain makes the tenant overlay reachable from user');
 
         // apply() with a null realm is always identity (the realm-agnostic manifest path).
-        $base = $this->registry()->get('widgets');
+        $base = $this->registry()->definition('widgets');
         $this->assertSame($base, $overrides->apply($base, null));
     }
 }

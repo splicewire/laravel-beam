@@ -28,7 +28,7 @@ class ManifestIndexTest extends TestCase
         $this->assertContains('ManifestIndex', $names);
         $this->assertContains('BeamInstallManifest', $names);
         $this->assertContains('RouteManifestSource', $names);
-        $this->assertContains('AdminResourceRegistry', $names);
+        $this->assertContains('ParticleResourceRegistry', $names);
         $this->assertContains('ParticleWriter (write chain)', $names);
         $this->assertContains('PayloadParticleReader (read chain)', $names);
     }

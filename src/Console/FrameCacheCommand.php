@@ -4,8 +4,8 @@ namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
-use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Frame\FrameResourceManifest;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
  * `php artisan splicewire:beam:frame:cache` — build the cached `#[ParticleResource]` manifest.
@@ -22,7 +22,7 @@ class FrameCacheCommand extends Command
 
     protected $description = 'Cache the discovered #[ParticleResource] class manifest (skips the per-boot filesystem scan).';
 
-    public function handle(AdminResourceRegistry $registry, FrameResourceManifest $manifest): int
+    public function handle(ParticleResourceRegistry $registry, FrameResourceManifest $manifest): int
     {
         $explicit = (array) config('beam.core.resources.classes', config('frame.resources', []));
         $paths = (array) config('beam.core.resources.discover_paths', config('frame.discover_paths', []));

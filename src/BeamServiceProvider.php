@@ -40,10 +40,10 @@ use Splicewire\Beam\Console\ManifestIndexCommand;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Entitlements\EntitlementGate;
-use Splicewire\Beam\Frame\AdminResourceRegistry;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Frame\FrameResourceManifest;
 use Splicewire\Beam\Frame\NullFrameFilterProvider;
+use Splicewire\Beam\Frame\ParticleResourceRegistryPort;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
@@ -82,7 +82,12 @@ use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
+use Splicewire\Beam\Surgeon\SdkHookMigrationAudit;
+use Splicewire\Beam\Surgeon\SdkHookMigrationBridge;
 use Splicewire\Beam\Surgeon\SdkNameConventionAudit;
+use Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit;
+use Splicewire\Beam\Surgeon\SdkReturnsTypeScriptResolutionAudit;
+use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -244,20 +249,21 @@ class BeamServiceProvider extends PackageServiceProvider
 
         // The READ seam mirroring the write pipeline (ticket 13, DESIGN §9). The DEFAULT hydrator is the
         // degenerate payload reader — NO data-filters dependency. It resolves a record → its projection
-        // Data class straight off beam's own AdminResourceRegistry (ADR-0156: the SchemaDataResolver port
+        // Data class straight off beam's own ParticleResourceRegistry (ADR-0156: the SchemaDataResolver port
         // was retired; beam owns the registry, so it reads it directly rather than deferring to a host
         // binding). A host that wants query-composing list reads binds its own DataFilterRecordHydrator
         // over the same ParticleHydrator port (port-in-base / binding-in-host).
         $this->app->bind(ParticleHydrator::class, PayloadParticleReader::class);
 
-        // Beam's resource DECLARATION registry (ADR-0156: "frame has no concept of admin"). It is bound
-        // onto frame's agnostic ResourceRegistry port as a SINGLETON so boot-time #[ParticleResource] discovery
-        // (packageBooted) persists across the request and both names resolve one shared instance. Frame's
+        // Frame's agnostic ResourceRegistry port (ADR-0156: "frame has no concept of admin") is bound onto
+        // the genuinely stateless {@see ParticleResourceRegistryPort} forwarder — it exists only because
+        // PHP has no overloading (ParticleResourceRegistry's REST-facing `get(): ParticleResource` and the
+        // port's `get(): ResourceDefinition` can't share a method name on one class), so every call passes
+        // straight through to ParticleResourceRegistry's differently-named projection methods. A SINGLETON
+        // so boot-time #[ParticleResource] discovery (packageBooted) persists across the request. Frame's
         // manifest machinery reads the port; it never imports this beam type (arrow points DOWN, beam → frame).
-        $this->app->singleton(AdminResourceRegistry::class, fn ($app) => new AdminResourceRegistry(
-            $app->make(RealmResourceRegistry::class),
-        ));
-        $this->app->alias(AdminResourceRegistry::class, ResourceRegistry::class);
+        $this->app->singleton(ParticleResourceRegistryPort::class);
+        $this->app->alias(ParticleResourceRegistryPort::class, ResourceRegistry::class);
 
         // The build-time #[ParticleResource] manifest cache (mirrors bootstrap/cache/packages.php). When it
         // exists, discoverResources() reads the cached class-strings instead of re-walking the filesystem
@@ -306,7 +312,7 @@ class BeamServiceProvider extends PackageServiceProvider
         // The per-realm presentation-override registry (RDU-03) — the overlay layer behind the `?realm`
         // seam. A SINGLETON hydrated from `frame.realm_resource_overrides` at resolution (the default
         // config ships EMPTY, so it is INERT — identity projection in every realm — until RDU-05 seeds
-        // real overlays). Beam's AdminResourceRegistry applies it when it projects a declaration for a
+        // real overlays). Beam's ParticleResourceRegistry applies it when it projects a declaration for a
         // realm; frame never sees it (the realm concept lives entirely in beam). A host may also register
         // overlays imperatively via `->override($key, $realm, new RealmResourceOverride(...))`.
         $this->app->singleton(RealmResourceRegistry::class, fn ($app) => (new RealmResourceRegistry(
@@ -320,7 +326,9 @@ class BeamServiceProvider extends PackageServiceProvider
         // host BINDS its own envelope adapter over its response DTO — and, when it subclasses the registries
         // for its own container FQN, re-aliases these singletons to the same instance (port-in-base /
         // binding-in-host).
-        $this->app->singleton(ParticleResourceRegistry::class);
+        $this->app->singleton(ParticleResourceRegistry::class, fn ($app) => (new ParticleResourceRegistry(
+            $app->make(RealmResourceRegistry::class),
+        ))->loadRealmMap((array) config('frame.realms', [])));
         $this->app->singleton(ParticleOperationRegistry::class);
         $this->app->bind(ResponseEnvelope::class, ArrayResponseEnvelope::class);
 
@@ -390,7 +398,7 @@ class BeamServiceProvider extends PackageServiceProvider
 
         // Bind each audit with its default host-scoped construction so the manifest can resolve it by
         // class-string (the sweep does `$app->make($audit)`): the house-style scan defaults to the app
-        // base path; the SDK-drift audit points at the co-dev splicewire/client checkout; the docblock
+        // base path; the SDK-drift audit points at the co-dev splicewire/laravel-connector checkout; the docblock
         // tier-audit scans the app base path and places FQNs via the surgeon PackageGraph.
         $this->app->bind(HouseStyleAudit::class, fn ($app) => new HouseStyleAudit([$app->basePath()]));
         $this->app->bind(SdkEndpointDriftAudit::class, fn () => SdkEndpointDriftAudit::forClientPackage());
@@ -402,6 +410,15 @@ class BeamServiceProvider extends PackageServiceProvider
 
             return new DocblockTierAudit($this->phpFilesUnder($root), $graph->packageForRoot($root) ?? 'app', $graph);
         });
+        $this->app->singleton(SdkHookMigrationBridge::class, fn () => new SdkHookMigrationBridge(
+            script: config('beam.client.surgeon.sdk_hook_migration.bridge.script'),
+            node: (string) config('beam.client.surgeon.sdk_hook_migration.bridge.node', 'node'),
+            timeout: (int) config('beam.client.surgeon.sdk_hook_migration.bridge.timeout', 60),
+        ));
+        $this->app->bind(SdkHookMigrationAudit::class, fn ($app) => SdkHookMigrationAudit::forApp($app->make(SdkHookMigrationBridge::class)));
+        $this->app->bind(SdkReturnsCoverageAudit::class, fn () => SdkReturnsCoverageAudit::forApp());
+        $this->app->bind(SdkReturnsTypeScriptResolutionAudit::class, fn () => SdkReturnsTypeScriptResolutionAudit::forApp());
+        $this->app->bind(TypeScriptShortNameCollisionAudit::class, fn () => TypeScriptShortNameCollisionAudit::forApp());
 
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
@@ -409,6 +426,10 @@ class BeamServiceProvider extends PackageServiceProvider
         $manifest->register('splicewire/laravel-beam', SdkNameConventionAudit::class);
         $manifest->register('splicewire/laravel-beam', ParticleControllerRedundancyAudit::class);
         $manifest->register('splicewire/laravel-beam', DocblockTierAudit::class);
+        $manifest->register('splicewire/laravel-beam', SdkHookMigrationAudit::class);
+        $manifest->register('splicewire/laravel-beam', SdkReturnsCoverageAudit::class);
+        $manifest->register('splicewire/laravel-beam', SdkReturnsTypeScriptResolutionAudit::class);
+        $manifest->register('splicewire/laravel-beam', TypeScriptShortNameCollisionAudit::class);
     }
 
     /**
@@ -539,9 +560,10 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->registerRealms();
 
         // Resource DECLARATION discovery (ADR-0156). Reflect the configured #[ParticleResource] classes +
-        // scan the configured discover-paths into beam's singleton AdminResourceRegistry, which frame's
-        // manifest machinery reads through the ResourceRegistry port. This is the discovery wiring that used
-        // to live in frame's FrameServiceProvider — moved here because the #[ParticleResource] opinion is beam's.
+        // scan the configured discover-paths into beam's singleton ParticleResourceRegistry, which frame's
+        // manifest machinery reads through the ResourceRegistry port (via ParticleResourceRegistryPort). This
+        // is the discovery wiring that used to live in frame's FrameServiceProvider — moved here because the
+        // #[ParticleResource] opinion is beam's.
         $this->discoverResources();
 
         // Attributed REST/op discovery (ADR-0116/0160): the runtime twin of #[ParticleResource] discovery.
@@ -707,6 +729,14 @@ class BeamServiceProvider extends PackageServiceProvider
             if (($options['idConstraint'] ?? null) === 'uuid') {
                 $route->whereUuid('id');
             }
+
+            // A Stream-kind op (ADR-0160) has no single resolved response — it emits a sequence of
+            // typed SSE events instead. `particleOp` mounts through the generic controller, so there's
+            // no per-route call site to chain `->streams()` onto directly; an `'streams'` option lets
+            // the caller declare it here (surgeon-audit-viability ticket 28).
+            if ($options['streams'] ?? null) {
+                $route->streams($options['streams']);
+            }
         });
 
         // `Route::particleOps` (HTTP-02) — the plural loop-collapse sibling of `particleOp`. Takes a LIST of
@@ -862,12 +892,12 @@ class BeamServiceProvider extends PackageServiceProvider
                 package: $pkg, order: 11,
             ),
             new ManifestDescriptor(
-                name: 'AdminResourceRegistry',
+                name: 'ParticleResourceRegistry',
                 of: 'Frame resource definitions (model→Data projections) driving reads + the editor',
                 seam: ManifestSeam::AttributeScan,
                 arity: ManifestArity::PickOne,
                 registerHint: 'annotate a Data class #[ParticleResource] (or add its dir to beam.core.resources.discover_paths)',
-                where: '#[ParticleResource] → '.AdminResourceRegistry::class,
+                where: '#[ParticleResource] → '.ParticleResourceRegistry::class,
                 package: $pkg, order: 12,
             ),
             new ManifestDescriptor(
@@ -921,7 +951,7 @@ class BeamServiceProvider extends PackageServiceProvider
     }
 
     /**
-     * Boot-time #[ParticleResource] discovery into beam's singleton {@see AdminResourceRegistry}.
+     * Boot-time #[ParticleResource] discovery into beam's singleton {@see ParticleResourceRegistry}.
      *
      * The explicit `resources.classes` list is ALWAYS honoured (it is cheap). The discover-path SCAN is
      * where the cost lives, so it is cached: when the {@see FrameResourceManifest} exists (a host ran
@@ -931,7 +961,7 @@ class BeamServiceProvider extends PackageServiceProvider
      */
     protected function discoverResources(): void
     {
-        $registry = $this->app->make(AdminResourceRegistry::class);
+        $registry = $this->app->make(ParticleResourceRegistry::class);
 
         // The explicit list is always registered, cache or no cache.
         $explicit = config('beam.core.resources.classes', config('frame.resources', []));
