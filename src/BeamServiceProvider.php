@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Rushing\Surgeon\Audit\PackageGraph;
+use Rushing\Surgeon\Operation\CallbackConformanceManifest;
+use Rushing\Surgeon\Operation\ConformanceManifest;
 use Rushing\Surgeon\Operation\Operation;
 use Rushing\Surgeon\Operation\SuggestsOperations;
 use Rushing\Versioning\Contracts\RecordReconciler;
@@ -326,6 +328,29 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->singleton(ManifestIndex::class);
 
         $this->registerSurgeonAudits();
+        $this->registerConformanceManifest();
+    }
+
+    /**
+     * Surgeon's conformance-sweep discovery port (ticket 07, decision 5) — generalized to a
+     * zero-config beam default (beam-surgeon-rollout #01). A host used to hand-write this exact
+     * binding in its own AppServiceProvider (splicewire-app did, before migrating onto this
+     * default in #02); now any host that installs `rushing/laravel-surgeon` gets `surgeon:audit`
+     * discovery of beam's registered audits for free. Guarded exactly like `registerSurgeonAudits()`
+     * — a host without surgeon installed pays nothing and gets no binding.
+     */
+    protected function registerConformanceManifest(): void
+    {
+        if (! interface_exists(ConformanceManifest::class)) {
+            return;
+        }
+
+        $this->app->bind(
+            ConformanceManifest::class,
+            fn ($app) => new CallbackConformanceManifest(
+                fn () => $app->make(BeamDoctorManifest::class)->registrations(),
+            ),
+        );
     }
 
     /**

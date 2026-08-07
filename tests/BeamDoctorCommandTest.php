@@ -14,6 +14,7 @@ use Splicewire\Beam\Doctor\McpIsolationAudit;
 use Splicewire\Beam\Doctor\SchemaFormsDoorAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
 use Splicewire\Beam\Doctor\SitemapReadinessAudit;
+use Splicewire\Beam\Doctor\SurgeonWiringAudit;
 
 class BeamDoctorCommandTest extends TestCase
 {
@@ -272,6 +273,32 @@ class BeamDoctorCommandTest extends TestCase
             ['packages' => [], 'packages-dev' => []],
         );
         $this->assertSame(DoctorStatus::Warn, $this->finding($findings, 'first-party closure declared in repositories')->status);
+    }
+
+    // ---- SurgeonWiringAudit: catches surgeon's absence itself (beam-surgeon-rollout #01) --
+
+    public function test_surgeon_wiring_audit_warns_and_never_fails_when_the_host_never_required_it(): void
+    {
+        $this->pointBaseAt(
+            ['minimum-stability' => 'dev', 'prefer-stable' => true],
+            ['packages' => [], 'packages-dev' => []],
+        );
+
+        $this->artisan('splicewire:beam:doctor')
+            ->expectsOutputToContain('rushing/laravel-surgeon')
+            ->assertExitCode(BeamDoctorCommand::SUCCESS);
+    }
+
+    public function test_surgeon_wiring_audit_passes_when_the_host_requires_surgeon(): void
+    {
+        $this->pointBaseAt(
+            ['minimum-stability' => 'dev', 'prefer-stable' => true, 'require' => ['rushing/laravel-surgeon' => '*']],
+            ['packages' => [], 'packages-dev' => []],
+        );
+
+        $this->artisan('splicewire:beam:doctor')
+            ->expectsOutputToContain('discoverable via')
+            ->assertExitCode(BeamDoctorCommand::SUCCESS);
     }
 
     /**

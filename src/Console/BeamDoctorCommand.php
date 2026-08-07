@@ -15,6 +15,7 @@ use Splicewire\Beam\Doctor\McpIsolationAudit;
 use Splicewire\Beam\Doctor\SchemaFormsDoorAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
 use Splicewire\Beam\Doctor\SitemapReadinessAudit;
+use Splicewire\Beam\Doctor\SurgeonWiringAudit;
 
 /**
  * `php artisan splicewire:beam:doctor` — base-tier Beam readiness. Moat-free: it never requires
@@ -26,7 +27,12 @@ use Splicewire\Beam\Doctor\SitemapReadinessAudit;
  * marquee deploy-dark launch gate + first-party repository closure), the BEAM.md self-description
  * manifest, the marquee runtime wiring, and Playwright MCP isolation. The frame / schema-forms /
  * data-schemas checks remain advisory + presence-conditional (a headless beam app with no editor
- * rung is a valid, green configuration — ADR-0082 / ADR-0095).
+ * rung is a valid, green configuration — ADR-0082 / ADR-0095). {@see SurgeonWiringAudit} is the
+ * absence-half of beam's surgeon integration (beam-surgeon-rollout #01): it reads the host's own
+ * composer.json (not runtime interface presence) so it fires even where `rushing/laravel-surgeon`
+ * happens to autoload but the host never actually required it — the case `registerSurgeonAudits()`'s
+ * `interface_exists` guard can never catch on its own, since a silently-inert audit has nothing to
+ * report.
  *
  * Gate vs advisory: the dependency contract, the BEAM.md manifest, the marquee runtime gate, and
  * MCP isolation can fail the exit code; sitemap readiness + frame/schema-forms render Pass/Warn but
@@ -75,6 +81,7 @@ class BeamDoctorCommand extends Command
             (new FrameManifestAudit)->run(),
             (new SchemaFormsDoorAudit)->run(),
             $this->sitemapFinding($base),
+            (new SurgeonWiringAudit)->run($composerJson),
         ];
 
         $gateFailed = false;
