@@ -245,7 +245,7 @@ class SplicewireClientGenerator implements Generator
                 ->setProtected()
                 ->setReturnType('array')
                 ->setBody($isMultipart
-                    ? $this->multipartBodyExpression($bodyMap, (string) $fileWire)
+                    ? $this->multipartBodyExpression($bodyMap, (string) $fileWire, $ctorParams)
                     : $this->defaultBodyExpression($bodyMap));
         }
 
@@ -278,6 +278,12 @@ class SplicewireClientGenerator implements Generator
 
                 continue;
             }
+            // Non-file multipart fields are supplementary form parts — a caller uploads a file and MAY add
+            // metadata. The upload DTO gives them defaults (Scribe over-reports them `required`), so the SDK
+            // makes them optional: the file is the only mandatory ctor arg, the rest trail with a default.
+            if (! array_key_exists('default', $p)) {
+                $p['default'] = ($p['php'] ?? null) === 'array' ? [] : null;
+            }
             $out[] = $p;
         }
 
@@ -290,17 +296,54 @@ class SplicewireClientGenerator implements Generator
      *
      * @param  array<string, string>|string|null  $bodyMap
      */
-    private function multipartBodyExpression(array|string|null $bodyMap, string $fileWire): string
+    private function multipartBodyExpression(array|string|null $bodyMap, string $fileWire, array $ctorParams): string
     {
         $map = is_array($bodyMap) ? $bodyMap : [];
+        $phpTypeFor = [];
+        foreach ($ctorParams as $p) {
+            if (isset($p['wire'])) {
+                $phpTypeFor[$p['wire']] = $p['php'] ?? null;
+            }
+        }
+        $phpTypeFor[$fileWire] ??= 'mixed';
+
+        // The file part is the one mandatory `MultipartValue` (carrying the filename). Supplementary form
+        // fields ride only when provided: a scalar part guards its null default; an ARRAY field can't be a
+        // single `MultipartValue` (Saloon rejects an array value), so it spreads to one `name` part per
+        // element (`tags` → repeated `tags` parts) via `array_map`, contributing nothing when empty. Every
+        // part is spread into the list so a conditional/array field can add zero-or-many entries — this
+        // faithfully reproduces the hand upload contract (file-only when no metadata is passed) while
+        // remaining spec-complete.
         $lines = [];
         foreach ($map as $wire => $accessor) {
-            $lines[] = $wire === $fileWire
-                ? "    new MultipartValue(name: '{$wire}', value: \$this->{$accessor}, filename: \$this->fileName),"
-                : "    new MultipartValue(name: '{$wire}', value: \$this->{$accessor}),";
+            if ($wire === $fileWire) {
+                $lines[] = "    new MultipartValue(name: '{$wire}', value: \$this->{$accessor}, filename: \$this->fileName),";
+
+                continue;
+            }
+            if (($phpTypeFor[$wire] ?? null) === 'array') {
+                $lines[] = "    ...array_map(fn (\$value) => new MultipartValue(name: '{$wire}', value: \$value), \$this->{$accessor}),";
+
+                continue;
+            }
+            // A scalar (string/bool/int) part: skip a null value (its default) and stringify a bool so
+            // Saloon's `MultipartValue` accepts it (a bool is not a valid part value; `'1'`/`''` is).
+            $lines[] = "    ...(\$this->{$accessor} === null ? [] : [new MultipartValue(name: '{$wire}', value: ".
+                $this->multipartScalarValue($accessor, $phpTypeFor[$wire] ?? null).')]),';
         }
 
         return "return [\n".implode("\n", $lines)."\n];";
+    }
+
+    /**
+     * Render a scalar multipart value accessor, coercing a bool to its string form (`'1'`/`''`) since
+     * Saloon's `MultipartValue` rejects a raw bool.
+     */
+    private function multipartScalarValue(string $accessor, ?string $php): string
+    {
+        return $php === 'bool'
+            ? "\$this->{$accessor} ? '1' : '0'"
+            : "\$this->{$accessor}";
     }
 
     /**

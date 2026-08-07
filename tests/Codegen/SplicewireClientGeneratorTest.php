@@ -163,7 +163,11 @@ class SplicewireClientGeneratorTest extends TestCase
             "new MultipartValue(name: 'file', value: \$this->file, filename: \$this->fileName)",
             $request,
         );
-        $this->assertStringContainsString("new MultipartValue(name: 'tags', value: \$this->tags)", $request);
+        // An array multipart field spreads to one part per element (Saloon rejects a raw array value).
+        $this->assertStringContainsString(
+            "...array_map(fn (\$value) => new MultipartValue(name: 'tags', value: \$value), \$this->tags)",
+            $request,
+        );
     }
 
     public function test_the_deny_list_drops_matching_paths(): void
