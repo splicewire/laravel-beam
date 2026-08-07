@@ -8,14 +8,15 @@ use Splicewire\Beam\Ownership\OwnershipEdgeType;
 
 /**
  * The ownership / GC edge store (sourced-particles ticket 08, ADR-0161 Position 3 + MAP §Graphine).
- * Shipped as a publish-only migration (`runsMigrations` FALSE): the package ships this real-timestamped
- * copy and publishes it VERBATIM into the host via native `publishesMigrations` (natural timestamp
- * preserved, no re-stamp); the host runs it. beam-core never loadMigrationsFrom's it.
+ * Shipped as a publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE): the package
+ * publishes this timestamp-less `.php.stub` via `configurePackage()`'s `->hasMigrations([...])`,
+ * which re-stamps + sequences it into the host at install time. beam-core never loadMigrationsFrom's it.
  *
- * UBIQUITOUS table (central + every tenant): ships as TWO copies (this flat one → central pass; its
- * `tenant/` twin → Stancl tenant pass), so the edge store exists identically wherever `beam_particles`
- * does — both endpoints are `beam_particles.id` uuids, so the graph is co-located with the particles
- * it governs.
+ * TENANT TWIN of the ubiquitous ownership-edge store. Identical DDL to the flat
+ * the flat `create_beam_ownership_edges_table.php`; this copy publishes into `database/migrations/tenant/`
+ * (Stancl tenant pass) while the flat copy covers the central pass, so the edge store exists
+ * identically wherever `beam_particles` does — both endpoints are `beam_particles.id` uuids, so the
+ * graph is co-located with the particles it governs.
  *
  * NOT audit-lineage. Audit-lineage (`Lineage`, tower-core) is a durability-first derivation LOG that
  * SURVIVES producer deletion and cascades NOWHERE. This is a LIVE, refcounted, cascade-on-evict
@@ -30,6 +31,14 @@ return new class extends Migration
     public function up(): void
     {
         $table = Beam::table('ownership_edges');
+
+        // Ubiquitous-table guard: a host that migrates BOTH the central and the tenant pass into ONE
+        // schema (the shared-test-DB harness) would otherwise re-create this table. In production the
+        // passes target separate schemas, so the guard is simply false. Mirrors the app's own ubiquitous
+        // tables (e.g. tenant/create_users_table).
+        if (Schema::hasTable($table)) {
+            return;
+        }
 
         Schema::create($table, function (Blueprint $t) use ($table) {
             $t->uuid('id')->primary();

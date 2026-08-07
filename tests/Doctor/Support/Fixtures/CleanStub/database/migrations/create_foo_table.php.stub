@@ -1,0 +1,6 @@
+<?php
+
+return new class
+{
+    // fixture stub — content is irrelevant to the audit, only the filename/extension matters.
+};

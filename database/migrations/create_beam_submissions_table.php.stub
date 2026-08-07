@@ -9,16 +9,15 @@ use Splicewire\Beam\Models\BeamSubmission;
 /**
  * The shared submission ledger — beam-core's first schema-driven-CMS consumer (ADR-0138). One
  * {@see BeamSubmission} model that migrates-on-read as its form schema evolves. Shipped as a
- * publish-only migration (`runsMigrations` FALSE): the package ships this real-timestamped copy and
- * publishes it VERBATIM into the host via native `publishesMigrations` (natural timestamp preserved,
- * no re-stamp); the host runs it. beam-core never loadMigrationsFrom's it.
+ * publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE): the package publishes this
+ * timestamp-less `.php.stub` via `configurePackage()`'s `->hasMigrations([...])`, which re-stamps +
+ * sequences it into the host at install time; the host runs it. beam-core never loadMigrationsFrom's it.
  *
- * TENANT TWIN of the ubiquitous `beam_submissions` table. Identical DDL to the flat
- * the flat `create_beam_submissions_table.php`; this copy publishes into `database/migrations/tenant/`
- * (Stancl tenant pass) while the flat copy covers the central pass, so `beam_submissions` exists
- * identically in both (marketing leads / relay inbound land central; circuit intake lands tenant-side
- * inside its own isolation). A fresh store starts empty, so the retired
- * `form_submissions`→`beam_submissions` rename shim is dropped — this is a clean greenfield create.
+ * UBIQUITOUS table (central + every tenant): ships as TWO stubs (this flat one → central pass; its
+ * `tenant/` twin → Stancl tenant pass), so `beam_submissions` exists identically in both (marketing
+ * leads / relay inbound land central; circuit intake lands tenant-side inside its own isolation). A
+ * fresh store starts empty, so the retired `form_submissions`→`beam_submissions` rename shim is
+ * dropped — this is a clean greenfield create.
  *
  * Homed in beam-CORE (research/01 C14): the retired `laravel-beam-submissions` package's model became
  * beam-core's {@see BeamSubmission}, whose getTable() resolves `Beam::table('submissions')`, so the
@@ -33,14 +32,6 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Ubiquitous-table guard: a host that migrates BOTH the central and the tenant pass into ONE
-        // schema (the shared-test-DB harness) would otherwise re-create this table. In production the
-        // passes target separate schemas, so the guard is simply false. Mirrors the app's own ubiquitous
-        // tables (e.g. tenant/create_users_table).
-        if (Schema::hasTable(Beam::table('submissions'))) {
-            return;
-        }
-
         Schema::create(Beam::table('submissions'), function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('form_key')->index();

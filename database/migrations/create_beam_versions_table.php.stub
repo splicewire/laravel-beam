@@ -8,11 +8,11 @@ use Splicewire\Beam\Beam;
 /**
  * The polymorphic durable-version store that `rushing/laravel-versioning`'s Versionable / VersionStore
  * read and write — the frozen snapshots (milestones) a particle can be rolled back to. Shipped as a
- * publish-only migration (`runsMigrations` FALSE): the package ships this real-timestamped copy and
- * publishes it VERBATIM into the host via native `publishesMigrations` (natural timestamp preserved,
- * no re-stamp); the host runs it. beam-core never loadMigrationsFrom's it.
+ * publish-only spatie/laravel-package-tools stub (`runsMigrations` FALSE): the package publishes this
+ * timestamp-less `.php.stub` via `configurePackage()`'s `->hasMigrations([...])`, which re-stamps +
+ * sequences it into the host at install time; the host runs it. beam-core never loadMigrationsFrom's it.
  *
- * UBIQUITOUS table (central + every tenant): ships as TWO copies (this flat one → central pass; its
+ * UBIQUITOUS table (central + every tenant): ships as TWO stubs (this flat one → central pass; its
  * `tenant/` twin → Stancl tenant pass), so `beam_versions` exists identically in both. A fresh store
  * starts empty, so the retired `versions`→`beam_versions` rename shim + the `alias_particle_morph`
  * data-migration are dropped — this is a clean greenfield create.
