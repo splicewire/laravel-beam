@@ -149,7 +149,7 @@ class TsClientGenerator implements Generator
             ."import type { RouteMap } from '{$this->routesImport()}';\n\n"
             .$this->renderMap('defaults', 'the tenant route-name map', $tenant)
             ."\n"
-            .$this->renderMap('adminDefaults', 'the admin route-name map (empty when the host has no admin tier)', $admin);
+            .$this->renderMap('operatorDefaults', 'the operator route-name map (empty when the host has no operator tier)', $admin);
     }
 
     /**
