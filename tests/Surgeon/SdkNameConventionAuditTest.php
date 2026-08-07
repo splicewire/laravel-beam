@@ -24,8 +24,9 @@ class SdkNameConventionAuditTest extends TestCase
 
     public function test_a_divergent_class_nominates_a_relocation_to_the_convention_fqn(): void
     {
-        // `TriggerRender` addresses `POST …/compositions/{id}` — convention (POST → Create<Singular>) is
-        // `CreateComposition`. The current hand-picked name diverges → nominate the rename.
+        // `TriggerRender` addresses `POST …/compositions/{id}` — an ITEM, so the convention
+        // (POST to an item → Update<Resource>) is `UpdateComposition`. The current hand-picked name
+        // diverges → nominate the rename.
         $sdk = [[
             'fqn' => 'Splicewire\\Client\\Requests\\Compositions\\TriggerRender',
             'domain' => 'Compositions',
@@ -53,7 +54,7 @@ class SdkNameConventionAuditTest extends TestCase
             $finding->suggestion->payload['oldFqn'],
         );
         $this->assertSame(
-            'Splicewire\\Client\\Requests\\Compositions\\CreateComposition',
+            'Splicewire\\Client\\Requests\\Compositions\\UpdateComposition',
             $finding->suggestion->payload['newFqn'],
         );
     }
