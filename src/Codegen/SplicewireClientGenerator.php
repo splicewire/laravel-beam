@@ -36,6 +36,15 @@ use Saloon\Traits\Body\HasJsonBody;
  */
 class SplicewireClientGenerator implements Generator
 {
+    /**
+     * Property names Saloon's base `Http\Request` reserves — a promoted ctor param of the same name
+     * fatally redeclares them. A body field camelCasing to one of these is suffixed (`config` →
+     * `configField`) while its wire key stays intact.
+     *
+     * @var array<int, string>
+     */
+    private const SALOON_RESERVED = ['config', 'headers', 'query', 'method', 'connector', 'middleware', 'response', 'body'];
+
     /** @var array<string, mixed> */
     private array $options = [];
 
@@ -66,6 +75,13 @@ class SplicewireClientGenerator implements Generator
 
         $only = (array) ($this->options['domains'] ?? []);
 
+        // Per-domain inclusion list (client-sdk-regen #08). The OpenAPI spec carries EVERY route in a
+        // domain's `@group`, but the published SDK curates a SUBSET (e.g. Compositions tags ~31 ops, the
+        // SDK ships 7). `options['include']` maps a domain → the list of `"VERB /path"` op keys that
+        // domain emits; a domain ABSENT from the map emits its whole tag (the pre-#08 behavior, so Studio
+        // during its proof stays unrestricted). This is the "trim the superset" seam #07 deferred here.
+        $include = (array) ($this->options['include'] ?? []);
+
         // #06 spine-DTO mapping — OpenAPI response component (short-name) → the client DTO's spine-wire
         // base FQN. A component present here gets a generated `Data/<X>.php` thin adapter, and a resource
         // method whose op returns it gets a typed dual method alongside the raw one.
@@ -78,7 +94,11 @@ class SplicewireClientGenerator implements Generator
             if ($domain === null || ($only !== [] && ! in_array($domain, $only, true))) {
                 continue;
             }
-            $hint = $hints["{$op['method']} {$op['path']}"] ?? [];
+            $opKey = "{$op['method']} {$op['path']}";
+            if (isset($include[$domain]) && ! in_array($opKey, (array) $include[$domain], true)) {
+                continue;
+            }
+            $hint = $hints[$opKey] ?? [];
             $class = $this->classNameFor($op);
             $byDomain[$domain][$class] = ['op' => $op, 'hint' => $hint];
         }
@@ -246,6 +266,15 @@ class SplicewireClientGenerator implements Generator
         $bodyMap = [];
         foreach ($op['body']['fields'] ?? [] as $field) {
             $name = Str::camel($field['name']);
+
+            // A body field whose camelCased name collides with a property Saloon's base Request RESERVES
+            // (`config` is its per-request ArrayStore; a promoted `$config` fatally redeclares it) must not
+            // be emitted as that reserved name — suffix it. The wire key is untouched, so `defaultBody`
+            // still maps `'config' => $this->configField`. (A hand class may pick a nicer semantic name
+            // like `$coherenceConfig`; that variant lives as deny-listed residue.)
+            if (in_array($name, self::SALOON_RESERVED, true)) {
+                $name = $name.'Field';
+            }
 
             // A body field whose camelCased name collides with a path param (e.g. path `{id}` + a body
             // `id` field) must NOT emit a second constructor arg — the path param owns the arg; the body

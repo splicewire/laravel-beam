@@ -87,6 +87,36 @@ class SplicewireClientGeneratorTest extends TestCase
         $this->assertArrayNotHasKey('Data/Composition.php', $this->generate(['data' => []]));
     }
 
+    public function test_an_include_list_trims_a_domain_to_its_curated_ops(): void
+    {
+        // A model with two Compositions ops; the include list curates only one of them (#08 superset trim).
+        $model = (new CodegenModel)
+            ->record('CompositionData', fn ($r) => $r->field('id', Type::primitive(Primitive::String)))
+            ->operation(
+                name: 'getComposition', method: 'GET', path: '/api/v1/splice/compositions/{id}',
+                returns: Type::ref('CompositionData'), methods: ['GET'], meta: ['tags' => ['Compositions']],
+                params: [new Field('id', Type::primitive(Primitive::String), 'The Composition id.')],
+            )
+            ->operation(
+                name: 'listCells', method: 'GET', path: '/api/v1/splice/compositions/{id}/cells',
+                methods: ['GET'], meta: ['tags' => ['Compositions']],
+                params: [new Field('id', Type::primitive(Primitive::String), 'The Composition id.')],
+            );
+
+        $files = (new SplicewireClientGenerator)->invoke([
+            'model' => $model->toArray(),
+            'options' => [
+                'namespace' => 'Splicewire\\Client',
+                'base_url' => 'https://app.splicewire.test',
+                'domains' => ['Compositions'],
+                'include' => ['Compositions' => ['GET /api/v1/splice/compositions/{id}']],
+            ],
+        ])['files'];
+
+        $this->assertArrayHasKey('Requests/Compositions/GetComposition.php', $files);
+        $this->assertArrayNotHasKey('Requests/Compositions/ListCell.php', $files);
+    }
+
     public function test_the_deny_list_drops_matching_paths(): void
     {
         $files = $this->generate([
