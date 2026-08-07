@@ -10,9 +10,11 @@ use Rushing\Codegen\Contracts\Generator;
 use Rushing\Codegen\Model\Type;
 use Rushing\Popcorn\Binding;
 use Saloon\Contracts\Body\HasBody;
+use Saloon\Data\MultipartValue;
 use Saloon\Enums\Method;
 use Saloon\Http\Request;
 use Saloon\Traits\Body\HasJsonBody;
+use Saloon\Traits\Body\HasMultipartBody;
 
 /**
  * Emit the domain-grouped `Splicewire\Client\*` Saloon SDK from the OpenAPI-fed CodegenModel
@@ -179,6 +181,7 @@ class SplicewireClientGenerator implements Generator
     private function buildRequest(string $namespace, string $domain, string $class, array $op, array $hint): PhpFile
     {
         $isWrite = ($op['body'] ?? null) !== null;
+        $isMultipart = $isWrite && ! empty($op['meta']['multipart']);
 
         $file = new PhpFile;
         $file->setStrictTypes(false);
@@ -193,9 +196,18 @@ class SplicewireClientGenerator implements Generator
 
         if ($isWrite) {
             $ns->addUse(HasBody::class);
-            $ns->addUse(HasJsonBody::class);
             $classType->addImplement(HasBody::class);
-            $classType->addTrait(HasJsonBody::class);
+            // A multipart/form-data upload op sends `MultipartValue` parts via Saloon's `HasMultipartBody`
+            // (the file part carries a `filename`); every other write sends a JSON body. (client-sdk-regen
+            // Phase 1: multipart, unblocks Fragments upload/attach + Media.)
+            if ($isMultipart) {
+                $ns->addUse(MultipartValue::class);
+                $ns->addUse(HasMultipartBody::class);
+                $classType->addTrait(HasMultipartBody::class);
+            } else {
+                $ns->addUse(HasJsonBody::class);
+                $classType->addTrait(HasJsonBody::class);
+            }
         }
 
         $verb = strtoupper((string) $op['method']);
@@ -206,6 +218,14 @@ class SplicewireClientGenerator implements Generator
 
         // Resolve the constructor parameters: path params (possibly renamed) then the body.
         [$ctorParams, $bodyMap] = $this->constructorPlan($op, $hint);
+
+        // A multipart op singles out its binary (file) part: that param is typed `mixed` (string/resource/
+        // StreamInterface, per Saloon), and a synthetic `$fileName` param rides right after it to name the
+        // uploaded file for the `MultipartValue`.
+        $fileWire = $isMultipart ? ($op['meta']['multipartFile'] ?? null) : null;
+        if ($fileWire !== null) {
+            $ctorParams = $this->injectMultipartFile($ctorParams, (string) $fileWire);
+        }
 
         $ctor = $classType->addMethod('__construct');
         foreach ($ctorParams as $p) {
@@ -224,10 +244,63 @@ class SplicewireClientGenerator implements Generator
             $classType->addMethod('defaultBody')
                 ->setProtected()
                 ->setReturnType('array')
-                ->setBody($this->defaultBodyExpression($bodyMap));
+                ->setBody($isMultipart
+                    ? $this->multipartBodyExpression($bodyMap, (string) $fileWire)
+                    : $this->defaultBodyExpression($bodyMap));
         }
 
         return $file;
+    }
+
+    /**
+     * Retype the binary body param to `mixed` and splice a synthetic `$fileName` param in right after it —
+     * the two-arg `(mixed $file, string $fileName)` shape the hand `CreateAttach` takes.
+     *
+     * @param  array<int, array<string, mixed>>  $ctorParams
+     * @return array<int, array<string, mixed>>
+     */
+    private function injectMultipartFile(array $ctorParams, string $fileWire): array
+    {
+        $out = [];
+        foreach ($ctorParams as $p) {
+            if (($p['wire'] ?? null) === $fileWire) {
+                $p['php'] = 'mixed';
+                $p['docType'] = 'mixed';
+                $p['doc'] = 'The file contents (string, resource, or StreamInterface).';
+                unset($p['default']);
+                $out[] = $p;
+                $out[] = [
+                    'name' => 'fileName',
+                    'php' => 'string',
+                    'docType' => 'string',
+                    'doc' => 'The client file name (drives server-side type sniffing).',
+                ];
+
+                continue;
+            }
+            $out[] = $p;
+        }
+
+        return $out;
+    }
+
+    /**
+     * The `MultipartValue[]` body of a multipart request — the binary field becomes a `filename`-bearing
+     * file part, every other field a scalar part keyed by its wire name.
+     *
+     * @param  array<string, string>|string|null  $bodyMap
+     */
+    private function multipartBodyExpression(array|string|null $bodyMap, string $fileWire): string
+    {
+        $map = is_array($bodyMap) ? $bodyMap : [];
+        $lines = [];
+        foreach ($map as $wire => $accessor) {
+            $lines[] = $wire === $fileWire
+                ? "    new MultipartValue(name: '{$wire}', value: \$this->{$accessor}, filename: \$this->fileName),"
+                : "    new MultipartValue(name: '{$wire}', value: \$this->{$accessor}),";
+        }
+
+        return "return [\n".implode("\n", $lines)."\n];";
     }
 
     /**

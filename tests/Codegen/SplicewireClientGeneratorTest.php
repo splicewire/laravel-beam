@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Rushing\Codegen\Model\CodegenModel;
 use Rushing\Codegen\Model\Field;
 use Rushing\Codegen\Model\Primitive;
+use Rushing\Codegen\Model\RecordType;
 use Rushing\Codegen\Model\Type;
 use Splicewire\Beam\Codegen\SplicewireClientGenerator;
 
@@ -115,6 +116,54 @@ class SplicewireClientGeneratorTest extends TestCase
 
         $this->assertArrayHasKey('Requests/Compositions/GetComposition.php', $files);
         $this->assertArrayNotHasKey('Requests/Compositions/ListCell.php', $files);
+    }
+
+    public function test_a_multipart_op_emits_a_hasmultipartbody_request_with_file_part(): void
+    {
+        // A file-upload op: `meta['multipart']` truthy, `meta['multipartFile']` names the binary field. The
+        // generator must switch off `HasJsonBody` onto Saloon's `HasMultipartBody` and emit `MultipartValue`
+        // parts — a `filename`-bearing file part plus a synthetic `$fileName` ctor param. (client-sdk-regen
+        // Phase 1.)
+        $model = (new CodegenModel)->operation(
+            name: 'attachFragment',
+            method: 'POST',
+            path: '/api/v1/fragments/attach',
+            methods: ['POST'],
+            meta: ['tags' => ['Fragments'], 'multipart' => true, 'multipartFile' => 'file'],
+            body: (function () {
+                $b = new RecordType('AttachBody');
+                $b->field('file', Type::primitive(Primitive::String));
+                $b->field('tags', Type::listOf(Type::primitive(Primitive::String)));
+
+                return $b;
+            })(),
+        );
+
+        $files = (new SplicewireClientGenerator)->invoke([
+            'model' => $model->toArray(),
+            'options' => [
+                'namespace' => 'Splicewire\\Client',
+                'base_url' => 'https://app.splicewire.test',
+                'domains' => ['Fragments'],
+            ],
+        ])['files'];
+
+        $request = $files['Requests/Fragments/CreateAttach.php'];
+
+        $this->assertStringContainsString('use Saloon\Traits\Body\HasMultipartBody;', $request);
+        $this->assertStringContainsString('use Saloon\Data\MultipartValue;', $request);
+        $this->assertStringNotContainsString('HasJsonBody', $request);
+        $this->assertStringContainsString('use HasMultipartBody;', $request);
+        $this->assertStringContainsString('implements HasBody', $request);
+        // The binary field is typed `mixed`, followed by a synthetic `$fileName`.
+        $this->assertStringContainsString('protected mixed $file', $request);
+        $this->assertStringContainsString('protected string $fileName', $request);
+        // The file part carries the filename; the other field is a plain part.
+        $this->assertStringContainsString(
+            "new MultipartValue(name: 'file', value: \$this->file, filename: \$this->fileName)",
+            $request,
+        );
+        $this->assertStringContainsString("new MultipartValue(name: 'tags', value: \$this->tags)", $request);
     }
 
     public function test_the_deny_list_drops_matching_paths(): void
