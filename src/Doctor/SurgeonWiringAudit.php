@@ -17,7 +17,7 @@ use Splicewire\Beam\BeamServiceProvider;
  */
 class SurgeonWiringAudit
 {
-    private const PACKAGE = 'rushing/laravel-surgeon';
+    private const SURGEON_PACKAGE = 'rushing/laravel-surgeon';
 
     /**
      * @param  array<string, mixed>  $composerJson
@@ -28,17 +28,17 @@ class SurgeonWiringAudit
 
         $requires = array_keys(($composerJson['require'] ?? []) + ($composerJson['require-dev'] ?? []));
 
-        if (in_array(self::PACKAGE, $requires, true)) {
+        if (in_array(self::SURGEON_PACKAGE, $requires, true)) {
             return Finding::pass(
                 $check,
-                self::PACKAGE.' is required — beam\'s Surgeon/ audits are discoverable via `surgeon:audit`.',
+                self::SURGEON_PACKAGE.' is required — beam\'s Surgeon/ audits are discoverable via `surgeon:audit`.',
             );
         }
 
         return Finding::warn(
             $check,
             'beam ships Surgeon/ audits (HouseStyleAudit, SdkEndpointDriftAudit, etc.) that stay silently inert without '.
-            self::PACKAGE.' — require it to activate `surgeon:audit` discovery.',
+            self::SURGEON_PACKAGE.' — require it to activate `surgeon:audit` discovery.',
         );
     }
 }
