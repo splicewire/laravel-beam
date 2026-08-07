@@ -30,7 +30,7 @@ class AdminResourceRegistryTest extends TestCase
             model: 'App\\Models\\Widget',
             data: WidgetGateData::class,
             label: 'Widgets',
-            section: 'admin',
+            section: 'operator',
             navOrder: 3,
         );
 
@@ -43,7 +43,7 @@ class AdminResourceRegistryTest extends TestCase
         $this->assertSame('widgets', $def->key);
         $this->assertSame('App\\Models\\Widget', $def->model);
         $this->assertSame('Widgets', $def->nav->label);
-        $this->assertSame('admin', $def->nav->section);
+        $this->assertSame('operator', $def->nav->section);
         $this->assertSame(3, $def->nav->navOrder);
     }
 

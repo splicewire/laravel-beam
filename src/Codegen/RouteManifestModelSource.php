@@ -12,9 +12,9 @@ use Splicewire\Beam\Source\RouteManifestSource;
  * codegen seam consumes. Each route becomes an {@see Operation} carrying its
  * path, HTTP verbs, and — when the route surfaced one — its return DTO as an EXTERNAL type ref (the
  * `App.Data.X` type is emitted by the separate spatie typescript-transform, not defined in this
- * model). The realm rides in `meta['realm']` so a driver can pick the right client (`api`/`adminApi`).
+ * model). The realm rides in `meta['realm']` so a driver can pick the right client (`api`/`operatorApi`).
  *
- * Order is preserved (tenant entries then admin entries, each in manifest order) so a generated
+ * Order is preserved (tenant entries then operator entries, each in manifest order) so a generated
  * artifact stays byte-stable across runs — the whole point of committing the output.
  *
  * Beam's own command wires this directly; a host that prefers the generic `codegen:generate` path can
@@ -25,7 +25,7 @@ class RouteManifestModelSource
 {
     public function __construct(
         private ?RouteManifestSource $tenant = null,
-        private ?RouteManifestSource $admin = null,
+        private ?RouteManifestSource $operator = null,
     ) {}
 
     public function model(): CodegenModel
@@ -33,18 +33,27 @@ class RouteManifestModelSource
         $model = new CodegenModel;
 
         $this->addRealm($model, $this->tenant?->toArray() ?? [], 'tenant');
-        $this->addRealm($model, $this->admin?->toArray() ?? [], 'admin');
+        $this->addRealm($model, $this->operator?->toArray() ?? [], 'operator');
 
         return $model;
     }
 
     /**
-     * @param  array<string, array{path: string, methods: list<string>, returns?: string, returnsMany?: bool}>  $manifest
+     * @param  array<string, array{path: string, methods: list<string>, returns?: string, returnsMany?: bool, streams?: list<string>}>  $manifest
      */
     private function addRealm(CodegenModel $model, array $manifest, string $realm): void
     {
         foreach ($manifest as $name => $entry) {
             $methods = $entry['methods'] ?? [];
+
+            $meta = ['realm' => $realm];
+
+            // SSE event DTOs (surgeon-audit-viability ticket 28) ride in `meta` alongside `realm` —
+            // the same untyped host-facet escape hatch, not a core-model concept (a stream has no
+            // single `returns` type).
+            if (isset($entry['streams'])) {
+                $meta['streams'] = $entry['streams'];
+            }
 
             $model->operation(
                 name: $name,
@@ -53,7 +62,7 @@ class RouteManifestModelSource
                 returns: isset($entry['returns']) ? Type::external($entry['returns']) : null,
                 returnsMany: (bool) ($entry['returnsMany'] ?? false),
                 methods: $methods,
-                meta: ['realm' => $realm],
+                meta: $meta,
             );
         }
     }

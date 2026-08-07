@@ -16,7 +16,7 @@ use Splicewire\Beam\Realm\Attributes\Realm;
  * selects its realms from the package rather than hand-defining them.
  *
  * Ships three BASE realms every install has:
- *  - **`admin`**  — the operator console: central, never-tenanted, root-guarded, mounted at `/admin`.
+ *  - **`operator`** — the operator console: central, never-tenanted, root-guarded, mounted at `/operator`.
  *  - **`tenant`** — the workspace realm: mounted at `/`, its own auth. Whether it resolves a tenant on
  *    this deployment is the `TenantResolver`'s call (ticket 08 slice B), not a flag here.
  *  - **`user`**   — the account/identity realm: the authenticated user across workspaces, mounted at
@@ -61,14 +61,15 @@ class RealmRegistry
     }
 
     /**
-     * The operator (admin) console — the central, never-tenanted Root realm mounted under `/admin`.
-     * The concept is "operator"; the wire key stays `admin`.
+     * The operator console — the central, never-tenanted Root realm mounted under `/operator`.
+     * Originally the concept was "operator" while the wire key and route stayed `admin` (a stability
+     * call); ADR-0156's 2026-08-07 addendum supersedes that split — both now follow the concept.
      */
     public function operator(): RealmDefinition
     {
         return new RealmDefinition(
-            key: 'admin',
-            routeBase: '/admin',
+            key: 'operator',
+            routeBase: '/operator',
             guard: 'root',
             central: true,
         );
@@ -137,7 +138,7 @@ class RealmRegistry
 
     /**
      * Reflect a `#[Realm]`-family marker class (the generic `#[Realm]` or a preset subclass
-     * `#[AdminRealm]`/`#[UserRealm]`/`#[TenantRealm]`) and {@see register()} its projected
+     * `#[OperatorRealm]`/`#[UserRealm]`/`#[TenantRealm]`) and {@see register()} its projected
      * {@see RealmDefinition}. The explicit-registration path for attributed realms: the boot provider
      * hands the configured marker-class LIST here — realms are ~4, so a filesystem scan is overkill
      * (the retired `RealmDiscovery` did one). Additive/last-wins by key, exactly like `register()`.

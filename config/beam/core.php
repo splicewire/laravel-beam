@@ -100,8 +100,8 @@ return [
 
     /*
     | Attributed realms (realm-architecture ticket 08 slice D). The RealmRegistry ships three imperative
-    | base realms (admin·tenant·user); a host CONTRIBUTES more — or overrides a base one — by placing a
-    | `#[Realm]`-family attribute (`#[AdminRealm]`/`#[UserRealm]`/`#[TenantRealm]`, or the generic
+    | base realms (operator·tenant·user); a host CONTRIBUTES more — or overrides a base one — by placing a
+    | `#[Realm]`-family attribute (`#[OperatorRealm]`/`#[UserRealm]`/`#[TenantRealm]`, or the generic
     | `#[Realm]`) on a realm-marker class and listing it here. Boot registration reflects each into a
     | RealmDefinition and registers it additively (last-wins by key). Realms are a small fixed set, so
     | this is an EXPLICIT class list — no filesystem scan (the retired RealmDiscovery did one).
@@ -124,7 +124,7 @@ return [
     |    `upsell` metadata, so a launcher can render it as lockable.
     |
     | Example:
-    |   'admin'  => ['entitlement' => 'app-operator', 'mode' => 'hard'],
+    |   'operator' => ['entitlement' => 'app-operator', 'mode' => 'hard'],
     |   'studio' => ['entitlement' => 'go-songwriter', 'mode' => 'soft',
     |               'upsell' => ['title' => 'Go Songwriter', 'cta' => 'Upgrade']],
     */

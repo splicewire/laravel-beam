@@ -80,7 +80,7 @@ class AttributedParticleDiscoveryTest extends TestCase
         $this->assertSame('App\\Queries\\WidgetQuery', $resource->query);
         $this->assertSame('Catalog', $resource->group);
         $this->assertSame('cube', $resource->icon);
-        $this->assertSame('admin', $resource->section);
+        $this->assertSame('operator', $resource->section);
         $this->assertSame(7, $resource->navOrder);
         $this->assertSame('widgets.index', $resource->routeName);
         $this->assertSame('master-detail', $resource->layout);
@@ -180,7 +180,7 @@ class FixtureBareResource {}
     query: 'App\\Queries\\WidgetQuery',
     group: 'Catalog',
     icon: 'cube',
-    section: 'admin',
+    section: 'operator',
     navOrder: 7,
     routeName: 'widgets.index',
     layout: 'master-detail',

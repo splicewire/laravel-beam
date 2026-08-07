@@ -20,9 +20,9 @@ use Splicewire\Beam\Source\RouteManifestSource;
  * parity.
  *
  * SOURCE-AGNOSTIC (the promotion's whole point): it reads {@see RouteManifestSource} instances resolved
- * from `beam.client.sources.{defaults,admin}`. The platform binds a Tower-backed source; a satellite
- * binds the package's `ParticleRouteManifestSource`. The admin tier is optional — an unbound admin
- * source yields an empty `adminDefaults` map and no admin hooks.
+ * from `beam.client.sources.{defaults,operator}`. The platform binds a Tower-backed source; a satellite
+ * binds the package's `ParticleRouteManifestSource`. The operator tier is optional — an unbound operator
+ * source yields an empty `operatorDefaults` map and no operator hooks.
  */
 class GenerateClientSdkCommand extends Command
 {
@@ -42,7 +42,7 @@ class GenerateClientSdkCommand extends Command
         // Project the two realm manifests into the canonical model, then render via the generator.
         $model = (new RouteManifestModelSource(
             $this->source('defaults'),
-            $this->source('admin'),
+            $this->source('operator'),
         ))->model();
 
         $result = (new TsClientGenerator)->invoke([
@@ -133,7 +133,7 @@ class GenerateClientSdkCommand extends Command
         return str_starts_with($dir, $base) ? substr($dir, strlen($base)) : $dir;
     }
 
-    /** The generated-code module specifier for the http clients (`api`/`adminApi`). */
+    /** The generated-code module specifier for the http clients (`api`/`operatorApi`). */
     private function clientImport(): string
     {
         $v = config('beam.client.client_import');
@@ -141,7 +141,7 @@ class GenerateClientSdkCommand extends Command
         return is_string($v) && $v !== '' ? $v : '@/lib/api';
     }
 
-    /** The generated-code module specifier for the route resolvers (`route`/`adminRoute`, `RouteMap`). */
+    /** The generated-code module specifier for the route resolvers (`route`/`operatorRoute`, `RouteMap`). */
     private function routesImport(): string
     {
         $v = config('beam.client.routes_import');

@@ -29,7 +29,7 @@ class ParticleResourceManifestTest extends TestCase
             query: 'App\\Queries\\WidgetQuery',
             group: 'Catalog',
             icon: 'cube',
-            section: 'admin',
+            section: 'operator',
             navOrder: 7,
             routeName: 'widgets.index',
             layout: 'master-detail',
@@ -42,7 +42,7 @@ class ParticleResourceManifestTest extends TestCase
         $this->assertSame('App\\Queries\\WidgetQuery', $resource->query);
         $this->assertSame('Catalog', $resource->group);
         $this->assertSame('cube', $resource->icon);
-        $this->assertSame('admin', $resource->section);
+        $this->assertSame('operator', $resource->section);
         $this->assertSame(7, $resource->navOrder);
         $this->assertSame('widgets.index', $resource->routeName);
         $this->assertSame('master-detail', $resource->layout);
@@ -74,7 +74,7 @@ class ParticleResourceManifestTest extends TestCase
             model: 'App\\Models\\Widget',
             data: WidgetGateData::class,
             label: 'Widgets',
-            section: 'admin',
+            section: 'operator',
             navOrder: 2,
         );
 
@@ -86,7 +86,7 @@ class ParticleResourceManifestTest extends TestCase
         $this->assertSame('App\\Models\\Widget', $def->model);
         $this->assertSame(WidgetGateData::class, $def->data);
         $this->assertSame('Widgets', $def->nav->label);
-        $this->assertSame('admin', $def->nav->section);
+        $this->assertSame('operator', $def->nav->section);
         $this->assertSame(2, $def->nav->navOrder);
         $this->assertTrue($def->creatable);
     }

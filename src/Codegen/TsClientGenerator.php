@@ -55,10 +55,16 @@ class TsClientGenerator implements Generator
 
         $typed = array_merge(
             $this->typedEntries($tenantMap, 'tenant'),
-            $this->typedEntries($adminMap, 'admin'),
+            $this->typedEntries($adminMap, 'operator'),
+        );
+
+        $streamed = array_merge(
+            $this->streamEntries($tenantMap, 'tenant'),
+            $this->streamEntries($adminMap, 'operator'),
         );
 
         $files = $this->emitHooks($files, $typed);
+        $files = $this->emitStreamHooks($files, $streamed);
 
         if ((bool) ($this->options['emit_stores'] ?? false)) {
             $files = $this->emitStores($files, $typed);
@@ -101,7 +107,11 @@ class TsClientGenerator implements Generator
                 $entry['returnsMany'] = true;
             }
 
-            if (($op['meta']['realm'] ?? 'tenant') === 'admin') {
+            if (isset($op['meta']['streams'])) {
+                $entry['streams'] = $op['meta']['streams'];
+            }
+
+            if (($op['meta']['realm'] ?? 'tenant') === 'operator') {
                 $admin[$op['name']] = $entry;
             } else {
                 $tenant[$op['name']] = $entry;
@@ -171,8 +181,8 @@ class TsClientGenerator implements Generator
                 continue;
             }
 
-            $remainder = $realm === 'admin'
-                ? preg_replace('/^api\.admin\./', '', $name)
+            $remainder = $realm === 'operator'
+                ? preg_replace('/^api\.operator\./', '', $name)
                 : preg_replace('/^api\.v1\./', '', $name);
 
             $segments = explode('.', $remainder);
@@ -198,6 +208,115 @@ class TsClientGenerator implements Generator
         }
 
         return $out;
+    }
+
+    // ── stream entries (surgeon-audit-viability ticket 28) ──────────────────────────────────────────
+
+    /**
+     * @param  array<string, array{path: string, methods: list<string>, streams?: array<string, list<string>>}>  $map
+     * @return list<array<string, mixed>>
+     */
+    private function streamEntries(array $map, string $realm): array
+    {
+        $out = [];
+
+        foreach ($map as $name => $entry) {
+            if (! isset($entry['streams'])) {
+                continue;
+            }
+
+            $remainder = $realm === 'operator'
+                ? preg_replace('/^api\.operator\./', '', $name)
+                : preg_replace('/^api\.v1\./', '', $name);
+
+            $segments = explode('.', $remainder);
+            $action = array_pop($segments);
+            $domainSlug = implode('-', $segments) ?: 'root';
+
+            preg_match_all('/\{(\w+)\}/', $entry['path'], $paramMatches);
+
+            $out[] = [
+                'name' => $name,
+                'realm' => $realm,
+                'domainKey' => $domainSlug,
+                'hookName' => 'use'.Str::studly($domainSlug).Str::studly($action).'Stream',
+                'eventTypeName' => Str::studly($domainSlug).Str::studly($action).'StreamEvent',
+                'params' => $paramMatches[1],
+                'writeVerb' => strtolower((string) (array_values(array_intersect(
+                    ['POST', 'PUT', 'PATCH', 'DELETE'],
+                    $entry['methods'],
+                ))[0] ?? 'post')),
+                'streams' => $entry['streams'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, string>  $files
+     * @param  list<array<string, mixed>>  $streamed
+     * @return array<string, string>
+     */
+    private function emitStreamHooks(array $files, array $streamed): array
+    {
+        foreach ($this->byDomain($streamed) as $domainKey => $entries) {
+            $realm = $entries[0]['realm'];
+            [$client, $routeFn] = $this->realmBindings($realm);
+            $key = 'hooks/'.$domainKey.'.ts';
+            $appending = isset($files[$key]);
+
+            // `client`/`routeFn` are already imported when appending to a file `emitHooks()` already
+            // wrote for this domain — only `useSseStream` is new in that case.
+            $body = $appending
+                ? "import { useSseStream } from '@splicewire/beam-ux/streaming';\n\n"
+                : "import { useSseStream } from '@splicewire/beam-ux/streaming';\n"
+                    ."import { {$client} } from '{$this->clientImport()}';\n"
+                    ."import { {$routeFn} } from '{$this->routesImport()}';\n\n";
+
+            foreach ($entries as $entry) {
+                $body .= $this->renderStreamType($entry)."\n";
+                $body .= $this->renderStreamHook($entry, $client, $routeFn)."\n";
+            }
+
+            $files[$key] = $appending
+                ? rtrim($files[$key])."\n\n".rtrim($body)."\n"
+                : $this->banner().rtrim($body)."\n";
+        }
+
+        return $files;
+    }
+
+    /**
+     * @param  array<string, mixed>  $e
+     */
+    private function renderStreamType(array $e): string
+    {
+        $variants = [];
+
+        /** @var array<string, list<string>> $streams */
+        $streams = $e['streams'];
+
+        foreach ($streams as $eventName => $dtoRefs) {
+            $dataType = implode(' | ', $dtoRefs);
+            $variants[] = "    | { event: '{$eventName}'; data: {$dataType} }";
+        }
+
+        return "export type {$e['eventTypeName']} =\n".implode("\n", $variants).";\n";
+    }
+
+    /**
+     * @param  array<string, mixed>  $e
+     */
+    private function renderStreamHook(array $e, string $client, string $routeFn): string
+    {
+        $hasParams = ! empty($e['params']);
+        $sig = $hasParams ? 'params: Record<string, string | number>' : '';
+        $routeCall = $hasParams ? "{$routeFn}('{$e['name']}', params)" : "{$routeFn}('{$e['name']}')";
+
+        return "export function {$e['hookName']}({$sig}) {\n"
+            ."    return useSseStream<{$e['eventTypeName']}>({$client}, {$routeCall}, { method: '{$e['writeVerb']}' });\n"
+            ."}\n";
     }
 
     // ── hooks/<domain>.ts (verbatim rendering; emits to the file map) ──────────────────────────────
@@ -401,7 +520,7 @@ class TsClientGenerator implements Generator
     /** @return array{0: string, 1: string} */
     private function realmBindings(string $realm): array
     {
-        return $realm === 'admin' ? ['adminApi', 'adminRoute'] : ['api', 'route'];
+        return $realm === 'operator' ? ['operatorApi', 'operatorRoute'] : ['api', 'route'];
     }
 
     /**

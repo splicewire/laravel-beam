@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Entitlements;
 
+use Illuminate\Support\Facades\Gate;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Splicewire\Beam\Entitlements\CanMapBuilder;
 use Splicewire\Beam\Tests\TestCase;
@@ -45,19 +46,19 @@ class CanMapBuilderTest extends TestCase
         $can = $this->app->make(CanMapBuilder::class)->forPrincipal(null);
 
         $this->assertTrue($can['app:site']);
-        $this->assertTrue($can['app:admin']);
+        $this->assertTrue($can['app:operator']);
     }
 
     public function test_a_hard_gated_unreachable_realm_maps_app_key_false(): void
     {
         config(['beam.core.realm_gates' => [
-            'admin' => ['entitlement' => 'app-operator', 'mode' => 'hard'],
+            'operator' => ['entitlement' => 'app-operator', 'mode' => 'hard'],
         ]]);
-        $this->withResolver([]); // not entitled → admin omitted from manifest → app:admin false
+        $this->withResolver([]); // not entitled → operator omitted from manifest → app:operator false
 
         $can = $this->app->make(CanMapBuilder::class)->forPrincipal(null);
 
-        $this->assertFalse($can['app:admin']);
+        $this->assertFalse($can['app:operator']);
         $this->assertTrue($can['app:site']);
     }
 
@@ -79,7 +80,7 @@ class CanMapBuilderTest extends TestCase
         $this->withResolver([]);
 
         // Define a subject-scoped ability the caller folds in; the builder resolves it via the Laravel Gate.
-        \Illuminate\Support\Facades\Gate::define('song:42:update', fn ($user = null) => true);
+        Gate::define('song:42:update', fn ($user = null) => true);
 
         $can = $this->app->make(CanMapBuilder::class)
             ->with(['song:42:update'])

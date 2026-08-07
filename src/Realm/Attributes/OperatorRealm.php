@@ -7,23 +7,25 @@ use Splicewire\Beam\Realm\RealmRegistry;
 
 /**
  * The operator-console realm preset (realm-architecture ticket 08 slice D): the central, never-tenanted,
- * root-guarded realm mounted under `/admin`. A host declares one by placing `#[AdminRealm]` on a
+ * root-guarded realm mounted under `/operator`. A host declares one by placing `#[OperatorRealm]` on a
  * realm-marker class; the discovery scan self-registers it onto the {@see RealmRegistry},
- * overriding the imperative base `admin` realm last-wins if the host wants a differently-shaped operator
- * realm.
+ * overriding the imperative base `operator` realm last-wins if the host wants a differently-shaped
+ * operator realm.
  *
- * Presets: `central: true`, `guard: 'root'`, `routeBase: '/admin'` — the operator defaults. Any may be
- * overridden per declaration.
+ * Presets: `central: true`, `guard: 'root'`, `routeBase: '/operator'` — the operator defaults. Any may
+ * be overridden per declaration.
+ *
+ * Renamed from `AdminRealm` (ADR-0156, 2026-08-07 addendum) — the wire key/route now follow the concept.
  */
 #[Attribute(Attribute::TARGET_CLASS)]
-class AdminRealm extends Realm
+class OperatorRealm extends Realm
 {
     /**
      * @param  list<string>  $stack
      */
     public function __construct(
-        string $key = 'admin',
-        string $routeBase = '/admin',
+        string $key = 'operator',
+        string $routeBase = '/operator',
         ?string $guard = 'root',
         bool $central = true,
         array $stack = [],

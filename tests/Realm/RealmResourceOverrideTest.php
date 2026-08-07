@@ -29,7 +29,7 @@ class RealmResourceOverrideTest extends TestCase
             data: WidgetGateData::class,
             label: 'Widgets',
             group: 'Workspace',
-            section: 'admin',
+            section: 'operator',
             navOrder: 3,
         ));
 
@@ -39,15 +39,15 @@ class RealmResourceOverrideTest extends TestCase
     public function test_no_overlay_is_identity_in_every_realm(): void
     {
         // (a) With no overlay registered, the projection is IDENTICAL in every realm — the overlay layer
-        // is inert. Base (null realm), admin, tenant, and user all yield an equal ResourceDefinition.
+        // is inert. Base (null realm), operator, tenant, and user all yield an equal ResourceDefinition.
         $registry = $this->registry();
 
         $base = $registry->get('widgets');
-        $admin = $registry->get('widgets', 'admin');
+        $operator = $registry->get('widgets', 'operator');
         $tenant = $registry->get('widgets', 'tenant');
         $user = $registry->get('widgets', 'user');
 
-        $this->assertEquals($base, $admin);
+        $this->assertEquals($base, $operator);
         $this->assertEquals($base, $tenant);
         $this->assertEquals($base, $user);
         $this->assertSame('Widgets', $user->nav->label);
@@ -55,24 +55,24 @@ class RealmResourceOverrideTest extends TestCase
 
     public function test_an_overlay_changes_only_its_own_realm(): void
     {
-        // (b) An overlay on (widgets, admin) relabels + read-only-gates ONLY the admin manifest; tenant
+        // (b) An overlay on (widgets, operator) relabels + read-only-gates ONLY the operator manifest; tenant
         // and the realm-agnostic base keep the declaration's presentation untouched.
         $overrides = (new RealmResourceRegistry(new RealmRegistry))->override(
             'widgets',
-            'admin',
+            'operator',
             new RealmResourceOverride(label: 'Operator Widgets', group: 'Platform', readOnly: true),
         );
 
         $registry = $this->registry($overrides);
 
-        $admin = $registry->get('widgets', 'admin');
-        $this->assertSame('Operator Widgets', $admin->nav->label);
-        $this->assertSame('Platform', $admin->nav->group);
-        $this->assertFalse($admin->creatable, 'readOnly overlay closes create');
-        $this->assertFalse($admin->editable, 'readOnly overlay closes edit');
-        $this->assertFalse($admin->deletable, 'readOnly overlay closes delete');
+        $operator = $registry->get('widgets', 'operator');
+        $this->assertSame('Operator Widgets', $operator->nav->label);
+        $this->assertSame('Platform', $operator->nav->group);
+        $this->assertFalse($operator->creatable, 'readOnly overlay closes create');
+        $this->assertFalse($operator->editable, 'readOnly overlay closes edit');
+        $this->assertFalse($operator->deletable, 'readOnly overlay closes delete');
 
-        // Only the admin realm changed — tenant + base are the untouched declaration.
+        // Only the operator realm changed — tenant + base are the untouched declaration.
         $tenant = $registry->get('widgets', 'tenant');
         $this->assertSame('Widgets', $tenant->nav->label);
         $this->assertSame('Workspace', $tenant->nav->group);
@@ -89,11 +89,11 @@ class RealmResourceOverrideTest extends TestCase
         // wins — a prune-but-not-create/edit presentation.
         $overrides = (new RealmResourceRegistry(new RealmRegistry))->override(
             'widgets',
-            'admin',
+            'operator',
             new RealmResourceOverride(readOnly: true, deletable: true),
         );
 
-        $def = $this->registry($overrides)->get('widgets', 'admin');
+        $def = $this->registry($overrides)->get('widgets', 'operator');
 
         $this->assertFalse($def->creatable);
         $this->assertFalse($def->editable);
@@ -131,16 +131,16 @@ class RealmResourceOverrideTest extends TestCase
         // are identical across realms even when a heavy overlay is applied.
         $overrides = (new RealmResourceRegistry(new RealmRegistry))->override(
             'widgets',
-            'admin',
+            'operator',
             new RealmResourceOverride(label: 'X', group: 'Y', form: 'bare', layout: 'subnav', readOnly: true),
         );
 
         $registry = $this->registry($overrides);
 
         $tenant = $registry->get('widgets', 'tenant');
-        $admin = $registry->get('widgets', 'admin');
+        $operator = $registry->get('widgets', 'operator');
 
-        foreach ([$tenant, $admin] as $def) {
+        foreach ([$tenant, $operator] as $def) {
             $this->assertInstanceOf(ResourceDefinition::class, $def);
             $this->assertSame('App\\Models\\Widget', $def->model, 'model never varies by realm');
             $this->assertSame(WidgetGateData::class, $def->data, 'data class never varies by realm');
@@ -152,9 +152,9 @@ class RealmResourceOverrideTest extends TestCase
     public function test_the_registry_reports_whether_an_overlay_applies(): void
     {
         $overrides = (new RealmResourceRegistry(new RealmRegistry))
-            ->override('widgets', 'admin', new RealmResourceOverride(label: 'X'));
+            ->override('widgets', 'operator', new RealmResourceOverride(label: 'X'));
 
-        $this->assertTrue($overrides->has('widgets', 'admin'));
+        $this->assertTrue($overrides->has('widgets', 'operator'));
         $this->assertFalse($overrides->has('widgets', 'tenant'));
         // The `user` realm stacks on `tenant`, so a tenant overlay is reachable from user...
         $overrides->override('gadgets', 'tenant', new RealmResourceOverride(label: 'G'));

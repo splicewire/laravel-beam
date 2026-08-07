@@ -28,13 +28,13 @@ class RealmManifestProjectorTest extends TestCase
     public function test_a_hard_gated_realm_is_absent_for_an_unentitled_principal(): void
     {
         config(['beam.core.realm_gates' => [
-            'admin' => ['entitlement' => 'app-operator', 'mode' => 'hard'],
+            'operator' => ['entitlement' => 'app-operator', 'mode' => 'hard'],
         ]]);
         $this->withResolver([]); // holds nothing → not entitled
 
         $manifest = $this->app->make(RealmManifestProjector::class)->project(null);
 
-        $this->assertNotContains('admin', $this->keys($manifest));
+        $this->assertNotContains('operator', $this->keys($manifest));
         // ungated realms still project.
         $this->assertContains('site', $this->keys($manifest));
     }
@@ -42,17 +42,17 @@ class RealmManifestProjectorTest extends TestCase
     public function test_a_hard_gated_realm_is_present_and_unlocked_for_an_entitled_principal(): void
     {
         config(['beam.core.realm_gates' => [
-            'admin' => ['entitlement' => 'app-operator', 'mode' => 'hard'],
+            'operator' => ['entitlement' => 'app-operator', 'mode' => 'hard'],
         ]]);
         $this->withResolver(['app-operator']);
 
         $manifest = $this->app->make(RealmManifestProjector::class)->project(null);
-        $admin = collect($manifest)->firstWhere('key', 'admin');
+        $operator = collect($manifest)->firstWhere('key', 'operator');
 
-        $this->assertNotNull($admin);
-        $this->assertFalse($admin['locked']);
-        $this->assertNull($admin['upsell']);
-        $this->assertSame('/admin', $admin['routeBase']);
+        $this->assertNotNull($operator);
+        $this->assertFalse($operator['locked']);
+        $this->assertNull($operator['upsell']);
+        $this->assertSame('/operator', $operator['routeBase']);
     }
 
     public function test_a_soft_gated_realm_is_present_locked_with_upsell_when_unentitled(): void

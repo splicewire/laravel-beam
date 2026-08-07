@@ -6,7 +6,7 @@ use Splicewire\Beam\Realm\Attributes\SiteRealm;
 use Splicewire\Beam\Realm\RealmRegistry;
 
 /**
- * The beam realm kit (ADR-0156, ADR-0165). Asserts the four base realms — admin·tenant·user·site — and
+ * The beam realm kit (ADR-0156, ADR-0165). Asserts the four base realms — operator·tenant·user·site — and
  * the S3 `site` realm's public, unguarded, root-mounted shape (beamux-entry-charter S3): public content
  * is not an authenticated surface, so it is a distinct realm from `tenant`.
  */
@@ -32,7 +32,7 @@ class RealmRegistryTest extends TestCase
         $registry = new RealmRegistry;
 
         // All four base realms present.
-        foreach (['admin', 'tenant', 'user', 'site'] as $key) {
+        foreach (['operator', 'tenant', 'user', 'site'] as $key) {
             $this->assertArrayHasKey($key, $registry->all());
         }
 
