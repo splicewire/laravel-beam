@@ -112,12 +112,14 @@ use Splicewire\Beam\Write\ParticleWriter;
  * PackageServiceProvider. `runsMigrations` stays FALSE, so beam-core never loads them at runtime;
  * `vendor:publish --tag=beam-migrations` (or `splicewire:beam:install`) re-stamps + sequences
  * timestamped copies into the HOST at install time, which runs them. Each table is ubiquitous
- * (central + every tenant), so it ships as two stubs — a flat one (publishes to
- * database/migrations/, central pass) and a `tenant/` twin (publishes to database/migrations/tenant/,
- * Stancl tenant pass), registered together via `->hasMigrations([...])` in {@see self::configurePackage()}.
+ * (central + every tenant — the estate's "everything is shared by default" convention), so it
+ * publishes to the SINGLE `database/migrations/shared/` destination — one file, not duplicated DDL —
+ * registered via `->hasMigrations([...])` in {@see self::configurePackage()}. beam-tenancy's
+ * `registerSharedMigrationsPath()` is the HOST-side half: it runs that one directory in BOTH the
+ * central `migrate` pass and Stancl's tenant pass.
  *
  * Registered via `->hasMigrations([...])`, NOT `->discoversMigrations()` — its `->files()` is
- * non-recursive and would miss the `tenant/` subdir. The `.stub` extension keeps the framework
+ * non-recursive and would miss the `shared/` subdir. The `.stub` extension keeps the framework
  * migrator from ever loading them in place; publish re-stamps each stub to the install moment via
  * package-tools' `generateMigrationName` (auto-timestamp + sequence) — the estate-wide publish-only
  * stub pattern every beam package follows.
@@ -145,21 +147,18 @@ class BeamServiceProvider extends PackageServiceProvider
             // --tag=beam-migrations` re-stamps + sequences timestamped copies into the HOST and the host
             // runs them.
             //
-            // Every table is UBIQUITOUS (central + every tenant), so each ships TWICE — once flat and
-            // once under `tenant/`. `hasMigrations([...])` (NOT `discoversMigrations()`, whose ->files()
-            // is non-recursive and would miss the tenant/ subdir) lists both: the flat name publishes to
-            // `database/migrations/` (central pass) and the `tenant/…` name publishes to
-            // `database/migrations/tenant/` (package-tools' generateMigrationName routes on dirname; the
-            // host's Stancl `tenancy.migration_parameters.--path` runs that dir per tenant).
+            // Every table is UBIQUITOUS (central + every tenant — "everything is shared by default"),
+            // so each publishes to the SINGLE `shared/…` destination, not a duplicated flat+tenant
+            // pair. `hasMigrations([...])` (NOT `discoversMigrations()`, whose ->files() is
+            // non-recursive and would miss the `shared/` subdir) routes the destination via
+            // package-tools' generateMigrationName (dirname of the entry name). beam-tenancy's
+            // registerSharedMigrationsPath() is what actually runs `database/migrations/shared/` in
+            // both the central `migrate` pass and Stancl's tenant pass — beam-core just publishes here.
             ->hasMigrations([
-                'create_beam_particles_table',
-                'tenant/create_beam_particles_table',
-                'create_beam_versions_table',
-                'tenant/create_beam_versions_table',
-                'create_beam_submissions_table',
-                'tenant/create_beam_submissions_table',
-                'create_beam_ownership_edges_table',
-                'tenant/create_beam_ownership_edges_table',
+                'shared/create_beam_particles_table',
+                'shared/create_beam_versions_table',
+                'shared/create_beam_submissions_table',
+                'shared/create_beam_ownership_edges_table',
             ]);
     }
 

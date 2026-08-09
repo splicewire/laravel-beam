@@ -13,12 +13,13 @@ use Splicewire\Beam\Models\BeamSubmission;
  * timestamp-less `.php.stub` via `configurePackage()`'s `->hasMigrations([...])`, which re-stamps +
  * sequences it into the host at install time; the host runs it. beam-core never loadMigrationsFrom's it.
  *
- * TENANT TWIN of the ubiquitous `beam_submissions` table. Identical DDL to the flat
- * the flat `create_beam_submissions_table.php`; this copy publishes into `database/migrations/tenant/`
- * (Stancl tenant pass) while the flat copy covers the central pass, so `beam_submissions` exists
- * identically in both (marketing leads / relay inbound land central; circuit intake lands tenant-side
- * inside its own isolation). A fresh store starts empty, so the retired
- * `form_submissions`→`beam_submissions` rename shim is dropped — this is a clean greenfield create.
+ * SHARED (central + every tenant): published to the single `database/migrations/shared/` destination,
+ * which the host's tenancy substrate (beam-tenancy's `registerSharedMigrationsPath()`) registers into
+ * BOTH the central `migrate` pass and Stancl's tenant pass — one file, so `beam_submissions` exists
+ * identically everywhere with no hand-duplicated DDL to keep in sync (marketing leads / relay inbound
+ * land central; circuit intake lands tenant-side inside its own isolation). A fresh store starts
+ * empty, so the retired `form_submissions`→`beam_submissions` rename shim is dropped — this is a
+ * clean greenfield create.
  *
  * Homed in beam-CORE (research/01 C14): the retired `laravel-beam-submissions` package's model became
  * beam-core's {@see BeamSubmission}, whose getTable() resolves `Beam::table('submissions')`, so the

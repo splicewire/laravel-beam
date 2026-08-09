@@ -14,11 +14,11 @@ use Splicewire\Beam\Source\SourceWriteTier;
  * --tag=beam-migrations`), which re-stamps + sequences it into the host at install time. beam-core
  * never loadMigrationsFrom's it at runtime.
  *
- * TENANT TWIN of the ubiquitous `beam_particles` table. Identical DDL to the flat
- * the flat `create_beam_particles_table.php`; this copy publishes into the host's
- * `database/migrations/tenant/` so the Stancl tenant pass creates `beam_particles` in every tenant
- * schema, while the flat copy's central-pass copy creates it in the central schema. The BeamParticle
- * model pins NO connection (it follows the ambient central/tenant connection).
+ * SHARED (central + every tenant): published to the single `database/migrations/shared/` destination,
+ * which the host's tenancy substrate (beam-tenancy's `registerSharedMigrationsPath()`) registers into
+ * BOTH the central `migrate` pass and Stancl's tenant pass — one file, so `beam_particles` exists
+ * identically everywhere with no hand-duplicated DDL to keep in sync. The BeamParticle model pins NO
+ * connection (it follows the ambient central/tenant connection).
  *
  * The versioning columns are the trait defaults: `schema_id` (the absolute `$id` the payload was
  * written under — the migrate-on-read version column), `migration_status` (current/pending/failed),

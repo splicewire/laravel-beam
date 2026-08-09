@@ -12,9 +12,9 @@ use Splicewire\Beam\Ownership\OwnershipEdgeType;
  * publishes this timestamp-less `.php.stub` via `configurePackage()`'s `->hasMigrations([...])`,
  * which re-stamps + sequences it into the host at install time. beam-core never loadMigrationsFrom's it.
  *
- * TENANT TWIN of the ubiquitous ownership-edge store. Identical DDL to the flat
- * the flat `create_beam_ownership_edges_table.php`; this copy publishes into `database/migrations/tenant/`
- * (Stancl tenant pass) while the flat copy covers the central pass, so the edge store exists
+ * SHARED (central + every tenant): published to the single `database/migrations/shared/` destination,
+ * which the host's tenancy substrate (beam-tenancy's `registerSharedMigrationsPath()`) registers into
+ * BOTH the central `migrate` pass and Stancl's tenant pass — one file, so the edge store exists
  * identically wherever `beam_particles` does — both endpoints are `beam_particles.id` uuids, so the
  * graph is co-located with the particles it governs.
  *
