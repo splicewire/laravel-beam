@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Doctor\Support;
 use Rushing\Doctor\DoctorStatus;
 use Splicewire\Beam\Doctor\Support\StubMigrationsAudit;
 use Splicewire\Beam\Tests\Doctor\Support\Fixtures\CleanStub\Src\CleanStubProvider;
+use Splicewire\Beam\Tests\Doctor\Support\Fixtures\HostSharedMigrationsProvider;
 use Splicewire\Beam\Tests\Doctor\Support\Fixtures\LoadMigrationsProvider;
 use Splicewire\Beam\Tests\Doctor\Support\Fixtures\NoHasMigrationsProvider;
 use Splicewire\Beam\Tests\Doctor\Support\Fixtures\RealPhp\Src\RealPhpProvider;
@@ -25,6 +26,13 @@ class StubMigrationsAuditTest extends TestCase
 
         $this->assertSame(DoctorStatus::Fail, $finding->status);
         $this->assertStringContainsString('loadMigrationsFrom', $finding->detail);
+    }
+
+    public function test_passes_when_load_migrations_from_targets_database_path(): void
+    {
+        $finding = $this->auditFor(HostSharedMigrationsProvider::class)->run()[0];
+
+        $this->assertSame(DoctorStatus::Pass, $finding->status);
     }
 
     public function test_warns_when_the_provider_registers_no_has_migrations_call(): void
