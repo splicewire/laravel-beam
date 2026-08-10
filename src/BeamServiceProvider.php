@@ -36,6 +36,7 @@ use Splicewire\Beam\Console\FrameClearCommand;
 use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
+use Splicewire\Beam\Console\BeamSeedCommand;
 use Splicewire\Beam\Console\ManifestIndexCommand;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
@@ -52,6 +53,7 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Manifest\ManifestArity;
+use Splicewire\Beam\Seed\BeamSeedManifest;
 use Splicewire\Beam\Manifest\ManifestDescriptor;
 use Splicewire\Beam\Manifest\ManifestIndex;
 use Splicewire\Beam\Manifest\ManifestSeam;
@@ -349,6 +351,12 @@ class BeamServiceProvider extends PackageServiceProvider
         // `beam:doctor` run aggregates the whole family. beam-core's own audits stay hardcoded (coexist).
         $this->app->singleton(BeamDoctorManifest::class);
 
+        // The beam-seed self-registration manifest: the seed-side twin of the install/doctor manifests — a
+        // singleton every beam-* package pushes its own SeedStep into, so one `splicewire:beam:seed` run
+        // seeds the whole family's package-owned data. beam-core never learns a consumer's name; each step
+        // may carry a config gate so a demo-only seeder fires only where its gate is on.
+        $this->app->singleton(BeamSeedManifest::class);
+
         // The index of indexes (beam-manifest-index): the same self-registration singleton pattern turned
         // on the registries themselves. Every registry/manifest describes itself in, so `beam:manifests`
         // lists the estate's injection points. beam-core self-describes its own set in packageBooted().
@@ -501,6 +509,7 @@ class BeamServiceProvider extends PackageServiceProvider
             $this->commands([
                 BeamDoctorCommand::class,
                 BeamInstallCommand::class,
+                BeamSeedCommand::class,
                 FrameCacheCommand::class,
                 FrameClearCommand::class,
                 // The client-SDK codegen (promoted from the platform app) + its umbrella. Source-agnostic:
@@ -905,6 +914,15 @@ class BeamServiceProvider extends PackageServiceProvider
                 registerHint: 'app(BeamDoctorManifest::class)->register(package:, audit:, gate:, order:)',
                 where: BeamDoctorManifest::class,
                 package: $pkg, order: 2,
+            ),
+            new ManifestDescriptor(
+                name: 'BeamSeedManifest',
+                of: 'per-package seed steps (seeder class + config gate) run by splicewire:beam:seed, core-first',
+                seam: ManifestSeam::SingletonAccumulator,
+                arity: ManifestArity::RunAll,
+                registerHint: 'app(BeamSeedManifest::class)->register(package:, seederClass:, order:, configGate:)',
+                where: BeamSeedManifest::class,
+                package: $pkg, order: 3,
             ),
             new ManifestDescriptor(
                 name: 'RouteManifestSource',
