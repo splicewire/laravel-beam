@@ -2,9 +2,14 @@
 
 namespace Splicewire\Beam\Tests\Install;
 
+use Illuminate\Console\OutputStyle;
 use Splicewire\Beam\Beam;
+use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Install\BeamInstallManifest;
+use Splicewire\Beam\Install\InstallStep;
 use Splicewire\Beam\Tests\TestCase;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 /**
  * The beam-install orchestrator + self-registration manifest (beam-write-pipeline ticket 08): one
@@ -77,6 +82,36 @@ class BeamInstallTest extends TestCase
             ->expectsOutputToContain('splicewire:beam:install → acme/late')
             ->expectsOutputToContain('beam stack installed.')
             ->assertExitCode(0);
+    }
+
+    /**
+     * beam-install-turnkey: the command runs a verify pass over the three fresh-host provisioning traps
+     * (shared migrations, nav disk, users table). The FIXES are package defaults; the command verifies +
+     * reports, never fatal. Exercised here at the UNIT level (the private verify methods), because running
+     * the whole command's migrate is fragile in this testbench (a pre-existing `media already exists` in the
+     * shared-migration testbench setup — orthogonal to this pass). The reporting strings and non-fatal
+     * behaviour are asserted directly.
+     */
+    public function test_verify_provisioning_reports_the_three_traps_without_throwing(): void
+    {
+        $command = $this->app->make(BeamInstallCommand::class);
+
+        $output = new BufferedOutput;
+        $command->setLaravel($this->app);
+        $command->setOutput(new OutputStyle(
+            new ArrayInput([]),
+            $output,
+        ));
+
+        $method = new \ReflectionMethod($command, 'verifyProvisioning');
+        $method->setAccessible(true);
+        $method->invoke($command, 'single');
+
+        $text = $output->fetch();
+        $this->assertStringContainsString('verify provisioning', $text);
+        $this->assertStringContainsString('trap 1 (shared migrations)', $text);
+        $this->assertStringContainsString('trap 2 (nav disk)', $text);
+        $this->assertStringContainsString('trap 3 (users table)', $text);
     }
 
     /**

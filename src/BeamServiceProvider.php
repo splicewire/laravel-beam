@@ -475,6 +475,20 @@ class BeamServiceProvider extends PackageServiceProvider
         // controllers against the RESOURCE/NAME route defaults.
         $this->bootParticleRouteMacros();
 
+        // SINGLE-TENANT shared-migrations fallback (beam-install-turnkey trap 1). Every beam-* package
+        // publishes its ubiquitous tables into ONE destination, `database/migrations/shared/` — a SUBDIR
+        // the stock framework migrator never recurses into. beam-tenancy's registerSharedMigrationsPath()
+        // is the HOST-side half that runs it (central + tenant passes), but a SINGLE-TENANT host without
+        // beam-tenancy would get those stubs published yet SILENTLY NOT migrated (`migrate` reports
+        // "Nothing to migrate"). So when the tenancy package is ABSENT, beam-core itself registers the
+        // shared directory for the central migrate pass — making even a host that never runs
+        // `splicewire:beam:install` safe. GUARDED on the tenancy provider not being present so it NEVER
+        // double-registers on a multi-tenant host (that package owns the path). `loadMigrationsFrom` over
+        // an empty/missing directory is a harmless no-op, so this is safe before the first publish too.
+        if (! $this->sharedMigrationsOwnedByTenancy()) {
+            $this->loadMigrationsFrom(database_path('migrations/shared'));
+        }
+
         // Base-tier readiness command. Moat-free (never touches the satellite); the
         // frame/schema-forms/data-schemas checks it runs are advisory + presence-conditional.
         if ($this->app->runningInConsole()) {
@@ -579,6 +593,20 @@ class BeamServiceProvider extends PackageServiceProvider
         // $song)`) answer one uniform predicate. Inert by default: with no `app.entitlements` configured
         // and the null resolver, no abilities register that would ever pass.
         $this->registerEntitlementAbilities();
+    }
+
+    /**
+     * Whether the tenancy substrate package owns the `database/migrations/shared/` path (it registers that
+     * directory into BOTH the central and Stancl tenant migrate passes from its own provider). When present,
+     * beam-core must NOT also register it (double-registration would run each shared migration twice); when
+     * ABSENT (a single-tenant host), beam-core registers it for the central pass so the shared tables migrate.
+     * Detected by the provider class existing — the tenancy package ships it, and nothing else defines it.
+     * Kept as a string (not an imported FQCN) because beam-core does NOT depend on beam-tenancy — this is an
+     * OPTIONAL-package probe, and a `use` import would misread as a hard dependency edge.
+     */
+    protected function sharedMigrationsOwnedByTenancy(): bool
+    {
+        return class_exists('Splicewire\Beam\Tenancy\BeamMultiTenancyServiceProvider');
     }
 
     /**

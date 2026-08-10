@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\InstallStep;
 
@@ -104,6 +105,12 @@ class BeamInstallCommand extends Command
         //    survive the next boot.
         $this->runSteps($runSteps, $this->stepsMigrate($runSteps));
         $this->persistConfig($prefix, $sources, $tenancy);
+
+        // 5. Verify the three fresh-host provisioning traps (beam-install-turnkey). Each fix lands as a
+        //    package DEFAULT (so a host that never runs this command is still safe); the command's job here
+        //    is to VERIFY the default took effect + REPORT it, and to nudge the host on the one thing it must
+        //    author itself (a nav.yml). Never fatal — a warning, not a failure.
+        $this->verifyProvisioning($tenancy);
 
         if ($interactive) {
             outro('beam stack installed.');
@@ -228,6 +235,111 @@ class BeamInstallCommand extends Command
         }
 
         return false;
+    }
+
+    /**
+     * Verify the three fresh-host provisioning traps closed (beam-install-turnkey), reporting each. The
+     * FIXES live as package defaults; this is the orchestrator's verify + report pass, and the one place a
+     * host is nudged to author its `nav.yml`. Best-effort + never fatal (a DB may be unreachable in CI).
+     *
+     * @param  ?string  $tenancy  the answered tenancy mode ('single'|'multi'), or null ⇒ read from config
+     */
+    private function verifyProvisioning(?string $tenancy): void
+    {
+        $this->line('splicewire:beam:install → verify provisioning');
+
+        $this->verifySharedMigrations($tenancy);
+        $this->verifyNavDisk();
+        $this->verifyUsersTable();
+    }
+
+    /**
+     * Trap 1: the ubiquitous tables publish to `database/migrations/shared/` — a subdir the stock migrator
+     * never recurses into. beam-core's boot registers that path for a SINGLE-tenant host (beam-tenancy owns
+     * it for a multi-tenant one), so the migrate above ran the shared stubs. Verify the canonical shared
+     * table (`beam_particles`, honouring the table prefix) actually landed.
+     */
+    private function verifySharedMigrations(?string $tenancy): void
+    {
+        $mode = $tenancy ?? (string) config('beam.core.tenancy', 'single');
+        $sharedDir = database_path('migrations/shared');
+        $table = (string) config('beam.core.table_prefix', 'beam_').'particles';
+
+        if (! is_dir($sharedDir)) {
+            $this->line("  ↳ trap 1 (shared migrations): {$sharedDir} not published yet — publish + migrate first.");
+
+            return;
+        }
+
+        try {
+            if (Schema::hasTable($table)) {
+                $owner = $mode === 'multi' ? 'beam-tenancy owns the shared path' : 'beam-core registered the shared path (single-tenant)';
+                $this->line("  ↳ trap 1 (shared migrations): OK — `{$table}` migrated; {$owner}.");
+
+                return;
+            }
+
+            $this->warn("  ↳ trap 1 (shared migrations): `{$table}` is NOT migrated though `{$sharedDir}` is published. ".
+                'The stock migrator does not recurse into shared/; ensure beam-core (single-tenant) or beam-tenancy (multi-tenant) registers it.');
+        } catch (\Throwable $e) {
+            $this->line('  ↳ trap 1 (shared migrations): skipped verification (database unreachable).');
+        }
+    }
+
+    /**
+     * Trap 2: `nav.yml` discovery. NavSource now roots at `resource_path('beam-ux')` when no git-tracked
+     * mirror disk is configured (was base_path(), which never matched the documented location). Report the
+     * root + whether a nav file is present, nudging the host to author one if absent (nav then DERIVES from
+     * entry frontmatter — valid, but a nav.yml pins it).
+     */
+    private function verifyNavDisk(): void
+    {
+        $mirror = config('beam.ux.storage.mirror_disk');
+        if (is_string($mirror) && $mirror !== '') {
+            $root = (string) config("filesystems.disks.{$mirror}.root", '');
+            $root = $root !== '' ? rtrim($root, '/') : rtrim(resource_path('beam-ux'), '/');
+            $where = "mirror disk `{$mirror}`";
+        } else {
+            $root = rtrim(resource_path('beam-ux'), '/');
+            $where = 'resource_path(beam-ux)';
+        }
+
+        $found = null;
+        foreach (['yml', 'yaml', 'json'] as $ext) {
+            if (is_file("{$root}/nav.{$ext}")) {
+                $found = "nav.{$ext}";
+                break;
+            }
+        }
+
+        if ($found !== null) {
+            $this->line("  ↳ trap 2 (nav disk): OK — `{$found}` found under {$where} ({$root}).");
+
+            return;
+        }
+
+        $this->line("  ↳ trap 2 (nav disk): no nav.{yml,yaml,json} under {$where} ({$root}) — ".
+            'nav will DERIVE from entry frontmatter (valid). Drop a nav.yml there to pin it.');
+    }
+
+    /**
+     * Trap 3: the accounts `create_users_table` migration is now guarded (`hasTable('users')` skips), so a
+     * host that already owns a `users` table keeps it while still getting the rest of the auth estate. Report
+     * whether a users table is present (guard would have short-circuited) or absent.
+     */
+    private function verifyUsersTable(): void
+    {
+        try {
+            if (Schema::hasTable('users')) {
+                $this->line('  ↳ trap 3 (users table): OK — `users` exists; the accounts create_users_table migration self-skips (hasTable guard).');
+
+                return;
+            }
+
+            $this->line('  ↳ trap 3 (users table): no `users` table — the accounts migration will create the uuid-keyed one.');
+        } catch (\Throwable $e) {
+            $this->line('  ↳ trap 3 (users table): skipped verification (database unreachable).');
+        }
     }
 
     /**
