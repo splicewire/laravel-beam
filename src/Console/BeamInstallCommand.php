@@ -212,6 +212,10 @@ class BeamInstallCommand extends Command
         foreach ($steps as $step) {
             $this->line("splicewire:beam:install → {$step->package}");
 
+            if ($step->note !== null) {
+                $this->line("  ↳ {$step->note}");
+            }
+
             foreach ($step->publishTags as $tag) {
                 $this->callSilent('vendor:publish', array_merge(
                     ['--tag' => $tag],

@@ -88,7 +88,7 @@ return [
     | ({@see \Splicewire\Beam\Codegen\SplicewireClientGenerator}'s output) that
     | `SdkEndpointDriftAudit`/`SdkNameConventionAudit` scan: the composer package name (resolved via its
     | `vendor/` install path — works for both a local path-repo checkout and a normal CI git clone) and the
-    | PHP namespace its `Requests/` classes live under. Defaults match this repo's own `splicewire/client`;
+    | PHP namespace its `Requests/` classes live under. Defaults match this repo's own `splicewire/laravel-connector`;
     | a different beam host generating its own Saloon SDK overrides both to its own package.
     */
     'surgeon' => [
@@ -100,7 +100,7 @@ return [
             ],
             'exclude_dirs' => ['credits'],
         ],
-        'sdk_package' => env('BEAM_CLIENT_SDK_PACKAGE', 'splicewire/client'),
+        'sdk_package' => env('BEAM_CLIENT_SDK_PACKAGE', 'splicewire/laravel-connector'),
         'sdk_namespace' => env('BEAM_CLIENT_SDK_NAMESPACE', 'Splicewire\\Client\\Requests'),
     ],
 

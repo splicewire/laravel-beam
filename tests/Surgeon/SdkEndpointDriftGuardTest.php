@@ -7,7 +7,7 @@ use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * The endpoint half of the client-sdk-regen #10 CI drift guard: the real splicewire/client SDK must
+ * The endpoint half of the client-sdk-regen #10 CI drift guard: the real splicewire/laravel-connector SDK must
  * carry NO auto-fixable endpoint drift against the host's real route table. A fixable finding means a
  * request class's `resolveEndpoint()` literal drifted to a path that has a unique corrected route —
  * i.e. a route moved and the committed SDK wasn't repointed.
@@ -31,7 +31,7 @@ class SdkEndpointDriftGuardTest extends TestCase
         $dir = $prop->getValue($audit);
 
         if (! is_dir($dir)) {
-            $this->markTestSkipped("splicewire/client requests dir not present ({$dir}); co-dev SDK not checked out.");
+            $this->markTestSkipped("splicewire/laravel-connector requests dir not present ({$dir}); co-dev SDK not checked out.");
         }
 
         $findings = $audit->suggestOperations();

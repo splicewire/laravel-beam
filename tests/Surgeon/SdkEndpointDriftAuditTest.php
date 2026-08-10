@@ -13,7 +13,7 @@ use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
  * match locates the corrected path and emits an applyable `literal-rewrite` suggestion (the beam POLICY
  * that nominates surgeon's generic literal-rewrite mechanism).
  *
- * Pure unit test over an in-memory fixture — no splicewire/client package, no route table, no DB.
+ * Pure unit test over an in-memory fixture — no splicewire/laravel-connector package, no route table, no DB.
  */
 class SdkEndpointDriftAuditTest extends TestCase
 {

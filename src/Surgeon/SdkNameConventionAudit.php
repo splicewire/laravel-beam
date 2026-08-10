@@ -14,7 +14,7 @@ use Symfony\Component\Yaml\Yaml;
 
 /**
  * The SDK NAME-CONVENTION audit (client-sdk-regen "convention drives SDK names" pivot). The published
- * `splicewire/client` request classes were originally hand-picked; the pivot makes the GENERATOR's
+ * `splicewire/laravel-connector` request classes were originally hand-picked; the pivot makes the GENERATOR's
  * convention ({@see SdkNaming}) the standard and reconciles the EXISTING names TO it via surgeon renames.
  *
  * This is the deterministic pre-pass that PRODUCES that rename list. For each existing
@@ -28,7 +28,7 @@ use Symfony\Component\Yaml\Yaml;
  * finding.
  *
  * It lives in BEAM, not surgeon: surgeon (foundation tier) must never know "an SDK class name should
- * match the generator convention" (a `splicewire/client` estate fact). Beam owns that estate POLICY and
+ * match the generator convention" (a `splicewire/laravel-connector` estate fact). Beam owns that estate POLICY and
  * nominates surgeon's generic {@see RelocationOperation} via the
  * Finding→Operation bridge — exactly like the sibling {@see SdkEndpointDriftAudit}.
  *
@@ -45,18 +45,24 @@ class SdkNameConventionAudit implements DoctorAudit, SuggestsOperations
     public function __construct(
         protected string $requestsDir,
         protected string $openApiPath,
+        protected string $clientNamespace = self::CLIENT_NAMESPACE,
     ) {}
 
     /**
-     * The default wiring against the co-dev `splicewire/client` checkout + the host's scribe openapi
-     * spec. Kept off the constructor so the class is pure-unit testable ({@see suggestFor()}).
+     * The default wiring against the generated Saloon SDK's normal `vendor/` install + the host's
+     * scribe openapi spec. The package identity is config-driven
+     * (`config('beam.client.surgeon.sdk_package')`/`sdk_namespace`, defaulting to this repo's own
+     * `splicewire/laravel-connector`) so a different beam host scanning its OWN generated SDK just overrides the
+     * config, not this class — mirrors {@see SdkEndpointDriftAudit::forClientPackage()}. Kept off the
+     * constructor so the class is pure-unit testable ({@see suggestFor()}).
      */
-    public static function forClientPackage(?string $requestsDir = null, ?string $openApiPath = null): self
+    public static function forClientPackage(?string $requestsDir = null, ?string $openApiPath = null, ?string $clientNamespace = null): self
     {
-        $requestsDir ??= dirname(base_path()).'/../Workspaces/laravel/packages/splicewire/client/src/Requests';
+        $requestsDir ??= base_path('vendor/'.config('beam.client.surgeon.sdk_package', 'splicewire/laravel-connector').'/src/Requests');
         $openApiPath ??= storage_path('app/scribe/openapi.yaml');
+        $clientNamespace ??= config('beam.client.surgeon.sdk_namespace', self::CLIENT_NAMESPACE);
 
-        return new self($requestsDir, $openApiPath);
+        return new self($requestsDir, $openApiPath, $clientNamespace);
     }
 
     /**
@@ -144,7 +150,7 @@ class SdkNameConventionAudit implements DoctorAudit, SuggestsOperations
                 continue;
             }
 
-            $newFqn = self::CLIENT_NAMESPACE.'\\'.$conventionDomain.'\\'.$conventionClass;
+            $newFqn = $this->clientNamespace.'\\'.$conventionDomain.'\\'.$conventionClass;
 
             // Already at its convention FQN — no finding.
             if ($sdk['fqn'] === $newFqn) {

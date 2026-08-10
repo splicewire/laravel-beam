@@ -15,11 +15,16 @@ class InstallStep
      * @param  list<string>  $publishTags  the `vendor:publish` tags to run for this package
      * @param  bool  $migrates  whether this package contributes migrations (a single migrate runs after all publishes)
      * @param  int  $order  lower runs first; beam-core registers at 0 (core-first), consumers default to 100
+     * @param  ?string  $note  an optional post-install pointer printed after the step runs — for a config
+     *                         knob that's real, useful, and easy to miss because it deliberately defaults to
+     *                         a no-op (e.g. an optional storage/disk seam). Not for anything the wizard
+     *                         already prompts for.
      */
     public function __construct(
         public string $package,
         public array $publishTags = [],
         public bool $migrates = false,
         public int $order = 100,
+        public ?string $note = null,
     ) {}
 }

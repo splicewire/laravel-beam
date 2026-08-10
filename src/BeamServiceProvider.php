@@ -87,7 +87,9 @@ use Splicewire\Beam\Surgeon\SdkHookMigrationBridge;
 use Splicewire\Beam\Surgeon\SdkNameConventionAudit;
 use Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit;
 use Splicewire\Beam\Surgeon\SdkReturnsTypeScriptResolutionAudit;
+use Splicewire\Beam\Surgeon\StatusChannelLiteralDriftAudit;
 use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
+use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -418,6 +420,8 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->bind(SdkReturnsCoverageAudit::class, fn () => SdkReturnsCoverageAudit::forApp());
         $this->app->bind(SdkReturnsTypeScriptResolutionAudit::class, fn () => SdkReturnsTypeScriptResolutionAudit::forApp());
         $this->app->bind(TypeScriptShortNameCollisionAudit::class, fn () => TypeScriptShortNameCollisionAudit::forApp());
+        $this->app->bind(StatusChannelLiteralDriftAudit::class, fn () => StatusChannelLiteralDriftAudit::forApp());
+        $this->app->bind(TypeScriptUnknownResolutionAudit::class, fn () => TypeScriptUnknownResolutionAudit::forApp());
 
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
@@ -429,6 +433,8 @@ class BeamServiceProvider extends PackageServiceProvider
         $manifest->register('splicewire/laravel-beam', SdkReturnsCoverageAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkReturnsTypeScriptResolutionAudit::class);
         $manifest->register('splicewire/laravel-beam', TypeScriptShortNameCollisionAudit::class);
+        $manifest->register('splicewire/laravel-beam', StatusChannelLiteralDriftAudit::class);
+        $manifest->register('splicewire/laravel-beam', TypeScriptUnknownResolutionAudit::class);
     }
 
     /**

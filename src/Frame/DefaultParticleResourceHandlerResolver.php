@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Frame;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
+use Splicewire\Beam\Particle\ParticleResource;
 
 /**
  * The OOTB default for Frame's resource-handler seam (beam-ux-uplift ticket 09) — promoted UP from the
@@ -14,7 +15,7 @@ use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
  *
  * Frame's resource socket calls {@see handlerFor()} at request time; every beam-served resource rides the
  * ONE beam-native handler ({@see ParticleFrameResourceHandler}), which runs the canonical CRUD through the
- * beam seams and applies a registered {@see \Splicewire\Beam\Particle\ParticleResource}'s enrichment
+ * beam seams and applies a registered {@see ParticleResource}'s enrichment
  * (scope/project/includes) when one exists under the key — so this resolver is a constant map: every key →
  * the beam handler.
  *

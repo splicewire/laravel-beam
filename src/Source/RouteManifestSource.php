@@ -13,14 +13,17 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
  * The manifest is a route-name → entry map:
  *
  *   [
- *     'library-lyrics.index'  => ['path' => 'resources/library-lyrics',      'methods' => ['GET'],  'returns' => 'App.Data.Library.LyricPieceProjectData', 'returnsMany' => true],
- *     'library-lyrics.store'  => ['path' => 'resources/library-lyrics',      'methods' => ['POST'], 'returns' => 'App.Data.Library.LyricPieceProjectData'],
- *     'library-lyrics.update' => ['path' => 'resources/library-lyrics/{id}', 'methods' => ['PATCH']],
+ *     'library-lyrics.index'  => ['path' => 'resources/library-lyrics',      'methods' => ['GET'],  'visibility' => 'internal', 'returns' => 'App.Data.Library.LyricPieceProjectData', 'returnsMany' => true],
+ *     'library-lyrics.store'  => ['path' => 'resources/library-lyrics',      'methods' => ['POST'], 'visibility' => 'internal', 'returns' => 'App.Data.Library.LyricPieceProjectData'],
+ *     'library-lyrics.update' => ['path' => 'resources/library-lyrics/{id}', 'methods' => ['PATCH'], 'visibility' => 'internal'],
  *   ]
  *
  * Entry keys:
  *   - `path`        (required) the URI, `{param}`-templated, with NO leading slash — read off the live table.
  *   - `methods`     (required) the HTTP verbs (`['GET']`, `['POST']`, …).
+ *   - `visibility`  (required) the route's exposure tier, `'public'` or `'internal'` (default when
+ *                    undeclared). Orthogonal to `returns`/codegen — has no consumer in the generator itself;
+ *                    exists for future public/private API-surface tooling to read.
  *   - `returns`     (optional) the response Data class as a TypeScript type path (`App.Data.X`); its
  *                    presence is what promotes an entry from a route-map-only line to a typed hook. Absent
  *                    ⇒ the entry gets a route-map entry only (its hook stays hand-written).
@@ -33,7 +36,7 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
 interface RouteManifestSource
 {
     /**
-     * @return array<string, array{path: string, methods: list<string>, returns?: string, returnsMany?: bool}>
+     * @return array<string, array{path: string, methods: list<string>, visibility: string, returns?: string, returnsMany?: bool}>
      */
     public function toArray(): array;
 }

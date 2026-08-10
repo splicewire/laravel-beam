@@ -24,14 +24,14 @@ class BeamInstallManifest
      *
      * @param  list<string>  $publishTags
      */
-    public function register(string $package, array $publishTags = [], bool $migrates = false, int $order = 100): void
+    public function register(string $package, array $publishTags = [], bool $migrates = false, int $order = 100, ?string $note = null): void
     {
         $this->steps = array_values(array_filter(
             $this->steps,
             static fn (InstallStep $step): bool => $step->package !== $package,
         ));
 
-        $this->steps[] = new InstallStep($package, $publishTags, $migrates, $order);
+        $this->steps[] = new InstallStep($package, $publishTags, $migrates, $order, $note);
     }
 
     /**

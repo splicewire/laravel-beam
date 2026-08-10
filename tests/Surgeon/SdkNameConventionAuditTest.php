@@ -13,7 +13,7 @@ use Splicewire\Beam\Surgeon\SdkNameConventionAudit;
  * convention (resolved via the class's endpoint→route→@group), nominating a surgeon `relocation` where
  * the current name diverges.
  *
- * Pure unit test over in-memory fixtures — no splicewire/client package, no route facade, no spec parse.
+ * Pure unit test over in-memory fixtures — no splicewire/laravel-connector package, no route facade, no spec parse.
  */
 class SdkNameConventionAuditTest extends TestCase
 {

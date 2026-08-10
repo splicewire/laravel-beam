@@ -9,10 +9,15 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Schema;
+use Rushing\DataFilters\Attributes\Sortable;
+use Spatie\LaravelData\Data;
+use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Tests\TestCase;
+use Splicewire\Beam\Write\ParticleWriter;
 
 /**
  * The REST controller must honour a resource's `scope` closure — the row-level read gate (ADR-0156 §83).
@@ -73,7 +78,6 @@ class ParticleControllerScopeTest extends TestCase
             model: SortedWidget::class,
             data: SortedWidgetData::class,
             filterable: false,
-            defaultSort: 'updated_at',
         ));
 
         $request = Request::create('/sorted-widgets');
@@ -107,10 +111,10 @@ class ParticleControllerScopeTest extends TestCase
 
         // findParticle scopes the base query, so another owner's row 404s (never resolves).
         (new ExposedParticleController(
-            $this->app->make(\Splicewire\Beam\Write\ParticleWriter::class),
-            $this->app->make(\Splicewire\Beam\Read\Contracts\ParticleHydrator::class),
+            $this->app->make(ParticleWriter::class),
+            $this->app->make(ParticleHydrator::class),
             $this->app->make(ParticleResourceRegistry::class),
-            $this->app->make(\Splicewire\Beam\Http\Contracts\ResponseEnvelope::class),
+            $this->app->make(ResponseEnvelope::class),
         ))->resolve('scope-widget', (string) $theirs->id);
     }
 
@@ -119,10 +123,10 @@ class ParticleControllerScopeTest extends TestCase
         $mine = ScopeWidget::where('name', 'mine-a')->firstOrFail();
 
         $resolved = (new ExposedParticleController(
-            $this->app->make(\Splicewire\Beam\Write\ParticleWriter::class),
-            $this->app->make(\Splicewire\Beam\Read\Contracts\ParticleHydrator::class),
+            $this->app->make(ParticleWriter::class),
+            $this->app->make(ParticleHydrator::class),
             $this->app->make(ParticleResourceRegistry::class),
-            $this->app->make(\Splicewire\Beam\Http\Contracts\ResponseEnvelope::class),
+            $this->app->make(ResponseEnvelope::class),
         ))->resolve('scope-widget', (string) $mine->id);
 
         $this->assertSame('mine-a', $resolved->name);
@@ -138,7 +142,7 @@ class ScopeWidget extends Model
     protected $guarded = [];
 }
 
-class ScopeWidgetData extends \Spatie\LaravelData\Data
+class ScopeWidgetData extends Data
 {
     public function __construct(public int $id, public string $name) {}
 }
@@ -150,9 +154,16 @@ class SortedWidget extends Model
     protected $guarded = [];
 }
 
-class SortedWidgetData extends \Spatie\LaravelData\Data
+class SortedWidgetData extends Data
 {
-    public function __construct(public int $id, public string $name) {}
+    // The default sort is declared HERE (`#[Sortable(default: true)]`), the single source of truth read by
+    // both index paths; `updatedAt` snake-maps to the `updated_at` column, `desc` ⇒ most-recently-edited first.
+    public function __construct(
+        public int $id,
+        public string $name,
+        #[Sortable(default: true, direction: 'desc')]
+        public $updatedAt = null,
+    ) {}
 }
 
 /** Exposes the protected findParticle for the resolve-by-id scope assertions. */

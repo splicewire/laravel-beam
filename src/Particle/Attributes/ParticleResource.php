@@ -47,8 +47,9 @@ class ParticleResource
      * @param  list<string>  $includes  default includes (eager-load + serialization axis)
      * @param  bool  $filterable  index rides the data-filters builder when true; plain `latest()` otherwise
      * @param  int  $perPage  default page size
-     * @param  string|null  $defaultSort  the column the non-filterable index orders by (descending); null ⇒
-     *                                    `created_at`. Use `updated_at` for a "most-recently-edited first" list.
+     *
+     * The default sort is declared ON the read Data class via `#[Sortable(default: true)]` (one source of
+     * truth for both the filterable and non-filterable index paths); there is no attribute-level knob.
      *
      * The remaining params are the optional editor/**manifest** concerns (RDU-02), mirroring the runtime
      * {@see \Splicewire\Beam\Particle\ParticleResource} one-for-one — so a resource can be fully described
@@ -82,7 +83,6 @@ class ParticleResource
         public array $includes = [],
         public bool $filterable = true,
         public int $perPage = 20,
-        public ?string $defaultSort = null,
         public string $label = '',
         public string $form = 'bare',
         public ?string $editData = null,

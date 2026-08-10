@@ -12,13 +12,13 @@ use Rushing\Surgeon\Rewrite\LiteralRewriteOperation;
 
 /**
  * The host-aware SDK endpoint-drift audit (dogfood campaign). The published Saloon SDK
- * `splicewire/client` has request classes whose `resolveEndpoint()` string literal can drift from the
+ * `splicewire/laravel-connector` has request classes whose `resolveEndpoint()` string literal can drift from the
  * app's REAL route table — the marquee case: a class returning `/api/v1/compositions/{id}/render` after
  * the app moved that route to `/api/v1/splice/compositions/{id}/render` (ADR-0124). Nothing caught it
  * until tests failed. This audit is the deterministic pre-pass that would have.
  *
  * It lives in BEAM, not in surgeon: surgeon is FOUNDATION tier and must never know "an SDK endpoint
- * should match a host route" (a `splicewire/client` estate fact). Beam owns that estate POLICY and
+ * should match a host route" (a `splicewire/laravel-connector` estate fact). Beam owns that estate POLICY and
  * nominates surgeon's generic {@see LiteralRewriteOperation} mechanism via the Finding→Operation
  * bridge — this audit emits a `literal-rewrite` {@see OperationSuggestion} carrying the exact
  * `{file, old, new}` splice.
@@ -49,13 +49,17 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
     }
 
     /**
-     * The default wiring against the co-dev `splicewire/client` checkout. Kept off the constructor so
-     * the class is pure-unit testable ({@see suggestFor()}) with an in-memory fixture — no package, no
-     * route table, no DB.
+     * The default wiring against the generated Saloon SDK, resolved via its normal `vendor/` install
+     * (a co-dev path-repo symlink locally, a plain git checkout in CI — either way composer already put
+     * it there, so this needs no Workspaces-relative guessing). The package identity is config-driven
+     * (`config('beam.client.surgeon.sdk_package')`, default `splicewire/laravel-connector`) so a different beam
+     * host scanning its OWN generated SDK just overrides the config, not this class. Kept off the
+     * constructor so the class is pure-unit testable
+     * ({@see suggestFor()}) with an in-memory fixture — no package, no route table, no DB.
      */
     public static function forClientPackage(?string $requestsDir = null): self
     {
-        $requestsDir ??= dirname(base_path()).'/../Workspaces/laravel/packages/splicewire/client/src/Requests';
+        $requestsDir ??= base_path('vendor/'.config('beam.client.surgeon.sdk_package', 'splicewire/laravel-connector').'/src/Requests');
 
         return new self($requestsDir);
     }

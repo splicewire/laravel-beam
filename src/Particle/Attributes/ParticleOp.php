@@ -3,14 +3,16 @@
 namespace Splicewire\Beam\Particle\Attributes;
 
 use Attribute;
+use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\OperationKind;
+use Splicewire\Beam\Particle\ParticleOperation;
 
 /**
  * Marks a class as a **named particle operation** on a resource — the attribute twin of
  * `$registry->register(new ParticleOperation(...))` (ADR-0160). Boot-time discovery reflects it into a
- * runtime {@see \Splicewire\Beam\Particle\ParticleOperation} mounted at
+ * runtime {@see ParticleOperation} mounted at
  * `POST /{resource}/{id}/op/{name}` (via `Route::particleOp()`) and run by
- * {@see \Splicewire\Beam\Http\Particle\ParticleOperationController}.
+ * {@see ParticleOperationController}.
  *
  * The op's HOST CODE — which an attribute cannot carry — lives as `public static` convention methods on
  * the SAME annotated class, wired in by {@see AttributedParticleDiscovery}:

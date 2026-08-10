@@ -21,7 +21,8 @@
         "spatie/laravel-model-flags": "*",
         "spatie/laravel-model-status": "*",
         "spatie/laravel-package-tools": "^1.16",
-        "spatie/laravel-schemaless-attributes": "*"
+        "spatie/laravel-schemaless-attributes": "*",
+        "spatie/typescript-transformer": "^2.0|^3.0"
     },
     "require-dev": {
         "laravel/pint": "^1.0",

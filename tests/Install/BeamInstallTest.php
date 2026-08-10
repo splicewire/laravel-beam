@@ -161,4 +161,28 @@ class BeamInstallTest extends TestCase
             ->doesntExpectOutputToContain('acme/wanted')
             ->assertExitCode(0);
     }
+
+    /**
+     * A step's optional {@see InstallStep::$note} round-trips through
+     * registration — a pointer to a config knob that's real but deliberately defaults to a no-op (e.g.
+     * beam-ux's mirror_disk), so an operator installing the module doesn't have to discover it
+     * independently. `BeamInstallCommand` prints it right after the step's package line (not covered by
+     * an artisan-level test here — every artisan-level test in this file that runs a real `migrate`
+     * pre-existingly collides on testbench's own skeleton migrations already applied in `setUp`).
+     */
+    public function test_a_steps_note_round_trips_through_registration(): void
+    {
+        $manifest = $this->app->make(BeamInstallManifest::class);
+        $manifest->register('acme/noted', ['noted-config'], order: 100, note: 'Optionally set acme.thing for X.');
+        $manifest->register('acme/silent', ['silent-config'], order: 100);
+
+        $steps = array_values(array_filter(
+            $manifest->steps(),
+            fn ($s) => in_array($s->package, ['acme/noted', 'acme/silent'], true),
+        ));
+        $byPackage = array_combine(array_map(fn ($s) => $s->package, $steps), $steps);
+
+        $this->assertSame('Optionally set acme.thing for X.', $byPackage['acme/noted']->note);
+        $this->assertNull($byPackage['acme/silent']->note);
+    }
 }

@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Http\Particle;
 
 use Closure;
 use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -13,6 +14,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Rushing\DataFilters\Reflection\FilterReflector;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -81,7 +83,7 @@ class ParticleController extends Controller
 
         $query = $resource->filterable
             ? $this->hydrator->query($resource->key, $ctx)
-            : ($relativeQuery ?? $resource->model::query()->latest($resource->defaultSort));
+            : ($relativeQuery ?? $this->defaultSortedQuery($resource));
 
         // Row-level authorization for the non-filterable list (ADR-0156 §83): a `filterable:false` resource
         // has no data-filters query to gate its index, so its owner/inverse `scope` closure is the ONLY read
@@ -95,6 +97,30 @@ class ParticleController extends Controller
         $page->through(fn (Model $record) => $this->projectRecord($resource, $record, $ctx));
 
         return $this->envelope->paginated($page);
+    }
+
+    /**
+     * The base query for a NON-filterable index, ordered by the resource DTO's declared default sort.
+     *
+     * The default is read from the read Data class's `#[Sortable(default: true)]` property — the SINGLE
+     * source of truth for a resource's default order (the filterable path reads the SAME attribute via its
+     * data-filters query). {@see FilterReflector::defaultSort()} returns the sort key sign-prefixed (`-key`
+     * ⇒ descending) and honors the `#[Sortable]` direction; absent any opt-in we fall back to the framework
+     * `latest()` (newest `created_at` first — the historical default when no column was declared).
+     */
+    protected function defaultSortedQuery(ParticleResource $resource): Builder
+    {
+        $query = $resource->model::query();
+
+        $default = (new FilterReflector)->defaultSort($resource->data);
+
+        if ($default === null) {
+            return $query->latest();
+        }
+
+        return str_starts_with($default, '-')
+            ? $query->orderByDesc(substr($default, 1))
+            : $query->orderBy($default);
     }
 
     public function show(Request $request, string $id): Responsable
