@@ -112,6 +112,12 @@ class BeamInstallCommand extends Command
         //    author itself (a nav.yml). Never fatal — a warning, not a failure.
         $this->verifyProvisioning($tenancy);
 
+        // 6. Frontend-surface provisioning (pnpm trap): a pnpm host must pin the unpublished
+        //    @splicewire/@schemastud transitive JS deps to their local file: paths (npm resolves them
+        //    leniently; pnpm 404s). Delegated to laravel-beam-ux's `beam:pnpm-overrides` when present —
+        //    idempotent + a no-op on npm/yarn hosts, so it's always safe to run.
+        $this->ensurePnpmOverrides();
+
         if ($interactive) {
             outro('beam stack installed.');
         } else {
@@ -344,6 +350,26 @@ class BeamInstallCommand extends Command
         } catch (\Throwable $e) {
             $this->line('  ↳ trap 3 (users table): skipped verification (database unreachable).');
         }
+    }
+
+    /**
+     * Frontend-surface provisioning (beam-install-turnkey, pnpm trap): a pnpm host must pin the
+     * unpublished @splicewire/@schemastud transitive JS deps to their local `file:` paths (npm resolves
+     * them leniently; pnpm hits ERR_PNPM_FETCH_404). `beam:pnpm-overrides` (shipped by laravel-beam-ux)
+     * generates that `pnpm.overrides` block — idempotent + a no-op on an npm/yarn host. Skipped silently
+     * when laravel-beam-ux isn't installed (the command isn't registered), so beam-core never hard-depends
+     * on it.
+     */
+    private function ensurePnpmOverrides(): void
+    {
+        $app = $this->getApplication();
+
+        if ($app === null || ! $app->has('beam:pnpm-overrides')) {
+            return;
+        }
+
+        $this->line('splicewire:beam:install → frontend surfaces (pnpm overrides)');
+        $this->call('beam:pnpm-overrides');
     }
 
     /**
