@@ -38,6 +38,7 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
 use Splicewire\Beam\Console\BeamSeedCommand;
 use Splicewire\Beam\Console\ManifestIndexCommand;
+use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Entitlements\EntitlementGate;
@@ -567,6 +568,14 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             BeamCoreMigrationsAudit::class,
+        );
+
+        // splicewire-ecosystem ticket 15: beam-core self-registers the fleet AGENTS.md/CLAUDE.md
+        // convention drift check on EVERY host that installs it — a host repo never has to opt in.
+        // Advisory (gate defaults to false): this is drift-checking, not a hard failure.
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            AgentsMdConventionAudit::class,
         );
 
         // beam-core self-describes its own registries into the index of indexes (beam-manifest-index),
