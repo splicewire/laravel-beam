@@ -29,6 +29,7 @@
         "orchestra/testbench": "^9.0|^10.0|^11.0",
         "phpunit/phpunit": "^11.0|^12.0",
         "rushing/laravel-surgeon": "*",
+        "rushing/php-package-topology": "dev-main",
         "wikimedia/composer-merge-plugin": "^2.1"
     },
     "autoload": {
@@ -61,6 +62,11 @@
                         "fromPrefix": "splicewire/laravel-beam",
                         "toPrefix": "splicewire/laravel-satellite",
                         "because": "R2: a beam package never requires a satellite"
+                    },
+                    {
+                        "fromPrefix": "splicewire/laravel-beam",
+                        "toPrefix": "splicewire/tower",
+                        "because": "R3 (marketplace build, Seam 1): a beam package never requires the composed Tower host tier — laravel-beam-market in particular must stay entirely blind to Tower's world, the same DOWN-only direction R2 already holds for satellite"
                     }
                 ]
             }
