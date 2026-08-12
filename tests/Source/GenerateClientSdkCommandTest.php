@@ -62,8 +62,8 @@ class GenerateClientSdkCommandTest extends TestCase
         $this->assertStringContainsString('export const defaults: RouteMap = {', $routes);
         $this->assertStringContainsString("'library-lyrics.index': 'resources/library-lyrics',", $routes);
         $this->assertStringContainsString("'library-lyrics.update': 'resources/library-lyrics/{id}',", $routes);
-        // No admin source bound ⇒ an empty adminDefaults map, never absent.
-        $this->assertStringContainsString('export const adminDefaults: RouteMap = {', $routes);
+        // No operator source bound ⇒ an empty operatorDefaults map, never absent.
+        $this->assertStringContainsString('export const operatorDefaults: RouteMap = {', $routes);
 
         // hooks/library-lyrics.ts — a query for the read, a mutation for the write.
         $hook = file_get_contents($this->outDir.'/hooks/library-lyrics.ts');
@@ -120,6 +120,64 @@ class GenerateClientSdkCommandTest extends TestCase
         // The unified macro widens update to PUT+PATCH (absorbing the app's convention), so a legacy CRUD
         // controller can be dissolved onto it without dropping the PUT verb its clients used.
         $this->assertSame(['PUT', 'PATCH'], $manifest['widgets.update']['methods']);
+    }
+
+    public function test_the_particle_source_admits_operation_routes_alongside_resource_routes(): void
+    {
+        $registry = $this->app->make(ParticleResourceRegistry::class);
+        $registry->register(new ParticleResource(
+            key: 'widgets',
+            model: 'App\\Models\\Widget',
+            data: 'App\\Data\\WidgetData',
+        ));
+
+        Route::prefix('resources')->group(function () {
+            Route::particleResource('widgets', 'widgets', ['only' => ['index']]);
+            Route::particleOp('widgets', 'widgets', 'recalculate');
+        });
+
+        $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
+
+        // The op route is no longer excluded: it reaches the manifest, so the generator can cover it.
+        $this->assertArrayHasKey('widgets.op.recalculate', $manifest);
+        $this->assertSame('resources/widgets/{id}/op/recalculate', $manifest['widgets.op.recalculate']['path']);
+        $this->assertSame(['POST'], $manifest['widgets.op.recalculate']['methods']);
+
+        // Resource entries are untouched by the widening.
+        $this->assertSame('App.Data.WidgetData', $manifest['widgets.index']['returns']);
+        $this->assertTrue($manifest['widgets.index']['returnsMany']);
+    }
+
+    public function test_an_unresolvable_return_type_is_recorded_rather_than_silently_absent(): void
+    {
+        // A resource key that was never registered — the degradation is CORRECT (never fabricate a type)
+        // but it must be reportable, else "we generated nothing" and "this returns nothing" look identical.
+        Route::prefix('resources')->group(function () {
+            Route::particleResource('ghosts', 'ghosts', ['only' => ['index']]);
+            Route::particleOp('ghosts', 'ghosts', 'vanish');
+        });
+
+        $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
+
+        foreach (['ghosts.index', 'ghosts.op.vanish'] as $name) {
+            $this->assertArrayNotHasKey('returns', $manifest[$name], "[{$name}] must not fabricate a type.");
+            $this->assertTrue($manifest[$name]['unresolved'], "[{$name}] must record its unresolved shape.");
+        }
+    }
+
+    public function test_a_resolved_entry_is_not_marked_unresolved(): void
+    {
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'widgets',
+            model: 'App\\Models\\Widget',
+            data: 'App\\Data\\WidgetData',
+        ));
+
+        Route::prefix('resources')->group(fn () => Route::particleResource('widgets', 'widgets', ['only' => ['index']]));
+
+        $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
+
+        $this->assertArrayNotHasKey('unresolved', $manifest['widgets.index']);
     }
 }
 

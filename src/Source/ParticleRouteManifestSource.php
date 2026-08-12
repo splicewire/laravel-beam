@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Source;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
@@ -14,8 +15,9 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * those MOUNTED routes off the live route table and reconstructs the enriched manifest the generator wants.
  *
  * How it works:
- *   1. Walk the live route table; keep every route whose action targets {@see ParticleController} and
- *      carries the `_particle` resource-key default (the macro stamps both).
+ *   1. Walk the live route table; keep every route whose action targets {@see ParticleController} (a CRUD
+ *      verb) or {@see ParticleOperationController} (a named operation) — the macros stamp their identifying
+ *      route defaults on both.
  *   2. Group by resource key, deriving `path` (the URI, leading slash stripped) + `methods` off the route.
  *   3. Derive `returns` for INDEX/SHOW (the read verbs) from the resource's OUTPUT DATA class: the beam
  *      package already knows each resource's Data class — it lives on the {@see ParticleResource}
@@ -27,6 +29,9 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *   4. INDEX is `returnsMany`; SHOW is single. Write verbs (store/update/destroy) get a route-map entry
  *      only (no `returns`) — their hooks are mutations keyed by the same route name, and the mutation's
  *      return type rides the resource's read DTO so a write still lands typed.
+ *   5. A route that declares NEITHER a resolvable `returns` NOR a `streams` map is stamped `unresolved`.
+ *      The degradation itself is right — never fabricate a type — but recording it is what makes the
+ *      absence reportable: a silent degradation looks exactly like a verb that returns nothing.
  *
  * The prefix (`resources/`) is READ, never hardcoded — renaming the mount can't drift the client.
  */
@@ -66,6 +71,18 @@ class ParticleRouteManifestSource implements RouteManifestSource
                 if ($this->verbOf($name) === 'index') {
                     $entry['returnsMany'] = true;
                 }
+            } elseif ($streams = $route->getAction('streams')) {
+                // A stream route resolves to a SEQUENCE of typed events keyed by SSE `event:` name, not one
+                // payload — a declared shape, so it is not negative space. Same shape Tower's manifest emits.
+                $entry['streams'] = array_map(
+                    fn (array $classes) => array_map($this->toTsType(...), $classes),
+                    $streams
+                );
+            } else {
+                // RECORD the absence. Degrading to a route-map-only entry is correct — never fabricate a type
+                // — but a silent degradation is indistinguishable from a verb that genuinely returns nothing,
+                // which is precisely what makes undeclared surface invisible to the detector.
+                $entry['unresolved'] = true;
             }
 
             $manifest[$name] = $entry;
@@ -76,12 +93,28 @@ class ParticleRouteManifestSource implements RouteManifestSource
         return $manifest;
     }
 
-    /** A route belongs to us when its action targets the generic {@see ParticleController}. */
+    /**
+     * A route belongs to us when its action targets the generic {@see ParticleController} (a CRUD verb) OR
+     * the {@see ParticleOperationController} (a named operation).
+     *
+     * Operations were previously excluded outright, which is why they reached neither the manifest nor the
+     * generated client: a whole declaration site was invisible to every downstream consumer.
+     */
     private function isParticleRoute(Route $route): bool
     {
         $action = $route->getAction('controller');
 
-        return is_string($action) && str_starts_with($action, ParticleController::class.'@');
+        if (! is_string($action)) {
+            return false;
+        }
+
+        foreach ([ParticleController::class, ParticleOperationController::class] as $controller) {
+            if (str_starts_with($action, $controller.'@')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** The HTTP verbs Laravel exposes, minus the framework-auto `HEAD`. */
