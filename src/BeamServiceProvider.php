@@ -30,13 +30,13 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
+use Splicewire\Beam\Console\BeamSeedCommand;
 use Splicewire\Beam\Console\DocblockCommand;
 use Splicewire\Beam\Console\FrameCacheCommand;
 use Splicewire\Beam\Console\FrameClearCommand;
 use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
-use Splicewire\Beam\Console\BeamSeedCommand;
 use Splicewire\Beam\Console\ManifestIndexCommand;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
@@ -54,7 +54,6 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Manifest\ManifestArity;
-use Splicewire\Beam\Seed\BeamSeedManifest;
 use Splicewire\Beam\Manifest\ManifestDescriptor;
 use Splicewire\Beam\Manifest\ManifestIndex;
 use Splicewire\Beam\Manifest\ManifestSeam;
@@ -77,6 +76,7 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
+use Splicewire\Beam\Seed\BeamSeedManifest;
 use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
 use Splicewire\Beam\Source\LadderForeignSourceProjector;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
@@ -339,10 +339,12 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->bind(ResponseEnvelope::class, ArrayResponseEnvelope::class);
 
         // The client-SDK codegen's default tenant source: reads mounted particle routes off the live route
-        // table (the `router` singleton) + resolves each read route's output DTO via the resource registry.
+        // table (the `router` singleton) + resolves each route's output DTO via the resource registry (a CRUD
+        // verb) or the operation registry (a named op's declared `output:` slot).
         $this->app->bind(ParticleRouteManifestSource::class, fn ($app) => new ParticleRouteManifestSource(
             $app->make('router'),
             $app->make(ParticleResourceRegistry::class),
+            $app->make(ParticleOperationRegistry::class),
         ));
 
         // The beam-install self-registration manifest (ticket 08): a singleton every beam-* package

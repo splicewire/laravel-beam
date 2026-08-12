@@ -4,6 +4,9 @@ namespace Splicewire\Beam\Tests\Source;
 
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Route;
+use Splicewire\Beam\Particle\OperationKind;
+use Splicewire\Beam\Particle\ParticleOperation;
+use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
@@ -146,6 +149,74 @@ class GenerateClientSdkCommandTest extends TestCase
         // Resource entries are untouched by the widening.
         $this->assertSame('App.Data.WidgetData', $manifest['widgets.index']['returns']);
         $this->assertTrue($manifest['widgets.index']['returnsMany']);
+    }
+
+    public function test_an_operation_route_resolves_its_return_type_from_its_declared_output_slot(): void
+    {
+        $this->app->make(ParticleOperationRegistry::class)->register(new ParticleOperation(
+            resource: 'widgets',
+            name: 'recalculate',
+            kind: OperationKind::Write,
+            model: 'App\\Models\\Widget',
+            handle: fn () => null,
+            output: 'App\\Data\\WidgetTotalsData',
+        ));
+
+        Route::prefix('resources')->group(fn () => Route::particleOp('widgets', 'widgets', 'recalculate'));
+
+        $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
+        $entry = $manifest['widgets.op.recalculate'];
+
+        // No per-route annotation: the op's own declaration is what types the generated hook.
+        $this->assertSame('App.Data.WidgetTotalsData', $entry['returns']);
+        $this->assertArrayNotHasKey('returnsMany', $entry);
+        $this->assertArrayNotHasKey('unresolved', $entry);
+    }
+
+    public function test_an_operation_declaring_no_output_slot_is_recorded_as_unresolved(): void
+    {
+        $this->app->make(ParticleOperationRegistry::class)->register(new ParticleOperation(
+            resource: 'widgets',
+            name: 'poke',
+            kind: OperationKind::Write,
+            model: 'App\\Models\\Widget',
+            handle: fn () => null,
+        ));
+
+        Route::prefix('resources')->group(fn () => Route::particleOp('widgets', 'widgets', 'poke'));
+
+        $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
+
+        $this->assertArrayNotHasKey('returns', $manifest['widgets.op.poke']);
+        $this->assertTrue($manifest['widgets.op.poke']['unresolved']);
+    }
+
+    public function test_a_stream_operations_event_map_is_emitted_rather_than_a_single_return_type(): void
+    {
+        $this->app->make(ParticleOperationRegistry::class)->register(new ParticleOperation(
+            resource: 'widgets',
+            name: 'watch',
+            kind: OperationKind::Stream,
+            model: 'App\\Models\\Widget',
+            handle: fn () => null,
+            output: [
+                'run_status' => ['App\\Data\\RunStatusData'],
+                'node_status' => ['App\\Data\\NodeRunningData', 'App\\Data\\NodeCompleteData'],
+            ],
+        ));
+
+        Route::prefix('resources')->group(fn () => Route::particleOp('widgets', 'widgets', 'watch'));
+
+        $entry = $this->app->make(ParticleRouteManifestSource::class)->toArray()['widgets.op.watch'];
+
+        // A stream declares a SEQUENCE of typed events, so it carries `streams`, never `returns` — and it is
+        // a declaration, so it is not negative space.
+        $this->assertArrayNotHasKey('returns', $entry);
+        $this->assertArrayNotHasKey('unresolved', $entry);
+        $this->assertSame([
+            'run_status' => ['App.Data.RunStatusData'],
+            'node_status' => ['App.Data.NodeRunningData', 'App.Data.NodeCompleteData'],
+        ], $entry['streams']);
     }
 
     public function test_an_unresolvable_return_type_is_recorded_rather_than_silently_absent(): void

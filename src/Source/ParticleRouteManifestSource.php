@@ -6,6 +6,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
@@ -40,6 +41,7 @@ class ParticleRouteManifestSource implements RouteManifestSource
     public function __construct(
         private readonly Router $router,
         private readonly ParticleResourceRegistry $registry,
+        private readonly ParticleOperationRegistry $operations,
     ) {}
 
     public function toArray(): array
@@ -71,7 +73,7 @@ class ParticleRouteManifestSource implements RouteManifestSource
                 if ($this->verbOf($name) === 'index') {
                     $entry['returnsMany'] = true;
                 }
-            } elseif ($streams = $route->getAction('streams')) {
+            } elseif ($streams = $this->streamsFor($route)) {
                 // A stream route resolves to a SEQUENCE of typed events keyed by SSE `event:` name, not one
                 // payload — a declared shape, so it is not negative space. Same shape Tower's manifest emits.
                 $entry['streams'] = array_map(
@@ -141,6 +143,14 @@ class ParticleRouteManifestSource implements RouteManifestSource
      */
     private function returnsFor(Route $route): ?string
     {
+        // An OPERATION route types itself from its own declared `output:` slot — the invariant's second legal
+        // declaration site, keyed off the operation controller's route defaults exactly as the resource branch
+        // below keys off the resource controller's. A Stream's output is an event map, handled by
+        // {@see streamsFor()} instead, so only a string counts here.
+        if (is_string($output = $this->operationOutputFor($route))) {
+            return $this->toTsType($output);
+        }
+
         $key = $route->defaults[ParticleController::RESOURCE] ?? null;
 
         if (! is_string($key) || ! $this->registry->has($key)) {
@@ -153,6 +163,43 @@ class ParticleRouteManifestSource implements RouteManifestSource
         $dataClass = $this->registry->get($key)->data;
 
         return $dataClass === null ? null : $this->toTsType($dataClass);
+    }
+
+    /**
+     * The `output:` slot declared by the particle operation this route mounts, or null when the route is not
+     * an operation route or its operation was never registered. A mounted-but-unregistered operation is a
+     * reportable absence (it lands `unresolved`), not an error.
+     *
+     * @return class-string|array<string, list<class-string>>|null
+     */
+    private function operationOutputFor(Route $route): string|array|null
+    {
+        $resource = $route->defaults[ParticleOperationController::RESOURCE] ?? null;
+        $name = $route->defaults[ParticleOperationController::NAME] ?? null;
+
+        if (! is_string($resource) || ! is_string($name)) {
+            return null;
+        }
+
+        return $this->operations->find($resource, $name)?->output;
+    }
+
+    /**
+     * A route's event-name → payload-list map, from either declaration site: an explicit `->streams()` on the
+     * route (which the `particleOp` macro's `streams` option sets) or a Stream operation's own `output:` slot.
+     * The route-level declaration wins, preserving "explicit beats derived".
+     *
+     * @return array<string, list<class-string>>|null
+     */
+    private function streamsFor(Route $route): ?array
+    {
+        if ($declared = $route->getAction('streams')) {
+            return $declared;
+        }
+
+        $output = $this->operationOutputFor($route);
+
+        return is_array($output) ? $output : null;
     }
 
     /**
