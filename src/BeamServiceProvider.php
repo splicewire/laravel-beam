@@ -90,6 +90,7 @@ use Splicewire\Beam\Source\ParticleShadower;
 use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
+use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
 use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
@@ -458,6 +459,10 @@ class BeamServiceProvider extends PackageServiceProvider
             $app->make(ParticleResourceRegistry::class),
             $app->make(ParticleOperationRegistry::class),
         ));
+        // The Inertia leg of the same detector. Unlike the HTTP leg above it IS host-scoped and
+        // filesystem-bound — `Inertia::render` props live in host source, not in any registry or route table —
+        // which is exactly why it is a sibling audit rather than a row-producer inside that one.
+        $this->app->bind(InertiaPropShapeAudit::class, fn () => InertiaPropShapeAudit::forApp());
         // The central-pin census scans the host's own code AND the family packages it composes — almost
         // every pin in the estate lives in a package, so an `app/`-only scan would report a comfortable zero
         // from inside every host while the backlog sat one directory over. See the audit's `forApp()`.
@@ -484,6 +489,10 @@ class BeamServiceProvider extends PackageServiceProvider
         // Advisory: the estate's undeclared surface is a burn-down, and a several-hundred-endpoint backlog
         // that fails the build is just a blocked build. It ratchets via its committed artifact, not the gate.
         $manifest->register('splicewire/laravel-beam', UndeclaredSurfaceAudit::class);
+        // Advisory, matching both other legs of the detector for the same reason: converting an inline prop
+        // array into a declared page-props Data object is an API-contract commitment on the client boundary,
+        // so it is a burn-down work-list, not a gate.
+        $manifest->register('splicewire/laravel-beam', InertiaPropShapeAudit::class);
         // Advisory, permanently: 10 of the estate's 23 central pins cite nothing and 7 are clearly not floor,
         // so the output is a DOCUMENTATION backlog. A documentation backlog that fails the build is just a
         // blocked build. Reporting a pin is also not a claim it is wrong — the Role/Permission contradiction
