@@ -1,0 +1,81 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Beam;
+
+/**
+ * Runtime, DB-backed schema registry (slice 16) — routed through the single table-prefix seam
+ * {@see Beam::table()}, `shared/` (central + every tenant) like beam-core's other ubiquitous tables.
+ *
+ * The filesystem registry holds the app's CODE schemas as committed artifacts. This table is its
+ * runtime sibling: a place where a downstream tenant brings its OWN versioned schemas, registered at
+ * runtime via the registry-write endpoint without a deploy.
+ *
+ * Each row is a frozen schema version, keyed by its absolute, versioned `$id` (unique). Like the
+ * filesystem store it is write-once: re-registering the same `$id` with the same structural
+ * fingerprint is an idempotent no-op; a differing fingerprint is rejected (a changed shape requires
+ * a new `$id`/version).
+ *
+ * Data-preserving rename (NOT drop+create): where a pre-rename `schema_registry` table already
+ * exists in THIS schema (an already-deployed host predating this table-prefix seam), it is renamed
+ * in place, preserving every frozen row. A fresh install (neither table present) creates the target
+ * directly. Guarded on the CURRENT schema explicitly (not Schema::hasTable, which follows the tenant
+ * search_path `tenant_x, public` and would see public's copy): both migration sets are applied to
+ * the one shared schema in a shared-connection test harness, so per-schema presence must be checked
+ * against current_schema().
+ */
+return new class extends Migration
+{
+    public function up(): void
+    {
+        $currentSchema = DB::selectOne('select current_schema() as schema')->schema;
+
+        if ($this->existsInCurrentSchema($currentSchema, $this->target())) {
+            return; // Already renamed / created in this schema — idempotent re-run.
+        }
+
+        // Data-preserving rename of the pre-rename table when it is present in THIS schema.
+        if ($this->existsInCurrentSchema($currentSchema, 'schema_registry')) {
+            Schema::rename('schema_registry', $this->target());
+
+            return;
+        }
+
+        // Fresh install: neither name present in this schema — create the target directly.
+        Schema::create($this->target(), function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('schema_id')->unique();
+            $table->string('schema_name')->nullable()->index();
+            $table->integer('version')->nullable();
+            $table->string('fingerprint');
+            $table->jsonb('artifact');
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        $currentSchema = DB::selectOne('select current_schema() as schema')->schema;
+
+        // Reverse the rename when the target is the one present; otherwise drop whatever exists.
+        if ($this->existsInCurrentSchema($currentSchema, $this->target())) {
+            Schema::rename($this->target(), 'schema_registry');
+        }
+    }
+
+    private function target(): string
+    {
+        return Beam::table('schemas');
+    }
+
+    private function existsInCurrentSchema(string $schema, string $table): bool
+    {
+        return DB::selectOne(
+            'select 1 from information_schema.tables where table_schema = ? and table_name = ?',
+            [$schema, $table],
+        ) !== null;
+    }
+};

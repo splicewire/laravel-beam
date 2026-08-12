@@ -84,6 +84,7 @@ use Splicewire\Beam\Source\ParticleShadower;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
+use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
 use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
 use Splicewire\Beam\Surgeon\SdkHookMigrationAudit;
 use Splicewire\Beam\Surgeon\SdkHookMigrationBridge;
@@ -164,6 +165,7 @@ class BeamServiceProvider extends PackageServiceProvider
                 'shared/create_beam_versions_table',
                 'shared/create_beam_submissions_table',
                 'shared/create_beam_ownership_edges_table',
+                'shared/create_beam_schemas_table',
             ]);
     }
 
@@ -414,6 +416,7 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->bind(SdkEndpointDriftAudit::class, fn () => SdkEndpointDriftAudit::forClientPackage());
         $this->app->bind(SdkNameConventionAudit::class, fn () => SdkNameConventionAudit::forClientPackage());
         $this->app->bind(ParticleControllerRedundancyAudit::class, fn () => ParticleControllerRedundancyAudit::forRoutes());
+        $this->app->bind(ParticleOperationBypassAudit::class, fn () => ParticleOperationBypassAudit::forRoutes());
         $this->app->bind(DocblockTierAudit::class, function ($app) {
             $root = $app->basePath();
             $graph = PackageGraph::fromRoots([$root]);
@@ -437,6 +440,7 @@ class BeamServiceProvider extends PackageServiceProvider
         $manifest->register('splicewire/laravel-beam', SdkEndpointDriftAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkNameConventionAudit::class);
         $manifest->register('splicewire/laravel-beam', ParticleControllerRedundancyAudit::class);
+        $manifest->register('splicewire/laravel-beam', ParticleOperationBypassAudit::class);
         $manifest->register('splicewire/laravel-beam', DocblockTierAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkHookMigrationAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkReturnsCoverageAudit::class);
