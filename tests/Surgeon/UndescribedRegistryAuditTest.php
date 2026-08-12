@@ -291,8 +291,16 @@ class UndescribedRegistryAuditTest extends TestCase
             'PayloadParticleReader (read chain)' => ['pipeline-chain', 'compose-many', 21],
         ];
 
+        // Scoped to BEAM-CORE's own descriptors. The index is shared, and a booted dependency describing its
+        // own registries is the ticket-13 membership ratchet working as designed — not a regression here. An
+        // earlier whole-index equality assertion broke the moment `schemastud/laravel-data-schemas` described
+        // `LensRegistry`/`DataOverlayRegistry` (ticket 11), which is exactly the outcome this effort wants.
         $actual = [];
         foreach ($this->app->make(ManifestIndex::class)->descriptors() as $descriptor) {
+            if ($descriptor->package !== 'splicewire/laravel-beam') {
+                continue;
+            }
+
             $actual[$descriptor->name] = [$descriptor->seam->value, $descriptor->arity->value, $descriptor->order];
         }
 
