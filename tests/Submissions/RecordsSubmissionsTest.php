@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Beam;
 use Splicewire\Beam\Events\BeamParticlePersisted;
+use Splicewire\Beam\Intake\IntakeProvenance;
 use Splicewire\Beam\Models\BeamSubmission;
 use Splicewire\Beam\Submissions\RecordsSubmissions;
 use Splicewire\Beam\Tests\TestCase;
@@ -94,6 +95,46 @@ class RecordsSubmissionsTest extends TestCase
             fn (BeamParticlePersisted $event): bool => $event->record->is($submission)
                 && data_get($event->record, 'meta.schema.x-beam-notify.to') === ['ops@site.test'],
         );
+    }
+
+    /**
+     * The `$intake` facet set is what NotifyOnSubmission's `submissionContext()` reads
+     * (`meta.intake.submitted_at`/`source`/`channel`) — a caller passing it must see it land
+     * verbatim under `meta['intake']`, alongside `meta['schema']` when both are given.
+     */
+    public function test_stamps_intake_provenance_into_meta_alongside_the_schema(): void
+    {
+        $intake = new IntakeProvenance(
+            submittedAt: '2026-08-11T00:00:00+00:00',
+            source: 'https://audiostud.test/request-access',
+            channel: 'request-access',
+            context: ['ip' => '127.0.0.1'],
+        );
+
+        $submission = $this->app->make(RecordsSubmissions::class)->record(
+            formKey: 'request-access',
+            schemaRef: 'request-access',
+            payload: ['email' => 'ada@example.test'],
+            schema: ['title' => 'Request access'],
+            intake: $intake,
+        );
+
+        $this->assertSame(['title' => 'Request access'], $submission->meta['schema']);
+        $this->assertSame($intake->toArray(), $submission->meta['intake']);
+    }
+
+    public function test_stamps_only_intake_into_meta_when_no_schema_is_passed(): void
+    {
+        $intake = new IntakeProvenance(submittedAt: '2026-08-11T00:00:00+00:00');
+
+        $submission = $this->app->make(RecordsSubmissions::class)->record(
+            formKey: 'interest',
+            schemaRef: null,
+            payload: ['name' => 'Ada'],
+            intake: $intake,
+        );
+
+        $this->assertSame(['intake' => $intake->toArray()], $submission->meta);
     }
 
     public function test_emits_beam_particle_persisted_with_no_schema_in_meta_when_none_is_passed(): void

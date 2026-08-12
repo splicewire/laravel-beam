@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Submissions;
 
 use Illuminate\Contracts\Events\Dispatcher;
 use Splicewire\Beam\Events\BeamParticlePersisted;
+use Splicewire\Beam\Intake\IntakeProvenance;
 use Splicewire\Beam\Models\BeamSubmission;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -52,6 +53,12 @@ class RecordsSubmissions
      *                                             resolver can read its `x-beam-notify` keyword.
      *                                             Null (no registered schema for the form) means
      *                                             no notification.
+     * @param  IntakeProvenance|null  $intake  optional who/when/where facets, stamped into
+     *                                         `meta['intake']` — the shape
+     *                                         {@see \Splicewire\Beam\Notifications\Listeners\NotifyOnSubmission}'s
+     *                                         `submissionContext()` reads for a notification's
+     *                                         `submitted_at`/`source`/`channel`. Omit only when the
+     *                                         caller has no request-side provenance to offer.
      */
     public function record(
         string $formKey,
@@ -60,6 +67,7 @@ class RecordsSubmissions
         array $context = [],
         ?string $userId = null,
         ?array $schema = null,
+        ?IntakeProvenance $intake = null,
     ): BeamSubmission {
         $submission = new BeamSubmission([
             'form_key' => $formKey,
@@ -68,8 +76,13 @@ class RecordsSubmissions
             'user_id' => $userId,
         ]);
 
-        if ($schema !== null) {
-            $submission->setAttribute('meta', ['schema' => $schema]);
+        $meta = array_filter([
+            'schema' => $schema,
+            'intake' => $intake?->toArray(),
+        ], static fn ($value) => $value !== null);
+
+        if ($meta !== []) {
+            $submission->setAttribute('meta', $meta);
         }
 
         $writer = new ParticleWriter(
