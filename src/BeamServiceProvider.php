@@ -38,6 +38,7 @@ use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
 use Splicewire\Beam\Console\ManifestIndexCommand;
+use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
@@ -94,6 +95,7 @@ use Splicewire\Beam\Surgeon\SdkReturnsTypeScriptResolutionAudit;
 use Splicewire\Beam\Surgeon\StatusChannelLiteralDriftAudit;
 use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
 use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
+use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -436,6 +438,12 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->bind(TypeScriptShortNameCollisionAudit::class, fn () => TypeScriptShortNameCollisionAudit::forApp());
         $this->app->bind(StatusChannelLiteralDriftAudit::class, fn () => StatusChannelLiteralDriftAudit::forApp());
         $this->app->bind(TypeScriptUnknownResolutionAudit::class, fn () => TypeScriptUnknownResolutionAudit::forApp());
+        // The negative-space detector reads the two particle registries and the LIVE route table — no
+        // host-scoped file paths, so it needs no `forApp()` seam of its own.
+        $this->app->bind(UndeclaredSurfaceAudit::class, fn ($app) => new UndeclaredSurfaceAudit(
+            $app->make(ParticleResourceRegistry::class),
+            $app->make(ParticleOperationRegistry::class),
+        ));
 
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
@@ -450,6 +458,9 @@ class BeamServiceProvider extends PackageServiceProvider
         $manifest->register('splicewire/laravel-beam', TypeScriptShortNameCollisionAudit::class);
         $manifest->register('splicewire/laravel-beam', StatusChannelLiteralDriftAudit::class);
         $manifest->register('splicewire/laravel-beam', TypeScriptUnknownResolutionAudit::class);
+        // Advisory: the estate's undeclared surface is a burn-down, and a several-hundred-endpoint backlog
+        // that fails the build is just a blocked build. It ratchets via its committed artifact, not the gate.
+        $manifest->register('splicewire/laravel-beam', UndeclaredSurfaceAudit::class);
     }
 
     /**
@@ -528,6 +539,7 @@ class BeamServiceProvider extends PackageServiceProvider
                 // The index of indexes: `splicewire:beam:manifests` lists every registry/manifest that has
                 // described itself in, with its injection-point shape and how to register into it.
                 ManifestIndexCommand::class,
+                UndeclaredSurfaceCommand::class,
             ]);
 
             // The estate-POLICY surgeon commands relocated DOWN from surgeon (they hard-code estate
