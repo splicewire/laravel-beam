@@ -9,6 +9,7 @@ use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Particle\OperationKind;
+use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
@@ -127,6 +128,91 @@ class AttributedParticleDiscoveryTest extends TestCase
         $this->discovery()->registerClass(FixtureModel::class);
     }
 
+    public function test_an_op_carries_its_declared_input_and_output_slots_through_discovery(): void
+    {
+        $this->discovery()->registerClass(FixtureDeclaredOp::class);
+
+        $op = $this->app->make(ParticleOperationRegistry::class)->get('library-lyrics', 'declared');
+
+        $this->assertSame(FixtureInput::class, $op->input);
+        $this->assertSame(FixtureOutput::class, $op->output);
+    }
+
+    public function test_a_stream_ops_output_slot_is_an_event_name_map(): void
+    {
+        $this->discovery()->registerClass(FixtureStreamOp::class);
+
+        $op = $this->app->make(ParticleOperationRegistry::class)->get('library-lyrics', 'watch');
+
+        // A stream emits discrete typed events under distinct wire names; one event name may cover several
+        // payload variants, discriminated further by a DTO field. Collapsing to one class loses that.
+        $this->assertSame([
+            'run_status' => [FixtureOutput::class],
+            'node_status' => [FixtureOutput::class, FixtureInput::class],
+        ], $op->output);
+    }
+
+    public function test_an_op_declaring_neither_slot_still_registers(): void
+    {
+        $this->discovery()->registerClass(FixtureRegenerateOp::class);
+
+        $op = $this->app->make(ParticleOperationRegistry::class)->get('library-lyrics', 'regenerate');
+
+        $this->assertNull($op->input);
+        $this->assertNull($op->output);
+    }
+
+    public function test_an_event_map_on_a_non_stream_kind_is_rejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('event-name map');
+
+        new ParticleOperation(
+            resource: 'library-lyrics',
+            name: 'bad',
+            kind: OperationKind::Write,
+            model: FixtureModel::class,
+            handle: fn () => null,
+            output: ['run_status' => [FixtureOutput::class]],
+        );
+    }
+
+    public function test_a_single_output_class_on_a_stream_kind_is_rejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('event-name map');
+
+        new ParticleOperation(
+            resource: 'library-lyrics',
+            name: 'bad-stream',
+            kind: OperationKind::Stream,
+            model: FixtureModel::class,
+            handle: fn () => null,
+            output: FixtureOutput::class,
+        );
+    }
+
+    public function test_an_inline_operation_carries_the_slots_identically_to_an_attributed_one(): void
+    {
+        // Discovery and manual registration must AGREE — an inline op is the same runtime object, so a
+        // declaration made either way has to be readable by the same consumers.
+        $inline = new ParticleOperation(
+            resource: 'library-lyrics',
+            name: 'inline',
+            kind: OperationKind::Write,
+            model: FixtureModel::class,
+            handle: fn () => null,
+            input: FixtureInput::class,
+            output: FixtureOutput::class,
+        );
+
+        $this->discovery()->registerClass(FixtureDeclaredOp::class);
+        $attributed = $this->app->make(ParticleOperationRegistry::class)->get('library-lyrics', 'declared');
+
+        $this->assertSame($attributed->input, $inline->input);
+        $this->assertSame($attributed->output, $inline->output);
+    }
+
     public function test_discovery_is_idempotent_by_key(): void
     {
         $registry = $this->app->make(ParticleResourceRegistry::class);
@@ -215,3 +301,39 @@ class FixtureRegenerateOp
     model: FixtureModel::class,
 )]
 class FixtureHandlelessOp {}
+
+class FixtureOutput {}
+
+#[ParticleOp(
+    resource: 'library-lyrics',
+    name: 'declared',
+    kind: OperationKind::Write,
+    model: FixtureModel::class,
+    input: FixtureInput::class,
+    output: FixtureOutput::class,
+)]
+class FixtureDeclaredOp
+{
+    public static function handle($model, Request $request, $actor)
+    {
+        return null;
+    }
+}
+
+#[ParticleOp(
+    resource: 'library-lyrics',
+    name: 'watch',
+    kind: OperationKind::Stream,
+    model: FixtureModel::class,
+    output: [
+        'run_status' => [FixtureOutput::class],
+        'node_status' => [FixtureOutput::class, FixtureInput::class],
+    ],
+)]
+class FixtureStreamOp
+{
+    public static function handle($model, Request $request, $actor, $emit)
+    {
+        return null;
+    }
+}

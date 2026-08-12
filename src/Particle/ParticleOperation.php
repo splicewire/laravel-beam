@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Particle;
 
 use Closure;
+use InvalidArgumentException;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 
 /**
@@ -22,6 +23,17 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
  * host branching — the `?async` dance controllers copy today (FragmentUrlBatch.run, Composition.*)
  * collapses to a convention. A Stream's `handle` instead receives an {@see Emitter} 4th arg and pushes
  * framed events down a held connection; the framework owns the `StreamedResponse` (ADR-0160).
+ *
+ * `input`/`output` are the op's DECLARED SHAPES — the invariant's second legal declaration site, mirroring the
+ * `input`/`data` pair a {@see ParticleResource} already carries. Both optional, so an op that declares neither
+ * behaves exactly as it did before the slots existed.
+ *
+ * `output` is kind-dependent, and that asymmetry is deliberate rather than an inconsistency: a read/write/task
+ * resolves ONE payload, so a single class-string says everything; a Stream emits a sequence of discrete typed
+ * events under distinct wire names, so it takes `[eventName => [DataClass, ...]]` — the shape the `->streams()`
+ * route macro already proved. One event name may cover several payload variants discriminated by a DTO field,
+ * so the value is a LIST, not a single class. Collapsing a stream to one class would lose the event-name
+ * dimension a client needs to narrow each listener.
  */
 class ParticleOperation
 {
@@ -39,6 +51,10 @@ class ParticleOperation
      *                                           e.g. run authorizes `create` on `Fragment`, not the batch)
      * @param  (Closure(mixed): mixed)|null  $respond  a Task's response projector
      *                                                 (given the refreshed model); null ⇒ a bare `{ queued: true|false }`
+     * @param  class-string|null  $input  the Data class this op ACCEPTS — its declared payload contract
+     * @param  class-string|array<string, list<class-string>>|null  $output  the Data class this op RETURNS; on
+     *                                                                       a Stream, an event-name → payload-list
+     *                                                                       map (see the class docblock)
      */
     public function __construct(
         public string $resource,
@@ -49,7 +65,43 @@ class ParticleOperation
         public ?string $ability = null,
         public ?string $abilityModel = null,
         public ?Closure $respond = null,
-    ) {}
+        public ?string $input = null,
+        public string|array|null $output = null,
+    ) {
+        $this->assertOutputMatchesKind();
+    }
+
+    /**
+     * A Stream's `output` is an event-name map and every other kind's is a single class — the two are not
+     * interchangeable, so a mismatch is a declaration bug and fails at registration rather than silently
+     * generating the wrong client type.
+     *
+     * This runs in the constructor deliberately: attribute discovery and manual `register()` both build this
+     * object, so validating here is the one place that catches both paths.
+     */
+    private function assertOutputMatchesKind(): void
+    {
+        if ($this->output === null) {
+            return;
+        }
+
+        $isStream = $this->kind === OperationKind::Stream;
+
+        if ($isStream && ! is_array($this->output)) {
+            throw new InvalidArgumentException(
+                "Particle operation [{$this->key()}] is a Stream, so its `output:` must be an event-name map "
+                .'of `[eventName => [DataClass, ...]]` — a stream emits discrete typed events under distinct '
+                .'wire names, not one resolved payload.'
+            );
+        }
+
+        if (! $isStream && is_array($this->output)) {
+            throw new InvalidArgumentException(
+                "Particle operation [{$this->key()}] is a {$this->kind->name}, so its `output:` must be a "
+                .'single Data class-string. An event-name map is only meaningful on a Stream.'
+            );
+        }
+    }
 
     public function key(): string
     {

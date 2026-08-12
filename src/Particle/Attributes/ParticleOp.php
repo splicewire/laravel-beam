@@ -24,6 +24,11 @@ use Splicewire\Beam\Particle\ParticleOperation;
  *
  * The annotated class is typically a thin invokable/op class (one op per class). This keeps the whole op —
  * declaration + handler — co-located and self-contained, so it registers with no provider glue.
+ *
+ * `input:`/`output:` are the op's SHAPE SLOTS — the mirror of the resource attribute's `input:`/`data:` pair
+ * and the invariant's second legal declaration site (a Data class bound to an operation). Both optional; an
+ * op that declares neither still registers and runs exactly as before. {@see ParticleOperation} validates
+ * the pairing of `output:` with `kind:`.
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 class ParticleOp
@@ -35,6 +40,10 @@ class ParticleOp
      * @param  class-string  $model  the model the `{id}` resolves to
      * @param  string|null  $ability  an authorization ability checked before the op runs (deny-default)
      * @param  class-string|null  $abilityModel  the model the ability is checked against; null ⇒ the resolved instance
+     * @param  class-string|null  $input  the Data class the op ACCEPTS — its declared payload contract
+     * @param  class-string|array<string, list<class-string>>|null  $output  the Data class the op RETURNS;
+     *                                                                       on {@see OperationKind::Stream} an
+     *                                                                       event-name → payload-list map instead
      */
     public function __construct(
         public string $resource,
@@ -43,5 +52,7 @@ class ParticleOp
         public string $model,
         public ?string $ability = null,
         public ?string $abilityModel = null,
+        public ?string $input = null,
+        public string|array|null $output = null,
     ) {}
 }

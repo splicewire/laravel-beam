@@ -167,6 +167,8 @@ class AttributedParticleDiscovery
             ability: $attribute->ability,
             abilityModel: $attribute->abilityModel,
             respond: $this->convention($class, 'respond'),
+            input: $attribute->input,
+            output: $attribute->output,
         ));
     }
 
