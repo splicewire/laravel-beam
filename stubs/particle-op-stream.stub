@@ -1,0 +1,53 @@
+<?php
+
+namespace {{ namespace }};
+
+use {{ namespacedInputClass }};
+use {{ namespacedModel }};
+use {{ namespacedOutputClass }};
+use Illuminate\Http\Request;
+use Splicewire\Beam\Particle\Attributes\ParticleOp;
+use Splicewire\Beam\Particle\Emitter;
+use Splicewire\Beam\Particle\OperationKind;
+
+/**
+ * The `{{ opName }}` operation on the `{{ resource }}` particle resource — a {@see OperationKind::Stream}:
+ * one held connection, many framed events. Declaration and host code live in one class, so it registers with
+ * no provider glue.
+ *
+ * All three shape slots are declared BEFORE the body is written, which is the point of the generator:
+ *
+ *   - `input:`   validated by `ParticleOperationController` before `handle()` runs;
+ *   - `output:`  an event-name → payload-LIST map, NOT a single class. A stream's output is inherently
+ *                event-keyed, and `ParticleOperation` rejects a bare class-string on this kind at
+ *                registration. One event name may carry several payload variants discriminated by a DTO
+ *                field, which is why each value is a list;
+ *   - `ability:` deny-default authorization, checked against the resolved model.
+ *
+ * `handle()` takes a 4th `Emitter $emit` argument (after `$model, $request, $actor`) and pushes frames until
+ * it returns. The framework owns the `StreamedResponse` and the SSE headers — do not build either here.
+ *
+ * The attribute DECLARES; the host ROUTES. Mount it from a route file:
+ *
+ *     Route::particleOps('{{ uri }}', '{{ resource }}', [{{ class }}::class]);
+ */
+#[ParticleOp(
+    resource: '{{ resource }}',
+    name: '{{ opName }}',
+    kind: OperationKind::Stream,
+    model: {{ model }}::class,
+    ability: '{{ ability }}',
+    input: {{ inputClass }}::class,
+    output: ['{{ event }}' => [{{ outputClass }}::class]],
+)]
+class {{ class }}
+{
+    public static function handle({{ model }} $model, Request $request, mixed $actor, Emitter $emit): void
+    {
+        $input = {{ inputClass }}::from($request->all());
+
+        // Push one frame per declared event name. Every name emitted here must appear in `output:` above, or
+        // a client has no generated type to narrow its listener against.
+        $emit('{{ event }}', (new {{ outputClass }}(placeholder: $input->placeholder))->toArray());
+    }
+}

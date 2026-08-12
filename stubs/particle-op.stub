@@ -1,0 +1,51 @@
+<?php
+
+namespace {{ namespace }};
+
+use {{ namespacedInputClass }};
+use {{ namespacedModel }};
+use {{ namespacedOutputClass }};
+use Illuminate\Http\Request;
+use Splicewire\Beam\Particle\Attributes\ParticleOp;
+use Splicewire\Beam\Particle\OperationKind;
+
+/**
+ * The `{{ opName }}` operation on the `{{ resource }}` particle resource — declaration and host code in one
+ * class, so it registers with no provider glue.
+ *
+ * All three shape slots are declared BEFORE the body is written, which is the point of the generator:
+ *
+ *   - `input:`   validated by `ParticleOperationController` before `handle()` runs, so the declaration is
+ *                the contract rather than an implicit assumption inside the body;
+ *   - `output:`  a single Data class-string on this kind ({{ kindLabel }}); returning an instance of it from
+ *                `handle()` gets it enveloped for you, and it is what subtracts this route from
+ *                `splicewire:beam:undeclared-surface`;
+ *   - `ability:` deny-default authorization, checked against the resolved model. Name a different model with
+ *                `abilityModel:` when the op authorizes across models.
+ *
+ * The attribute DECLARES; the host ROUTES. Mount it from a route file:
+ *
+ *     Route::particleOps('{{ uri }}', '{{ resource }}', [{{ class }}::class]);
+ *
+ * A `public static function respond(mixed $payload, {{ model }} $model): mixed` may be added as a transport
+ * override; it is optional and only needed when the payload is not the response.
+ */
+#[ParticleOp(
+    resource: '{{ resource }}',
+    name: '{{ opName }}',
+    kind: OperationKind::{{ kind }},
+    model: {{ model }}::class,
+    ability: '{{ ability }}',
+    input: {{ inputClass }}::class,
+    output: {{ outputClass }}::class,
+)]
+class {{ class }}
+{
+    public static function handle({{ model }} $model, Request $request, mixed $actor): {{ outputClass }}
+    {
+        // The declared `input:` has already been validated by the controller; hydrate it and do the work.
+        $input = {{ inputClass }}::from($request->all());
+
+        return new {{ outputClass }}(placeholder: $input->placeholder);
+    }
+}

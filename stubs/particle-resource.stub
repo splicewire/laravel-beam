@@ -1,0 +1,42 @@
+<?php
+
+namespace {{ namespace }};
+
+use {{ namespacedModel }};
+use Spatie\LaravelData\Data;
+use Splicewire\Beam\Particle\Attributes\ParticleResource;
+
+/**
+ * The READ projection for the `{{ key }}` particle resource, and its declaration site.
+ *
+ * `data:` and `input:` are the resource's two shape slots — the read projection (this class) and the write
+ * DTO ({{ inputClass }}). Both are declared HERE, before any behaviour exists, because a surface whose
+ * shape is undeclared is negative space to `splicewire:beam:undeclared-surface` no matter how correct its
+ * behaviour is. Filling in the properties is the next step; deleting a slot is not.
+ *
+ * The attribute DECLARES; the host ROUTES. Mount it from a route file:
+ *
+ *     Route::particleResource('{{ uri }}', '{{ key }}');
+ *
+ * The closures an attribute cannot carry are resolved by CONVENTION from `public static` methods on THIS
+ * class, each optional — add them when you need them:
+ *
+ *     public static function scope(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder
+ *     public static function project({{ model }} $model): \Spatie\LaravelData\Data
+ *     public static function prepare({{ model }} $model, mixed $input, mixed $actor): void
+ *     public static function afterWrite({{ model }} $model, mixed $input): void
+ */
+#[ParticleResource(
+    key: '{{ key }}',
+    model: {{ model }}::class,
+    data: {{ class }}::class,
+    input: {{ inputClass }}::class,
+)]
+class {{ class }} extends Data
+{
+    public function __construct(
+        // Replace with the columns this resource projects. Declare the default sort on the property that
+        // carries it via `#[Sortable(default: true)]` — there is no attribute-level sort knob.
+        public int $id,
+    ) {}
+}

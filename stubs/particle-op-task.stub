@@ -1,0 +1,69 @@
+<?php
+
+namespace {{ namespace }};
+
+use {{ namespacedInputClass }};
+use {{ namespacedModel }};
+use {{ namespacedOutputClass }};
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Http\Request;
+use LogicException;
+use Splicewire\Beam\Particle\Attributes\ParticleOp;
+use Splicewire\Beam\Particle\OperationKind;
+
+/**
+ * The `{{ opName }}` operation on the `{{ resource }}` particle resource — a {@see OperationKind::Task}, the
+ * only queueable kind. Declaration and host code live in one class, so it registers with no provider glue.
+ *
+ * All three shape slots are declared BEFORE the body is written, which is the point of the generator:
+ *
+ *   - `input:`   validated by `ParticleOperationController` before `handle()` runs;
+ *   - `output:`  a single Data class-string on a Task. A Task's `handle()` returns the JOB, not a payload, so
+ *                the declared output is what `respond()` projects — which is why the generator emits both;
+ *   - `ability:` deny-default authorization, checked against the resolved model.
+ *
+ * `handle()` returns a `ShouldQueue` job rather than doing the work inline. That is what lets the SAME
+ * operation run sync or async with no branching here: the framework honours `?async` and dispatches the job
+ * either way.
+ *
+ * The attribute DECLARES; the host ROUTES. Mount it from a route file:
+ *
+ *     Route::particleOps('{{ uri }}', '{{ resource }}', [{{ class }}::class]);
+ */
+#[ParticleOp(
+    resource: '{{ resource }}',
+    name: '{{ opName }}',
+    kind: OperationKind::Task,
+    model: {{ model }}::class,
+    ability: '{{ ability }}',
+    input: {{ inputClass }}::class,
+    output: {{ outputClass }}::class,
+)]
+class {{ class }}
+{
+    /**
+     * Build the job this task dispatches. Do NOT do the work here — return the job and the framework decides
+     * sync vs async.
+     */
+    public static function handle({{ model }} $model, Request $request, mixed $actor): ShouldQueue
+    {
+        $input = {{ inputClass }}::from($request->all());
+
+        throw new LogicException(sprintf(
+            'Return the ShouldQueue job [%s] dispatches for %s#%s (input: %s).',
+            '{{ opName }}',
+            $model::class,
+            $model->getKey(),
+            $input::class,
+        ));
+    }
+
+    /**
+     * The task's response projector: turn the dispatch outcome into the declared `output:` shape. Without
+     * this, a Task responds with a bare `{ queued: true|false }` and the `output:` declaration is a lie.
+     */
+    public static function respond(mixed $payload, {{ model }} $model): {{ outputClass }}
+    {
+        return new {{ outputClass }};
+    }
+}

@@ -37,6 +37,8 @@ use Splicewire\Beam\Console\FrameClearCommand;
 use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
+use Splicewire\Beam\Console\MakeParticleOpCommand;
+use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\ManifestIndexCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
@@ -550,6 +552,13 @@ class BeamServiceProvider extends PackageServiceProvider
                 // described itself in, with its injection-point shape and how to register into it.
                 ManifestIndexCommand::class,
                 UndeclaredSurfaceCommand::class,
+                // The particle scaffolders (particle-doctrine-convergence ticket 08). The estate had NO
+                // generator of any kind, and that absence is the mechanical reason deviation propagates: an
+                // agent adding a surface reverse-engineers the pattern from whatever example it opened and
+                // inherits that example's deviations. These mint the shape slots ALREADY FILLED, so the
+                // declaration exists before the logic does and a fresh surface is born conformance-clean.
+                MakeParticleResourceCommand::class,
+                MakeParticleOpCommand::class,
             ]);
 
             // The estate-POLICY surgeon commands relocated DOWN from surgeon (they hard-code estate
@@ -573,6 +582,16 @@ class BeamServiceProvider extends PackageServiceProvider
                 clear: 'splicewire:beam:frame:clear',
                 key: 'beam-frame-resources',
             );
+
+            // The particle scaffolders' stubs, publishable so a host can customize what its own surfaces are
+            // born as. `ParticleGeneratorCommand::resolveStubPath()` prefers the host copy at the SAME
+            // relative path, which is the framework's own `stub:publish` convention — publish once, edit in
+            // place, every later generate picks it up with no flag. Deliberately NOT registered as a
+            // `splicewire:beam:install` step: a host that never customizes its stubs should carry no copy of
+            // them, and an unpublished stub is not a missing file, it is the default.
+            $this->publishes([
+                dirname(__DIR__).'/stubs' => base_path('stubs'),
+            ], 'beam-stubs');
         }
 
         // beam-core registers ITS OWN install step, core-first (order 0), like any consumer — the config
