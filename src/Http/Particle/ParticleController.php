@@ -112,7 +112,12 @@ class ParticleController extends Controller
     {
         $query = $resource->model::query();
 
-        $default = (new FilterReflector)->defaultSort($resource->data);
+        // A resource may legitimately declare NO output DTO (its wire type is a package-owned class,
+        // not an App Data DTO — e.g. `runner_transform`) — FilterReflector::defaultSort() takes a
+        // non-nullable class-string, so skip straight to the framework default rather than TypeError.
+        $default = $resource->data !== null
+            ? (new FilterReflector)->defaultSort($resource->data)
+            : null;
 
         if ($default === null) {
             return $query->latest();
