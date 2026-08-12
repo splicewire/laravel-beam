@@ -27,6 +27,9 @@ use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
+use Splicewire\Beam\Authorization\AbilityResolver;
+use Splicewire\Beam\Authorization\ActorPort;
+use Splicewire\Beam\Authorization\GuardActorPort;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
@@ -342,6 +345,13 @@ class BeamServiceProvider extends PackageServiceProvider
         ))->loadRealmMap((array) config('frame.realms', [])));
         $this->app->singleton(ParticleOperationRegistry::class);
         $this->app->bind(ResponseEnvelope::class, ArrayResponseEnvelope::class);
+
+        // particle-doctrine-convergence ticket 09: the cross-transport ability resolver + its ACTOR port.
+        // `bindIf` on the port, because "who is acting" is the transport's answer to give: HTTP has the
+        // guard (the default bound here — the only place ambient auth is read), while a transport with no
+        // ambient user (MCP over stdio) binds its own. The resolver itself is transport-blind and stateless.
+        $this->app->bindIf(ActorPort::class, GuardActorPort::class);
+        $this->app->bind(AbilityResolver::class);
 
         // The client-SDK codegen's default tenant source: reads mounted particle routes off the live route
         // table (the `router` singleton) + resolves each route's output DTO via the resource registry (a CRUD

@@ -2,12 +2,14 @@
 
 namespace Splicewire\Beam\Http\Particle;
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Bus\Dispatcher;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use RuntimeException;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Authorization\AbilityResolver;
+use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\Emitter;
 use Splicewire\Beam\Particle\OperationKind;
@@ -21,7 +23,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * closure stays ordinary code:
  *
  *   1. resolve the operation (from the route defaults) + the `{id}` model;
- *   2. authorize its declared ability (deny-default — the same gate a hand-rolled action used);
+ *   2. authorize its declared ability (deny-default — the same gate a hand-rolled action used) through
+ *      the cross-transport {@see AbilityResolver}, so this transport shares its DECISION with MCP while
+ *      keeping its own denial SHAPE (a forbidden status; MCP instead omits the tool from its listing);
  *   3. execute by kind — read/write call `handle` synchronously and return its response; a **task**
  *      builds a `ShouldQueue` job from `handle` and dispatches it **sync or async per `?async`** (the
  *      convention that replaces the copy-pasted `dispatch()`-vs-`dispatchSync()` branch); a **stream**
@@ -35,8 +39,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ParticleOperationController extends Controller
 {
-    use AuthorizesRequests;
-
     /** Route-default keys naming the operation. */
     public const RESOURCE = '_particle_op_resource';
 
@@ -46,6 +48,8 @@ class ParticleOperationController extends Controller
         protected ParticleOperationRegistry $operations,
         protected Dispatcher $bus,
         protected ResponseEnvelope $envelope,
+        protected AbilityResolver $abilities,
+        protected ActorPort $actor,
     ) {}
 
     public function invoke(Request $request, string $id): mixed
@@ -60,7 +64,15 @@ class ParticleOperationController extends Controller
         if ($operation->ability !== null) {
             // Deny-default: the ability is checked against its declared model (a cross-model op names its
             // own — run authorizes `create` on Fragment), else the resolved instance.
-            $this->authorize($operation->ability, $operation->abilityModel ?? $model);
+            //
+            // The DECISION goes through the shared {@see AbilityResolver} so HTTP and MCP cannot answer
+            // "may this actor invoke this?" differently; the DENIAL SHAPE stays this transport's, which is
+            // why the forbidden response is constructed here and not in the resolver. The actor comes from
+            // the {@see ActorPort} rather than `$request->user()` for the same reason — the resolver must
+            // be asked the identical question by a transport that has no ambient user.
+            if ($this->abilities->denies($this->actor->actor(), $operation->ability, $operation->abilityModel ?? $model)) {
+                throw new AuthorizationException;
+            }
         }
 
         $this->validateInput($operation, $request);
