@@ -102,6 +102,7 @@ use Splicewire\Beam\Surgeon\StatusChannelLiteralDriftAudit;
 use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
 use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
+use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -461,6 +462,11 @@ class BeamServiceProvider extends PackageServiceProvider
         // every pin in the estate lives in a package, so an `app/`-only scan would report a comfortable zero
         // from inside every host while the backlog sat one directory over. See the audit's `forApp()`.
         $this->app->bind(CentralPinJustificationAudit::class, fn () => CentralPinJustificationAudit::forApp());
+        // The meta-audit reads the LIVE index to derive its own scan scope, so it is bound off the container
+        // rather than given a static path list — the governed set is whatever has described itself by boot.
+        $this->app->bind(UndescribedRegistryAudit::class, fn ($app) => UndescribedRegistryAudit::forIndex(
+            $app->make(ManifestIndex::class),
+        ));
 
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
@@ -483,6 +489,14 @@ class BeamServiceProvider extends PackageServiceProvider
         // blocked build. Reporting a pin is also not a claim it is wrong — the Role/Permission contradiction
         // it surfaces is ADR-sized and deliberately unresolved here.
         $manifest->register('splicewire/laravel-beam', CentralPinJustificationAudit::class);
+        // GATE — the ONLY gating registration in the particle-doctrine-convergence effort. Everything else
+        // here is a burn-down backlog; this one protects the discoverability surface the rest of the effort
+        // depends on. `splicewire:beam:manifests --json` is what an agent is told to run to answer "where do
+        // I register this", so an undescribed registry is not a stale document, it is an agent building a
+        // parallel mechanism next to one that already exists. It is also the cheapest possible fix (one
+        // `describe(...)` call), which is what makes blocking proportionate here and nowhere else. Its
+        // findings are Fail, so it blocks at the runner's DEFAULT floor.
+        $manifest->register('splicewire/laravel-beam', UndescribedRegistryAudit::class, gate: true);
     }
 
     /**
@@ -1034,6 +1048,37 @@ class BeamServiceProvider extends PackageServiceProvider
                 registerHint: 'declare a #[Realm]-marker class and list it in beam.core.realms.classes',
                 where: '#[Realm] → '.RealmRegistry::class,
                 package: $pkg, order: 14,
+            ),
+            // Found undescribed by UndescribedRegistryAudit (ticket 13) — the two realm registries that sit
+            // BESIDE RealmRegistry. Both were exactly the failure the meta-audit exists to catch: a host
+            // reading the index would find the realm registry, conclude that is where realm shape is
+            // registered, and never learn that presentation overrides and additive overlays are two further
+            // seams with different injection points.
+            new ManifestDescriptor(
+                name: 'RealmOverlayRegistry',
+                of: 'additive realm OVERLAYS folded onto an EXISTING realm descriptor before the manifest emits',
+                seam: ManifestSeam::SingletonAccumulator,
+                arity: ManifestArity::ComposeMany,
+                // Not RunAll: a read is keyed by realm and the overlays for that realm are FOLDED in
+                // registration order, each transforming the descriptor the previous one produced (last write
+                // at a JSONPath target wins). That is a chain, not an enumeration.
+                registerHint: 'resolve the singleton and register(new RealmOverlay(realmKey: ...)) from your provider — enriches only, never creates a realm',
+                where: RealmOverlayRegistry::class,
+                package: $pkg, order: 17,
+            ),
+            new ManifestDescriptor(
+                name: 'RealmResourceRegistry',
+                of: 'per-realm presentation OVERRIDES merged into a resource declaration as it is projected for a realm',
+                seam: ManifestSeam::ConfigSource,
+                arity: ManifestArity::ComposeMany,
+                // ConfigSource over SingletonAccumulator: the binding hydrates it from
+                // `frame.realm_resource_overrides` at resolution, so config is the seam a host reaches for;
+                // `->override()` is the fluent escape hatch the class docblock calls it. ComposeMany because
+                // apply() walks the realm's `[...stack, self]` chain bottom→top and merges each overlay in
+                // turn — the requested realm's own overlay wins by being last, not by being picked.
+                registerHint: 'add `<realm>.<resourceKey>.<field>` entries to frame.realm_resource_overrides (or ->override($key, $realm, $override) imperatively)',
+                where: 'config frame.realm_resource_overrides → '.RealmResourceRegistry::class,
+                package: $pkg, order: 18,
             ),
             new ManifestDescriptor(
                 name: 'CapabilityRegistry',
