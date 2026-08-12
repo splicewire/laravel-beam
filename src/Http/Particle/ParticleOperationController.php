@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use RuntimeException;
+use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\Emitter;
 use Splicewire\Beam\Particle\OperationKind;
@@ -62,11 +63,68 @@ class ParticleOperationController extends Controller
             $this->authorize($operation->ability, $operation->abilityModel ?? $model);
         }
 
+        $this->validateInput($operation, $request);
+
         return match ($operation->kind) {
             OperationKind::Task => $this->runTask($operation, $model, $request),
             OperationKind::Stream => $this->runStream($operation, $model, $request),
-            default => ($operation->handle)($model, $request, $request->user()),
+            default => $this->finish(
+                $operation,
+                ($operation->handle)($model, $request, $request->user()),
+                $model,
+            ),
         };
+    }
+
+    /**
+     * Validate the request payload against the operation's declared `input:` class before the handler runs.
+     *
+     * The declaration becomes the contract rather than staying implicit in the handler body: an op that
+     * declares what it accepts gets that enforced for free, and one that declares nothing is untouched.
+     */
+    protected function validateInput(ParticleOperation $operation, Request $request): void
+    {
+        $input = $operation->input;
+
+        if ($input !== null && is_subclass_of($input, Data::class)) {
+            $input::validate($request->all());
+        }
+    }
+
+    /**
+     * Turn a handler's return value into the response — the seam that lets an operation's business logic
+     * return a PAYLOAD while response construction stays a separate concern, so the same logic can serve more
+     * than one transport.
+     *
+     * Order is load-bearing:
+     *
+     *   1. A declared payload Data object is enveloped. This must come FIRST because a spatie Data object is
+     *      itself `Responsable`, so the pass-through check below would otherwise swallow every declared
+     *      payload and this whole ticket would be a no-op.
+     *   2. An already-built response passes through UNTOUCHED — the escape hatch, and it is load-bearing
+     *      rather than defensive. Three live operations need it and each names a distinct reason: a binary
+     *      download whose pass-through is a stated contract (flattening it into a JSON envelope would corrupt
+     *      it), two operations returning a redirect alongside session mutation, and one carrying a specific
+     *      accepted status code that a declared payload slot has no channel to express.
+     *   3. Anything else — an array, null, a scalar — is returned as-is, which is exactly what every
+     *      pre-existing read/write handler already did. That keeps this change additive: handlers already
+     *      returning `['data' => …]` envelopes are not double-wrapped.
+     *
+     * `respond` is consulted for EVERY kind, not just the queued one, and receives the payload first and the
+     * model second. Its own return runs back through the same rules, so a projector may hand back a payload
+     * or a full response.
+     */
+    protected function finish(ParticleOperation $operation, mixed $payload, mixed $model): mixed
+    {
+        if ($operation->respond !== null) {
+            $payload = ($operation->respond)($payload, $model);
+        }
+
+        if ($payload instanceof Data) {
+            return $this->envelope->item($payload);
+        }
+
+        return $payload;
     }
 
     /**
@@ -75,11 +133,16 @@ class ParticleOperationController extends Controller
      * `($event, $data)` frames; beam-core owns the `StreamedResponse` + SSE headers, so the plumbing every
      * hand-rolled streaming action copied (CircuitController::run/resume) lives here once (ADR-0160 §2/§3).
      */
-    protected function runStream(ParticleOperation $operation, mixed $model, Request $request): StreamedResponse
+    protected function runStream(ParticleOperation $operation, mixed $model, Request $request): mixed
     {
-        return SseEmitter::stream(
+        $stream = SseEmitter::stream(
             fn ($emit) => ($operation->handle)($model, $request, $request->user(), $emit),
         );
+
+        // Consulted here too, so `respond` means the same thing on all four kinds. A stream's payload IS its
+        // StreamedResponse — beam-core owns the SSE plumbing — so a projector can decorate it (extra headers,
+        // a wrapper) but returning it untouched is the norm, and the default (no `respond`) is unchanged.
+        return $this->finish($operation, $stream, $model);
     }
 
     /**
@@ -100,8 +163,13 @@ class ParticleOperationController extends Controller
 
         $model->refresh();
 
-        return $operation->respond !== null
-            ? ($operation->respond)($model)
-            : $this->envelope->item(['queued' => $async]);
+        // A task's handler returns the JOB, not a payload, so the payload here is the dispatch OUTCOME. That
+        // is what the default envelope has always reported, and a `respond` projector still gets the refreshed
+        // model as its second argument — which is what both live projectors actually read.
+        if ($operation->respond !== null) {
+            return $this->finish($operation, ['queued' => $async], $model);
+        }
+
+        return $this->envelope->item(['queued' => $async]);
     }
 }
