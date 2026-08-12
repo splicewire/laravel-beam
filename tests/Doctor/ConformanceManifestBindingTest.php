@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Artisan;
 use Rushing\Surgeon\Operation\ConformanceManifest;
 use Rushing\Surgeon\SurgeonServiceProvider;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -56,9 +57,12 @@ class ConformanceManifestBindingTest extends TestCase
         $report = json_decode(Artisan::output(), true);
 
         $this->assertGreaterThan(0, $report['summary']['audits']);
-        $this->assertContains(
-            HouseStyleAudit::class,
-            array_column($report['audits'], 'audit'),
-        );
+
+        $audits = array_column($report['audits'], 'audit');
+
+        $this->assertContains(HouseStyleAudit::class, $audits);
+        // particle-doctrine-convergence ticket 12's own acceptance criterion: the central-pin census has to
+        // reach the JSON surface a host actually runs, not just the manifest.
+        $this->assertContains(CentralPinJustificationAudit::class, $audits);
     }
 }

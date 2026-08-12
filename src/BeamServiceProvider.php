@@ -82,6 +82,7 @@ use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
 use Splicewire\Beam\Source\LadderForeignSourceProjector;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Source\ParticleShadower;
+use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
@@ -444,6 +445,10 @@ class BeamServiceProvider extends PackageServiceProvider
             $app->make(ParticleResourceRegistry::class),
             $app->make(ParticleOperationRegistry::class),
         ));
+        // The central-pin census scans the host's own code AND the family packages it composes — almost
+        // every pin in the estate lives in a package, so an `app/`-only scan would report a comfortable zero
+        // from inside every host while the backlog sat one directory over. See the audit's `forApp()`.
+        $this->app->bind(CentralPinJustificationAudit::class, fn () => CentralPinJustificationAudit::forApp());
 
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
@@ -461,6 +466,11 @@ class BeamServiceProvider extends PackageServiceProvider
         // Advisory: the estate's undeclared surface is a burn-down, and a several-hundred-endpoint backlog
         // that fails the build is just a blocked build. It ratchets via its committed artifact, not the gate.
         $manifest->register('splicewire/laravel-beam', UndeclaredSurfaceAudit::class);
+        // Advisory, permanently: 10 of the estate's 23 central pins cite nothing and 7 are clearly not floor,
+        // so the output is a DOCUMENTATION backlog. A documentation backlog that fails the build is just a
+        // blocked build. Reporting a pin is also not a claim it is wrong — the Role/Permission contradiction
+        // it surfaces is ADR-sized and deliberately unresolved here.
+        $manifest->register('splicewire/laravel-beam', CentralPinJustificationAudit::class);
     }
 
     /**
