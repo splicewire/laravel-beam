@@ -9,9 +9,14 @@ use Splicewire\Beam\Install\BeamInstallManifest;
 
 /**
  * The beam-doctor aggregation manifest (beam-ux-prototype-extract ticket 08) — the doctor-side mirror of
- * {@see BeamInstallManifest}. A container SINGLETON every beam-* package pushes
- * its own {@see DoctorAudit} into, from its OWN service provider, so ONE `splicewire:beam:doctor` run
- * aggregates every package's readiness checks instead of a per-package `*:doctor` command each.
+ * {@see BeamInstallManifest}. A container SINGLETON every consumer — a beam-* package from its OWN
+ * service provider, or the HOST APP from its AppServiceProvider — pushes its {@see DoctorAudit} into,
+ * so ONE `splicewire:beam:doctor` run aggregates every registered readiness check instead of a
+ * per-consumer `*:doctor` command each. Host registration needs nothing special: `register()` takes
+ * plain strings, and the singleton is bound in beam's register phase and read fresh at command
+ * invocation — an app's boot runs after every package's register, so a host registering in boot always
+ * lands (particle-doctrine-followups ticket 07 deleted the starter workarounds built on the false
+ * premise that no such seam existed).
  *
  * The direction is load-bearing, exactly as on the install side: consumers register DOWN into beam's
  * manifest; **beam-core never learns a consumer's name** (it iterates whatever registered). That keeps the
