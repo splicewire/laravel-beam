@@ -56,11 +56,16 @@ class SdkReturnsTypeScriptResolutionAudit implements DoctorAudit
      *                                                                                                                              gracefully rather than blinding the whole audit).
      * @param  ?string  $generatedDtsContent  `ui/src/types/generated.d.ts`'s content, or null when unreadable (degrades to
      *                                        check 1 only rather than crashing).
+     * @param  list<array{key: string, class: string}>  $unresolvableBindings  config-sourced realm bindings whose class does
+     *                                                                         not exist (particle-doctrine-followups #04) —
+     *                                                                         previously swallowed by a silent `continue` in
+     *                                                                         {@see forApp()}; each now surfaces as a Fail.
      */
     public function __construct(
         protected array $rawReferences,
         protected array $resolvedEntries,
         protected ?string $generatedDtsContent,
+        protected array $unresolvableBindings = [],
     ) {}
 
     /**
@@ -101,9 +106,18 @@ class SdkReturnsTypeScriptResolutionAudit implements DoctorAudit
         }
 
         $resolvedEntries = [];
+        $unresolvableBindings = [];
         foreach (['defaults', 'admin'] as $realm) {
             $binding = config("beam.client.sources.{$realm}");
-            if (! is_string($binding) || $binding === '' || ! class_exists($binding)) {
+            if (! is_string($binding) || $binding === '') {
+                continue;
+            }
+            if (! class_exists($binding)) {
+                // The signal an outage taught us never to swallow (particle-doctrine-followups #04):
+                // this binding is KNOWN unresolvable — a stale FQN in config, two hops from any
+                // binding call site — so it becomes a finding instead of a silent continue.
+                $unresolvableBindings[] = ['key' => "beam.client.sources.{$realm}", 'class' => $binding];
+
                 continue;
             }
             $source = app($binding);
@@ -126,13 +140,27 @@ class SdkReturnsTypeScriptResolutionAudit implements DoctorAudit
         $dtsPath = base_path('ui/src/types/generated.d.ts');
         $dts = is_readable($dtsPath) ? (string) file_get_contents($dtsPath) : null;
 
-        return new self($rawReferences, $resolvedEntries, $dts);
+        return new self($rawReferences, $resolvedEntries, $dts, $unresolvableBindings);
     }
 
     /** @return list<Finding> */
     public function run(): array
     {
-        return $this->check($this->rawReferences, $this->resolvedEntries, $this->generatedDtsContent);
+        // One Fail per config-sourced realm binding naming a class that does not exist — the config
+        // key and the unresolvable class, verbatim — ahead of the per-route checks.
+        $bindingFindings = array_map(
+            fn (array $binding) => Finding::fail(self::CHECK, sprintf(
+                "config('%s') names '%s', which does not resolve to a real class — the realm's manifest source cannot be bound, so its routes have no computed TS paths to check.",
+                $binding['key'],
+                $binding['class'],
+            )),
+            $this->unresolvableBindings,
+        );
+
+        return [
+            ...$bindingFindings,
+            ...$this->check($this->rawReferences, $this->resolvedEntries, $this->generatedDtsContent),
+        ];
     }
 
     /**

@@ -80,10 +80,15 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
      *                                             `RouteServiceProvider`/`TenancyServiceProvider` wraps that file's `Route::group(...)` mount
      *                                             with (e.g. `routes/api.php` → `'api.v1.'`) — a route's full resolved name is this prefix plus
      *                                             whatever `->name(...)` prefix nesting is found inside the file itself.
+     * @param  list<array{key: string, class: string}>  $unresolvableBindings  config-sourced realm bindings whose class does not
+     *                                                                         exist (particle-doctrine-followups #04) — previously
+     *                                                                         swallowed by a silent `continue` in {@see forApp()};
+     *                                                                         each now surfaces as a Fail finding.
      */
     public function __construct(
         protected array $routes,
         protected array $routeFiles = [],
+        protected array $unresolvableBindings = [],
     ) {}
 
     /**
@@ -104,9 +109,19 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
         /** @var array<string, true> $seen */
         $seen = [];
 
+        $unresolvableBindings = [];
+
         foreach (['defaults', 'operator'] as $realm) {
             $binding = config("beam.client.sources.{$realm}");
-            if (! is_string($binding) || $binding === '' || ! class_exists($binding)) {
+            if (! is_string($binding) || $binding === '') {
+                continue;
+            }
+            if (! class_exists($binding)) {
+                // The signal an outage taught us never to swallow (particle-doctrine-followups #04):
+                // this binding is KNOWN unresolvable — a stale FQN in config, two hops from any
+                // binding call site — so it becomes a finding instead of a silent continue.
+                $unresolvableBindings[] = ['key' => "beam.client.sources.{$realm}", 'class' => $binding];
+
                 continue;
             }
             $source = app($binding);
@@ -149,7 +164,26 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
             }
         }
 
-        return new self($rows, self::defaultRouteFiles());
+        return new self($rows, self::defaultRouteFiles(), $unresolvableBindings);
+    }
+
+    /**
+     * One Fail per config-sourced realm binding that names a class which does not exist — the config
+     * key and the unresolvable class, verbatim. Emitted ahead of the coverage findings on both the
+     * doctor channel ({@see run()}) and the sweep channel ({@see suggestOperations()}).
+     *
+     * @return list<Finding>
+     */
+    protected function unresolvableBindingFindings(): array
+    {
+        return array_map(
+            fn (array $binding) => Finding::fail(self::CHECK, sprintf(
+                "config('%s') names '%s', which does not resolve to a real class — the realm's manifest source cannot be bound, so every route it would enumerate is invisible to this audit.",
+                $binding['key'],
+                $binding['class'],
+            )),
+            $this->unresolvableBindings,
+        );
     }
 
     /**
@@ -181,7 +215,10 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
     /** @return list<Finding> */
     public function run(): array
     {
-        return $this->suggestFor($this->classify($this->routes));
+        return [
+            ...$this->unresolvableBindingFindings(),
+            ...$this->suggestFor($this->classify($this->routes)),
+        ];
     }
 
     /**
@@ -202,7 +239,10 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
     public function suggestOperations(): array
     {
         $detailed = $this->classifyDetailed($this->routes);
-        $findings = [];
+        $findings = array_map(
+            fn (Finding $finding) => new FixableFinding($finding),
+            $this->unresolvableBindingFindings(),
+        );
 
         foreach ($detailed as $row) {
             if ($row['tier'] === null) {

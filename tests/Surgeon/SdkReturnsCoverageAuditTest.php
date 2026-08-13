@@ -41,6 +41,34 @@ class SdkReturnsCoverageAuditTest extends TestCase
         $this->assertStringContainsString('tier: low', $findings[2]->detail);
     }
 
+    public function test_an_unresolvable_config_binding_is_a_fail_finding_naming_key_and_class(): void
+    {
+        // Particle-doctrine-followups #04: forApp()'s class_exists guard used to silently continue —
+        // the exact swallow that hid a stale config FQN until it cascaded into an outage.
+        $audit = new SdkReturnsCoverageAudit([], [], [
+            ['key' => 'beam.client.sources.defaults', 'class' => 'App\\Gone\\DefaultsSource'],
+        ]);
+
+        $findings = $audit->run();
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Fail, $findings[0]->status);
+        $this->assertSame('sdk.returns-coverage', $findings[0]->check);
+        $this->assertStringContainsString('beam.client.sources.defaults', $findings[0]->detail);
+        $this->assertStringContainsString('App\\Gone\\DefaultsSource', $findings[0]->detail);
+
+        // The sweep channel surfaces the same failure (no suggestion — repointing a stale FQN is a
+        // trace-and-move question, handed to the rename tool, not one splice).
+        $fixables = $audit->suggestOperations();
+        $this->assertCount(1, $fixables);
+        $this->assertSame(DoctorStatus::Fail, $fixables[0]->finding->status);
+        $this->assertStringContainsString('beam.client.sources.defaults', $fixables[0]->finding->detail);
+    }
+
+    public function test_no_unresolvable_bindings_adds_no_findings(): void
+    {
+        $this->assertSame([], $this->audit()->run());
+    }
+
     public function test_a_null_tier_produces_no_finding(): void
     {
         $findings = $this->audit()->suggestFor([

@@ -18,6 +18,28 @@ class SdkReturnsTypeScriptResolutionAuditTest extends TestCase
         return new SdkReturnsTypeScriptResolutionAudit([], [], null);
     }
 
+    public function test_an_unresolvable_config_binding_is_a_fail_finding_naming_key_and_class(): void
+    {
+        // Particle-doctrine-followups #04: forApp()'s class_exists guard used to silently continue —
+        // the exact swallow that hid a stale config FQN until it cascaded into an outage.
+        $audit = new SdkReturnsTypeScriptResolutionAudit([], [], null, [
+            ['key' => 'beam.client.sources.admin', 'class' => 'App\\Gone\\AdminSource'],
+        ]);
+
+        $findings = $audit->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Fail, $findings[0]->status);
+        $this->assertSame(SdkReturnsTypeScriptResolutionAudit::CHECK, $findings[0]->check);
+        $this->assertStringContainsString('beam.client.sources.admin', $findings[0]->detail);
+        $this->assertStringContainsString('App\\Gone\\AdminSource', $findings[0]->detail);
+    }
+
+    public function test_no_unresolvable_bindings_adds_no_findings(): void
+    {
+        $this->assertSame([], $this->audit()->run());
+    }
+
     public function test_a_clean_returns_reference_produces_no_finding(): void
     {
         $findings = $this->audit()->check(
