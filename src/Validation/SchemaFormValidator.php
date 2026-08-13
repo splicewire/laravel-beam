@@ -5,6 +5,8 @@ namespace Splicewire\Beam\Validation;
 use Opis\JsonSchema\Errors\ErrorFormatter;
 use Opis\JsonSchema\Validator;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Schemastud\JsonNs\Exceptions\UnboundPrefix;
+use Schemastud\JsonNs\Exceptions\VocabularyArtifactMissing;
 use Schemastud\JsonNs\Vocab\VocabularyValidator;
 use Schemastud\JsonNs\Vocabulary;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -75,10 +77,7 @@ class SchemaFormValidator
      */
     protected function namespaceErrors(array $payload, array $schema): array
     {
-        $declarations = array_intersect_key($schema, [
-            Vocabulary::Namespace => true,
-            Vocabulary::Namespaced => true,
-        ]);
+        $declarations = Vocabulary::declarationsOf($schema);
 
         if ($declarations === []) {
             return [];
@@ -93,8 +92,16 @@ class SchemaFormValidator
         $formatted = [];
         $formatter = new ErrorFormatter;
 
-        // The schema's declarations govern the submitted document (declarations win on key clash).
-        foreach ($validator->validate($declarations + $payload) as $error) {
+        try {
+            // The schema's declarations govern the submitted document (declarations win on key clash).
+            $violations = $validator->validate($declarations + $payload);
+        } catch (UnboundPrefix|VocabularyArtifactMissing $e) {
+            // An UNENFORCEABLE declaration refuses at BOTH doors (gate parity, ADR-0193 §4) — here
+            // as a formatted error with the reason, never an uncaught 500.
+            return ['/' => [$e->getMessage()]];
+        }
+
+        foreach ($violations as $error) {
             foreach ($formatter->format($error) as $pointer => $messages) {
                 $formatted[$pointer] = [...(array) ($formatted[$pointer] ?? []), ...(array) $messages];
             }

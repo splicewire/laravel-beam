@@ -2,8 +2,11 @@
 
 namespace Splicewire\Beam\Tests\Validation;
 
+use Schemastud\DataSchemas\Contracts\SchemaRegistry;
+use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\JsonNs\Vocab\VocabularyRegistry;
 use Schemastud\JsonNs\Vocab\VocabularyValidator;
+use Splicewire\Beam\Schema\BeamSchemaRegistry;
 use Splicewire\Beam\Tests\TestCase;
 use Splicewire\Beam\Validation\SchemaFormValidator;
 
@@ -87,5 +90,56 @@ class SchemaFormValidatorTest extends TestCase
         $encoded = json_encode($errors);
         $this->assertStringContainsString('title', $encoded);
         $this->assertStringContainsString('sources', $encoded);
+    }
+
+    public function test_an_unenforceable_declaration_refuses_with_a_formatted_error_not_a_500(): void
+    {
+        // The schema binds a prefix the payload's subtree key does NOT use — the payload's own
+        // `mystery:` prefix is unbound, so scoping throws inside the engine. Gate parity
+        // (ADR-0193 §4): the door surfaces a formatted refusal, never an uncaught exception.
+        $errors = $this->namespacedValidator()->validate(
+            ['title' => 'ok', 'mystery:thing' => ['a' => 1]],
+            $this->namespacedSchema(),
+        );
+
+        $this->assertNotSame([], $errors);
+        $this->assertStringContainsString('mystery', json_encode($errors));
+    }
+
+    public function test_the_container_chain_resolves_vocabularies_through_the_schema_registry(): void
+    {
+        // The FULL production chain, no hand-built registry: the vocabulary artifact lives in a
+        // real schema-registry tier (versioned $id), the host binds SchemaRegistry, and the
+        // validator resolves through JsonNsServiceProvider's registry-backed binding.
+        $dir = sys_get_temp_dir().'/sfv-fleet-'.uniqid();
+        @mkdir($dir, 0775, true);
+
+        (new FilesystemSchemaRegistry($dir))->register([
+            '$id' => self::VOCAB_URI.'/1',
+            'type' => 'object',
+            'required' => ['sources'],
+            'properties' => ['sources' => ['type' => 'array', 'minItems' => 1]],
+        ]);
+
+        $this->app->bind(SchemaRegistry::class, fn () => new BeamSchemaRegistry(
+            ['file'],
+            ['file' => fn () => new FilesystemSchemaRegistry($dir)],
+        ));
+        $this->app->forgetInstance(VocabularyRegistry::class);
+
+        // No injected engine — the door resolves the container's registry-backed binding.
+        $door = new SchemaFormValidator;
+
+        $this->assertNotSame([], $door->validate(
+            ['title' => 'ok', 'splice:grounding' => ['nope' => true]],
+            $this->namespacedSchema(),
+        ));
+        $this->assertSame([], $door->validate(
+            ['title' => 'ok', 'splice:grounding' => ['sources' => ['ctx://a']]],
+            $this->namespacedSchema(),
+        ));
+
+        array_map('unlink', glob($dir.'/*') ?: []);
+        @rmdir($dir);
     }
 }

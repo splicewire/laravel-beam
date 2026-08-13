@@ -6,6 +6,7 @@ use Orchestra\Testbench\TestCase as Orchestra;
 use Rushing\PermissionCascade\PermissionCascadeServiceProvider;
 use Rushing\Versioning\VersioningServiceProvider;
 use Schemastud\DataSchemas\LaravelDataSchemasServiceProvider;
+use Schemastud\JsonNs\Laravel\JsonNsServiceProvider;
 use Spatie\Activitylog\ActivitylogServiceProvider;
 use Spatie\LaravelData\LaravelDataServiceProvider;
 use Splicewire\Beam\BeamServiceProvider;
@@ -40,6 +41,9 @@ abstract class TestCase extends Orchestra
             // Gate abilities + can-map/manifest projection over this seam. A declared dependency DOWN
             // (beam → permission-cascade), not a rung above beam.
             PermissionCascadeServiceProvider::class,
+            // The json-ns host bindings (ADR-0191/0192): the VocabularyRegistry/-Validator the
+            // namespace-aware gates resolve, backed by SchemaRegistry when a test binds one.
+            JsonNsServiceProvider::class,
         ];
     }
 }
