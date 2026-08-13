@@ -4,13 +4,19 @@ namespace Splicewire\Beam\Revisions;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
-use RuntimeException;
-use Spatie\Activitylog\Models\Activity;
+use Splicewire\Beam\Activity\ActivityRecorder;
 
 /**
- * The generic reversibility port, backed by `spatie/laravel-activitylog`. Generalized up from
- * composition's app-local `DataActivityRecorder` (ADR-0049) so it becomes beam-core: any
- * beam BeamParticle (or any Eloquent-backed record) gets change-history + undo/redo.
+ * **Reversible attribute revisions** — the generic reversibility port, backed by
+ * `spatie/laravel-activitylog`. Generalized up from composition's app-local `DataActivityRecorder`
+ * (ADR-0049) so it becomes beam-core: any beam BeamParticle (or any Eloquent-backed record) gets
+ * change-history + undo/redo.
+ *
+ * The record/history/projection MECHANICS now live in the {@see ActivityRecorder} base ("activity
+ * onto the log substrate") — this class is the specialization that means it: an entry here is a
+ * restorable attribute pre-image, and {@see self::revert()} restores it (append-only — the
+ * reversal is itself recorded). A recorder for gestures that merely HAPPENED (a rank toggle, a
+ * rate) extends {@see ActivityRecorder} directly instead; a rank is activity, not a revision.
  *
  * Usable directly on any record; specialized by extension for a specific payload shape (e.g.
  * composition's `CellRevisionRecorder`, which pins the payload to a cell's `slots` and re-derives
@@ -20,7 +26,7 @@ use Spatie\Activitylog\Models\Activity;
  * `correlation` groups the entries of one intent (a batch), so a whole run can be reverted by
  * querying it. Every reversal is itself recorded (append-only).
  */
-class RevisionRecorder
+class RevisionRecorder extends ActivityRecorder
 {
     /**
      * The `log_name` category — the seam that keeps future selective sync open. A specialization
@@ -29,69 +35,6 @@ class RevisionRecorder
     protected function logName(): string
     {
         return 'beam-revision';
-    }
-
-    /**
-     * @param  array<string, mixed>  $old  the pre-image (attribute subset) being replaced
-     * @param  array<string, mixed>  $new  the post-image
-     */
-    public function record(
-        Model $subject,
-        array $old,
-        array $new,
-        string $cause,
-        ?string $correlation = null,
-        ?Model $actor = null,
-    ): RevisionEntry {
-        $logger = activity($this->logName())
-            ->performedOn($subject)
-            ->event($cause)
-            ->withProperties(array_filter([
-                'old' => $old,
-                'new' => $new,
-                'correlation' => $correlation,
-            ], fn ($value) => $value !== null));
-
-        if ($actor !== null) {
-            $logger->causedBy($actor);
-        }
-
-        $activity = $logger->log($cause);
-
-        if ($activity === null) {
-            throw new RuntimeException('Activity logging is disabled; a revision could not be recorded.');
-        }
-
-        return $this->toEntry($activity);
-    }
-
-    /**
-     * Project an activity row into a revision entry. Seam: a specialization may return its own
-     * {@see RevisionEntry} subclass (e.g. an app that adds typed projection fields) so its
-     * consumers keep their own entry type across the whole recorder surface.
-     *
-     * @param  \Spatie\Activitylog\Contracts\Activity  $activity
-     */
-    protected function toEntry($activity): RevisionEntry
-    {
-        return RevisionEntry::fromActivity($activity);
-    }
-
-    /**
-     * The subject's revisions, newest first.
-     *
-     * @return list<RevisionEntry>
-     */
-    public function history(Model $subject): array
-    {
-        return $this->activityModel()::query()
-            ->where('log_name', $this->logName())
-            ->where('subject_type', $subject->getMorphClass())
-            ->where('subject_id', $subject->getKey())
-            ->latest('id')
-            ->get()
-            ->map(fn (Activity $activity) => $this->toEntry($activity))
-            ->all();
     }
 
     /**
@@ -119,13 +62,5 @@ class RevisionRecorder
         $model = new $class;
 
         return $model->newQuery()->findOrFail($entry->subjectId);
-    }
-
-    /**
-     * @return class-string<Activity>
-     */
-    protected function activityModel(): string
-    {
-        return config('activitylog.activity_model', Activity::class);
     }
 }
