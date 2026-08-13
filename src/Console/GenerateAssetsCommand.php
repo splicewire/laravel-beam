@@ -57,14 +57,23 @@ class GenerateAssetsCommand extends Command
             }
 
             if ($json) {
-                $this->callSilently($command) === self::SUCCESS ? $ran[] = $command : $failed[] = $command;
+                if ($this->callSilently($command) === self::SUCCESS) {
+                    $ran[] = $command;
+                } else {
+                    $failed[] = $command;
+                }
 
                 continue;
             }
 
             $this->components->task($command, function () use ($command, &$ran, &$failed): bool {
                 $ok = $this->call($command) === self::SUCCESS;
-                $ok ? $ran[] = $command : $failed[] = $command;
+
+                if ($ok) {
+                    $ran[] = $command;
+                } else {
+                    $failed[] = $command;
+                }
 
                 return $ok;
             });

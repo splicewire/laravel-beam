@@ -150,7 +150,7 @@ class SchemaProjectionDriftAudit implements DoctorAudit
                 continue;
             }
 
-            if (json_decode($row['disk'], true) !== $row['generated']) {
+            if (self::normalize((array) json_decode($row['disk'], true)) !== self::normalize((array) $row['generated'])) {
                 $findings[] = Finding::warn(self::CHECK, sprintf(
                     '%s (declared by %s) has a schema projection at %s that is STALE relative to the declaration — regenerate with `php artisan schemas:generate`.',
                     $row['class'],
@@ -219,5 +219,28 @@ class SchemaProjectionDriftAudit implements DoctorAudit
         }
 
         return false;
+    }
+
+    /**
+     * Key-order-insensitive deep normalization for the stale compare: a generator that merely
+     * reorders object keys is NOT drift (JSON objects are unordered), so both sides are
+     * recursively key-sorted before comparison. List order stays significant.
+     *
+     * @param  array<array-key, mixed>  $value
+     * @return array<array-key, mixed>
+     */
+    private static function normalize(array $value): array
+    {
+        foreach ($value as $k => $v) {
+            if (is_array($v)) {
+                $value[$k] = self::normalize($v);
+            }
+        }
+
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+
+        return $value;
     }
 }
