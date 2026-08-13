@@ -17,11 +17,15 @@ use Illuminate\Console\Command;
  * The list is a **seam**: everything upstream registers into the same layer by appending to the
  * `beam.client.assets.generators` config, so "generate everything" stays one command as the stack grows —
  * rather than each new generator having to teach every caller about itself. A generator that isn't
- * installed in this host is skipped with a note, never a hard failure.
+ * installed in this host is skipped with a note, never a hard failure — but the skip is REPORTABLE
+ * (particle-doctrine-followups #13): `--json` emits a `{ran, skipped, failed}` summary, so a caller can
+ * distinguish "this host legitimately lacks the generator" from "every generator ran clean". Silence is
+ * no longer ambiguous.
  */
 class GenerateAssetsCommand extends Command
 {
-    protected $signature = 'splicewire:beam:generate:assets';
+    protected $signature = 'splicewire:beam:generate:assets
+        {--json : Emit a machine-readable {ran, skipped, failed} summary (sub-command output suppressed)}';
 
     protected $description = 'Generate every committed BE→FE contract artifact: TypeScript types, JSON schemas, and the route/hook client';
 
@@ -35,26 +39,50 @@ class GenerateAssetsCommand extends Command
     public function handle(): int
     {
         $generators = config('beam.client.assets.generators', self::DEFAULT_GENERATORS);
-        $failed = false;
+        $json = (bool) $this->option('json');
+
+        $ran = [];
+        $skipped = [];
+        $failed = [];
 
         foreach ($generators as $command) {
             if (! $this->getApplication()->has($command)) {
-                $this->components->warn("Skipping '{$command}' — not registered in this host.");
+                $skipped[] = $command;
+
+                if (! $json) {
+                    $this->components->warn("Skipping '{$command}' — not registered in this host.");
+                }
 
                 continue;
             }
 
-            $this->components->task($command, function () use ($command, &$failed): bool {
+            if ($json) {
+                $this->callSilently($command) === self::SUCCESS ? $ran[] = $command : $failed[] = $command;
+
+                continue;
+            }
+
+            $this->components->task($command, function () use ($command, &$ran, &$failed): bool {
                 $ok = $this->call($command) === self::SUCCESS;
-                $failed = $failed || ! $ok;
+                $ok ? $ran[] = $command : $failed[] = $command;
 
                 return $ok;
             });
         }
 
+        if ($json) {
+            $this->output->writeln((string) json_encode([
+                'ran' => $ran,
+                'skipped' => $skipped,
+                'failed' => $failed,
+            ]));
+
+            return $failed === [] ? self::SUCCESS : self::FAILURE;
+        }
+
         $this->newLine();
 
-        if ($failed) {
+        if ($failed !== []) {
             $this->components->error('One or more generators failed — the contract artifacts may be incomplete.');
 
             return self::FAILURE;
