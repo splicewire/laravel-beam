@@ -96,6 +96,7 @@ use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
+use Splicewire\Beam\Surgeon\SchemaProjectionDriftAudit;
 use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
 use Splicewire\Beam\Surgeon\SdkHookMigrationAudit;
 use Splicewire\Beam\Surgeon\SdkHookMigrationBridge;
@@ -698,6 +699,16 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             ClientRuntimeContractAudit::class,
+        );
+
+        // particle-doctrine-followups #14: the schema leg's first drift guard. Advisory (a
+        // regeneration backlog that fails the build is just a blocked build) and unconditional here —
+        // its forApp() degrades to a stated skip when data-schemas isn't installed, mirroring
+        // SchemaRoundTripAudit's presence-conditionality.
+        $this->app->bind(SchemaProjectionDriftAudit::class, fn () => SchemaProjectionDriftAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            SchemaProjectionDriftAudit::class,
         );
 
         // beam-core self-describes its own registries into the index of indexes (beam-manifest-index),

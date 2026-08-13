@@ -35,4 +35,15 @@ class ParticleOperationRegistry
     {
         return $this->operations["{$resource}:{$name}"] ?? null;
     }
+
+    /**
+     * Every registered operation, registration order — for auditors walking the DECLARED set rather
+     * than looking one up (the schema-projection drift audit, particle-doctrine-followups 14).
+     *
+     * @return list<ParticleOperation>
+     */
+    public function all(): array
+    {
+        return array_values($this->operations);
+    }
 }

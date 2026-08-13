@@ -30,6 +30,13 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
  *                    presence is what promotes an entry from a route-map-only line to a typed hook. Absent
  *                    ⇒ the entry gets a route-map entry only (its hook stays hand-written).
  *   - `returnsMany` (optional) true ⇒ the hook/store yields `Splicewire.Tower.Data.X[]` (a list/index endpoint).
+ *   - `streams`     (optional) an SSE route's event map — wire `event:` name → list of TS-qualified event
+ *                    DTOs. Mutually exclusive with `returns` in practice; the generator emits a
+ *                    discriminated-union type plus a `useSseStream` hook per entry.
+ *   - `unresolved`  (optional) true ⇒ the entry has NO derivable type (no `returns`, no `streams`) and the
+ *                    source RECORDED the absence rather than silently omitting the key — never fabricate a
+ *                    type, but keep the negative space reportable (particle-doctrine-followups 14; both the
+ *                    satellite `ParticleRouteManifestSource` and the platform `RouteManifest` stamp it).
  *
  * A host binds ONE source per realm into the generator (see `beam.client.sources`). A satellite has a
  * single tier, so the admin/second source is OPTIONAL — the generator emits an empty `adminDefaults` map
@@ -38,7 +45,7 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
 interface RouteManifestSource
 {
     /**
-     * @return array<string, array{path: string, methods: list<string>, visibility: string, returns?: string, returnsMany?: bool}>
+     * @return array<string, array{path: string, methods: list<string>, visibility: string, returns?: string, returnsMany?: bool, streams?: array<string, list<string>>, unresolved?: bool}>
      */
     public function toArray(): array;
 }

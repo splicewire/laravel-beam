@@ -110,6 +110,22 @@ class ParticleResourceRegistry
         return isset($this->resources[$key]);
     }
 
+    /**
+     * Every registered {@see ParticleResource} DECLARATION, registration order — for auditors walking
+     * the declared set rather than looking one up (the schema-projection drift audit,
+     * particle-doctrine-followups 14). Raw {@see ResourceDefinition} escape-hatch entries are excluded:
+     * they carry no `data:`/`input:` Data-class declaration to audit.
+     *
+     * @return list<ParticleResource>
+     */
+    public function all(): array
+    {
+        return array_values(array_filter(
+            $this->resources,
+            fn ($resource) => $resource instanceof ParticleResource,
+        ));
+    }
+
     // ── Registration — gains the realm axis ─────────────────────────────────────────────────────────
 
     /**
