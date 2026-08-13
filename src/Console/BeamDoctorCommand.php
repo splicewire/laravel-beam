@@ -3,8 +3,8 @@
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
+use Rushing\Doctor\Concerns\RunsDoctorFloor;
 use Rushing\Doctor\DoctorAudit;
-use Rushing\Doctor\DoctorFailed;
 use Rushing\Doctor\DoctorRunner;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
@@ -58,6 +58,8 @@ use Splicewire\Beam\Doctor\SurgeonWiringAudit;
  */
 class BeamDoctorCommand extends Command
 {
+    use RunsDoctorFloor;
+
     protected $signature = 'splicewire:beam:doctor
         {--floor=fail : Severity a gate finding must reach to fail the run (pass|warn|fail)}';
 
@@ -65,11 +67,9 @@ class BeamDoctorCommand extends Command
 
     public function handle(BeamDoctorManifest $manifest, DoctorRunner $runner): int
     {
-        $floor = DoctorStatus::tryFrom(strtolower((string) $this->option('floor')));
+        $floor = $this->parseFloor();
 
         if ($floor === null) {
-            $this->components->error('Invalid --floor value; expected one of: pass, warn, fail.');
-
             return self::FAILURE;
         }
 
@@ -108,28 +108,20 @@ class BeamDoctorCommand extends Command
         $gateFailed = false;
 
         foreach ($gateFindings as $finding) {
-            $this->render($finding);
+            $this->renderFinding($finding);
             $gateFailed = $gateFailed || $finding->status === DoctorStatus::Fail;
         }
 
-        foreach ($advisoryFindings as $finding) {
-            $this->render($finding);
-        }
+        $this->renderFindings($advisoryFindings);
 
         // Consumer tail: every beam-* package that self-registered a DoctorAudit into the manifest
         // (order-ascending), executed by the shared runner. A gate registration's finding at or above
         // the floor joins the exit code; an advisory one only renders. The runner collects every
         // finding before throwing, so a failure is still a full work-list.
-        try {
-            $report = $runner->run($manifest->registrations(), $floor);
-        } catch (DoctorFailed $failure) {
-            $report = $failure->report;
-            $gateFailed = true;
-        }
+        [$report, $runnerFailed] = $this->runAtFloor($runner, $manifest->registrations(), $floor);
+        $gateFailed = $gateFailed || $runnerFailed;
 
-        foreach ($report->findings as $finding) {
-            $this->render($finding);
-        }
+        $this->renderFindings($report->findings);
 
         if ($gateFailed) {
             $this->newLine();
@@ -282,15 +274,6 @@ class BeamDoctorCommand extends Command
         }
 
         return $values;
-    }
-
-    private function render(Finding $finding): void
-    {
-        match ($finding->status) {
-            DoctorStatus::Pass => $this->components->info($finding->check.': '.$finding->detail),
-            DoctorStatus::Warn => $this->components->warn($finding->check.': '.$finding->detail),
-            DoctorStatus::Fail => $this->components->error($finding->check.': '.$finding->detail),
-        };
     }
 
     /**
