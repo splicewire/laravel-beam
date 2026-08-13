@@ -4,7 +4,7 @@
     "type": "library",
     "license": "MIT",
     "require": {
-        "php": "^8.2",
+        "php": "^8.3",
         "illuminate/contracts": "^11.0|^12.0|^13.0",
         "illuminate/support": "^11.0|^12.0|^13.0",
         "nette/php-generator": "^3.4|^4.0",
@@ -16,6 +16,7 @@
         "rushing/laravel-versioning": "dev-main",
         "schemastud/laravel-data-schemas": "^1.0",
         "schemastud/laravel-frame": "dev-main",
+        "schemastud/laravel-json-ns": "dev-main",
         "spatie/laravel-activitylog": "^4.0|^5.0",
         "spatie/laravel-data": "^4.0|^5.0",
         "spatie/laravel-model-flags": "*",
@@ -44,9 +45,10 @@
     },
     "extra": {
         "package-topology": {
-            "because": "beam depends DOWN on frame (direction corrected — see tower refactor); the vendor-seam policy lives on the base package",
+            "because": "beam depends DOWN on frame (direction corrected — see tower refactor); the vendor-seam policy lives on the base package. beam also depends DOWN on schemastud/laravel-json-ns (ADR-0191): SchemaId extends the one fleet-wide NamespaceUri parser, and the Laravel binding tier is where beam binds json-ns ports (VocabularyRegistry, ADR-0192) into the container — the splicewire/* → schemastud/* direction R1 sanctions",
             "mustRequire": [
-                "schemastud/laravel-frame"
+                "schemastud/laravel-frame",
+                "schemastud/laravel-json-ns"
             ],
             "mustRequireDev": [
                 "rushing/laravel-surgeon"
