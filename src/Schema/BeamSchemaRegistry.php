@@ -31,8 +31,9 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
  *
  * The tiers are LAZY closures: a `['file']` host never constructs the DB tier, so it boots + resolves
  * with NO `beam_schemas` table required. The {@see SchemaRegistry} contract is UNCHANGED — every
- * consumer ({@see RegistrySchemaTargetResolver}, {@see SchemaVersionResolver}, {@see SchemaLadderMigrator})
- * is untouched.
+ * consumer ({@see RegistrySchemaTargetResolver}, the host's version-resolution authority
+ * (`Splicewire\Tower\Schema\SchemaVersionResolver` — a tower class, not beam's), and
+ * {@see SchemaLadderMigrator}) is untouched.
  */
 class BeamSchemaRegistry implements EnumeratesVersions, SchemaRegistry
 {
