@@ -36,7 +36,9 @@ class StreamOperationTest extends TestCase
         $this->assertInstanceOf(StreamedResponse::class, $response);
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame('text/event-stream', $response->headers->get('Content-Type'));
-        $this->assertSame('no-cache', $response->headers->get('Cache-Control'));
+        // Symfony normalizes Cache-Control, appending `private` when no visibility is set —
+        // assert our directive is present rather than pinning the normalized full value.
+        $this->assertStringContainsString('no-cache', (string) $response->headers->get('Cache-Control'));
         $this->assertSame('no', $response->headers->get('X-Accel-Buffering'));
     }
 

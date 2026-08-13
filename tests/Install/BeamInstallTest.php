@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Install;
 
 use Illuminate\Console\OutputStyle;
+use Illuminate\Support\Facades\File;
 use Splicewire\Beam\Beam;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Install\BeamInstallManifest;
@@ -18,6 +19,31 @@ use Symfony\Component\Console\Output\BufferedOutput;
  */
 class BeamInstallTest extends TestCase
 {
+    /**
+     * The real `vendor:publish` these tests drive writes config + timestamped migrations into the
+     * SHARED testbench skeleton on disk, where they persist past the process and shadow the package
+     * defaults for every later test (and every later run — each run stamps fresh duplicate
+     * migrations, eventually breaking migrate with "table already exists"). Sweep the published
+     * artifacts back out after each test so the skeleton stays pristine.
+     */
+    protected function tearDown(): void
+    {
+        File::deleteDirectory(base_path('config/beam'));
+
+        foreach (['', '/shared', '/tenant'] as $sub) {
+            $dir = base_path('database/migrations'.$sub);
+            $leaked = [
+                ...glob($dir.'/[0-9]*_create_beam_*.php') ?: [],
+                ...glob($dir.'/[0-9]*_create_media_table.php') ?: [],
+            ];
+            foreach ($leaked as $file) {
+                @unlink($file);
+            }
+        }
+
+        parent::tearDown();
+    }
+
     public function test_the_manifest_orders_steps_core_first(): void
     {
         $manifest = new BeamInstallManifest;
