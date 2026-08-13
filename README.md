@@ -63,6 +63,25 @@ The **exit code is non-zero only on a dependency-contract Fail** (`lock path-fre
 `repos git-resolved`). Every other check is advisory and never turns the run red — a headless
 beam app with no editor rung installed is a valid, green configuration (ADR-0082 / ADR-0095).
 
+## Namespace-aware validation — `@namespace` content in a `BeamSchema` artifact
+
+A `BeamSchema.artifact` may declare `@namespace`/`@namespaced` content (the
+`schemastud/php-json-ns` grammar), and each namespaced subtree of a submission is then
+enforced against its namespace's `$vocabulary` schema — resolved through the host's
+`SchemaRegistry` via the json-ns `VocabularyValidator` (ADR-0192/0193). The schema's
+declarations govern the payload (they are overlaid before scoping), and **both** existing
+validation gates enforce the same scoping, so a namespaced document can never pass one door
+and not the other:
+
+| Gate | package | shape |
+| --- | --- | --- |
+| `Splicewire\Beam\Validation\SchemaFormValidator` | this package | formatted `{pointer: [messages]}` map (the public-intake 422 body) — vocabulary violations merge into the same map |
+| `Schemastud\DataSchemas\Migration\AcceptanceGate` | `schemastud/laravel-data-schemas` | boolean pass/fail (the `ParticleWriter` / migration-ladder write path) |
+
+Additive: a schema with no namespace content validates byte-for-byte as before, and a host
+with no json-ns wiring keeps plain structural validation (the enforcement engine resolves
+lazily from the container's `JsonNsServiceProvider` binding).
+
 ## Frame operator seams — OOTB default bindings
 
 `beam → frame` (ADR-0156): beam owns the model-backed CRUD driver behind Frame's agnostic
