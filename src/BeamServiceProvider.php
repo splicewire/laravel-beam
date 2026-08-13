@@ -471,7 +471,6 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->bind(TypeScriptShortNameCollisionAudit::class, fn () => TypeScriptShortNameCollisionAudit::forApp());
         $this->app->bind(StatusChannelLiteralDriftAudit::class, fn () => StatusChannelLiteralDriftAudit::forApp());
         $this->app->bind(TypeScriptUnknownResolutionAudit::class, fn () => TypeScriptUnknownResolutionAudit::forApp());
-        $this->app->bind(ClientRuntimeContractAudit::class, fn () => ClientRuntimeContractAudit::forApp());
         // The negative-space detector reads the two particle registries and the LIVE route table — no
         // host-scoped file paths, so it needs no `forApp()` seam of its own.
         $this->app->bind(UndeclaredSurfaceAudit::class, fn ($app) => new UndeclaredSurfaceAudit(
@@ -505,11 +504,6 @@ class BeamServiceProvider extends PackageServiceProvider
         $manifest->register('splicewire/laravel-beam', TypeScriptShortNameCollisionAudit::class);
         $manifest->register('splicewire/laravel-beam', StatusChannelLiteralDriftAudit::class);
         $manifest->register('splicewire/laravel-beam', TypeScriptUnknownResolutionAudit::class);
-        // Advisory: the client-runtime contract (particle-doctrine-followups #12). A missing or
-        // non-conforming `@/lib/api` / `@/lib/routes` breaks the generated client at compile time, but
-        // the fix is host-owned (publish the beam-client-runtime stubs or write the module) and the
-        // check is static export-name inspection — a nudge with a named fix, not a gate.
-        $manifest->register('splicewire/laravel-beam', ClientRuntimeContractAudit::class);
         // Advisory: the estate's undeclared surface is a burn-down, and a several-hundred-endpoint backlog
         // that fails the build is just a blocked build. It ratchets via its committed artifact, not the gate.
         $manifest->register('splicewire/laravel-beam', UndeclaredSurfaceAudit::class);
@@ -692,6 +686,18 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             AgentsMdConventionAudit::class,
+        );
+
+        // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered
+        // UNCONDITIONALLY (a plain DoctorAudit — deliberately NOT behind the surgeon-installed guard,
+        // matching the ux-prototype precedent): a missing or non-conforming `@/lib/api`/`@/lib/routes`
+        // breaks the generated client at compile time in any host, surgeon or no surgeon. The fix is
+        // host-owned (`vendor:publish --tag=beam-client-runtime`, or write the module), so this is a
+        // nudge with a named fix, not a gate.
+        $this->app->bind(ClientRuntimeContractAudit::class, fn () => ClientRuntimeContractAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            ClientRuntimeContractAudit::class,
         );
 
         // beam-core self-describes its own registries into the index of indexes (beam-manifest-index),
