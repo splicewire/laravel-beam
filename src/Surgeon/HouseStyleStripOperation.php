@@ -22,7 +22,9 @@ use Rushing\Surgeon\Rewrite\SpliceApplier;
  *
  * **Token-aware, not regex.** Detection runs off php-parser's tokenizer, so it is immune to the traps a
  * regex hits: `readonly` used as a *method name* (`public function readonly()` — the keyword token there
- * is directly followed by `(`, which the modifier guard rejects), `'final'`/`'readonly'` as string
+ * is directly followed by `(`, which the modifier guard rejects), `readOnly:`/`readonly:` as a *named
+ * argument* (the tokenizer still emits T_READONLY there, case-insensitively; the following `:` is the
+ * guard's other rejection), `'final'`/`'readonly'` as string
  * literals or array keys (never keyword tokens), and `declare(ticks=1)` (matched only when the directive
  * is literally `strict_types`). A modifier keyword and its ONE trailing whitespace run are removed
  * together so no double space is left; `final readonly class Foo` collapses cleanly to `class Foo` because
@@ -148,10 +150,13 @@ class HouseStyleStripOperation implements Operation
     }
 
     /**
-     * True when a `final`/`readonly` keyword token is a real modifier, not an identifier. The one context
-     * where these keyword tokens are NOT modifiers is a method *named* `readonly` (`function readonly()`),
-     * whose token is immediately followed by `(`. Any other following token (`class`, `function`, a
-     * visibility, a type, another modifier) is a genuine modifier.
+     * True when a `final`/`readonly` keyword token is a real modifier, not an identifier. Two contexts
+     * where these keyword tokens are NOT modifiers: a method *named* `readonly` (`function readonly()`),
+     * whose token is immediately followed by `(`; and a *named argument* (`foo(readOnly: true)` — PHP
+     * keywords are case-insensitive, so `readOnly` tokenizes as T_READONLY too), whose token is
+     * immediately followed by `:`. Any other following token (`class`, `function`, a visibility, a type,
+     * another modifier) is a genuine modifier. (`::` is a single T_DOUBLE_COLON token, so the `:` check
+     * never misfires on a class-constant fetch.)
      *
      * @param  list<Token>  $tokens
      */
@@ -162,7 +167,7 @@ class HouseStyleStripOperation implements Operation
             return false;
         }
 
-        return $tokens[$j]->text !== '(';
+        return $tokens[$j]->text !== '(' && $tokens[$j]->text !== ':';
     }
 
     // --- span resolution --------------------------------------------------------------------------

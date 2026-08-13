@@ -177,6 +177,20 @@ PHP;
         $this->assertSame($source, $result);
     }
 
+    public function test_it_leaves_readonly_named_arguments_alone(): void
+    {
+        // `readOnly:` in a named argument still tokenizes as T_READONLY (keywords are case-insensitive),
+        // but it is an argument NAME, not a modifier — the guard's `:` rejection must leave it untouched
+        // (the real-world shape: `new ParticleResource(..., readOnly: true)` in a host provider).
+        $op = new HouseStyleStripOperation;
+        $source = "<?php\n\nnew Foo(\n    key: 'tokens',\n    readOnly: true,\n);\n\nbar(readonly: false, final: 1);\n";
+
+        $plan = $op->planSource($source);
+
+        $this->assertTrue($plan->isEmpty());
+        $this->assertSame($source, $op->applyToSource($source, $plan));
+    }
+
     public function test_it_is_idempotent(): void
     {
         $op = new HouseStyleStripOperation;
