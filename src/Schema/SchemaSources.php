@@ -48,6 +48,14 @@ class SchemaSources
         return isset($this->factories[$key]);
     }
 
+    /** Build the registered tier for a key, or null when nothing is registered under it. */
+    public function resolve(string $key): ?SchemaRegistry
+    {
+        $factory = $this->factories[$key] ?? null;
+
+        return $factory === null ? null : $factory();
+    }
+
     /** @return array<string, Closure(): SchemaRegistry> */
     public function factories(): array
     {
