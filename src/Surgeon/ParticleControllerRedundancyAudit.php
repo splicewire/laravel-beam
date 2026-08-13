@@ -16,6 +16,7 @@ use Rushing\Surgeon\Operation\FixableFinding;
 use Rushing\Surgeon\Operation\OperationSuggestion;
 use Rushing\Surgeon\Operation\SuggestsOperations;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\Attributes\BespokeByDesign;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
@@ -54,6 +55,12 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * beam estate fact). Beam owns that POLICY and nominates a generic collapse operation via the
  * Finding→Operation bridge — exactly like the sibling {@see SdkEndpointDriftAudit} /
  * {@see SdkNameConventionAudit}.
+ *
+ * ## Acknowledged bespoke shells ({@see BespokeByDesign})
+ * A controller class carrying `#[BespokeByDesign(reason: …)]` is a REVIEWED divergence — its finding
+ * downgrades to a Pass line that still surfaces `acknowledged: <reason>` (acknowledged ≠ invisible), and
+ * no collapse is suggested. Read reflectively at emit time; a non-autoloadable fixture class resolves to
+ * un-acknowledged, keeping the pure core fixture-testable.
  *
  * ## Honesty about what it can statically see
  * Two of the three legs are pure route-file/source facts (extends-chain, hand-wired-vs-macro), read
@@ -172,6 +179,24 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
             $deltas = array_keys(array_filter($controller['actions'], fn (string $shape) => $shape === 'delta'));
             $shortClass = $this->shortName($controller['class']);
             $peerRidesMacro = $macroKeys !== [];
+
+            // An acknowledged bespoke shell downgrades to a Pass that still carries the reason — the
+            // ledger keeps the line, the WARN (and the collapse nomination) stand down.
+            $acknowledged = BespokeByDesign::on($controller['class']);
+            if ($acknowledged !== null) {
+                $findings[] = new FixableFinding(
+                    Finding::pass(self::CHECK, sprintf(
+                        '%s is a hand-wired particle shell on the registered resource [%s] — bespoke by design, '.
+                        'acknowledged: %s',
+                        $shortClass,
+                        $key,
+                        $acknowledged->reason,
+                    )),
+                    null,
+                );
+
+                continue;
+            }
 
             if ($deltas === []) {
                 // Pure passthrough: every action is a base-verb call, no envelope delta — collapsible.

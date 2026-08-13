@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Surgeon;
 
 use PHPUnit\Framework\TestCase;
 use Rushing\Surgeon\Operation\FixableFinding;
+use Splicewire\Beam\Particle\Attributes\BespokeByDesign;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 
 /**
@@ -85,6 +86,61 @@ class ParticleControllerRedundancyAuditTest extends TestCase
         // The blocking delta actions are named in the advisory summary.
         $this->assertStringContainsString('index', $finding->suggestion->summary);
         $this->assertStringContainsString('embeddings', $finding->suggestion->summary);
+    }
+
+    // ── #[BespokeByDesign] acknowledgment: WARN downgrades to a Pass that still carries the reason ────
+
+    public function test_an_acknowledged_shell_downgrades_to_a_pass_surfacing_the_reason(): void
+    {
+        $controllers = [[
+            'class' => AcknowledgedShellFixtureController::class,
+            'file' => '/app/AcknowledgedShellFixtureController.php',
+            'extendsParticleBase' => true,
+            'resourceKey' => 'context-scopes',
+            'actions' => ['index' => 'delta', 'create' => 'passthrough'],
+        ]];
+
+        $findings = $this->audit()->suggestFor(
+            $controllers,
+            ['context-scopes' => true],
+            ['tags' => true],
+            ['context-scopes' => true],
+        );
+
+        $this->assertCount(1, $findings);
+        /** @var FixableFinding $finding */
+        $finding = $findings[0];
+
+        $this->assertSame('pass', $finding->finding->status->value);
+        $this->assertSame('particle.controller-redundant', $finding->finding->check);
+        $this->assertStringContainsString('acknowledged: legacy envelope deltas the declaration cannot express', $finding->finding->detail);
+        $this->assertNull($finding->suggestion);
+        $this->assertFalse($finding->isFixable());
+        $this->assertFalse($finding->isAdvisory());
+    }
+
+    public function test_an_acknowledged_pure_passthrough_shell_also_downgrades_never_collapses(): void
+    {
+        // Even a fully collapsible shell stands down when acknowledged — the human's documented call
+        // outranks the mechanical fix, and the Pass line keeps the divergence on the ledger.
+        $controllers = [[
+            'class' => AcknowledgedShellFixtureController::class,
+            'file' => '/app/AcknowledgedShellFixtureController.php',
+            'extendsParticleBase' => true,
+            'resourceKey' => 'context-scopes',
+            'actions' => ['index' => 'passthrough', 'show' => 'passthrough'],
+        ]];
+
+        $findings = $this->audit()->suggestFor(
+            $controllers,
+            ['context-scopes' => true],
+            ['tags' => true],
+            ['context-scopes' => true],
+        );
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('pass', $findings[0]->finding->status->value);
+        $this->assertNull($findings[0]->suggestion);
     }
 
     public function test_a_non_particle_controller_is_not_flagged(): void
@@ -207,4 +263,15 @@ class ParticleControllerRedundancyAuditTest extends TestCase
         }
         PHP;
     }
+}
+
+/** Acknowledgment fixture: a shell whose bespoke shape is a reviewed, class-level-declared decision. */
+#[BespokeByDesign(reason: 'legacy envelope deltas the declaration cannot express')]
+class AcknowledgedShellFixtureController
+{
+    public function index(): void {}
+
+    public function create(): void {}
+
+    public function show(): void {}
 }

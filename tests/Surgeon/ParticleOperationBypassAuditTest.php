@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Surgeon;
 
 use PHPUnit\Framework\TestCase;
 use Rushing\Surgeon\Operation\FixableFinding;
+use Splicewire\Beam\Particle\Attributes\BespokeByDesign;
 use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
 
 /**
@@ -177,6 +178,83 @@ class ParticleOperationBypassAuditTest extends TestCase
         ));
     }
 
+    // ── #[BespokeByDesign] acknowledgment: WARN downgrades to a Pass that still carries the reason ────
+
+    public function test_an_acknowledged_bypass_downgrades_to_a_pass_surfacing_the_reason(): void
+    {
+        $controllers = [[
+            'class' => AcknowledgedBypassFixtureController::class,
+            'file' => '/app/AcknowledgedBypassFixtureController.php',
+            'actions' => ['nestedRead' => ['App\\Models\\Composition']],
+        ]];
+
+        $findings = $this->audit()->suggestFor(
+            $controllers,
+            [AcknowledgedBypassFixtureController::class.'::nestedRead' => true],
+            ['App\\Models\\Composition' => ['songs']],
+            [],
+        );
+
+        $this->assertCount(1, $findings);
+        /** @var FixableFinding $finding */
+        $finding = $findings[0];
+
+        $this->assertSame('pass', $finding->finding->status->value);
+        $this->assertSame('particle.operation-bypass', $finding->finding->check);
+        $this->assertStringContainsString('acknowledged: nested subject the particleOp grammar cannot carry', $finding->finding->detail);
+        $this->assertNull($finding->suggestion);
+        $this->assertFalse($finding->isFixable());
+        $this->assertFalse($finding->isAdvisory());
+    }
+
+    public function test_a_class_level_acknowledgment_covers_every_bypassing_action(): void
+    {
+        $controllers = [[
+            'class' => WhollyBespokeFixtureController::class,
+            'file' => '/app/WhollyBespokeFixtureController.php',
+            'actions' => ['redirect' => ['App\\Models\\Composition'], 'callback' => ['App\\Models\\Composition']],
+        ]];
+
+        $findings = $this->audit()->suggestFor(
+            $controllers,
+            [
+                WhollyBespokeFixtureController::class.'::redirect' => true,
+                WhollyBespokeFixtureController::class.'::callback' => true,
+            ],
+            ['App\\Models\\Composition' => ['songs']],
+            [],
+        );
+
+        $this->assertCount(2, $findings);
+        foreach ($findings as $finding) {
+            $this->assertSame('pass', $finding->finding->status->value);
+            $this->assertStringContainsString('acknowledged: the whole flow is transport-bespoke', $finding->finding->detail);
+            $this->assertNull($finding->suggestion);
+        }
+    }
+
+    public function test_an_unacknowledged_action_on_an_acknowledging_class_still_warns_when_method_targeted(): void
+    {
+        // The fixture class carries NO class-level attribute; only nestedRead is acknowledged — its
+        // sibling action stays a WARN (acknowledgment is per-site, never a blanket mute).
+        $controllers = [[
+            'class' => AcknowledgedBypassFixtureController::class,
+            'file' => '/app/AcknowledgedBypassFixtureController.php',
+            'actions' => ['plainAction' => ['App\\Models\\Composition']],
+        ]];
+
+        $findings = $this->audit()->suggestFor(
+            $controllers,
+            [AcknowledgedBypassFixtureController::class.'::plainAction' => true],
+            ['App\\Models\\Composition' => ['songs']],
+            [],
+        );
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('warn', $findings[0]->finding->status->value);
+        $this->assertTrue($findings[0]->isAdvisory());
+    }
+
     // ── AST classification: touched models, imports, CRUD-verb/constructor exclusion ──────────────────
 
     public function test_it_detects_a_static_call_on_an_imported_model_by_hint_method(): void
@@ -237,4 +315,22 @@ class ParticleOperationBypassAuditTest extends TestCase
         }
         PHP;
     }
+}
+
+/** Acknowledgment fixture: ONE action acknowledged at the method target, its sibling deliberately not. */
+class AcknowledgedBypassFixtureController
+{
+    #[BespokeByDesign(reason: 'nested subject the particleOp grammar cannot carry')]
+    public function nestedRead(): void {}
+
+    public function plainAction(): void {}
+}
+
+/** Acknowledgment fixture: the CLASS target covering every hand-wired action on it. */
+#[BespokeByDesign(reason: 'the whole flow is transport-bespoke')]
+class WhollyBespokeFixtureController
+{
+    public function redirect(): void {}
+
+    public function callback(): void {}
 }

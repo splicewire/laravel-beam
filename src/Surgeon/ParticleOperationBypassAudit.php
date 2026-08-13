@@ -13,6 +13,7 @@ use Rushing\Doctor\Finding;
 use Rushing\Surgeon\Operation\FixableFinding;
 use Rushing\Surgeon\Operation\OperationSuggestion;
 use Rushing\Surgeon\Operation\SuggestsOperations;
+use Splicewire\Beam\Particle\Attributes\BespokeByDesign;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -40,6 +41,12 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *      that overlap is the sibling audit's territory, never double-flagged here), AND
  *   4. has **no matching {@see ParticleOperation}** already registered for
  *      `{resourceKey}:{actionName}`.
+ *
+ * ## Acknowledged bespoke sites ({@see BespokeByDesign})
+ * A method (or its whole class) carrying `#[BespokeByDesign(reason: …)]` is a REVIEWED divergence — the
+ * finding downgrades to a Pass line that still surfaces `acknowledged: <reason>` (acknowledged ≠
+ * invisible), and no migration is suggested. The attribute is read reflectively at emit time, so the
+ * pure core stays fixture-testable: a non-autoloadable fixture class simply resolves to un-acknowledged.
  *
  * ## Always advisory, never mechanically fixable
  * Unlike a pure-passthrough CRUD shell (a textual delete), migrating a bespoke action into a
@@ -124,11 +131,11 @@ class ParticleOperationBypassAudit implements DoctorAudit, SuggestsOperations
      * @param  list<array{class: string, file: string, actions: array<string, list<class-string>>}>  $controllers
      * @param  array<string, true>  $handWiredActions  `"Fqcn::method"` keys mounted by a bespoke route
      * @param  array<class-string, list<string>>  $registeredModels  model FQN => every resource key
-     *                                                              registered against it (usually one; more
-     *                                                              than one is a genuine ambiguity — e.g. a
-     *                                                              write resource and a public read
-     *                                                              projection sharing the same Eloquent
-     *                                                              model — surfaced rather than guessed)
+     *                                                               registered against it (usually one; more
+     *                                                               than one is a genuine ambiguity — e.g. a
+     *                                                               write resource and a public read
+     *                                                               projection sharing the same Eloquent
+     *                                                               model — surfaced rather than guessed)
      * @param  array<string, true>  $registeredOperationKeys  `"resource:name"` keys already registered
      * @return list<FixableFinding>
      */
@@ -178,6 +185,26 @@ class ParticleOperationBypassAudit implements DoctorAudit, SuggestsOperations
                 $shortClass = $this->shortName($controller['class']);
                 $ambiguous = count($resourceKeys) > 1;
                 $resourceList = implode(', ', $resourceKeys);
+
+                // An acknowledged bespoke site downgrades to a Pass that still carries the reason —
+                // the ledger keeps the line, the WARN (and the migration nomination) stand down.
+                $acknowledged = BespokeByDesign::on($controller['class'], $action);
+                if ($acknowledged !== null) {
+                    $findings[] = new FixableFinding(
+                        Finding::pass(self::CHECK, sprintf(
+                            '%s::%s hand-wires a non-CRUD action against [%s] (resource [%s]) — bespoke by design, '.
+                            'acknowledged: %s',
+                            $shortClass,
+                            $action,
+                            $this->shortName($touchedModel),
+                            $resourceList,
+                            $acknowledged->reason,
+                        )),
+                        null,
+                    );
+
+                    continue;
+                }
 
                 $findings[] = new FixableFinding(
                     Finding::warn(self::CHECK, $ambiguous
