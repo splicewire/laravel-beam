@@ -419,9 +419,14 @@ class TsClientGenerator implements Generator
             ? "{$client}.delete({$routeCall})"
             : "{$client}.{$e['writeVerb']}({$routeCall}, vars.body)";
 
+        // A paramless DELETE reads nothing off vars — omit the parameter so the emitted hook
+        // survives `noUnusedParameters` (mutationFn may legally take fewer args than the
+        // MutationVars contract declares; callers still type their variables through MutationOpts).
+        $varsParam = str_contains($call, 'vars.') ? 'vars: MutationVars' : '';
+
         return "export function {$e['hookName']}(options?: MutationOpts<{$type}>) {\n"
             ."    return useMutation({\n"
-            ."        mutationFn: async (vars: MutationVars) => {\n"
+            ."        mutationFn: async ({$varsParam}) => {\n"
             ."            const res = await {$call};\n"
             ."            return res.data.data as {$type};\n"
             ."        },\n"
