@@ -89,6 +89,49 @@ class BeamDoctorManifestTest extends TestCase
         $this->artisan('splicewire:beam:doctor')->assertExitCode(BeamDoctorCommand::SUCCESS);
     }
 
+    // ---- The --floor option (particle-doctrine-followups ticket 05) ------------------
+
+    public function test_a_gate_warning_passes_at_the_default_fail_floor(): void
+    {
+        $this->pointAtCleanContract();
+        $this->app->make(BeamDoctorManifest::class)
+            ->register('vendor/probe', WarningStubAudit::class, gate: true);
+
+        $this->artisan('splicewire:beam:doctor')
+            ->expectsOutputToContain('stub-check')
+            ->assertExitCode(BeamDoctorCommand::SUCCESS);
+    }
+
+    public function test_a_gate_warning_fails_at_a_warn_floor(): void
+    {
+        $this->pointAtCleanContract();
+        $this->app->make(BeamDoctorManifest::class)
+            ->register('vendor/probe', WarningStubAudit::class, gate: true);
+
+        $this->artisan('splicewire:beam:doctor', ['--floor' => 'warn'])
+            ->expectsOutputToContain('stub-check')
+            ->assertExitCode(BeamDoctorCommand::FAILURE);
+    }
+
+    public function test_an_advisory_warning_never_fails_even_at_a_warn_floor(): void
+    {
+        $this->pointAtCleanContract();
+        $this->app->make(BeamDoctorManifest::class)
+            ->register('vendor/probe', WarningStubAudit::class, gate: false);
+
+        $this->artisan('splicewire:beam:doctor', ['--floor' => 'warn'])
+            ->expectsOutputToContain('stub-check')
+            ->assertExitCode(BeamDoctorCommand::SUCCESS);
+    }
+
+    public function test_an_invalid_floor_value_fails_fast(): void
+    {
+        $this->pointAtCleanContract();
+
+        $this->artisan('splicewire:beam:doctor', ['--floor' => 'strict'])
+            ->assertExitCode(BeamDoctorCommand::FAILURE);
+    }
+
     /**
      * Point the app base path at a temp dir holding a clean, git-resolved contract + a valid BEAM.md,
      * so every hardcoded gate passes and only the manifest tail decides the outcome.
@@ -131,5 +174,13 @@ class FailingStubAudit implements DoctorAudit
     public function run(): array
     {
         return [Finding::fail('stub-check', 'stub audit is unhappy')];
+    }
+}
+
+class WarningStubAudit implements DoctorAudit
+{
+    public function run(): array
+    {
+        return [Finding::warn('stub-check', 'stub audit is uneasy')];
     }
 }

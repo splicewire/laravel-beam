@@ -4,6 +4,8 @@ namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
 use Rushing\Doctor\DoctorAudit;
+use Rushing\Doctor\DoctorFailed;
+use Rushing\Doctor\DoctorRunner;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
@@ -39,23 +41,42 @@ use Splicewire\Beam\Doctor\SurgeonWiringAudit;
  * never turn the run red.
  *
  * Aggregation (beam-ux-prototype-extract ticket 08): after its own hardcoded audits, this command
- * iterates the {@see BeamDoctorManifest} — the consumer tail every beam-* package self-registers its
- * {@see DoctorAudit} into (order-ascending, each carrying its own gate/advisory
- * flag). One run aggregates the whole family; beam-core's own audits stay hardcoded (coexist, not migrate).
+ * hands the {@see BeamDoctorManifest} — the consumer tail every beam-* package self-registers its
+ * {@see DoctorAudit} into (order-ascending, each carrying its own gate/advisory flag) — to the shared
+ * {@see DoctorRunner} (particle-doctrine-followups ticket 05). One run aggregates the whole family;
+ * beam-core's own audits stay hardcoded (coexist, not migrate) because seven of nine return a bare
+ * finding rather than a list and take constructor-external inputs the container cannot supply.
+ *
+ * `--floor` sets the severity a GATE registration's finding must reach to fail the run (default
+ * `fail`). A repo mid-migration runs at the default; a converged one runs `--floor=warn` so a
+ * warning gate-fails. The floor governs the runner-owned consumer tail; the hardcoded core audits
+ * keep their fixed Fail gate (they sit outside the runner by the same coexist-not-migrate policy).
+ * Advisory findings render but never fail the exit code, at any floor.
  *
  * Output format (the parse target for a future <DoctorOutput>): each finding renders as one line
  * `<check>: <detail>` at info (Pass) / warn (Warn) / error (Fail).
  */
 class BeamDoctorCommand extends Command
 {
-    protected $signature = 'splicewire:beam:doctor';
+    protected $signature = 'splicewire:beam:doctor
+        {--floor=fail : Severity a gate finding must reach to fail the run (pass|warn|fail)}';
 
     protected $description = 'Base-tier Beam readiness (moat-free; owns the base/shell conformance: dependency contract, BEAM.md manifest, marquee gate, MCP isolation).';
 
-    public function handle(BeamDoctorManifest $manifest): int
+    public function handle(BeamDoctorManifest $manifest, DoctorRunner $runner): int
     {
+        $floor = DoctorStatus::tryFrom(strtolower((string) $this->option('floor')));
+
+        if ($floor === null) {
+            $this->components->error('Invalid --floor value; expected one of: pass, warn, fail.');
+
+            return self::FAILURE;
+        }
+
         $base = $this->laravel->basePath();
 
+        // Pre-audit bail, deliberately outside the runner: an unreadable composer.json produces
+        // no finding, and the runner has no equivalent.
         $composerJson = $this->readJson($base.'/composer.json');
 
         if ($composerJson === null) {
@@ -96,17 +117,18 @@ class BeamDoctorCommand extends Command
         }
 
         // Consumer tail: every beam-* package that self-registered a DoctorAudit into the manifest
-        // (order-ascending). A gate registration's Fail joins the exit code; an advisory one only renders.
-        foreach ($manifest->registrations() as $registration) {
-            $audit = $this->laravel->make($registration->audit);
+        // (order-ascending), executed by the shared runner. A gate registration's finding at or above
+        // the floor joins the exit code; an advisory one only renders. The runner collects every
+        // finding before throwing, so a failure is still a full work-list.
+        try {
+            $report = $runner->run($manifest->registrations(), $floor);
+        } catch (DoctorFailed $failure) {
+            $report = $failure->report;
+            $gateFailed = true;
+        }
 
-            foreach ($audit->run() as $finding) {
-                $this->render($finding);
-
-                if ($registration->gate) {
-                    $gateFailed = $gateFailed || $finding->status === DoctorStatus::Fail;
-                }
-            }
+        foreach ($report->findings as $finding) {
+            $this->render($finding);
         }
 
         if ($gateFailed) {
