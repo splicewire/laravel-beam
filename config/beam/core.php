@@ -83,12 +83,20 @@ return [
 
     /*
     | The schema-definition store's read/write source order (consumed by the registry collapse, T02):
-    | an ordered list, e.g. ['db','file'] (DB-first, filesystem fallback) or ['file'] (filesystem only).
-    | The trio of Filesystem/Database/Chained registries collapses onto one config-driven class reading
-    | this. Additive here; no behaviour change until T02.
+    | an ordered list, e.g. ['fleet','db','file'] or ['file'] (filesystem only). Reads are
+    | first-hit-wins, so ORDER IS LOAD-BEARING (ADR-0192 §4): `fleet` — the committed fleet-wide
+    | conformance artifacts (vocabularies), contributed via the SchemaSources registry — sits AHEAD
+    | of `db` so a tenant registration can never shadow a fleet artifact; ordinary content schemas
+    | keep tenant-override (db over file). NOTE: FilesystemSchemaRegistry globs one directory
+    | NON-recursively, which is why a fleet artifact needs its own tier + directory — it cannot
+    | live in a `lifecycle/fleet/` subdirectory of the `file` tier.
     */
     'schema' => [
-        'sources' => ['db', 'file'],
+        'sources' => ['fleet', 'db', 'file'],
+
+        // The committed fleet-artifact directory the default `fleet` tier reads (host-overridable).
+        // Relative to resource_path() unless absolute.
+        'fleet_path' => 'schemas/fleet',
     ],
 
     /*

@@ -37,7 +37,9 @@ class ParticleContractTest extends TestCase
 
     public function test_the_schema_sources_knob_is_present_for_the_registry_collapse(): void
     {
-        $this->assertSame(['db', 'file'], config('beam.core.schema.sources'));
+        // fleet ahead of db (JN-15 / ADR-0192 §4): reads are first-hit-wins, so a tenant DB
+        // registration can never shadow a fleet conformance artifact.
+        $this->assertSame(['fleet', 'db', 'file'], config('beam.core.schema.sources'));
     }
 
     public function test_the_particle_vocabulary_is_the_canonical_physically_present_symbol(): void

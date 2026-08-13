@@ -20,6 +20,7 @@ use Rushing\Surgeon\Operation\SuggestsOperations;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
+use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameFilterProvider;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
@@ -82,6 +83,7 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
+use Splicewire\Beam\Schema\SchemaSources;
 use Splicewire\Beam\Seed\BeamSeedManifest;
 use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
 use Splicewire\Beam\Source\LadderForeignSourceProjector;
@@ -363,6 +365,21 @@ class BeamServiceProvider extends PackageServiceProvider
             $app->make(ParticleResourceRegistry::class),
             $app->make(ParticleOperationRegistry::class),
         ));
+
+        // The schema-SOURCE factory registry (ADR-0192 §5, JN-15): a singleton any package's
+        // provider pushes `(key, factory)` tiers into, so a package contributes a SchemaRegistry
+        // tier without the host being edited. beam-core seeds the `fleet` tier itself — the
+        // committed fleet-wide conformance artifacts (vocabularies), ordered ahead of `db` by the
+        // default source list so a tenant registration can never shadow them (first-hit-wins).
+        $this->app->singleton(SchemaSources::class, function () {
+            $fleet = (string) config('beam.core.schema.fleet_path', 'schemas/fleet');
+            $fleetDir = str_starts_with($fleet, '/') ? $fleet : resource_path($fleet);
+
+            return (new SchemaSources)->register(
+                'fleet',
+                fn () => new FilesystemSchemaRegistry($fleetDir),
+            );
+        });
 
         // The beam-install self-registration manifest (ticket 08): a singleton every beam-* package
         // pushes its own install step into, from its own provider. beam-core never learns consumer names.
@@ -1024,11 +1041,20 @@ class BeamServiceProvider extends PackageServiceProvider
             ),
             new ManifestDescriptor(
                 name: 'BeamSchemaRegistry',
-                of: 'JSON schemas by $id, resolved across ordered sources (db → file), first match wins',
+                of: 'JSON schemas by $id, resolved across ordered sources (fleet → db → file), first match wins',
                 seam: ManifestSeam::ChainedLookup,
                 arity: ManifestArity::PickOne,
                 registerHint: 'order the source list in beam.core.schema.sources; writes go to the first source',
                 where: 'config beam.core.schema.sources',
+                package: $pkg, order: 11,
+            ),
+            new ManifestDescriptor(
+                name: 'SchemaSources',
+                of: 'package-contributed schema-source tier factories composed into BeamSchemaRegistry (JN-15)',
+                seam: ManifestSeam::SingletonAccumulator,
+                arity: ManifestArity::RunAll,
+                registerHint: "app(SchemaSources::class)->register('key', fn () => new FilesystemSchemaRegistry(...)) from your provider",
+                where: SchemaSources::class,
                 package: $pkg, order: 11,
             ),
             new ManifestDescriptor(

@@ -309,11 +309,12 @@ class UndescribedRegistryAuditTest extends TestCase
             $this->assertSame($shape, $actual[$name], "the pre-existing [{$name}] descriptor must not change");
         }
 
-        // The two additions, and nothing else: beam-core describes exactly the frozen twelve plus them.
+        // The sanctioned additions, and nothing else: beam-core describes exactly the frozen twelve
+        // plus the two ticket-13 realm registries and the JN-15 SchemaSources tier registry.
         $names = array_keys($actual);
-        $wanted = [...array_keys($expected), 'RealmOverlayRegistry', 'RealmResourceRegistry'];
+        $wanted = [...array_keys($expected), 'RealmOverlayRegistry', 'RealmResourceRegistry', 'SchemaSources'];
         sort($names);
         sort($wanted);
-        $this->assertSame($wanted, $names, 'beam-core describes the frozen twelve plus exactly the two ticket-13 additions');
+        $this->assertSame($wanted, $names, 'beam-core describes the frozen twelve plus exactly the sanctioned additions (ticket-13 realms + JN-15 SchemaSources)');
     }
 }
