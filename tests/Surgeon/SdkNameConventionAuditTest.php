@@ -94,6 +94,87 @@ class SdkNameConventionAuditTest extends TestCase
         $this->assertNull($findings[0]->suggestion);
         $this->assertFalse($findings[0]->isFixable());
         $this->assertSame('warn', $findings[0]->finding->status->value);
+        $this->assertStringContainsString('matches no app route', $findings[0]->finding->detail);
+    }
+
+    // ── live-but-unspecced routes: declared exclusion → Pass with citation; undeclared → honest WARN ──
+
+    public function test_a_live_route_declared_spec_excluded_is_a_pass_citing_why(): void
+    {
+        // The device-pairing pair is LIVE but deliberately outside the openapi spec — a declared
+        // exclusion downgrades the finding to a Pass carrying the citation, never a drift WARN.
+        $sdk = [[
+            'fqn' => 'Splicewire\\Client\\Requests\\Auth\\PollDeviceToken',
+            'domain' => 'Auth',
+            'class' => 'PollDeviceToken',
+            'method' => 'POST',
+            'literal' => '/api/device/token',
+        ]];
+        $routes = ['api/device/token']; // live route, no spec tag
+        $tags = [];
+
+        $audit = new SdkNameConventionAudit(
+            '/nonexistent',
+            '/nonexistent',
+            SdkNameConventionAudit::CLIENT_NAMESPACE,
+            ['api/device/*' => 'ADR-0201 (RFC 8628 device pairing — unversioned central surface)'],
+        );
+
+        $findings = $audit->suggestFor($sdk, $routes, $tags);
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('pass', $findings[0]->finding->status->value);
+        $this->assertSame('sdk.name-nonconventional', $findings[0]->finding->check);
+        $this->assertStringContainsString('excluded from the openapi spec by ADR-0201', $findings[0]->finding->detail);
+        $this->assertNull($findings[0]->suggestion);
+    }
+
+    public function test_a_live_route_with_no_tag_and_no_declared_exclusion_stays_a_warn_naming_the_gap(): void
+    {
+        $sdk = [[
+            'fqn' => 'Splicewire\\Client\\Requests\\Intake\\RelaySection',
+            'domain' => 'Intake',
+            'class' => 'RelaySection',
+            'method' => 'POST',
+            'literal' => '/api/schema-forms/relay-section',
+        ]];
+        $routes = ['api/schema-forms/relay-section']; // live, unspecced, NOT declared excluded
+        $tags = [];
+
+        $findings = $this->audit()->suggestFor($sdk, $routes, $tags);
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('warn', $findings[0]->finding->status->value);
+        $this->assertNull($findings[0]->suggestion);
+        // The WARN names the real condition — a spec gap / undeclared exclusion, not a missing route.
+        $this->assertStringContainsString('no openapi spec tag', $findings[0]->finding->detail);
+        $this->assertStringContainsString('spec_exclusions', $findings[0]->finding->detail);
+    }
+
+    public function test_an_exact_pattern_exclusion_matches_slash_insensitively(): void
+    {
+        $sdk = [[
+            'fqn' => 'Splicewire\\Client\\Requests\\Auth\\Login',
+            'domain' => 'Auth',
+            'class' => 'Login',
+            'method' => 'POST',
+            'literal' => '/api/v1/login',
+        ]];
+        $routes = ['api/v1/login'];
+        $tags = [];
+
+        $audit = new SdkNameConventionAudit(
+            '/nonexistent',
+            '/nonexistent',
+            SdkNameConventionAudit::CLIENT_NAMESPACE,
+            ['/api/v1/login' => 'ADR-0108 (first-party SPA session bootstrap, de-listed from the public reference)'],
+        );
+
+        $findings = $audit->suggestFor($sdk, $routes, $tags);
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('pass', $findings[0]->finding->status->value);
+        $this->assertStringContainsString('ADR-0108', $findings[0]->finding->detail);
     }
 
     public function test_tags_from_spec_keys_by_verb_and_route_shape(): void

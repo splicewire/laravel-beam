@@ -106,6 +106,17 @@ return [
         ],
         'sdk_package' => env('BEAM_CLIENT_SDK_PACKAGE', 'splicewire/laravel-connector'),
         'sdk_namespace' => env('BEAM_CLIENT_SDK_NAMESPACE', 'Splicewire\\Client\\Requests'),
+
+        /*
+         * Live routes the host DECLARES outside its openapi spec — `pattern => citation` (Str::is()
+         * globs, no leading slash). `SdkNameConventionAudit` names an SDK request off the spec's @group
+         * tag; a request addressing a live route the spec deliberately omits (a spec-excluded login
+         * bootstrap, a device-pairing pair, a package-registered non-v1 surface) is NOT naming drift.
+         * Declaring it here downgrades the finding to a Pass citing WHY ("excluded from the openapi
+         * spec by <citation>"); a live-but-unspecced route NOT declared here stays a WARN (spec gap or
+         * undeclared exclusion). Empty by default — every exclusion is a host decision with a citation.
+         */
+        'spec_exclusions' => [],
     ],
 
 ];

@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Surgeon;
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Rushing\Surgeon\Operation\FixableFinding;
@@ -35,6 +36,18 @@ use Symfony\Component\Yaml\Yaml;
  * Advisory seam (the deterministic/agentic boundary): a class whose endpoint literal matches NO app route
  * (the known drift cases) can't have its convention name resolved — the audit emits a plain advisory
  * Finding with a NULL suggestion rather than guessing.
+ *
+ * ## Live-but-unspecced routes are NOT drift (the false-positive fix)
+ * The convention name derives from the openapi spec's `@group` tag, but the spec deliberately covers less
+ * than the live route table (scribe matches a prefix set minus an exclusion list — e.g. a first-party
+ * login bootstrap, an RFC 8628 device-pairing pair, package-registered non-v1 surfaces). A request whose
+ * literal DOES match a live route that simply carries no spec tag was previously lumped into the
+ * "matches no app route/tag" drift WARN. Now the two legs split:
+ *   - the route is declared in `beam.client.surgeon.spec_exclusions` (a `pattern => citation` map, `*`
+ *     wildcards) → a Pass line: "excluded from the openapi spec by <citation>" — spec-derived naming does
+ *     not apply, honestly ledgered, not drift;
+ *   - the route is live but neither specced nor declared excluded → still a WARN, now naming the real
+ *     condition (a spec gap or an undeclared exclusion) instead of a fictitious missing route.
  */
 class SdkNameConventionAudit implements DoctorAudit, SuggestsOperations
 {
@@ -42,10 +55,17 @@ class SdkNameConventionAudit implements DoctorAudit, SuggestsOperations
 
     public const CLIENT_NAMESPACE = 'Splicewire\\Client\\Requests';
 
+    /**
+     * @param  array<string, string>  $specExclusions  route-uri pattern (`*` wildcards, no leading slash)
+     *                                                 => the citation naming WHY that live surface is
+     *                                                 outside the openapi spec (an ADR, "package-registered
+     *                                                 surface", …) — surfaced verbatim on the Pass line
+     */
     public function __construct(
         protected string $requestsDir,
         protected string $openApiPath,
         protected string $clientNamespace = self::CLIENT_NAMESPACE,
+        protected array $specExclusions = [],
     ) {}
 
     /**
@@ -62,7 +82,12 @@ class SdkNameConventionAudit implements DoctorAudit, SuggestsOperations
         $openApiPath ??= storage_path('app/scribe/openapi.yaml');
         $clientNamespace ??= config('beam.client.surgeon.sdk_namespace', self::CLIENT_NAMESPACE);
 
-        return new self($requestsDir, $openApiPath, $clientNamespace);
+        return new self(
+            $requestsDir,
+            $openApiPath,
+            $clientNamespace,
+            (array) config('beam.client.surgeon.spec_exclusions', []),
+        );
     }
 
     /**
@@ -124,14 +149,43 @@ class SdkNameConventionAudit implements DoctorAudit, SuggestsOperations
                 ? ($tagsByRoute[$verb.' '.$this->normalize($matchedRoute)] ?? null)
                 : null;
 
-            if ($matchedRoute === null || $tag === null) {
+            if ($matchedRoute === null) {
                 $findings[] = new FixableFinding(
                     Finding::warn(self::CHECK, sprintf(
-                        'SDK request %s addresses %s, which matches no app route/tag — convention name '.
+                        'SDK request %s addresses %s, which matches no app route — convention name '.
                         'cannot be resolved (drift); manual review.',
                         $sdk['fqn'],
                         $sdk['literal'],
                     )),
+                    null,
+                );
+
+                continue;
+            }
+
+            if ($tag === null) {
+                // The route is LIVE — it just isn't in the openapi spec. Declared exclusion → an
+                // honestly-ledgered Pass naming the citation; undeclared → still a WARN, but naming
+                // the real condition (spec gap / undeclared exclusion), never a fictitious no-route.
+                $citation = $this->specExclusionCitation($matchedRoute);
+
+                $findings[] = new FixableFinding(
+                    $citation !== null
+                        ? Finding::pass(self::CHECK, sprintf(
+                            'SDK request %s addresses %s, a live route excluded from the openapi spec by %s '.
+                            '— spec-derived convention naming does not apply; not drift.',
+                            $sdk['fqn'],
+                            $matchedRoute,
+                            $citation,
+                        ))
+                        : Finding::warn(self::CHECK, sprintf(
+                            'SDK request %s addresses %s, a live route with no openapi spec tag — either the '.
+                            'spec is stale (regenerate) or the surface is intentionally unspecced (declare it '.
+                            'in beam.client.surgeon.spec_exclusions with its citation); convention name '.
+                            'cannot be resolved.',
+                            $sdk['fqn'],
+                            $matchedRoute,
+                        )),
                     null,
                 );
 
@@ -178,6 +232,24 @@ class SdkNameConventionAudit implements DoctorAudit, SuggestsOperations
         }
 
         return $findings;
+    }
+
+    /**
+     * The citation for a live route the host DECLARED outside its openapi spec, or null when the route is
+     * not declared excluded. Patterns are `Str::is()` globs matched slash-trimmed (so `api/device/*` and
+     * `/api/device/*` behave identically).
+     */
+    protected function specExclusionCitation(string $routeUri): ?string
+    {
+        $uri = trim($routeUri, '/');
+
+        foreach ($this->specExclusions as $pattern => $citation) {
+            if (Str::is(trim((string) $pattern, '/'), $uri)) {
+                return (string) $citation;
+            }
+        }
+
+        return null;
     }
 
     /**
