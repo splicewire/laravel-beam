@@ -13,8 +13,8 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
  * The manifest is a route-name → entry map:
  *
  *   [
- *     'library-lyrics.index'  => ['path' => 'resources/library-lyrics',      'methods' => ['GET'],  'visibility' => 'internal', 'returns' => 'App.Data.Library.LyricPieceProjectData', 'returnsMany' => true],
- *     'library-lyrics.store'  => ['path' => 'resources/library-lyrics',      'methods' => ['POST'], 'visibility' => 'internal', 'returns' => 'App.Data.Library.LyricPieceProjectData'],
+ *     'library-lyrics.index'  => ['path' => 'resources/library-lyrics',      'methods' => ['GET'],  'visibility' => 'internal', 'returns' => 'Splicewire.Tower.Data.LyricPieceProjectData', 'returnsMany' => true],
+ *     'library-lyrics.store'  => ['path' => 'resources/library-lyrics',      'methods' => ['POST'], 'visibility' => 'internal', 'returns' => 'Splicewire.Tower.Data.LyricPieceProjectData'],
  *     'library-lyrics.update' => ['path' => 'resources/library-lyrics/{id}', 'methods' => ['PATCH'], 'visibility' => 'internal'],
  *   ]
  *
@@ -24,10 +24,12 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
  *   - `visibility`  (required) the route's exposure tier, `'public'` or `'internal'` (default when
  *                    undeclared). Orthogonal to `returns`/codegen — has no consumer in the generator itself;
  *                    exists for future public/private API-surface tooling to read.
- *   - `returns`     (optional) the response Data class as a TypeScript type path (`App.Data.X`); its
+ *   - `returns`     (optional) the response Data class as a TypeScript type path — the class's REAL
+ *                    native namespace, dots for backslashes (`Splicewire.Tower.Data.X`), NOT an
+ *                    `App.Data` rebasing (that remap was removed; see {@see ParticleRouteManifestSource}); its
  *                    presence is what promotes an entry from a route-map-only line to a typed hook. Absent
  *                    ⇒ the entry gets a route-map entry only (its hook stays hand-written).
- *   - `returnsMany` (optional) true ⇒ the hook/store yields `App.Data.X[]` (a list/index endpoint).
+ *   - `returnsMany` (optional) true ⇒ the hook/store yields `Splicewire.Tower.Data.X[]` (a list/index endpoint).
  *
  * A host binds ONE source per realm into the generator (see `beam.client.sources`). A satellite has a
  * single tier, so the admin/second source is OPTIONAL — the generator emits an empty `adminDefaults` map

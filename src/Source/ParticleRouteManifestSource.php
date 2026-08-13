@@ -25,8 +25,10 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *      declaration in the {@see ParticleResourceRegistry}. `data` names the read/output DTO; when it is
  *      null (the single-class default) the annotated projection class IS the output, resolved here off the
  *      registry's discovery record. The class-string is mapped to its TypeScript type path
- *      (`App\Data\Library\LyricPieceProjectData` → `App.Data.Library.LyricPieceProjectData`), matching how
- *      `spatie/laravel-typescript-transformer` mirrors the PHP sub-namespace under `App.Data`.
+ *      (`Splicewire\Tower\Data\LyricPieceProjectData` → `Splicewire.Tower.Data.LyricPieceProjectData`) —
+ *      the class's REAL native namespace, dots for backslashes. There is no `App.Data` rebasing; the
+ *      remap was removed (surgeon-audit-viability ticket 34) precisely because it had to be hand-kept
+ *      in sync with a prefix list. Native FQNs are globally unique, so the mapping is collision-proof.
  *   4. INDEX is `returnsMany`; SHOW is single. Write verbs (store/update/destroy) get a route-map entry
  *      only (no `returns`) — their hooks are mutations keyed by the same route name, and the mutation's
  *      return type rides the resource's read DTO so a write still lands typed.
@@ -204,8 +206,9 @@ class ParticleRouteManifestSource implements RouteManifestSource
 
     /**
      * Map a fully-qualified PHP Data class to its TypeScript type path, matching
-     * `spatie/laravel-typescript-transformer`: it mirrors the sub-namespace under `App\Data` into
-     * `App.Data.*` (`App\Data\Library\LyricPieceProjectData` → `App.Data.Library.LyricPieceProjectData`).
+     * `spatie/laravel-typescript-transformer` as this estate configures it: the class's REAL native
+     * namespace with dots for backslashes (`Splicewire\Tower\Data\LyricPieceProjectData` →
+     * `Splicewire.Tower.Data.LyricPieceProjectData`). No `App.Data` rebasing — see the class docblock.
      */
     private function toTsType(string $class): string
     {
