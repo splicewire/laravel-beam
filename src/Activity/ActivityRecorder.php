@@ -24,10 +24,11 @@ use Splicewire\Beam\Revisions\RevisionRecorder;
  * A recorder that only narrates (beam-rank's `RankRecorder`) extends this base; a recorder whose
  * entries must be restorable extends {@see RevisionRecorder}.
  *
- * Entries project into {@see RevisionEntry} — the established typed projection of one activity row
- * (old/new/correlation/cause lifted out of the loose `properties` JSON). The type predates this
- * split and stays in the `Revisions` namespace as the shared projection; the {@see self::toEntry()}
- * seam lets a specialization substitute its own subclass.
+ * Entries project into {@see ActivityEntry} — the typed projection of one activity row
+ * (old/new/correlation/cause lifted out of the loose `properties` JSON), extracted up from
+ * {@see RevisionEntry} in the same base/specialization shape as the
+ * recorders; the {@see self::toEntry()} seam lets a specialization substitute its own subclass
+ * (RevisionRecorder projects the revision-named entry, covariantly).
  *
  * NAMING NOTE (estate archaeology): tower ships a LEGACY app-tier
  * `Splicewire\Tower\Support\Activity\ActivityRecorder` — the reversibility-port *interface* that
@@ -61,7 +62,7 @@ class ActivityRecorder
         string $cause,
         ?string $correlation = null,
         ?Model $actor = null,
-    ): RevisionEntry {
+    ): ActivityEntry {
         $logger = activity($this->logName())
             ->performedOn($subject)
             ->event($cause)
@@ -86,20 +87,21 @@ class ActivityRecorder
 
     /**
      * Project an activity row into a typed entry. Seam: a specialization may return its own
-     * {@see RevisionEntry} subclass (e.g. an app that adds typed projection fields) so its
-     * consumers keep their own entry type across the whole recorder surface.
+     * {@see ActivityEntry} subclass (e.g. {@see RevisionRecorder}'s revision-named entry, or an
+     * app that adds typed projection fields) so its consumers keep their own entry type across
+     * the whole recorder surface.
      *
      * @param  \Spatie\Activitylog\Contracts\Activity  $activity
      */
-    protected function toEntry($activity): RevisionEntry
+    protected function toEntry($activity): ActivityEntry
     {
-        return RevisionEntry::fromActivity($activity);
+        return ActivityEntry::fromActivity($activity);
     }
 
     /**
      * The subject's entries under this recorder's log name, newest first.
      *
-     * @return list<RevisionEntry>
+     * @return list<ActivityEntry>
      */
     public function history(Model $subject): array
     {

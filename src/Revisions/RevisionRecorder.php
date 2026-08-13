@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Revisions;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Spatie\Activitylog\Contracts\Activity;
 use Splicewire\Beam\Activity\ActivityRecorder;
 
 /**
@@ -35,6 +36,51 @@ class RevisionRecorder extends ActivityRecorder
     protected function logName(): string
     {
         return 'beam-revision';
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * Covariant narrowing: an entry recorded here is a restorable pre-image, so the whole revision
+     * surface keeps returning {@see RevisionEntry} — existing consumers see no change.
+     *
+     * @param  array<string, mixed>  $old  the pre-image (attribute subset) being replaced
+     * @param  array<string, mixed>  $new  the post-image
+     */
+    public function record(
+        Model $subject,
+        array $old,
+        array $new,
+        string $cause,
+        ?string $correlation = null,
+        ?Model $actor = null,
+    ): RevisionEntry {
+        /** @var RevisionEntry $entry — {@see self::toEntry()} pins the projection */
+        $entry = parent::record($subject, $old, $new, $cause, $correlation, $actor);
+
+        return $entry;
+    }
+
+    /**
+     * Project into the revision-named entry (via the {@see ActivityRecorder::toEntry()} seam), so
+     * every path through this recorder — record, history, revert — carries the restorable type.
+     *
+     * @param  Activity  $activity
+     */
+    protected function toEntry($activity): RevisionEntry
+    {
+        return RevisionEntry::fromActivity($activity);
+    }
+
+    /**
+     * The subject's revisions, newest first.
+     *
+     * @return list<RevisionEntry>
+     */
+    public function history(Model $subject): array
+    {
+        /** @var list<RevisionEntry> */
+        return parent::history($subject);
     }
 
     /**

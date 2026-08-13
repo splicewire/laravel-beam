@@ -2,52 +2,18 @@
 
 namespace Splicewire\Beam\Revisions;
 
-use Spatie\Activitylog\Contracts\Activity as ActivityContract;
-use Spatie\LaravelData\Data;
+use Splicewire\Beam\Activity\ActivityEntry;
 
 /**
- * A typed projection of one activity-log row — the substrate-level revision record. Generalized
- * up from composition's app-local `RevisionEntry` (ADR-0049 §2) so *every* beam BeamParticle —
- * generation-, edit-, or submission-populated — gets change-history + undo/redo, not just
- * composition cells.
+ * A typed projection of one activity-log row whose `old` image is a RESTORABLE attribute pre-image
+ * — the substrate-level revision record. Generalized up from composition's app-local
+ * `RevisionEntry` (ADR-0049 §2) so *every* beam BeamParticle — generation-, edit-, or
+ * submission-populated — gets change-history + undo/redo, not just composition cells.
  *
- * activitylog's loose `properties` JSON is an impl detail hidden here: `old`/`new`/`correlation`
- * are lifted into typed fields so history is schema-projectable, filterable, and form-renderable.
+ * The generic entry shape (id/subject/causer/old/new/cause/correlation/timestamp) now lives in the
+ * {@see ActivityEntry} base, mirroring the {@see RevisionRecorder} / ActivityRecorder split: this
+ * subclass adds no fields — it is the type {@see RevisionRecorder::revert()} accepts, naming the
+ * CONTRACT that its pre-image can be forceFilled back onto the subject. An entry that merely
+ * narrates (e.g. beam-rank's history) surfaces as the plain {@see ActivityEntry}.
  */
-class RevisionEntry extends Data
-{
-    /**
-     * @param  array<string, mixed>  $old
-     * @param  array<string, mixed>  $new
-     */
-    public function __construct(
-        public int $id,
-        public string $logName,
-        public string $cause,
-        public ?string $correlation,
-        public array $old,
-        public array $new,
-        public string $subjectType,
-        public ?string $subjectId,
-        public ?string $causerId,
-        public ?string $recordedAt,
-    ) {}
-
-    public static function fromActivity(ActivityContract $activity): static
-    {
-        $props = collect($activity->properties ?? []);
-
-        return new static(
-            id: (int) $activity->id,
-            logName: (string) $activity->log_name,
-            cause: (string) ($activity->event ?? ''),
-            correlation: $props->get('correlation'),
-            old: (array) $props->get('old', []),
-            new: (array) $props->get('new', []),
-            subjectType: (string) $activity->subject_type,
-            subjectId: $activity->subject_id !== null ? (string) $activity->subject_id : null,
-            causerId: $activity->causer_id !== null ? (string) $activity->causer_id : null,
-            recordedAt: $activity->created_at?->toIso8601String(),
-        );
-    }
-}
+class RevisionEntry extends ActivityEntry {}
