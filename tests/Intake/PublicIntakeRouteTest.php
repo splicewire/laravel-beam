@@ -8,6 +8,8 @@ use ReflectionClass;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
+use Schemastud\JsonNs\Vocab\VocabularyRegistry;
+use Schemastud\JsonNs\Vocab\VocabularyValidator;
 use Splicewire\Beam\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV1;
@@ -31,6 +33,10 @@ class PublicIntakeRouteTest extends TestCase
 
     private const EXPENSIVE_STEM = 'https://schemas.splicewire.app/test/record-versioning-expensive';
 
+    private const NAMESPACED_STEM = 'https://schemas.splicewire.app/test/namespaced-intake';
+
+    private const VOCAB_URI = 'https://schemas.splicewire.app/splice/intake-grounding-test';
+
     private string $frozenDir;
 
     protected function getEnvironmentSetUp($app): void
@@ -42,8 +48,9 @@ class PublicIntakeRouteTest extends TestCase
         $app['config']->set('beam.core.intake.forms', [
             'contact' => self::CHEAP_STEM,      // public
             'private' => self::EXPENSIVE_STEM,  // resolvable but NOT public
+            'namespaced' => self::NAMESPACED_STEM, // public, declares @namespace content (ticket 02)
         ]);
-        $app['config']->set('beam.core.intake.public_schemas', [self::CHEAP_STEM]);
+        $app['config']->set('beam.core.intake.public_schemas', [self::CHEAP_STEM, self::NAMESPACED_STEM]);
         $app['config']->set('beam.core.intake.honeypot', ['enabled' => true, 'field' => 'website']);
         $app['config']->set('beam.core.intake.throttle', '2,1');
     }
@@ -60,7 +67,30 @@ class PublicIntakeRouteTest extends TestCase
         foreach ([FixtureCheapV1::class, FixtureCheapV2::class, FixtureExpensiveV1::class, FixtureExpensiveV2::class] as $cls) {
             $registry->register($generator->generate(new ReflectionClass($cls)));
         }
+
+        // A schema whose artifact DECLARES namespace content (beam-namespace-wiring ticket 02): the
+        // `splice:grounding` subtree of a submission must additionally conform to its `$vocabulary`.
+        $registry->register([
+            '$id' => self::NAMESPACED_STEM.'/1',
+            'type' => 'object',
+            'required' => ['title'],
+            'properties' => [
+                'title' => ['type' => 'string'],
+                'splice:grounding' => ['type' => 'object'],
+            ],
+            '@namespace' => ['splice' => self::VOCAB_URI],
+        ]);
+
         $this->app->singleton(SchemaRegistry::class, fn () => $registry);
+
+        // The vocabulary the namespaced subtree validates against, behind the json-ns engine.
+        $this->app->instance(VocabularyValidator::class, new VocabularyValidator(
+            VocabularyRegistry::make()->registerJson(self::VOCAB_URI, (string) json_encode([
+                'type' => 'object',
+                'required' => ['sources'],
+                'properties' => ['sources' => ['type' => 'array', 'minItems' => 1]],
+            ])),
+        ));
 
         $this->createTables();
     }
@@ -117,6 +147,32 @@ class PublicIntakeRouteTest extends TestCase
 
         $response->assertStatus(422)->assertJsonStructure(['message', 'errors']);
         $this->assertDatabaseCount(Beam::table('particles'), 0);
+    }
+
+    public function test_a_namespaced_submission_violating_its_vocabulary_is_rejected_with_422(): void
+    {
+        // Structurally valid (title present, splice:grounding an object) — but the namespaced
+        // subtree violates its namespace's $vocabulary (`sources` missing): ticket-02 enforcement
+        // at the intake door, surfaced through the SAME formatted 422 error body.
+        $response = $this->postJson('beam/intake/namespaced', [
+            'title' => 'Hello',
+            'splice:grounding' => ['nope' => true],
+        ]);
+
+        $response->assertStatus(422)->assertJsonStructure(['message', 'errors']);
+        $this->assertStringContainsString('sources', json_encode($response->json('errors')));
+        $this->assertDatabaseCount(Beam::table('particles'), 0);
+    }
+
+    public function test_a_namespaced_submission_conforming_to_its_vocabulary_persists(): void
+    {
+        $response = $this->postJson('beam/intake/namespaced', [
+            'title' => 'Hello',
+            'splice:grounding' => ['sources' => ['ctx://profile']],
+        ]);
+
+        $response->assertStatus(201);
+        $this->assertDatabaseCount(Beam::table('particles'), 1);
     }
 
     public function test_a_schema_not_on_the_allow_list_is_refused_by_the_deny_default_gate(): void
