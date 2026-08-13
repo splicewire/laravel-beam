@@ -28,9 +28,13 @@ return [
 
     /*
     | The module specifiers the generated code imports. `client_import` supplies the http
-    | clients (`api`/`operatorApi`); `routes_import` supplies the resolvers + `RouteMap` type
-    | (`route`/`operatorRoute`). A host builds these small runtimes; defaults match the `@/lib/*`
-    | alias both the platform and the satellite use.
+    | clients (`api`/`operatorApi`); `routes_import` supplies the resolvers (`route`/`operatorRoute`).
+    | The `RouteMap` type is NOT part of this contract — the generator owns it and emits it in
+    | `routes.ts`. A host owns these small runtime modules; the reference implementation ships as
+    | `vendor:publish --tag=beam-client-runtime`, the contract is written down in this package's
+    | docs/client-runtime-contract.md, and `ClientRuntimeContractAudit` reports a host whose modules
+    | are missing or don't export the required symbols. Defaults match the `@/lib/*` alias both the
+    | platform and the satellite use.
     */
     'client_import' => env('BEAM_CLIENT_CLIENT_IMPORT', '@/lib/api'),
     'routes_import' => env('BEAM_CLIENT_ROUTES_IMPORT', '@/lib/routes'),

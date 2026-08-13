@@ -146,10 +146,25 @@ class TsClientGenerator implements Generator
     private function renderRoutes(array $tenant, array $admin): string
     {
         return $this->banner()
-            ."import type { RouteMap } from '{$this->routesImport()}';\n\n"
+            .$this->renderRouteMapType()
+            ."\n"
             .$this->renderMap('defaults', 'the tenant route-name map', $tenant)
             ."\n"
             .$this->renderMap('operatorDefaults', 'the operator route-name map (empty when the host has no operator tier)', $admin);
+    }
+
+    /**
+     * The generator OWNS the `RouteMap` type it annotates its own output with (client runtime contract,
+     * particle-doctrine-followups #12). It used to be imported from the host's hand-written
+     * `routes_import` module — a backwards dependency where a hand-written shape constrained what this
+     * generator may emit. The emitted maps are always bare name → path-template strings; a host runtime
+     * may store WIDER entries in its own layers (the platform's `{ path, methods }` hydration form),
+     * since every widened map accepts this narrow shape as input.
+     */
+    private function renderRouteMapType(): string
+    {
+        return "/** AUTO-GENERATED — the entry shape this generator emits: route name → path template. */\n"
+            ."export type RouteMap = Record<string, string>;\n";
     }
 
     /**

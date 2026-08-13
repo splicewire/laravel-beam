@@ -59,9 +59,13 @@ class GenerateClientSdkCommandTest extends TestCase
     {
         $this->artisan('splicewire:beam:generate:client')->assertSuccessful();
 
-        // routes.ts — the RouteMap-typed name→path map, importing the configured routes runtime.
+        // routes.ts — the RouteMap-typed name→path map. The generator OWNS the RouteMap type it
+        // annotates its output with (particle-doctrine-followups #12): the file declares it rather than
+        // importing it from the hand-written routes runtime, so no hand-written shape constrains the
+        // generator's own emission.
         $routes = file_get_contents($this->outDir.'/routes.ts');
-        $this->assertStringContainsString("import type { RouteMap } from '@/lib/routes';", $routes);
+        $this->assertStringNotContainsString("import type { RouteMap } from '@/lib/routes';", $routes);
+        $this->assertStringContainsString('export type RouteMap = Record<string, string>;', $routes);
         $this->assertStringContainsString('export const defaults: RouteMap = {', $routes);
         $this->assertStringContainsString("'library-lyrics.index': 'resources/library-lyrics',", $routes);
         $this->assertStringContainsString("'library-lyrics.update': 'resources/library-lyrics/{id}',", $routes);
