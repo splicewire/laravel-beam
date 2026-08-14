@@ -23,7 +23,7 @@ class SharedMigrationsPathTest extends TestCase
     {
         // The tenancy provider must NOT be present in this suite — that is the single-tenant precondition.
         $this->assertFalse(
-            class_exists('Splicewire\Beam\Tenancy\BeamMultiTenancyServiceProvider'),
+            class_exists('Splicewire\Beam\Tenancy\BeamTenancyServiceProvider'),
             'beam-tenancy must be absent for the single-tenant fallback to engage',
         );
 

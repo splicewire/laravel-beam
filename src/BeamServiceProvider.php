@@ -799,7 +799,7 @@ class BeamServiceProvider extends PackageServiceProvider
      */
     protected function sharedMigrationsOwnedByTenancy(): bool
     {
-        return class_exists('Splicewire\Beam\Tenancy\BeamMultiTenancyServiceProvider');
+        return class_exists('Splicewire\Beam\Tenancy\BeamTenancyServiceProvider');
     }
 
     /**
