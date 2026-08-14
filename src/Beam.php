@@ -2,31 +2,42 @@
 
 namespace Splicewire\Beam;
 
+use Splicewire\Beam\Doctor\StaticBridgeAudit;
+use Splicewire\Beam\Facades\Beam as BeamFacade;
+
 /**
- * The Beam facade-lite: the ONE place the table-prefix idiom lives (beam-particle-rename ticket 01).
+ * TEMPORARY: the deprecated static bridge (beam-facade ticket 05) — NOT the Beam instance.
  *
- * Every Beam table name is `config('beam.core.table_prefix') . $name`, resolved HERE and nowhere else —
- * so a retrofit host (Beam dropped into a pre-existing Laravel app that already owns `posts`/`teams`)
- * changes one config value and every Beam model `getTable()`, migration, and `->constrained(...)` follows.
- * Asserting prefix application at this single seam (not per-model) is the whole point of centralizing it.
+ * The instance is {@see BeamManager}; the facade is {@see BeamFacade}. This class holds no logic and
+ * exists only so unswept call sites — the ones still importing `Splicewire\Beam\Beam` and calling
+ * `Beam::table(...)` statically — keep working while the estate is repointed. `composer.local.json`
+ * path-links this package live into every co-dev repo, so deleting the statics outright would leave
+ * ~289 call sites across 16 repos red from the moment the facade lands until the sweep finishes.
  *
- * Additive in ticket 01: the helper + the config knob exist, but no model/migration has been routed
- * through it yet (that is T03/T04, in batches). Default prefix `beam_`; a retrofit host may set `''`.
+ * **This whole file is deleted by beam-facade ticket 08**, together with the {@see StaticBridgeAudit}
+ * that nags about it on every `splicewire:beam:doctor` run. It is a BRIDGE, not the compatibility shim
+ * that charting ruled out: a shim is a permanent second way to say the same thing, whereas this one
+ * lives between two tickets on one map and never reaches a tagged release.
+ *
+ * The single-place guarantee survives it — the bridge delegates, it does not resolve the prefix itself.
+ *
+ * @deprecated beam-facade ticket 05 — import {@see BeamFacade} instead; deleted by ticket 08.
  */
 class Beam
 {
     /**
-     * The prefixed table name for a bare Beam table stem — `beam_particles`, `beam_schemas`, … under the
-     * default, or `<host_prefix>particles` when a retrofit host overrides `beam.core.table_prefix`.
+     * @deprecated Use the {@see BeamFacade} facade's `table()`.
      */
     public static function table(string $name): string
     {
-        return self::tablePrefix().$name;
+        return app(BeamManager::class)->table($name);
     }
 
-    /** The configured Beam table prefix (default `beam_`). */
+    /**
+     * @deprecated Use the {@see BeamFacade} facade's `tablePrefix()`.
+     */
     public static function tablePrefix(): string
     {
-        return (string) config('beam.core.table_prefix', 'beam_');
+        return app(BeamManager::class)->tablePrefix();
     }
 }

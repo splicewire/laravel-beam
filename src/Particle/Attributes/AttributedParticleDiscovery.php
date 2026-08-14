@@ -139,6 +139,7 @@ class AttributedParticleDiscovery
             editable: $attribute->editable,
             showable: $attribute->showable,
             frame: $attribute->frame,
+            singularLabel: $attribute->singularLabel,
         );
     }
 

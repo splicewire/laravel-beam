@@ -8,8 +8,8 @@ use Rushing\Versioning\Concerns\Versionable as VersionableTrait;
 use Rushing\Versioning\Contracts\MigratesSnapshotOnRestore;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\Contracts\Versionable;
-use Splicewire\Beam\Beam;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Revisions\RecordsRevisions;
 use Splicewire\Beam\Schema\SchemaId;
 

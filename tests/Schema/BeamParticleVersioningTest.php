@@ -13,7 +13,7 @@ use Rushing\Versioning\MigrationStatus;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
-use Splicewire\Beam\Beam;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV1;

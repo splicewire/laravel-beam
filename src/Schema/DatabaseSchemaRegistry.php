@@ -9,7 +9,7 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
 use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
-use Splicewire\Beam\Beam;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamSchema;
 
 /**

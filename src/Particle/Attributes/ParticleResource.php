@@ -74,6 +74,7 @@ class ParticleResource
      * @param  bool|null  $editable  Frame update gate, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening); null follows the create gate
      * @param  bool  $showable  Frame per-record detail gate, INDEPENDENT of $readOnly/$editable (F04 show-independent widening); defaults true
      * @param  bool|null  $frame  explicit override for the framed predicate: true forces framed even with an empty label, false forces REST-only even with a label; null ⇒ framed iff the label is non-empty
+     * @param  string  $singularLabel  display SINGULAR for docs/titles when the inflector mangles the noun (`media` → "Medium"); empty ⇒ inflect from the label/key. Display-only — no framing/nav semantics
      */
     public function __construct(
         public string $key,
@@ -99,5 +100,6 @@ class ParticleResource
         public ?bool $editable = null,
         public bool $showable = true,
         public ?bool $frame = null,
+        public string $singularLabel = '',
     ) {}
 }

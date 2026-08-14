@@ -27,6 +27,42 @@ registers **only** `BeamServiceProvider` and asserts the frame provider is absen
 `beam` is a substrate, not an instance. **No `Beam` Eloquent model is minted** —
 that graduates only if a surface forces an instance registry (map fog).
 
+## The `Beam` facade
+
+`Splicewire\Beam\Facades\Beam` is the short front door to the **Beam instance**
+(`Splicewire\Beam\BeamManager`), a container-bound, `scoped()` manager. The surface is
+**closed** at four methods:
+
+| call | what it does |
+| --- | --- |
+| `Beam::table('particles')` | the table-prefix seam — `config('beam.core.table_prefix') . $stem` |
+| `Beam::tablePrefix()` | the configured prefix (default `beam_`; a retrofit host may set `''`) |
+| `Beam::tableFor($configKey, $stem)` | a sibling package's declared table name, falling back to the prefixed stem |
+| `Beam::write($target, $payload, ...)` | forwards to the one `ParticleWriter` write pipeline |
+
+There is no global alias — import the facade explicitly. There is no `Macroable`: a sibling
+`laravel-beam-*` package extends Beam by registering into a core-owned registry
+(`BeamInstallManifest` / `BeamDoctorManifest`), not by adding methods here.
+
+Called before the container is booted (from a published `config/*.php`, say) the facade
+**throws** — deliberately. The static helper it replaced silently fell back to a hardcoded
+`beam_` and handed a retrofit host wrong table names with no error. Read the prefix in a config
+file with `config('beam.core.table_prefix')`, not through the facade.
+
+`Splicewire\Beam\Beam` is a `@deprecated` static bridge kept only while the estate is repointed;
+`splicewire:beam:doctor` warns until it is deleted.
+
+## Testing
+
+Three idioms, so none of this is folklore:
+
+- **Assert a write happened** with `Event::fake()` + `assertDispatched(BeamParticlePersisted::class)`.
+  That is the write pipeline's own designed output — assert on the signal, not on a mock of the writer.
+- **Seed fixtures** with `Beam::write(...)`, which does a **real write** and returns the persisted
+  model. It is not a thing to mock; every test that calls it wants the row.
+- **Intercept**, when you genuinely must, with `Beam::shouldReceive(...)` or `Beam::swap(...)` —
+  free with the facade, and the reason there is no bespoke `Beam::fake()`.
+
 ## `splicewire:beam:doctor` — base-tier readiness
 
 ```

@@ -2,8 +2,8 @@
 
 namespace Splicewire\Beam\Tests\Particle;
 
-use Splicewire\Beam\Beam;
 use Splicewire\Beam\Events\BeamParticlePersisted;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;

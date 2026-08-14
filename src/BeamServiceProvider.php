@@ -48,7 +48,9 @@ use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Doctor\StaticBridgeAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Frame\FrameResourceManifest;
 use Splicewire\Beam\Frame\NullFrameFilterProvider;
@@ -186,6 +188,18 @@ class BeamServiceProvider extends PackageServiceProvider
 
     public function packageRegistered(): void
     {
+        // The Beam instance (beam-facade ticket 05) — the object the Splicewire\Beam\Facades\Beam facade
+        // proxies to. FIRST, because this provider itself calls Beam::table(...) a few lines down and the
+        // facade resolves through this binding.
+        //
+        // `scoped()`, not `singleton()`: the surface is lookup-only today (every accessor re-reads config
+        // per call), so the two are indistinguishable right now — including in the console/queue contexts
+        // beam actually runs in (`beam:install`, `beam:doctor`, `beam:seed`, codegen), which have exactly
+        // one scope. It costs nothing and pre-pays for ambient state, whereas registering `singleton()` and
+        // promoting later would mean touching the binding at precisely the moment the Octane/queue leak
+        // would otherwise be introduced.
+        $this->app->scoped(BeamManager::class, fn ($app) => new BeamManager($app));
+
         // Route beam's two BASE tables through the ONE table-prefix seam (beam-particle-rename T03):
         //
         //  - `beam_particles` — the BeamParticle model resolves its own table via Beam::table('particles')
@@ -701,6 +715,14 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             AgentsMdConventionAudit::class,
+        );
+
+        // beam-facade ticket 05: nag until the deprecated static bridge (Splicewire\Beam\Beam) is gone.
+        // Advisory — the bridge existing IS the intended mid-sweep state; ticket 08 deletes bridge and
+        // audit together, which is the only reason this registration is here to read.
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            StaticBridgeAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered

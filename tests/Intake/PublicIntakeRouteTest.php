@@ -10,7 +10,7 @@ use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\JsonNs\Vocab\VocabularyRegistry;
 use Schemastud\JsonNs\Vocab\VocabularyValidator;
-use Splicewire\Beam\Beam;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV1;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV2;

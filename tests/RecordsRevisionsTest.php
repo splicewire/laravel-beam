@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Tests;
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Splicewire\Beam\Beam;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 
 class RecordsRevisionsTest extends TestCase

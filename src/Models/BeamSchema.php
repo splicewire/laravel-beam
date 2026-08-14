@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
-use Splicewire\Beam\Beam;
+use Splicewire\Beam\Facades\Beam;
 
 /**
  * A registered schema version — one frozen row of the runtime, DB-backed schema registry

@@ -4,8 +4,8 @@ namespace Splicewire\Beam\Tests\Install;
 
 use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\File;
-use Splicewire\Beam\Beam;
 use Splicewire\Beam\Console\BeamInstallCommand;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\InstallStep;
 use Splicewire\Beam\Tests\TestCase;

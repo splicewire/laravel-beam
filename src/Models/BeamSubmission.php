@@ -5,8 +5,8 @@ namespace Splicewire\Beam\Models;
 use Illuminate\Database\Eloquent\Model;
 use Rushing\Versioning\Concerns\ReconcilesPayloadOnRead;
 use Rushing\Versioning\Contracts\RecordReconciler;
-use Splicewire\Beam\Beam;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Write\ParticleWriter;
 

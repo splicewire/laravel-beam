@@ -104,6 +104,7 @@ class ParticleResource
      * @param  bool|null  $editable  whether Frame update (in-place edit) is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening) — for a create-and-delete-but-not-edit resource (e.g. invitations). null (default) follows the create gate (`!$readOnly`); an explicit false closes in-place edit on an otherwise creatable resource.
      * @param  bool  $showable  whether Frame serves a per-record detail (`records/{id}`, show), INDEPENDENT of $readOnly and $editable (F04 show-independent widening) — so a `readOnly` INSPECT resource (e.g. `operator-customers`) still exposes a detail view even though it 405s store/update/destroy. Defaults true (readable ⇒ showable); set false to make a resource genuinely list-only (no detail route).
      * @param  bool|null  $frame  explicit override for the {@see isFramed() framed} predicate: `true` forces the resource framed even with an empty label, `false` forces it REST-only even with a label; null (default) ⇒ framed iff the label is non-empty.
+     * @param  string  $singularLabel  display SINGULAR for docs/titles, for the mass/irregular nouns the inflector mangles (`media` singularizes to "Medium"; declaring `singularLabel: 'Media'` titles the download op "Media Download"). Empty (default) ⇒ inflect from the label/key as before. Display-only: carries NO framing/nav semantics ({@see isFramed()} still reads {@see $label} alone).
      */
     public function __construct(
         public string $key,
@@ -133,6 +134,7 @@ class ParticleResource
         public ?bool $editable = null,
         public bool $showable = true,
         public ?bool $frame = null,
+        public string $singularLabel = '',
     ) {}
 
     /**

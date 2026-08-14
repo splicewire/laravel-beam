@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Ownership;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Splicewire\Beam\Beam;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Ownership\Contracts\OwnershipEdgeStore;
 
 /**
