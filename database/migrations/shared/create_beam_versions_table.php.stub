@@ -3,7 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Splicewire\Beam\Beam;
+use Splicewire\Beam\Facades\Beam;
 
 /**
  * The polymorphic durable-version store that `rushing/laravel-versioning`'s Versionable / VersionStore
