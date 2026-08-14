@@ -301,8 +301,8 @@ class ParticleGeneratorTest extends TestCase
 
     public function test_both_generators_appear_in_the_namespaced_command_listing(): void
     {
-        // `beam:sitemap:generate` and `beam:pnpm-overrides` sit outside `splicewire:` and are a recorded
-        // defect; these two are not allowed to add to it.
+        // `beam:sitemap:generate` and `beam:pnpm-overrides` used to sit outside `splicewire:` (fixed);
+        // these two generators are not allowed to reintroduce that drift.
         $registered = array_keys($this->app->make(Kernel::class)->all());
 
         $this->assertContains('splicewire:beam:make:particle-resource', $registered);

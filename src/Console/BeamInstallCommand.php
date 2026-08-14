@@ -114,8 +114,8 @@ class BeamInstallCommand extends Command
 
         // 6. Frontend-surface provisioning (pnpm trap): a pnpm host must pin the unpublished
         //    @splicewire/@schemastud transitive JS deps to their local file: paths (npm resolves them
-        //    leniently; pnpm 404s). Delegated to laravel-beam-ux's `beam:pnpm-overrides` when present —
-        //    idempotent + a no-op on npm/yarn hosts, so it's always safe to run.
+        //    leniently; pnpm 404s). Delegated to laravel-beam-ux's `splicewire:beam:ux:pnpm-overrides`
+        //    when present — idempotent + a no-op on npm/yarn hosts, so it's always safe to run.
         $this->ensurePnpmOverrides();
 
         if ($interactive) {
@@ -355,21 +355,21 @@ class BeamInstallCommand extends Command
     /**
      * Frontend-surface provisioning (beam-install-turnkey, pnpm trap): a pnpm host must pin the
      * unpublished @splicewire/@schemastud transitive JS deps to their local `file:` paths (npm resolves
-     * them leniently; pnpm hits ERR_PNPM_FETCH_404). `beam:pnpm-overrides` (shipped by laravel-beam-ux)
-     * generates that `pnpm.overrides` block — idempotent + a no-op on an npm/yarn host. Skipped silently
-     * when laravel-beam-ux isn't installed (the command isn't registered), so beam-core never hard-depends
-     * on it.
+     * them leniently; pnpm hits ERR_PNPM_FETCH_404). `splicewire:beam:ux:pnpm-overrides` (shipped by
+     * laravel-beam-ux) generates that `pnpm.overrides` block — idempotent + a no-op on an npm/yarn host.
+     * Skipped silently when laravel-beam-ux isn't installed (the command isn't registered), so beam-core
+     * never hard-depends on it.
      */
     private function ensurePnpmOverrides(): void
     {
         $app = $this->getApplication();
 
-        if ($app === null || ! $app->has('beam:pnpm-overrides')) {
+        if ($app === null || ! $app->has('splicewire:beam:ux:pnpm-overrides')) {
             return;
         }
 
         $this->line('splicewire:beam:install → frontend surfaces (pnpm overrides)');
-        $this->call('beam:pnpm-overrides');
+        $this->call('splicewire:beam:ux:pnpm-overrides');
     }
 
     /**
