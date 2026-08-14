@@ -189,6 +189,45 @@ class BeamInstallTest extends TestCase
     }
 
     /**
+     * beam-install-turnkey ticket 12: `persistConfig()` is safe-unless-force, matching `vendor:publish` —
+     * an already-published `config/beam/core.php` (which may carry hand edits) is left alone unless the
+     * operator passes `--force`. The answered values still govern the run via runtime config either way
+     * (asserted separately above); this test is about what lands on DISK.
+     */
+    public function test_persist_config_leaves_a_hand_edited_file_alone_without_force(): void
+    {
+        $path = base_path('config/beam/core.php');
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, "<?php\n\nreturn [\n    'table_prefix' => 'hand_edited_',\n    'schema' => ['sources' => ['db']],\n];\n");
+
+        $this->artisan('splicewire:beam:install', [
+            '--prefix' => 'new_',
+            '--schema-sources' => 'file',
+            '--tenancy' => 'single',
+            '--no-interaction' => true,
+        ])->assertExitCode(0);
+
+        $this->assertStringContainsString("'table_prefix' => 'hand_edited_'", File::get($path));
+    }
+
+    public function test_persist_config_overwrites_an_already_published_file_with_force(): void
+    {
+        $path = base_path('config/beam/core.php');
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, "<?php\n\nreturn [\n    'table_prefix' => 'hand_edited_',\n    'schema' => ['sources' => ['db']],\n];\n");
+
+        $this->artisan('splicewire:beam:install', [
+            '--prefix' => 'new_',
+            '--schema-sources' => 'file',
+            '--tenancy' => 'single',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertExitCode(0);
+
+        $this->assertStringContainsString("'table_prefix' => 'new_'", File::get($path));
+    }
+
+    /**
      * A step's optional {@see InstallStep::$note} round-trips through
      * registration — a pointer to a config knob that's real but deliberately defaults to a no-op (e.g.
      * beam-ux's mirror_disk), so an operator installing the module doesn't have to discover it

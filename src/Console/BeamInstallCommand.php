@@ -369,13 +369,18 @@ class BeamInstallCommand extends Command
         }
 
         $this->line('splicewire:beam:install → frontend surfaces (pnpm overrides)');
-        $this->call('splicewire:beam:ux:pnpm-overrides');
+        $this->call('splicewire:beam:ux:pnpm-overrides', $this->option('force') ? ['--force' => true] : []);
     }
 
     /**
      * Persist the answered values into the published `config/beam/core.php` so they survive the next boot.
      * Best-effort + non-fatal: if the host hasn't published the config (or it isn't writable), the runtime
      * config still governs this run — we just warn. Only the keys the operator actually answered are written.
+     *
+     * Safe-unless-force, matching `vendor:publish`: `config/beam/core.php` already existing means it was
+     * already published (and may carry hand edits), so — like re-publishing an existing file — persisting
+     * over it requires `--force`. Without it, the answered values still govern this run via runtime config;
+     * they're just not written to disk.
      */
     private function persistConfig(?string $prefix, ?string $sources, ?string $tenancy): void
     {
@@ -387,6 +392,12 @@ class BeamInstallCommand extends Command
 
         if (! is_file($path) || ! is_writable($path)) {
             $this->warn('splicewire:beam:install — answered config kept for this run only; publish config/beam/core.php to persist it.');
+
+            return;
+        }
+
+        if (! $this->option('force')) {
+            $this->warn("splicewire:beam:install — answered config kept for this run only; pass --force to persist it into the already-published {$path} (protects hand edits).");
 
             return;
         }
