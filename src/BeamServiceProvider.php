@@ -89,6 +89,7 @@ use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
 use Splicewire\Beam\Source\LadderForeignSourceProjector;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Source\ParticleShadower;
+use Splicewire\Beam\Surgeon\AuditScanPaths;
 use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\ClientRuntimeContractAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
@@ -383,6 +384,13 @@ class BeamServiceProvider extends PackageServiceProvider
             );
         });
 
+        // The audit scan-path contribution registry: a singleton any family package's provider pushes
+        // `(controllersDir, routesDir)` pairs into so its HTTP surface joins the bypass/redundancy/
+        // house-style sweeps alongside the host dirs — SchemaSources' idiom turned on audit scope.
+        // Registered UNCONDITIONALLY (outside the surgeon-installed guard below): contributors push
+        // during boot regardless of whether a sweep ever runs here.
+        $this->app->singleton(AuditScanPaths::class);
+
         // The beam-install self-registration manifest (ticket 08): a singleton every beam-* package
         // pushes its own install step into, from its own provider. beam-core never learns consumer names.
         $this->app->singleton(BeamInstallManifest::class);
@@ -450,7 +458,13 @@ class BeamServiceProvider extends PackageServiceProvider
         // class-string (the sweep does `$app->make($audit)`): the house-style scan defaults to the app
         // base path; the SDK-drift audit points at the co-dev splicewire/laravel-connector checkout; the docblock
         // tier-audit scans the app base path and places FQNs via the surgeon PackageGraph.
-        $this->app->bind(HouseStyleAudit::class, fn ($app) => new HouseStyleAudit([$app->basePath()]));
+        // House-style scans the app base path PLUS every package-contributed scan pair — a contributed
+        // controllers/routes dir is family-owned source and rides the same forbidden-construct sweep.
+        $this->app->bind(HouseStyleAudit::class, fn ($app) => new HouseStyleAudit(array_values(array_unique([
+            $app->basePath(),
+            ...$app->make(AuditScanPaths::class)->controllersDirs(),
+            ...$app->make(AuditScanPaths::class)->routesDirs(),
+        ]))));
         $this->app->bind(SdkEndpointDriftAudit::class, fn () => SdkEndpointDriftAudit::forClientPackage());
         $this->app->bind(SdkNameConventionAudit::class, fn () => SdkNameConventionAudit::forClientPackage());
         $this->app->bind(ParticleControllerRedundancyAudit::class, fn () => ParticleControllerRedundancyAudit::forRoutes());
@@ -1091,6 +1105,15 @@ class BeamServiceProvider extends PackageServiceProvider
                 arity: ManifestArity::RunAll,
                 registerHint: "app(SchemaSources::class)->register('key', fn () => new FilesystemSchemaRegistry(...)) from your provider",
                 where: SchemaSources::class,
+                package: $pkg, order: 11,
+            ),
+            new ManifestDescriptor(
+                name: 'AuditScanPaths',
+                of: 'package-contributed (controllersDir, routesDir) pairs joining the bypass/redundancy/house-style audit sweeps',
+                seam: ManifestSeam::SingletonAccumulator,
+                arity: ManifestArity::RunAll,
+                registerHint: "app(AuditScanPaths::class)->register('vendor/package', controllersDir, routesDir) from your provider — boot-time, so a package joins only where its provider boots",
+                where: AuditScanPaths::class,
                 package: $pkg, order: 11,
             ),
             new ManifestDescriptor(

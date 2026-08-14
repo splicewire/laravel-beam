@@ -143,14 +143,15 @@ class ParticleControllerRedundancyAuditTest extends TestCase
         $this->assertNull($findings[0]->suggestion);
     }
 
-    public function test_a_non_particle_controller_is_not_flagged(): void
+    public function test_a_non_particle_controller_with_no_model_touching_crud_is_not_flagged(): void
     {
         $controllers = [[
             'class' => 'App\\Http\\Controllers\\Api\\LeadController',
             'file' => '/app/LeadController.php',
-            'extendsParticleBase' => false,      // leg 1 fails
+            'extendsParticleBase' => false,      // structural leg fails…
             'resourceKey' => 'leads',
             'actions' => ['store' => 'passthrough'],
+            'crudModels' => [],                  // …and the behavior path sees no model-touching CRUD
         ]];
 
         $this->assertSame([], $this->audit()->suggestFor(
@@ -159,6 +160,111 @@ class ParticleControllerRedundancyAuditTest extends TestCase
             ['tags' => true],
             ['leads' => true],
         ));
+    }
+
+    // ── the BEHAVIOR path: no particle base required (the PlanController blindness fix) ────────────────
+
+    public function test_a_non_particle_crud_controller_on_a_registered_model_is_flagged_advisory(): void
+    {
+        // Shaped like commerce's Operator/PlanController: a plain Controller whose `index` lists the
+        // registered `plans` resource's Plan model — invisible to the old inheritance-keyed leg.
+        $controllers = [[
+            'class' => 'Splicewire\\Beam\\Commerce\\Http\\Controllers\\Operator\\PlanController',
+            'file' => '/pkg/PlanController.php',
+            'extendsParticleBase' => false,
+            'resourceKey' => null,
+            'actions' => ['index' => 'delta'],
+            'crudModels' => ['index' => ['Splicewire\\Beam\\Commerce\\Plan']],
+        ]];
+
+        $findings = $this->audit()->suggestFor(
+            $controllers,
+            ['plans' => true],                                          // hand-wired
+            [],                                                         // not macro'd
+            ['plans' => true],                                          // registered keys
+            ['Splicewire\\Beam\\Commerce\\Plan' => ['plans']],          // registered model map
+        );
+
+        $this->assertCount(1, $findings);
+        $finding = $findings[0];
+
+        $this->assertFalse($finding->isFixable());
+        $this->assertTrue($finding->isAdvisory());
+        $this->assertSame('warn', $finding->finding->status->value);
+        $this->assertSame('particle.controller-redundant', $finding->finding->check);
+        $this->assertStringContainsString('PlanController', $finding->finding->detail);
+        $this->assertStringContainsString('[plans]', $finding->finding->detail);
+        $this->assertStringContainsString('index', $finding->finding->detail);
+        $this->assertStringContainsString("Route::particleResource('plans'", $finding->suggestion->summary);
+    }
+
+    public function test_the_behavior_path_skips_an_unregistered_model(): void
+    {
+        $controllers = [[
+            'class' => 'App\\Http\\Controllers\\ReportController',
+            'file' => '/app/ReportController.php',
+            'extendsParticleBase' => false,
+            'resourceKey' => null,
+            'actions' => ['index' => 'delta'],
+            'crudModels' => ['index' => ['App\\Models\\Report']],
+        ]];
+
+        // Report is nobody's registered model → no finding.
+        $this->assertSame([], $this->audit()->suggestFor(
+            $controllers,
+            ['reports' => true],
+            [],
+            ['plans' => true],
+            ['Splicewire\\Beam\\Commerce\\Plan' => ['plans']],
+        ));
+    }
+
+    public function test_the_behavior_path_skips_a_macro_wired_or_unwired_key(): void
+    {
+        $controller = [
+            'class' => 'App\\Http\\Controllers\\PlanController',
+            'file' => '/app/PlanController.php',
+            'extendsParticleBase' => false,
+            'resourceKey' => null,
+            'actions' => ['index' => 'delta'],
+            'crudModels' => ['index' => ['Splicewire\\Beam\\Commerce\\Plan']],
+        ];
+        $registeredModels = ['Splicewire\\Beam\\Commerce\\Plan' => ['plans']];
+
+        // Key already rides the macro → not a bespoke redundancy.
+        $this->assertSame([], $this->audit()->suggestFor(
+            [$controller], ['plans' => true], ['plans' => true], ['plans' => true], $registeredModels,
+        ));
+
+        // Key not hand-wired anywhere → nothing mounted to collapse.
+        $this->assertSame([], $this->audit()->suggestFor(
+            [$controller], [], [], ['plans' => true], $registeredModels,
+        ));
+    }
+
+    public function test_an_acknowledged_behavior_path_controller_downgrades_to_a_pass(): void
+    {
+        $controllers = [[
+            'class' => AcknowledgedShellFixtureController::class,
+            'file' => '/app/AcknowledgedShellFixtureController.php',
+            'extendsParticleBase' => false,
+            'resourceKey' => null,
+            'actions' => ['index' => 'delta'],
+            'crudModels' => ['index' => ['Splicewire\\Beam\\Commerce\\Plan']],
+        ]];
+
+        $findings = $this->audit()->suggestFor(
+            $controllers,
+            ['plans' => true],
+            [],
+            ['plans' => true],
+            ['Splicewire\\Beam\\Commerce\\Plan' => ['plans']],
+        );
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('pass', $findings[0]->finding->status->value);
+        $this->assertStringContainsString('acknowledged: legacy envelope deltas the declaration cannot express', $findings[0]->finding->detail);
+        $this->assertNull($findings[0]->suggestion);
     }
 
     public function test_an_unregistered_resource_is_not_flagged(): void
@@ -249,6 +355,54 @@ class ParticleControllerRedundancyAuditTest extends TestCase
 
         $this->assertNotNull($row);
         $this->assertNull($row['resourceKey']);
+    }
+
+    public function test_it_collects_the_models_a_crud_action_body_touches(): void
+    {
+        // The real PlanController shape: plain base, `index` opens with a Plan::orderBy(...) query.
+        $source = <<<'PHP'
+        <?php
+        namespace Splicewire\Beam\Commerce\Http\Controllers\Operator;
+
+        use Splicewire\Beam\Commerce\Data\PlanData;
+        use Splicewire\Beam\Commerce\Plan;
+        use Splicewire\Beam\Data\ResponseBody;
+        use Splicewire\Beam\Http\Controller;
+
+        class PlanController extends Controller
+        {
+            public function index()
+            {
+                $plans = Plan::orderBy('name')->get()->map(fn (Plan $plan) => PlanData::fromPlan($plan));
+
+                return ResponseBody::from(['data' => $plans->all()]);
+            }
+
+            public function export()
+            {
+                return Plan::all();     // non-CRUD verb: bypass-audit territory, not collected here
+            }
+        }
+        PHP;
+
+        $row = $this->audit()->parseController($source, '/pkg/PlanController.php');
+
+        $this->assertNotNull($row);
+        $this->assertFalse($row['extendsParticleBase']);
+        $this->assertNull($row['resourceKey']);
+        $this->assertSame(['index' => ['Splicewire\\Beam\\Commerce\\Plan']], $row['crudModels']);
+    }
+
+    public function test_a_crud_action_touching_no_imported_model_collects_nothing(): void
+    {
+        $source = $this->controllerSource(<<<'PHP'
+            public function index($r) { return response()->json([]); }
+        PHP);
+
+        $row = $this->audit()->parseController($source, '/app/EmptyController.php');
+
+        $this->assertNotNull($row);
+        $this->assertSame([], $row['crudModels']);
     }
 
     /** Wrap method bodies in a minimal particle-controller class source. */

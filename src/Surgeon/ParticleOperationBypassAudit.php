@@ -75,30 +75,47 @@ class ParticleOperationBypassAudit implements DoctorAudit, SuggestsOperations
         'updateOrCreate', 'where', 'whereKey', 'all', 'make',
     ];
 
-    public function __construct(
-        protected string $controllersDir,
-        protected string $routesDir,
-        protected ?ParticleResourceRegistry $resourceRegistry = null,
-        protected ?ParticleOperationRegistry $operationRegistry = null,
-    ) {}
+    /** @var list<string> */
+    protected array $controllersDirs;
+
+    /** @var list<string> */
+    protected array $routesDirs;
 
     /**
-     * The default host-scoped wiring — mirrors {@see ParticleControllerRedundancyAudit::forRoutes()}.
-     * Kept off the constructor so the class is pure-unit testable via {@see suggestFor()} — no
-     * registry, no route table, no DB.
+     * @param  string|list<string>  $controllersDirs
+     * @param  string|list<string>  $routesDirs
+     */
+    public function __construct(
+        string|array $controllersDirs,
+        string|array $routesDirs,
+        protected ?ParticleResourceRegistry $resourceRegistry = null,
+        protected ?ParticleOperationRegistry $operationRegistry = null,
+    ) {
+        $this->controllersDirs = array_values((array) $controllersDirs);
+        $this->routesDirs = array_values((array) $routesDirs);
+    }
+
+    /**
+     * The default host-scoped wiring — mirrors {@see ParticleControllerRedundancyAudit::forRoutes()},
+     * including the host dirs + package-contributed {@see AuditScanPaths} pairs. Kept off the constructor
+     * so the class is pure-unit testable via {@see suggestFor()} — no registry, no route table, no DB.
+     *
+     * @param  string|list<string>|null  $controllersDirs
+     * @param  string|list<string>|null  $routesDirs
      */
     public static function forRoutes(
-        ?string $controllersDir = null,
-        ?string $routesDir = null,
+        string|array|null $controllersDirs = null,
+        string|array|null $routesDirs = null,
         ?ParticleResourceRegistry $resourceRegistry = null,
         ?ParticleOperationRegistry $operationRegistry = null,
     ): self {
-        $controllersDir ??= base_path('app/Http/Controllers');
-        $routesDir ??= base_path('routes');
+        $contributed = app()->bound(AuditScanPaths::class) ? app(AuditScanPaths::class) : null;
+        $controllersDirs ??= [base_path('app/Http/Controllers'), ...($contributed?->controllersDirs() ?? [])];
+        $routesDirs ??= [base_path('routes'), ...($contributed?->routesDirs() ?? [])];
         $resourceRegistry ??= app(ParticleResourceRegistry::class);
         $operationRegistry ??= app(ParticleOperationRegistry::class);
 
-        return new self($controllersDir, $routesDir, $resourceRegistry, $operationRegistry);
+        return new self($controllersDirs, $routesDirs, $resourceRegistry, $operationRegistry);
     }
 
     /**
@@ -115,8 +132,8 @@ class ParticleOperationBypassAudit implements DoctorAudit, SuggestsOperations
     public function suggestOperations(): array
     {
         return $this->suggestFor(
-            $this->collectControllers($this->controllersDir),
-            $this->collectHandWiredActions($this->routesDir, $this->controllersDir),
+            $this->collectControllers($this->controllersDirs),
+            $this->collectHandWiredActions($this->routesDirs, $this->controllersDirs),
             $this->registeredModels(),
             $this->registeredOperationKeys(),
         );
@@ -326,17 +343,19 @@ class ParticleOperationBypassAudit implements DoctorAudit, SuggestsOperations
      * `use` a controller and reference it by short name — resolving through the ALREADY-PARSED controller
      * FQNs avoids re-parsing `use` statements in every route file).
      *
+     * @param  list<string>  $routesDirs
+     * @param  list<string>  $controllersDirs
      * @return array<string, true>
      */
-    protected function collectHandWiredActions(string $routesDir, string $controllersDir): array
+    protected function collectHandWiredActions(array $routesDirs, array $controllersDirs): array
     {
         $shortToFqn = [];
-        foreach ($this->collectControllers($controllersDir) as $controller) {
+        foreach ($this->collectControllers($controllersDirs) as $controller) {
             $shortToFqn[$this->shortName($controller['class'])] = $controller['class'];
         }
 
         $handWired = [];
-        foreach ($this->phpFiles($routesDir) as $file) {
+        foreach ($this->phpFilesUnder($routesDirs) as $file) {
             $source = (string) file_get_contents($file);
 
             if (preg_match_all(
@@ -361,12 +380,13 @@ class ParticleOperationBypassAudit implements DoctorAudit, SuggestsOperations
      * Parse every controller under a dir into its {@see suggestFor()} row: its FQN, and each PUBLIC
      * non-constructor action mapped to the (deduplicated) model FQNs its body touches.
      *
+     * @param  list<string>  $dirs
      * @return list<array{class: string, file: string, actions: array<string, list<class-string>>}>
      */
-    protected function collectControllers(string $dir): array
+    protected function collectControllers(array $dirs): array
     {
         $rows = [];
-        foreach ($this->phpFiles($dir) as $file) {
+        foreach ($this->phpFilesUnder($dirs) as $file) {
             $row = $this->parseController((string) file_get_contents($file), $file);
             if ($row !== null) {
                 $rows[] = $row;
@@ -498,6 +518,17 @@ class ParticleOperationBypassAudit implements DoctorAudit, SuggestsOperations
         $pos = strrpos($fqn, '\\');
 
         return $pos === false ? $fqn : substr($fqn, $pos + 1);
+    }
+
+    /**
+     * Absolute paths of every `.php` file under the given dirs (recursive), absent dirs skipped.
+     *
+     * @param  list<string>  $dirs
+     * @return list<string>
+     */
+    protected function phpFilesUnder(array $dirs): array
+    {
+        return array_merge(...array_map(fn (string $dir) => $this->phpFiles($dir), $dirs ?: ['']));
     }
 
     /**

@@ -8,6 +8,7 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\UseItem;
 use PhpParser\NodeFinder;
 use PhpParser\ParserFactory;
 use Rushing\Doctor\DoctorAudit;
@@ -17,6 +18,7 @@ use Rushing\Surgeon\Operation\OperationSuggestion;
 use Rushing\Surgeon\Operation\SuggestsOperations;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Attributes\BespokeByDesign;
+use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
@@ -25,17 +27,33 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * the concept-owner rule), so beam — not surgeon — owns the audit that says "this bespoke controller shell
  * is a route-wiring style the `Route::particleResource()` macro already replaces."
  *
- * ## The mechanical invariant (all three, per controller)
- * A controller is a redundant CRUD shell when it:
+ * ## Detection keys on BEHAVIOR, not inheritance (two paths per controller)
+ * The original invariant keyed leg 1 on `extends ParticleController`, which made the audit structurally
+ * blind to a bespoke controller that does CRUD against a registered resource's model from OUTSIDE the
+ * particle base (commerce's `Operator/PlanController` — a plain `Controller` whose `index` lists the
+ * registered `plans` resource's `Plan` model — never surfaced). Detection now runs two paths:
+ *
+ * **Structural path** (the original — a particle-base shell; all three, per controller):
  *   1. `extends` the particle base ({@see ParticleController} / a host subclass of it — checked by walking
- *      the `extends` chain up the app's autoloader), AND
+ *      the `extends` chain up the app's autoloader) and binds a key via its `particleResource()` override, AND
  *   2. serves a resource key that is **already registered** as a `ParticleResource` in the booted
  *      {@see ParticleResourceRegistry} (so the macro has a declaration to mount against), AND
  *   3. is **hand-wired** — its actions are mounted by bespoke `Route::get/post/…(…, [X::class, 'verb'])`
  *      calls while its peers (`tags`/`media`/`activity`) ride the controller-free `Route::particleResource()`
  *      macro against the SAME registry.
- * A controller failing any leg (not a particle subclass, resource unregistered, already macro-wired) is
- * NOT flagged — the redundancy is precisely "a thin shell the macro replaces for its peers."
+ *
+ * **Behavior path** (any controller, no base required; all three, per controller):
+ *   1. has public action(s) named with a **CRUD-shaped verb** ({@see CRUD_VERBS}) whose bodies statically
+ *      touch (a static call, {@see MODEL_TOUCH_HINTS}) a model class that is the **registered `model`** of
+ *      some {@see ParticleResource}, AND
+ *   2. that resource key is **hand-wired** in the scanned route files, AND
+ *   3. that key does not already ride the `Route::particleResource()` macro.
+ * Behavior-path findings are always ADVISORY (a bespoke body is never a mechanical passthrough), naming
+ * the actions, the touched model, and the registered resource whose declaration already serves the CRUD.
+ *
+ * A controller failing every path (no particle base + no CRUD-verb action on a registered model, resource
+ * unregistered, already macro-wired) is NOT flagged — the redundancy is precisely "a controller
+ * re-implementing surface the macro already mounts for the same declaration."
  *
  * ## The fix split — the deterministic/agentic seam (ticket 16)
  * Whether the shell can COLLAPSE to the macro is decided by a deterministic AST check of every action
@@ -63,12 +81,20 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * un-acknowledged, keeping the pure core fixture-testable.
  *
  * ## Honesty about what it can statically see
- * Two of the three legs are pure route-file/source facts (extends-chain, hand-wired-vs-macro), read
- * statically. The registered-resource leg is a RUNTIME fact — the registry is populated by boot-time
- * `#[ParticleResource]` discovery, not knowable from a source scan — so the default wiring reads the booted
+ * The extends-chain and hand-wired-vs-macro legs are pure route-file/source facts, read statically. The
+ * behavior path's touched-model detection is a static-call scan against the class's own `use` imports
+ * (mirrors {@see ParticleOperationBypassAudit}'s "Honesty" section) — a model reached only via a property,
+ * dependency injection, or a repository one level removed is invisible to this pass. The
+ * registered-resource leg is a RUNTIME fact — the registry is populated by boot-time `#[ParticleResource]`
+ * discovery, not knowable from a source scan — so the default wiring reads the booted
  * {@see ParticleResourceRegistry} in host context ({@see forRoutes()}). The pure core {@see suggestFor()}
- * takes all four facts as inputs so it is unit-testable with in-memory fixtures (no registry, no route
+ * takes all facts as inputs so it is unit-testable with in-memory fixtures (no registry, no route
  * table, no DB), mirroring the sibling audits.
+ *
+ * ## Scan scope
+ * The default wiring scans the host's `app/Http/Controllers` + `routes/` AND every
+ * `(controllersDir, routesDir)` pair family packages contributed to the boot-time {@see AuditScanPaths}
+ * singleton — a package's HTTP surface joins the sweep wherever its provider boots.
  */
 class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperations
 {
@@ -88,28 +114,63 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
      */
     public const NON_ACTION_METHODS = ['particleResource', '__construct'];
 
-    public function __construct(
-        protected string $controllersDir,
-        protected string $routesDir,
-        protected ?ParticleResourceRegistry $registry = null,
-    ) {}
+    /**
+     * The REST verbs the behavior path keys on — a public action with one of these names whose body
+     * touches a registered resource's model is CRUD-shaped surface the macro already mounts.
+     */
+    public const CRUD_VERBS = ['index', 'show', 'store', 'update', 'destroy'];
 
     /**
-     * The default host-scoped wiring: scan the app's `app/Http/Controllers`, parse the app's `routes/`
-     * files for the hand-wired-vs-macro split, and read the booted {@see ParticleResourceRegistry} for the
-     * registered-resource leg. Kept off the constructor so the class is pure-unit testable via
-     * {@see suggestFor()} — no registry, no route table, no DB.
+     * Static-call method names treated as "this action's body touches the model" — the bypass audit's
+     * {@see ParticleOperationBypassAudit::MODEL_TOUCH_HINTS} plus the query-builder entry points a bespoke
+     * LIST body typically opens with (`Plan::orderBy(…)`, `Model::with(…)->paginate(…)`).
+     */
+    public const MODEL_TOUCH_HINTS = [
+        'query', 'find', 'findOrFail', 'findMany', 'create', 'firstOrCreate', 'firstOrNew',
+        'updateOrCreate', 'where', 'whereKey', 'all', 'make',
+        'orderBy', 'latest', 'oldest', 'with', 'withCount', 'paginate', 'simplePaginate', 'get', 'count', 'pluck',
+    ];
+
+    /** @var list<string> */
+    protected array $controllersDirs;
+
+    /** @var list<string> */
+    protected array $routesDirs;
+
+    /**
+     * @param  string|list<string>  $controllersDirs
+     * @param  string|list<string>  $routesDirs
+     */
+    public function __construct(
+        string|array $controllersDirs,
+        string|array $routesDirs,
+        protected ?ParticleResourceRegistry $registry = null,
+    ) {
+        $this->controllersDirs = array_values((array) $controllersDirs);
+        $this->routesDirs = array_values((array) $routesDirs);
+    }
+
+    /**
+     * The default host-scoped wiring: scan the app's `app/Http/Controllers` PLUS every controllers dir
+     * family packages contributed via {@see AuditScanPaths}, parse the app's `routes/` files (plus
+     * contributed routes dirs) for the hand-wired-vs-macro split, and read the booted
+     * {@see ParticleResourceRegistry} for the registered-resource leg. Kept off the constructor so the
+     * class is pure-unit testable via {@see suggestFor()} — no registry, no route table, no DB.
+     *
+     * @param  string|list<string>|null  $controllersDirs
+     * @param  string|list<string>|null  $routesDirs
      */
     public static function forRoutes(
-        ?string $controllersDir = null,
-        ?string $routesDir = null,
+        string|array|null $controllersDirs = null,
+        string|array|null $routesDirs = null,
         ?ParticleResourceRegistry $registry = null,
     ): self {
-        $controllersDir ??= base_path('app/Http/Controllers');
-        $routesDir ??= base_path('routes');
+        $contributed = app()->bound(AuditScanPaths::class) ? app(AuditScanPaths::class) : null;
+        $controllersDirs ??= [base_path('app/Http/Controllers'), ...($contributed?->controllersDirs() ?? [])];
+        $routesDirs ??= [base_path('routes'), ...($contributed?->routesDirs() ?? [])];
         $registry ??= app(ParticleResourceRegistry::class);
 
-        return new self($controllersDir, $routesDir, $registry);
+        return new self($controllersDirs, $routesDirs, $registry);
     }
 
     /**
@@ -129,45 +190,57 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
      */
     public function suggestOperations(): array
     {
-        [$handWiredKeys, $macroKeys] = $this->collectRouteWiring($this->routesDir);
+        [$handWiredKeys, $macroKeys] = $this->collectRouteWiring($this->routesDirs);
 
         return $this->suggestFor(
-            $this->collectControllers($this->controllersDir),
+            $this->collectControllers($this->controllersDirs),
             $handWiredKeys,
             $macroKeys,
             $this->registeredKeys(),
+            $this->registeredModels(),
         );
     }
 
     /**
      * The pure core — no disk, no route facade, no registry. Given the parsed controllers, the set of
      * resource keys mounted by HAND (bespoke `Route::…(…, [X::class, …])`), the set already ridden by the
-     * `Route::particleResource()` macro, and the set of REGISTERED `ParticleResource` keys, produce one
-     * {@see FixableFinding} per redundant CRUD shell.
+     * `Route::particleResource()` macro, the set of REGISTERED `ParticleResource` keys, and the registered
+     * model-FQN => resource-key map (the behavior path's lens), produce one {@see FixableFinding} per
+     * redundant CRUD controller.
      *
      * Directly unit testable: a pure-passthrough particle controller on a registered+hand-wired key →
-     * fixable collapse; a with-delta one → advisory naming the blocker; a non-particle controller, an
-     * unregistered resource, or an already-macro-wired key → no finding.
+     * fixable collapse; a with-delta one → advisory naming the blocker; a NON-particle controller whose
+     * CRUD-verb action body touches a registered resource's model → advisory naming the behavior-level
+     * redundancy; an unregistered resource or an already-macro-wired key → no finding.
      *
-     * @param  list<array{class: string, file: string, extendsParticleBase: bool, resourceKey: ?string, actions: array<string, string>}>  $controllers
-     *                                                                                                                                                  `actions` maps a public action method name → its body shape: `'passthrough'` or `'delta'`.
+     * @param  list<array{class: string, file: string, extendsParticleBase: bool, resourceKey: ?string, actions: array<string, string>, crudModels?: array<string, list<class-string>>}>  $controllers
+     *                                                                                                                                                                                                  `actions` maps a public action method name → its body shape: `'passthrough'` or `'delta'`;
+     *                                                                                                                                                                                                  `crudModels` maps each CRUD-verb action → the model FQNs its body statically touches.
      * @param  array<string, true>  $handWiredKeys  resource keys mounted by a bespoke controller route call
      * @param  array<string, true>  $macroKeys  resource keys already mounted via `Route::particleResource()`
      * @param  array<string, true>  $registeredKeys  registered `ParticleResource` keys
+     * @param  array<class-string, list<string>>  $registeredModels  model FQN => every resource key registered against it
      * @return list<FixableFinding>
      */
-    public function suggestFor(array $controllers, array $handWiredKeys, array $macroKeys, array $registeredKeys): array
+    public function suggestFor(array $controllers, array $handWiredKeys, array $macroKeys, array $registeredKeys, array $registeredModels = []): array
     {
         $findings = [];
 
         foreach ($controllers as $controller) {
             $key = $controller['resourceKey'];
 
-            // Leg 1: must extend the particle base. Leg 2: its key must be registered. Leg 3: it must be
-            // hand-wired (a peer macro-mount of the SAME key is fine — the point is THIS class is bespoke).
+            // A controller outside the particle base (or one that never binds a key) can still be a
+            // redundant CRUD controller — the BEHAVIOR path judges it by what its actions do.
             if (! $controller['extendsParticleBase'] || $key === null) {
+                foreach ($this->behaviorFindings($controller, $handWiredKeys, $macroKeys, $registeredModels) as $finding) {
+                    $findings[] = $finding;
+                }
+
                 continue;
             }
+
+            // Structural path. Leg 2: its key must be registered. Leg 3: it must be hand-wired (a peer
+            // macro-mount of the SAME key is fine — the point is THIS class is bespoke).
             if (! isset($registeredKeys[$key]) || ! isset($handWiredKeys[$key])) {
                 continue;
             }
@@ -245,6 +318,123 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
     }
 
     /**
+     * The BEHAVIOR path: no particle base required. Each CRUD-verb public action whose body statically
+     * touches a model registered as some resource's `model` is redundant surface when that resource key is
+     * hand-wired and not already macro-mounted. Emits ONE finding per (controller, resource key) — always
+     * advisory (a bespoke body is never a mechanical passthrough), unless the class carries
+     * `#[BespokeByDesign]`, which downgrades to the same acknowledged Pass as the structural path.
+     *
+     * @param  array{class: string, file: string, extendsParticleBase: bool, resourceKey: ?string, actions: array<string, string>, crudModels?: array<string, list<class-string>>}  $controller
+     * @param  array<string, true>  $handWiredKeys
+     * @param  array<string, true>  $macroKeys
+     * @param  array<class-string, list<string>>  $registeredModels
+     * @return list<FixableFinding>
+     */
+    protected function behaviorFindings(array $controller, array $handWiredKeys, array $macroKeys, array $registeredModels): array
+    {
+        // resource key => [actions => list<action>, model => FQN]
+        $byKey = [];
+        foreach ($controller['crudModels'] ?? [] as $action => $models) {
+            foreach ($models as $model) {
+                foreach ($registeredModels[$model] ?? [] as $candidate) {
+                    // Same legs as the structural path: hand-wired, and not already riding the macro.
+                    if (! isset($handWiredKeys[$candidate]) || isset($macroKeys[$candidate])) {
+                        continue;
+                    }
+                    $byKey[$candidate]['actions'][$action] = true;
+                    $byKey[$candidate]['model'] = $model;
+                }
+            }
+        }
+
+        $findings = [];
+        $shortClass = $this->shortName($controller['class']);
+
+        foreach ($byKey as $key => $hit) {
+            $actions = array_keys($hit['actions']);
+            $actionList = implode(', ', $actions);
+            $shortModel = $this->shortName($hit['model']);
+
+            $acknowledged = BespokeByDesign::on($controller['class']);
+            if ($acknowledged !== null) {
+                $findings[] = new FixableFinding(
+                    Finding::pass(self::CHECK, sprintf(
+                        '%s hand-wires CRUD (%s) against [%s], the model of registered resource [%s] — bespoke '.
+                        'by design, acknowledged: %s',
+                        $shortClass,
+                        $actionList,
+                        $shortModel,
+                        $key,
+                        $acknowledged->reason,
+                    )),
+                    null,
+                );
+
+                continue;
+            }
+
+            $findings[] = new FixableFinding(
+                Finding::warn(self::CHECK, sprintf(
+                    '%s hand-wires CRUD action(s) (%s) against [%s], the model of the registered particle '.
+                    'resource [%s], without extending the particle base or riding Route::particleResource() — '.
+                    'behavior-level redundancy the resource declaration already serves.',
+                    $shortClass,
+                    $actionList,
+                    $shortModel,
+                    $key,
+                )),
+                OperationSuggestion::advisory(
+                    "Fold {$shortClass}'s CRUD ({$actionList}) into the registered '{$key}' particle resource — mount ".
+                    "via Route::particleResource('{$key}', …) and delete the bespoke action(s), or declare the ".
+                    'divergence with #[BespokeByDesign].',
+                    'splicewire/laravel-beam',
+                ),
+            );
+        }
+
+        return $findings;
+    }
+
+    /**
+     * The registered `model FQN => every resource key registered against it` map, read reflectively from
+     * the booted registry — the behavior path's lens, same honest technique as {@see registeredKeys()} and
+     * deliberately a LIST per model for the same shared-model ambiguity reason
+     * {@see ParticleOperationBypassAudit::registeredModels()} documents. Entries that are a raw
+     * `ResourceDefinition` (no `ParticleResource` declaration, no `model` field) are skipped. Empty when
+     * no registry is wired (the pure-unit path).
+     *
+     * @return array<class-string, list<string>>
+     */
+    protected function registeredModels(): array
+    {
+        if ($this->registry === null) {
+            return [];
+        }
+
+        $ref = new \ReflectionClass($this->registry);
+        while ($ref !== false && ! $ref->hasProperty('resources')) {
+            $ref = $ref->getParentClass();
+        }
+        if ($ref === false) {
+            return [];
+        }
+
+        $prop = $ref->getProperty('resources');
+        $prop->setAccessible(true);
+        /** @var array<string, mixed> $resources */
+        $resources = $prop->getValue($this->registry);
+
+        $models = [];
+        foreach ($resources as $key => $resource) {
+            if ($resource instanceof ParticleResource) {
+                $models[$resource->model][] = $key;
+            }
+        }
+
+        return $models;
+    }
+
+    /**
      * The registered `ParticleResource` keys, from the booted registry. The registry exposes `has($key)`
      * but not an enumeration, so read its private map reflectively — the honest way to answer the runtime
      * "is this key registered" leg without a fabricated static check. Empty when no registry is wired (the
@@ -286,14 +476,15 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
      *     all key on their leading segment);
      *   - MACRO — a `Route::particleResource('key', …)` whose first string arg IS the key.
      *
+     * @param  list<string>  $routesDirs
      * @return array{0: array<string, true>, 1: array<string, true>} [handWiredKeys, macroKeys]
      */
-    protected function collectRouteWiring(string $routesDir): array
+    protected function collectRouteWiring(array $routesDirs): array
     {
         $handWired = [];
         $macro = [];
 
-        foreach ($this->phpFiles($routesDir) as $file) {
+        foreach ($this->phpFilesUnder($routesDirs) as $file) {
             $source = (string) file_get_contents($file);
 
             // Macro mounts: Route::particleResource('key', …)
@@ -333,17 +524,19 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
     }
 
     /**
-     * Parse every controller under a dir into its {@see suggestFor()} row: its FQN, whether it extends the
-     * particle base (walking the `extends` chain through the app autoloader), the resource key it binds (the
-     * literal in its `particleResource()` override's `$this->registry->get('key')`), and each public action
-     * classified passthrough-vs-delta.
+     * Parse every controller under the given dirs into its {@see suggestFor()} row: its FQN, whether it
+     * extends the particle base (walking the `extends` chain through the app autoloader), the resource key
+     * it binds (the literal in its `particleResource()` override's `$this->registry->get('key')`), each
+     * public action classified passthrough-vs-delta, and each CRUD-verb action's statically touched models
+     * (the behavior path's raw material).
      *
-     * @return list<array{class: string, file: string, extendsParticleBase: bool, resourceKey: ?string, actions: array<string, string>}>
+     * @param  list<string>  $dirs
+     * @return list<array{class: string, file: string, extendsParticleBase: bool, resourceKey: ?string, actions: array<string, string>, crudModels: array<string, list<class-string>>}>
      */
-    protected function collectControllers(string $dir): array
+    protected function collectControllers(array $dirs): array
     {
         $rows = [];
-        foreach ($this->phpFiles($dir) as $file) {
+        foreach ($this->phpFilesUnder($dirs) as $file) {
             $row = $this->parseController((string) file_get_contents($file), $file);
             if ($row !== null) {
                 $rows[] = $row;
@@ -357,7 +550,7 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
      * Parse ONE controller's source into a {@see suggestFor()} row, or null when it is not a class file.
      * Pure over source + reflection — unit-callable.
      *
-     * @return array{class: string, file: string, extendsParticleBase: bool, resourceKey: ?string, actions: array<string, string>}|null
+     * @return array{class: string, file: string, extendsParticleBase: bool, resourceKey: ?string, actions: array<string, string>, crudModels: array<string, list<class-string>>}|null
      */
     public function parseController(string $source, string $file = ''): ?array
     {
@@ -369,7 +562,7 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
         $finder = new NodeFinder;
         /** @var Node\Stmt\Class_|null $classNode */
         $classNode = $finder->findFirstInstanceOf($ast, Node\Stmt\Class_::class);
-        if ($classNode === null || $classNode->name === null || $classNode->extends === null) {
+        if ($classNode === null || $classNode->name === null) {
             return null;
         }
 
@@ -382,7 +575,75 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
             'extendsParticleBase' => $this->extendsParticleBase($fqn),
             'resourceKey' => $this->resourceKeyOf($classNode),
             'actions' => $this->classifyActions($classNode),
+            'crudModels' => $this->crudModelsOf($classNode, $this->importsOf($ast)),
         ];
+    }
+
+    /**
+     * The behavior path's raw material: each public CRUD-verb action ({@see CRUD_VERBS}) mapped to the
+     * (deduplicated) model FQNs its body statically touches — a {@see MODEL_TOUCH_HINTS} static call whose
+     * class resolves through the file's own `use` imports.
+     *
+     * @param  array<string, class-string>  $imports  short name => FQN
+     * @return array<string, list<class-string>>
+     */
+    protected function crudModelsOf(Node\Stmt\Class_ $classNode, array $imports): array
+    {
+        $crudModels = [];
+        foreach ($classNode->getMethods() as $method) {
+            $name = $method->name->toString();
+            if (! $method->isPublic() || ! in_array($name, self::CRUD_VERBS, true)) {
+                continue;
+            }
+
+            $finder = new NodeFinder;
+            /** @var StaticCall[] $calls */
+            $calls = $finder->findInstanceOf((array) $method->stmts, StaticCall::class);
+
+            $models = [];
+            foreach ($calls as $call) {
+                if (! $call->class instanceof Node\Name || ! $call->name instanceof Node\Identifier) {
+                    continue;
+                }
+                if (! in_array($call->name->toString(), self::MODEL_TOUCH_HINTS, true)) {
+                    continue;
+                }
+
+                $fqn = $imports[$call->class->toString()] ?? null;
+                if ($fqn !== null) {
+                    $models[$fqn] = true;
+                }
+            }
+
+            if ($models !== []) {
+                $crudModels[$name] = array_keys($models);
+            }
+        }
+
+        return $crudModels;
+    }
+
+    /**
+     * The file's `use` imports, short name => FQN — needed to resolve a bare `Plan::orderBy()` static call
+     * to its real namespace without a live autoloader (mirrors the bypass audit's own).
+     *
+     * @param  Node[]  $ast
+     * @return array<string, class-string>
+     */
+    protected function importsOf(array $ast): array
+    {
+        $finder = new NodeFinder;
+        /** @var UseItem[] $uses */
+        $uses = $finder->findInstanceOf($ast, UseItem::class);
+
+        $imports = [];
+        foreach ($uses as $use) {
+            $fqn = $use->name->toString();
+            $alias = $use->alias?->toString() ?? $this->shortName($fqn);
+            $imports[$alias] = $fqn;
+        }
+
+        return $imports;
     }
 
     /**
@@ -514,6 +775,17 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
         $pos = strrpos($fqn, '\\');
 
         return $pos === false ? $fqn : substr($fqn, $pos + 1);
+    }
+
+    /**
+     * Absolute paths of every `.php` file under the given dirs (recursive), absent dirs skipped.
+     *
+     * @param  list<string>  $dirs
+     * @return list<string>
+     */
+    protected function phpFilesUnder(array $dirs): array
+    {
+        return array_merge(...array_map(fn (string $dir) => $this->phpFiles($dir), $dirs ?: ['']));
     }
 
     /**
