@@ -1,0 +1,111 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * The spatie/laravel-activitylog table, as ONE shared/ stub — run in BOTH the central pass and every
+ * tenant pass by beam-tenancy's `registerSharedMigrationsPath()`, so `activity_log` exists identically
+ * in the central schema and in each tenant schema.
+ *
+ * Squashed pre-prod (no deployed data to preserve migration history for): this consolidates the former
+ * central-only `create_central_activity_log_table` and the tenant-only `create_activity_log_table` —
+ * exactly the consolidation `create_statuses_table.php.stub` already did for spatie model-status, and
+ * for the same reason: two independently-maintained copies of one library's table drift by construction.
+ *
+ * THE CENTRAL SHAPE WINS AS CANONICAL, because it strictly dominates. Its morph id columns are STRINGS,
+ * so a bigint personal-access-token id, a uuid user id, and a string tenant slug can all be a subject or
+ * causer; the tenant copy's `nullableUuidMorphs` could hold only the uuid case. Nothing depended on the
+ * narrower shape, and {@see \Splicewire\Beam\Models\CentralActivityLog} records tenant slugs as subjects.
+ *
+ * `batch_uuid` is present because spatie/laravel-activitylog **4.x** is what the estate installs, and
+ * `ActivityLogger` writes that column whenever a batch is open. The retired central-only migration
+ * omitted it on the belief that "activitylog v5 dropped the batch system" — v5 is not what is installed,
+ * and the omission surfaced as `column "batch_uuid" of relation "central_activity_log" does not exist`.
+ * `attribute_changes` is beam's own addition and is carried over from both former copies.
+ *
+ * TABLE NAME comes from spatie's own config, not a literal: `activitylog.table_name` is the package's
+ * documented lever (env `ACTIVITY_LOGGER_TABLE_NAME`), and {@see \Spatie\Activitylog\Models\Activity}
+ * resolves its table through the same key, so one value moves the model and this migration together.
+ * That is the estate rule for a third-party table: use the package's OWN config where it exposes one,
+ * and fall back to subclass + `getTable()` only where it does not (which is why beam-media renames
+ * medialibrary's table via the model — medialibrary ships no table-name config).
+ *
+ * SORT ORDER IS LOAD-BEARING. `lunarphp/core` ships its own `activity_log` migration at a FIXED date
+ * (`2026_01_01_900001`), guarded with `Schema::hasTable()`. Whichever runs first owns the table, and
+ * Lunar's shape is `nullableMorphs` — BIGINT ids — which cannot hold a tenant slug: writing one throws
+ * `invalid input syntax for type bigint`, the silent-wrong-schema failure class that also produced the
+ * bigint-vs-uuid `roles.id` break. So this stub must be PUBLISHED with a `0001_01_01_*` filename, ahead
+ * of Lunar's fixed date, exactly as the published `users` and permission tables already are. Publishing
+ * it under a `now()` stamp would hand the central audit trail Lunar's incompatible table.
+ *
+ * The guard below is therefore belt-and-braces rather than the mechanism: it keeps the migration
+ * idempotent and lets Lunar's copy win harmlessly in a host that has no central audit trail at all.
+ * It is CURRENT-SCHEMA-EXPLICIT, not `Schema::hasTable()`, because under stancl schema-per-tenant the
+ * search_path is `("tenant_x", public)` — a plain hasTable inside a tenant would see the central copy
+ * and skip creating the tenant-local one.
+ */
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if ($this->existsInCurrentSchema($this->table())) {
+            return; // Already present in THIS schema (a plugin's copy, or an idempotent re-run).
+        }
+
+        Schema::create($this->table(), function (Blueprint $table) {
+            $table->id();
+            $table->string('log_name')->nullable()->index();
+            $table->text('description');
+
+            // STRING morphs, not uuid/bigint: central subjects have mixed key types (bigint token id,
+            // uuid user id, string tenant slug) and a tenant's subjects are a subset of that range.
+            $table->string('subject_type')->nullable();
+            $table->string('subject_id')->nullable();
+            $table->string('event')->nullable();
+            $table->string('causer_type')->nullable();
+            $table->string('causer_id')->nullable();
+
+            $table->json('attribute_changes')->nullable();
+            $table->json('properties')->nullable();
+            $table->uuid('batch_uuid')->nullable();
+            $table->timestamps();
+
+            $table->index(['subject_type', 'subject_id'], 'activity_log_subject_index');
+            $table->index(['causer_type', 'causer_id'], 'activity_log_causer_index');
+        });
+    }
+
+    public function down(): void
+    {
+        if ($this->existsInCurrentSchema($this->table())) {
+            Schema::dropIfExists($this->table());
+        }
+    }
+
+    /** Spatie's own table-name lever, so the model and this migration cannot disagree. */
+    private function table(): string
+    {
+        return (string) config('activitylog.table_name', 'activity_log');
+    }
+
+    /**
+     * Outside Postgres there is no per-connection "current schema"/search_path concern — sqlite and
+     * mysql see one namespace per connection, so `Schema::hasTable()` is exact and driver-safe there.
+     */
+    private function existsInCurrentSchema(string $table): bool
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            return Schema::hasTable($table);
+        }
+
+        $schema = DB::selectOne('select current_schema() as schema')->schema;
+
+        return DB::selectOne(
+            'select 1 from information_schema.tables where table_schema = ? and table_name = ?',
+            [$schema, $table],
+        ) !== null;
+    }
+};

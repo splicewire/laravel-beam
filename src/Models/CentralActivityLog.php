@@ -6,9 +6,15 @@ use Spatie\Activitylog\Models\Activity;
 
 /**
  * The central audit trail — a spatie Activity pinned to the central connection, where
- * central-scoped subjects (personal access tokens, users, tenants) live. The default Activity
- * model would land on the tenant-swapped connection and the tenant-local `activity_log`; this
- * one is deliberately central and generic (`log_name` names the domain, e.g. 'tokens').
+ * central-scoped subjects (personal access tokens, users, tenants) live. The default Activity model
+ * would land on the tenant-swapped connection and that tenant's own rows; this one is deliberately
+ * central and generic (`log_name` names the domain, e.g. 'tokens').
+ *
+ * There is no longer a separately-named `central_activity_log` table. `activity_log` is ONE shared/
+ * migration run in both the central pass and every tenant pass, so "central" here is a CONNECTION
+ * distinction, not a table one — this model is the central schema's copy, the default Activity is
+ * whichever tenant is bootstrapped. The table carries the old central shape (STRING morph ids), which
+ * dominates: it holds a bigint token id, a uuid user id, and a string tenant slug alike.
  *
  * Homed in beam CORE rather than any one engine: its subjects span beam-accounts (personal access
  * tokens, users) and beam-tenancy (tenants), and its consumers span tower (the operator dashboards,
@@ -35,5 +41,10 @@ class CentralActivityLog extends Activity
      */
     protected $connection = 'central';
 
-    protected $table = 'central_activity_log';
+    // NO $table pin, deliberately. `activity_log` is now ONE shared/ migration run in both the central
+    // and every tenant pass, so the central trail is the central schema's copy of that table rather
+    // than a separately-named `central_activity_log`. Leaving $table unset lets spatie's
+    // {@see Activity::__construct()} resolve it from `activitylog.table_name`, which is the same lever
+    // the migration reads — so the model and the schema cannot disagree, and a host that renames the
+    // table gets one table instead of two. The CONNECTION pin above is what still makes this central.
 }

@@ -11,6 +11,7 @@ use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Rushing\DataFilters\Contracts\ResourceModelResolver;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Rushing\Surgeon\Audit\PackageGraph;
 use Rushing\Surgeon\Operation\CallbackConformanceManifest;
@@ -22,6 +23,7 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Schemastud\DataSchemas\Overlay\Lens\Fidelity;
 use Schemastud\Frame\Contracts\FrameFilterProvider;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceRegistry;
@@ -74,6 +76,7 @@ use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleResourceModelResolver;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;
@@ -82,6 +85,11 @@ use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
+use Splicewire\Beam\Rendering\Http\RenderingsController;
+use Splicewire\Beam\Rendering\RenderingCertifier;
+use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
+use Splicewire\Beam\Rendering\Subjects\FindOrFailSubjectResolver;
+use Splicewire\Beam\Rendering\Subjects\ResolvesRenderingSubject;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
@@ -183,6 +191,15 @@ class BeamServiceProvider extends PackageServiceProvider
                 'shared/create_beam_submissions_table',
                 'shared/create_beam_ownership_edges_table',
                 'shared/create_beam_schemas_table',
+                // spatie/laravel-activitylog's table, squashed here from the former central-only
+                // `central_activity_log` + tenant-only `activity_log` pair (the same consolidation
+                // tower already did for model-status' `statuses`). Homed alongside
+                // {@see \Splicewire\Beam\Models\CentralActivityLog}, which core owns because its
+                // subjects span beam-accounts and beam-tenancy and its consumers span tower and
+                // beam-workflows. PUBLISH ORDER MATTERS: `lunarphp/core` ships a fixed-date
+                // `2026_01_01_900001` copy with an incompatible BIGINT-morph shape, so the published
+                // copy must carry a `0001_01_01_*` filename to win the race — see the stub's docblock.
+                'shared/create_activity_log_table',
             ]);
     }
 
@@ -366,6 +383,24 @@ class BeamServiceProvider extends PackageServiceProvider
         ))->loadRealmMap((array) config('frame.realms', [])));
         $this->app->singleton(ParticleOperationRegistry::class);
         $this->app->bind(ResponseEnvelope::class, ArrayResponseEnvelope::class);
+
+        // data-filters' model-resolver port (its ADR-0008). The foundation package declares the seam
+        // and deliberately binds it NOWHERE — beam is the tier that knows ParticleResourceRegistry
+        // exists, so beam supplies the adapter. What it buys: a `#[ResourceFilter]` may omit `model:`
+        // and have it resolved from the `#[ParticleResource]` already declared under the same key,
+        // instead of restating it. `bind`, not `singleton` — it is a stateless lookup over a registry
+        // that is itself the singleton.
+        $this->app->bind(ResourceModelResolver::class, ParticleResourceModelResolver::class);
+
+        // The per-resource rendering registry `Route::resourceRenderings()` enumerates (moved from
+        // laravel-composition-engine into beam core). A SINGLETON for the same reason the particle
+        // registries are: the route macro (defined in packageBooted below) must see the same instance a
+        // package's own provider registered a rendering into. The default subject resolver is the
+        // duck-typed `findOrFail`/`with` pair; a host on anything else binds its own.
+        $this->app->singleton(ResourceRenderingRegistry::class, fn () => new ResourceRenderingRegistry(
+            config('beam.core.renderings', []),
+        ));
+        $this->app->bind(ResolvesRenderingSubject::class, FindOrFailSubjectResolver::class);
 
         // particle-doctrine-convergence ticket 09: the cross-transport ability resolver + its ACTOR port.
         // `bindIf` on the port, because "who is acting" is the transport's answer to give: HTTP has the
@@ -598,6 +633,10 @@ class BeamServiceProvider extends PackageServiceProvider
         // the generic particle REST + operation surface, so a host stops hand-mounting the generic
         // controllers against the RESOURCE/NAME route defaults.
         $this->bootParticleRouteMacros();
+
+        // The `Route::resourceRenderings()` route macro (moved from laravel-composition-engine into beam
+        // core) — mounts one read (and, where certified reversible, write) route per registered rendering.
+        $this->bootResourceRenderingsMacro();
 
         // SINGLE-TENANT shared-migrations fallback (beam-install-turnkey trap 1). Every beam-* package
         // publishes its ubiquitous tables into ONE destination, `database/migrations/shared/` — a SUBDIR
@@ -1042,6 +1081,96 @@ class BeamServiceProvider extends PackageServiceProvider
     }
 
     /**
+     * Register `Route::resourceRenderings($resource, $subject, ...)`, which mounts EVERY rendering the
+     * {@see ResourceRenderingRegistry} holds for `$resource` — one read route each, plus a write route
+     * only where {@see RenderingCertifier} could prove reversibility:
+     *
+     *   GET  {at}/{id}/{rendering}  → show   (always)
+     *   POST {at}/{id}/{rendering}  → store  (certified LosslessEligible only)
+     *
+     * Modelled on `Route::recordVersions()`, including its load-bearing discipline: per-route config
+     * rides `->defaults()` as a plain serializable array with NO closures, so the table survives
+     * `route:cache`. What is frozen at mount time is only the certified fidelity and the verb grant it
+     * implies; the rendering itself is re-read from the registry per request, so its live format
+     * enumeration is never baked.
+     *
+     * **`Fidelity` decides the verb, and the certifier decides the fidelity.** A rendering cannot declare
+     * itself writable — the write route simply does not exist for a lossy one, which is stronger than a
+     * write route that accepts input and silently discards state.
+     *
+     * `$at` is where the routes MOUNT; `$resource` is the registry KEY. `recordVersions()` couples the two
+     * (its own docblock notes the host must wrap it in a prefix/name group to reach a URL tier, "a name
+     * can't hold a slash"), and that coupling is exactly what stops an existing endpoint from migrating
+     * onto a macro without moving. Splitting them lets `$at: ''` mount at the CURRENT group's root — how
+     * an already-grouped endpoint keeps its URI and route name to the byte.
+     *
+     * `$abilities` defaults to `view`/`update` against the subject. Pass `[]` to state explicitly that
+     * this resource is gated elsewhere (route middleware) and the controller must not authorize — silence
+     * is not the default, an empty map is a decision.
+     */
+    private function bootResourceRenderingsMacro(): void
+    {
+        if (Route::hasMacro('resourceRenderings')) {
+            return;
+        }
+
+        Route::macro('resourceRenderings', function (
+            string $resource,
+            string $subject,
+            ?string $at = null,
+            ?array $abilities = null,
+            array $middleware = [],
+            array $with = [],
+            string $idConstraint = 'uuid',
+        ): void {
+            /** @var Router $this */
+            $at = $at ?? $resource;
+            $abilities = $abilities ?? ['view' => 'view', 'mutate' => 'update'];
+
+            $registry = app(ResourceRenderingRegistry::class);
+            $certifier = app(RenderingCertifier::class);
+
+            foreach ($registry->for($resource) as $rendering) {
+                $fidelity = $certifier->certify($rendering);
+                $writable = $fidelity === Fidelity::LosslessEligible;
+
+                $config = [
+                    'resource' => $resource,
+                    'rendering' => $rendering->name(),
+                    'subject' => $subject,
+                    'with' => array_values($with),
+                    'abilities' => $abilities,
+                    'fidelity' => $fidelity->value,
+                    'writable' => $writable,
+                ];
+
+                $uri = ($at === '' ? '' : $at.'/').'{id}/'.$rendering->name();
+                $name = ($at === '' ? '' : $at.'.').$rendering->name();
+
+                $mount = function (RouteInstance $route) use ($config, $middleware, $idConstraint): RouteInstance {
+                    $route->defaults('_renderings', $config);
+
+                    if ($idConstraint === 'uuid') {
+                        $route->whereUuid('id');
+                    }
+
+                    if ($middleware !== []) {
+                        $route->middleware($middleware);
+                    }
+
+                    return $route;
+                };
+
+                $mount($this->get($uri, [RenderingsController::class, 'show']))->name($name);
+
+                if ($writable) {
+                    $mount($this->post($uri, [RenderingsController::class, 'store']))->name($name.'.ingest');
+                }
+            }
+        });
+    }
+
+    /**
      * Explicit attributed-realm registration: reflect each configured realm-marker class and register its
      * projected {@see RealmDefinition} onto the singleton {@see RealmRegistry}. No filesystem scan — realms
      * are a small fixed set, so the host lists its marker classes in `beam.core.realms.classes`.
@@ -1222,6 +1351,15 @@ class BeamServiceProvider extends PackageServiceProvider
                 registerHint: 'construct PayloadParticleReader with an ordered $stages list to insert a ReadStage pipe',
                 where: PayloadParticleReader::class,
                 package: $pkg, order: 21,
+            ),
+            new ManifestDescriptor(
+                name: 'ResourceRenderingRegistry',
+                of: 'renderings per resource — the set Route::resourceRenderings() mounts one route each from',
+                seam: ManifestSeam::ConfigSource,
+                arity: ManifestArity::RunAll,
+                registerHint: 'add class-strings under beam.core.renderings.<resource>, or resolve the singleton and register($resource, $rendering) from your provider',
+                where: 'config beam.core.renderings → '.ResourceRenderingRegistry::class,
+                package: $pkg, order: 22,
             ),
         ] as $descriptor) {
             $index->describe($descriptor);
