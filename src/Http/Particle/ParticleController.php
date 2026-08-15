@@ -104,28 +104,33 @@ class ParticleController extends Controller
      *
      * The default is read from the read Data class's `#[Sortable(default: true)]` property — the SINGLE
      * source of truth for a resource's default order (the filterable path reads the SAME attribute via its
-     * data-filters query). {@see FilterReflector::defaultSort()} returns the sort key sign-prefixed (`-key`
-     * ⇒ descending) and honors the `#[Sortable]` direction; absent any opt-in we fall back to the framework
-     * `latest()` (newest `created_at` first — the historical default when no column was declared).
+     * data-filters query). {@see FilterReflector::defaultSortColumn()} returns the declared COLUMN and
+     * direction; absent any opt-in we fall back to the framework `latest()` (newest `created_at` first —
+     * the historical default when no column was declared).
+     *
+     * Read via `defaultSortColumn()` and not the deprecated `defaultSort()`: this path orders a plain
+     * Eloquent builder, so it needs the column itself. The string `defaultSort()` returns is the sort KEY,
+     * which drops a `#[Sortable(name:, column:)]` mapping whenever the two diverge and leaves this index
+     * ordering by a column that does not exist.
      */
     protected function defaultSortedQuery(ParticleResource $resource): Builder
     {
         $query = $resource->model::query();
 
         // A resource may legitimately declare NO output DTO (its wire type is a package-owned class,
-        // not an App Data DTO — e.g. `runner_transform`) — FilterReflector::defaultSort() takes a
+        // not an App Data DTO — e.g. `runner_transform`) — FilterReflector::defaultSortColumn() takes a
         // non-nullable class-string, so skip straight to the framework default rather than TypeError.
         $default = $resource->data !== null
-            ? (new FilterReflector)->defaultSort($resource->data)
+            ? (new FilterReflector)->defaultSortColumn($resource->data)
             : null;
 
         if ($default === null) {
             return $query->latest();
         }
 
-        return str_starts_with($default, '-')
-            ? $query->orderByDesc(substr($default, 1))
-            : $query->orderBy($default);
+        return $default['direction'] === 'desc'
+            ? $query->orderByDesc($default['column'])
+            : $query->orderBy($default['column']);
     }
 
     public function show(Request $request, string $id): Responsable

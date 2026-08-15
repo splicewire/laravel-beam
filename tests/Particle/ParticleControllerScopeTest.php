@@ -90,6 +90,41 @@ class ParticleControllerScopeTest extends TestCase
         $this->assertSame('new-edit', $data[0]['name']);
     }
 
+    /**
+     * The regression: a `#[Sortable]` whose sort KEY diverges from its COLUMN used to lose the
+     * mapping on this path, because the reflector's string-shaped default sort had nowhere to
+     * carry it — the index then ordered by a column that does not exist.
+     */
+    public function test_a_non_filterable_index_orders_by_the_declared_column_not_the_sort_key(): void
+    {
+        Schema::create('weighted_widgets', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->integer('weight');
+            $table->timestamps();
+        });
+
+        WeightedWidget::create(['name' => 'light', 'weight' => 1]);
+        WeightedWidget::create(['name' => 'heavy', 'weight' => 9]);
+        WeightedWidget::create(['name' => 'middling', 'weight' => 5]);
+
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'weighted-widget',
+            model: WeightedWidget::class,
+            data: WeightedWidgetData::class,
+            filterable: false,
+        ));
+
+        $request = Request::create('/weighted-widgets');
+        $route = new Route('GET', '/weighted-widgets', []);
+        $route->defaults(ParticleController::RESOURCE, 'weighted-widget');
+        $request->setRouteResolver(fn () => $route);
+
+        $data = $this->app->make(ParticleController::class)->index($request)->toResponse($request)->getData(true)['data'];
+
+        $this->assertSame(['heavy', 'middling', 'light'], array_column($data, 'name'));
+    }
+
     public function test_a_non_filterable_index_is_gated_by_scope(): void
     {
         $response = $this->app->make(ParticleController::class)
@@ -163,6 +198,25 @@ class SortedWidgetData extends Data
         public string $name,
         #[Sortable(default: true, direction: 'desc')]
         public $updatedAt = null,
+    ) {}
+}
+
+class WeightedWidget extends Model
+{
+    protected $table = 'weighted_widgets';
+
+    protected $guarded = [];
+}
+
+class WeightedWidgetData extends Data
+{
+    // The sort KEY (`heaviness`) deliberately diverges from the COLUMN (`weight`) — the case a
+    // sign-prefixed string default sort cannot express.
+    public function __construct(
+        public int $id,
+        public string $name,
+        #[Sortable(name: 'heaviness', column: 'weight', default: true, direction: 'desc')]
+        public ?int $weight = null,
     ) {}
 }
 
