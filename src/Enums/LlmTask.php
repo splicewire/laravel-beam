@@ -63,6 +63,32 @@ enum LlmTask: string
         };
     }
 
+    /**
+     * The Meter this task spends on, when that meter is a fixed key (app ADR-0205).
+     *
+     * A task's meter is a CODE fact — text-to-speech bills per character in every deployment —
+     * whereas the meter's *rate* is a deployment fact and stays in `config/app/meters.php`.
+     * Declaring it here is what lets drift between the two be caught by a test rather than
+     * discovered as a silent $0 on an invoice.
+     *
+     * Null for the two cases where no fixed key exists:
+     *  - text-modality tasks (chat, title, quick_prompt, extraction, composition) and embeddings
+     *    meter as `{provider}.tokens`, keyed from the provider resolved on each ledger row;
+     *  - image generation and the three music-role tasks (reference cover, vocal separation,
+     *    voice conversion) carry no registered meter of their own today.
+     */
+    public function meter(): ?string
+    {
+        return match ($this) {
+            self::Rerank => 'search.rerank',
+            self::TextToSpeech => 'audio.tts',
+            self::SpeechToText => 'audio.stt',
+            self::VideoGeneration => 'video.generation',
+            self::MusicGeneration => 'music.generation',
+            default => null,
+        };
+    }
+
     /** The `app.music.roles` key this task routes through (music-modality tasks only). */
     public function musicRole(): ?string
     {
