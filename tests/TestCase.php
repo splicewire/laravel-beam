@@ -46,4 +46,21 @@ abstract class TestCase extends Orchestra
             JsonNsServiceProvider::class,
         ];
     }
+
+    /**
+     * An in-memory cache store, so rate limiting works without a `cache` table.
+     *
+     * The public intake route is `throttle`d, and Laravel's ThrottleRequests resolves the RateLimiter
+     * through the cache. Testbench's default store is the database one, whose `cache` table no
+     * migration here creates — so every request through that route died with
+     * `no such table: cache` and returned 500, taking the whole of PublicIntakeRouteTest with it (8
+     * tests asserting 201/422/403/404 all saw 500).
+     *
+     * Nothing in this package tests cache PERSISTENCE, so an array store is the honest default: it
+     * makes the throttle real (the limiter counts) without inventing schema the package does not own.
+     */
+    protected function defineEnvironment($app): void
+    {
+        $app['config']->set('cache.default', 'array');
+    }
 }
