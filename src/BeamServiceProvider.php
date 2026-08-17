@@ -12,6 +12,7 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Rushing\DataFilters\Contracts\ResourceModelResolver;
+use Rushing\Doctor\DoctorAudit;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Rushing\Surgeon\Audit\PackageGraph;
 use Rushing\Surgeon\Operation\CallbackConformanceManifest;
@@ -52,6 +53,7 @@ use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
+use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Entitlements\EntitlementGate;
@@ -476,7 +478,7 @@ class BeamServiceProvider extends PackageServiceProvider
      * the four-method surface from un-collapsing, split across two substrates because **each substrate can
      * only do half the job**. Surgeon hardcodes the `php` extension in `AuditEngine::phpFilesIn()` and is
      * structurally blind to the `.php.stub` population one of the checks is entirely about; a plain
-     * {@see \Rushing\Doctor\DoctorAudit} is text-level and cannot answer the position-of-hit question that
+     * {@see DoctorAudit} is text-level and cannot answer the position-of-hit question that
      * ticket 04's `SchemaTargetResolver` rejection turns on. So the stub and config checks are doctor-side
      * and unconditional, and the three shape checks are surgeon-side behind the same
      * `interface_exists()` guard every other surgeon audit here uses.
@@ -524,6 +526,10 @@ class BeamServiceProvider extends PackageServiceProvider
         $manifest->register('splicewire/laravel-beam', KeyTypeConformanceAudit::class);
         $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', ConfigFacadeReferenceAudit::class);
+        // Joins the install manifest (package → order) against every package's migration stubs
+        // (table → created/altered), so a cross-package ALTER declared ahead of its CREATE is caught
+        // at boot rather than by a failed greenfield migrate.
+        $manifest->register('splicewire/laravel-beam', MigrationOrderingAudit::class);
 
         // Surgeon side — the three position-sensitive shapes, which need the AST. A host that composes beam
         // without `rushing/laravel-surgeon` autoloads nothing here and pays nothing; SurgeonWiringAudit

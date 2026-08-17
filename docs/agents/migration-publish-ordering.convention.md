@@ -52,5 +52,22 @@ A fresh database missing a column another package's ALTER was supposed to add; `
 relation "y" already exists` on a clean migrate; an ALTER failing because its target table does not
 exist. All three mean order, not DDL.
 
-Guarded in the consuming app rather than here — the install manifest is only fully populated where
-the whole stack boots. See `splicewire-app`'s `tests/Feature/Architecture/InstallMigrationOrderTest.php`.
+## You don't have to remember any of this
+
+`Splicewire\Beam\Doctor\MigrationOrderingAudit` enforces the rule mechanically — it joins the install
+manifest (package → order) against every registered package's migration stubs (table → created /
+altered) and warns on any cross-package ALTER whose package does not install strictly after the
+package that creates the table. Equal orders warn too: a tie is resolved by provider boot order,
+which nothing declares.
+
+```
+php artisan splicewire:beam:doctor
+```
+
+This document is the prose — the *why*, the tiers, and the two non-fixes. The audit is the
+enforcement, and it stands on its own: it reads the manifest and the stubs, never this file. If the
+two ever disagree, the audit is right and this page is stale.
+
+It is advisory (warns, never fails the exit code) and deliberately conservative — a dynamically-named
+table (`Beam::table('media')`, `$this->target()`) is unresolvable without booting the declaring
+package, so it is skipped rather than guessed at.
