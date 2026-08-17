@@ -26,13 +26,13 @@ class SchemaKeyIndex
     /** Column-declaration forms that mean "integer primary key". */
     public const INT_PK_FORMS = ['id', 'bigIncrements', 'increments', 'mediumIncrements', 'smallIncrements', 'tinyIncrements'];
 
-    /** @var array<string, array{key_type: string|null, source: string, models: list<array{class: string, key_type: string|null}>}> */
+    /** @var array<string, array{key_type: string|null, source: string, inferred_name: bool, models: list<array{class: string, fqcn: string, key_type: string|null}>}> */
     private array $tables = [];
 
     /** @var list<array{table: string, column: string, type: string|null, source: string, references: string}> */
     private array $foreignKeys = [];
 
-    /** @var list<array{class: string, key_type: string|null, table: string|null}> */
+    /** @var list<array{class: string, fqcn: string, key_type: string|null, table: string|null}> */
     private array $models = [];
 
     private int $unresolvedModels = 0;
@@ -62,7 +62,7 @@ class SchemaKeyIndex
         return new self(array_values($roots));
     }
 
-    /** @return array<string, array{key_type: string|null, source: string, models: list<array{class: string, key_type: string|null}>}> */
+    /** @return array<string, array{key_type: string|null, source: string, inferred_name: bool, models: list<array{class: string, fqcn: string, key_type: string|null}>}> */
     public function tables(): array
     {
         return $this->tables;
@@ -77,6 +77,95 @@ class SchemaKeyIndex
     public function keyTypeOf(string $table): ?string
     {
         return $this->tables[$table]['key_type'] ?? null;
+    }
+
+    /**
+     * The **first-party** models this index found bound to a table — first-party because the walk excludes
+     * `vendor/`, so anything here is source somebody in the estate can edit.
+     *
+     * @return list<array{class: string, fqcn: string, key_type: string|null}>
+     */
+    public function modelsFor(string $table): array
+    {
+        return $this->tables[$table]['models'] ?? [];
+    }
+
+    /**
+     * The key type an **already-loaded class** declares, read by reflection — the counterpart to
+     * {@see indexModel()} for a model this index's walk can never see because it lives in `vendor/`.
+     *
+     * Deliberately the same three rules in the same order, so a third-party model and a first-party one
+     * are judged identically: `HasUuids`/`HasUlids` (checked on the class, its parents and their traits,
+     * because those traits override `getKeyType()` rather than setting the property), then `$keyType`,
+     * then Eloquent's default. Returns null when the class is not loadable — this reads no files and
+     * autoloads nothing beyond what `class_exists()` does, so it stays a static check with no database
+     * and no migration required, and a null is a **skip that gets counted**, never a silent pass.
+     */
+    public static function keyTypeOfClass(string $class): ?string
+    {
+        if ($class === '' || ! class_exists($class)) {
+            return null;
+        }
+
+        try {
+            $reflection = new \ReflectionClass($class);
+        } catch (\ReflectionException) {
+            return null;
+        }
+
+        $traits = static::traitsOf($reflection);
+
+        if (isset($traits['Illuminate\Database\Eloquent\Concerns\HasUuids']) || isset($traits['Illuminate\Database\Eloquent\Concerns\HasVersion7Uuids'])) {
+            return 'uuid';
+        }
+
+        if (isset($traits['Illuminate\Database\Eloquent\Concerns\HasUlids'])) {
+            return 'ulid';
+        }
+
+        $keyType = $reflection->getDefaultProperties()['keyType'] ?? null;
+
+        if (is_string($keyType)) {
+            return $keyType === 'int' ? 'int' : 'uuid';
+        }
+
+        return $reflection->isSubclassOf('Illuminate\Database\Eloquent\Model') ? 'int' : null;
+    }
+
+    /**
+     * Every trait name on a class, its parents, and its traits' traits, as a set.
+     *
+     * Written out rather than reaching for `class_uses_recursive()`: this class is pure enough to be
+     * exercised with no application booted, and that helper is a framework global.
+     *
+     * @return array<string, true>
+     */
+    private static function traitsOf(\ReflectionClass $reflection): array
+    {
+        $found = [];
+        $queue = [];
+
+        for ($class = $reflection; $class !== false; $class = $class->getParentClass()) {
+            $queue = [...$queue, ...$class->getTraitNames()];
+        }
+
+        while ($queue !== []) {
+            $trait = array_shift($queue);
+
+            if (isset($found[$trait])) {
+                continue;
+            }
+
+            $found[$trait] = true;
+
+            try {
+                $queue = [...$queue, ...(new \ReflectionClass($trait))->getTraitNames()];
+            } catch (\ReflectionException) {
+                // A trait that cannot be reflected contributes nothing; the rest of the set still stands.
+            }
+        }
+
+        return $found;
     }
 
     public function tableCount(): int
@@ -165,7 +254,17 @@ class SchemaKeyIndex
             $table = $m[1];
         }
 
-        $this->models[] = ['class' => $class[1], 'key_type' => $keyType, 'table' => $table];
+        // The namespace as well as the short name. A short name is enough to *report* a disagreement, but
+        // not to answer "is THIS class the one bound here?" — `Splicewire\Tower\Models\Role` and
+        // `Spatie\Permission\Models\Role` are different answers to that question and share a short name.
+        $namespace = preg_match('/^\s*namespace\s+([^;\s]+)\s*;/m', $source, $ns) ? $ns[1].'\\' : '';
+
+        $this->models[] = [
+            'class' => $class[1],
+            'fqcn' => $namespace.$class[1],
+            'key_type' => $keyType,
+            'table' => $table,
+        ];
 
         if ($table === null) {
             $this->unresolvedModels++;
@@ -173,22 +272,42 @@ class SchemaKeyIndex
     }
 
     /**
-     * Every `Schema::create('<table>', ...)` block's primary-key form and foreign-key columns.
+     * Every `Schema::create(...)` block's primary-key form and foreign-key columns, for the two name forms
+     * this index can read without executing anything.
      *
-     * Only literal table names: a create whose name comes through `Beam::table(...)` resolves at runtime
-     * against a config value this index cannot read, and guessing the prefix would invent findings. Those
-     * creates are simply not indexed — beam's own tables are uuid by convention and consistent, and the
-     * defect class this audit exists for lives in the framework-default tables (`users`, `sessions`,
-     * `passkeys`) that are always named literally.
+     * **Literal names** — `Schema::create('users', ...)` — are the common case and exact.
+     *
+     * **Config-array names** — `Schema::create($tableNames['roles'], ...)`, spatie's published shape and the
+     * one `create_permission_tables` uses estate-wide — are indexed under the **array key**, flagged
+     * `inferred_name`. This is not the `Beam::table(...)` guess the paragraph below rejects, and the
+     * difference is worth stating because it looks superficially identical. A `Beam::table()` name is a
+     * *prefix* concatenation whose result this index cannot spell, so inventing one invents a table that
+     * does not exist. `$tableNames['roles']` is a *lookup by a literal key that is itself the conventional
+     * table name*; the worst case when a host has renamed the table in config is that the finding names
+     * `roles` while the table is called `acme_roles` — the defect it reports (a key type declared here
+     * disagreeing with the model that reads it) is the same defect either way, because the key and the
+     * table are one-to-one. A wrong label on a real finding, never a fabricated finding.
+     *
+     * Creates whose name is a method call or a concatenation are still simply not indexed.
      */
     private function indexMigration(string $source, string $file): void
     {
-        if (! preg_match_all('/Schema::create\(\s*[\'"]([^\'"]+)[\'"]\s*,.*?\n(\s*)\}\)/s', $source, $creates, PREG_SET_ORDER)) {
-            return;
+        $creates = [];
+
+        preg_match_all('/Schema::create\(\s*[\'"]([^\'"]+)[\'"]\s*,.*?\n(\s*)\}\)/s', $source, $literal, PREG_SET_ORDER);
+
+        foreach ($literal as $create) {
+            $creates[] = [$create[0], $create[1], false];
+        }
+
+        preg_match_all('/Schema::create\(\s*\$\w+\[\s*[\'"](\w+)[\'"]\s*\]\s*,.*?\n(\s*)\}\)/s', $source, $configured, PREG_SET_ORDER);
+
+        foreach ($configured as $create) {
+            $creates[] = [$create[0], $create[1], true];
         }
 
         foreach ($creates as $create) {
-            [$block, $table] = [$create[0], $create[1]];
+            [$block, $table, $inferredName] = $create;
 
             $keyType = null;
 
@@ -204,6 +323,7 @@ class SchemaKeyIndex
                 $this->tables[$table] = [
                     'key_type' => $keyType,
                     'source' => basename($file),
+                    'inferred_name' => $inferredName,
                     'models' => [],
                 ];
             }
@@ -238,7 +358,11 @@ class SchemaKeyIndex
                 continue;
             }
 
-            $this->tables[$table]['models'][] = ['class' => $model['class'], 'key_type' => $model['key_type']];
+            $this->tables[$table]['models'][] = [
+                'class' => $model['class'],
+                'fqcn' => $model['fqcn'],
+                'key_type' => $model['key_type'],
+            ];
         }
     }
 
