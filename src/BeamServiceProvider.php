@@ -50,6 +50,9 @@ use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
+use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
+use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
@@ -101,11 +104,13 @@ use Splicewire\Beam\Source\ParticleShadower;
 use Splicewire\Beam\Surgeon\AuditScanPaths;
 use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\ClientRuntimeContractAudit;
+use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
+use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
 use Splicewire\Beam\Surgeon\SchemaProjectionDriftAudit;
 use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
 use Splicewire\Beam\Surgeon\SdkHookMigrationAudit;
@@ -114,6 +119,7 @@ use Splicewire\Beam\Surgeon\SdkNameConventionAudit;
 use Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit;
 use Splicewire\Beam\Surgeon\SdkReturnsTypeScriptResolutionAudit;
 use Splicewire\Beam\Surgeon\StatusChannelLiteralDriftAudit;
+use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
 use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
 use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
@@ -460,7 +466,75 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->singleton(ManifestIndex::class);
 
         $this->registerSurgeonAudits();
+        $this->registerFacadeConformanceAudits();
         $this->registerConformanceManifest();
+    }
+
+    /**
+     * The facade-conformance regime (beam-facade tickets 10 and 19): five single-purpose audits that keep
+     * the four-method surface from un-collapsing, split across two substrates because **each substrate can
+     * only do half the job**. Surgeon hardcodes the `php` extension in `AuditEngine::phpFilesIn()` and is
+     * structurally blind to the `.php.stub` population one of the checks is entirely about; a plain
+     * {@see \Rushing\Doctor\DoctorAudit} is text-level and cannot answer the position-of-hit question that
+     * ticket 04's `SchemaTargetResolver` rejection turns on. So the stub and config checks are doctor-side
+     * and unconditional, and the three shape checks are surgeon-side behind the same
+     * `interface_exists()` guard every other surgeon audit here uses.
+     *
+     * ## One registration block, five siblings, all advisory
+     * The estate's ~30 audits are single-purpose with one check key each, and this follows that: five keys,
+     * five `order` slots, each independently promotable to `gate: true` later. **None gates.** Precedent is
+     * lopsided — exactly one audit in the estate is `gate: true` ({@see UndescribedRegistryAudit}, carrying
+     * an in-code justification for being the sole exception) — and the specific argument here is that
+     * ticket 10's census measured 238 naive flags across 16 repos on day one. That is how a check gets its
+     * floor bumped and then deleted. Gating stays available to *callers*: ticket 07 made the old bridge
+     * audit a gate on every sweep unit without it being registered as one.
+     *
+     * **This is what supersedes `StaticBridgeAudit`**, which ticket 18 deleted with the bridge itself.
+     * Registering the replacement in the same release is what keeps the estate from ever being without a
+     * facade signal — the sequencing ticket 10 §6 chose when it put this after the cutover.
+     *
+     * The {@see FacadeConformanceScope} is a **singleton** on purpose: it memoizes one filesystem walk that
+     * four of the five audits share. Doctor already OOMs at the default 128 MB `memory_limit` inside
+     * `HouseStyleStripOperation::plan()` (ticket 18 §5), so five independent walks of a host's tree plus
+     * every overlaid family package was not an acceptable cost. The scope also does the cheap prefilter, so
+     * only a couple of dozen files estate-wide are ever parsed.
+     */
+    protected function registerFacadeConformanceAudits(): void
+    {
+        $this->app->singleton(FacadeConformanceScope::class, fn () => FacadeConformanceScope::forApp());
+
+        // Doctor side — unconditional. A stub that names the deleted bridge breaks a host at publish time
+        // whether or not that host ever installed surgeon, and a config template that calls the facade
+        // fatals at `config:cache` in any host at all.
+        $this->app->bind(StubStaticReferenceAudit::class, fn ($app) => new StubStaticReferenceAudit(
+            $app->make(FacadeConformanceScope::class),
+        ));
+        $this->app->bind(ConfigFacadeReferenceAudit::class, fn () => ConfigFacadeReferenceAudit::forApp());
+
+        $manifest = $this->app->make(BeamDoctorManifest::class);
+        $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
+        $manifest->register('splicewire/laravel-beam', ConfigFacadeReferenceAudit::class);
+
+        // Surgeon side — the three position-sensitive shapes, which need the AST. A host that composes beam
+        // without `rushing/laravel-surgeon` autoloads nothing here and pays nothing; SurgeonWiringAudit
+        // already instruments that case, so the silence is reported rather than mysterious.
+        if (! interface_exists(SuggestsOperations::class)) {
+            return;
+        }
+
+        $this->app->bind(ParticleWriteBypassAudit::class, fn ($app) => new ParticleWriteBypassAudit(
+            $app->make(FacadeConformanceScope::class),
+        ));
+        $this->app->bind(ComposedTableConfigAudit::class, fn ($app) => new ComposedTableConfigAudit(
+            $app->make(FacadeConformanceScope::class),
+        ));
+        $this->app->bind(TablePrefixBypassAudit::class, fn ($app) => new TablePrefixBypassAudit(
+            $app->make(FacadeConformanceScope::class),
+        ));
+
+        $manifest->register('splicewire/laravel-beam', ParticleWriteBypassAudit::class);
+        $manifest->register('splicewire/laravel-beam', ComposedTableConfigAudit::class);
+        $manifest->register('splicewire/laravel-beam', TablePrefixBypassAudit::class);
     }
 
     /**
@@ -1256,6 +1330,25 @@ class BeamServiceProvider extends PackageServiceProvider
                 arity: ManifestArity::RunAll,
                 registerHint: "app(AuditScanPaths::class)->register('vendor/package', controllersDir, routesDir) from your provider — boot-time, so a package joins only where its provider boots",
                 where: AuditScanPaths::class,
+                package: $pkg, order: 11,
+            ),
+            // Found undescribed by UndescribedRegistryAudit the moment beam-facade ticket 19 bound it — the
+            // meta-audit working exactly as designed, and worth describing rather than dodging. It is
+            // registry-SHAPED without being registered INTO, which is precisely the state that makes an
+            // index untrustworthy if left silent: the next audit regime that needs a scan scope would
+            // otherwise write a second walk beside this one. Its register hint is therefore "you don't —
+            // you rebind", which is real information, not a placeholder.
+            new ManifestDescriptor(
+                name: 'FacadeConformanceScope',
+                of: 'the authorable roots + file set the five facade-conformance audits share (one walk, not five)',
+                // ConstructorPolicy, not SingletonAccumulator: nothing pushes into it after binding. The
+                // roots are seeded once by `forApp()`, which is also where the resolution-mode rule lives —
+                // a `vendor/` package joins the scan only when it is a SYMLINK (co-dev overlay = live
+                // source). A git-resolved host's pinned vendor copy is deliberately unscannable.
+                seam: ManifestSeam::ConstructorPolicy,
+                arity: ManifestArity::RunAll,
+                registerHint: 'nothing registers into it — rebind the singleton with explicit roots if your host lays its source out unusually',
+                where: FacadeConformanceScope::class,
                 package: $pkg, order: 11,
             ),
             new ManifestDescriptor(

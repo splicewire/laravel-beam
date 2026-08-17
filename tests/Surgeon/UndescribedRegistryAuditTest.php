@@ -311,12 +311,14 @@ class UndescribedRegistryAuditTest extends TestCase
 
         // The sanctioned additions, and nothing else: beam-core describes exactly the frozen twelve
         // plus the two ticket-13 realm registries, the JN-15 SchemaSources tier registry, the
-        // AuditScanPaths audit scan-path contribution seam, and the ResourceRenderingRegistry that moved
-        // in from laravel-composition-engine along with Route::resourceRenderings().
+        // AuditScanPaths audit scan-path contribution seam, the ResourceRenderingRegistry that moved
+        // in from laravel-composition-engine along with Route::resourceRenderings(), and the
+        // FacadeConformanceScope the beam-facade ticket-19 audits share — the last of which this very
+        // audit flagged the moment it was bound, which is the membership ratchet working.
         $names = array_keys($actual);
-        $wanted = [...array_keys($expected), 'RealmOverlayRegistry', 'RealmResourceRegistry', 'SchemaSources', 'AuditScanPaths', 'ResourceRenderingRegistry'];
+        $wanted = [...array_keys($expected), 'RealmOverlayRegistry', 'RealmResourceRegistry', 'SchemaSources', 'AuditScanPaths', 'ResourceRenderingRegistry', 'FacadeConformanceScope'];
         sort($names);
         sort($wanted);
-        $this->assertSame($wanted, $names, 'beam-core describes the frozen twelve plus exactly the sanctioned additions (ticket-13 realms + JN-15 SchemaSources + AuditScanPaths + ResourceRenderingRegistry)');
+        $this->assertSame($wanted, $names, 'beam-core describes the frozen twelve plus exactly the sanctioned additions (ticket-13 realms + JN-15 SchemaSources + AuditScanPaths + ResourceRenderingRegistry + ticket-19 FacadeConformanceScope)');
     }
 }

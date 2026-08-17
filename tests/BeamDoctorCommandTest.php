@@ -7,7 +7,11 @@ use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
+use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BeamManifestAudit;
+use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
+use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
+use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
@@ -15,6 +19,9 @@ use Splicewire\Beam\Doctor\SchemaFormsDoorAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
 use Splicewire\Beam\Doctor\SitemapReadinessAudit;
 use Splicewire\Beam\Doctor\SurgeonWiringAudit;
+use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
+use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
+use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
 
 class BeamDoctorCommandTest extends TestCase
 {
@@ -110,6 +117,82 @@ class BeamDoctorCommandTest extends TestCase
         $this->artisan('splicewire:beam:doctor')
             ->expectsOutputToContain('BEAM.md is missing')
             ->assertExitCode(BeamDoctorCommand::FAILURE);
+    }
+
+    // ---- The facade-conformance regime (beam-facade tickets 10 + 19) ---------------
+
+    /**
+     * All five registered, all advisory, and — because ticket 18 deleted `StaticBridgeAudit` along with
+     * the bridge itself — this registration is what keeps the estate from ever being without a facade
+     * signal. That sequencing is the whole reason ticket 10 §6 placed 19 immediately after the cutover.
+     *
+     * The surgeon-side three ride the same `interface_exists(SuggestsOperations::class)` guard every
+     * other surgeon audit here uses; this suite has surgeon installed, so all five are present.
+     */
+    public function test_the_five_facade_conformance_audits_are_registered_advisory(): void
+    {
+        $registrations = [];
+
+        foreach ($this->app->make(BeamDoctorManifest::class)->registrations() as $registration) {
+            $registrations[$registration->audit] = $registration;
+        }
+
+        foreach ([
+            StubStaticReferenceAudit::class,
+            ConfigFacadeReferenceAudit::class,
+            ParticleWriteBypassAudit::class,
+            ComposedTableConfigAudit::class,
+            TablePrefixBypassAudit::class,
+        ] as $audit) {
+            $this->assertArrayHasKey($audit, $registrations, "{$audit} is not registered in the doctor manifest.");
+            // Advisory, all five. Exactly one audit in the estate gates (UndescribedRegistryAudit), and
+            // ticket 10 §5 measured 238 naive flags across 16 repos on day one — which is how a gating
+            // check gets its floor bumped and then deleted.
+            $this->assertFalse($registrations[$audit]->gate, "{$audit} must be advisory, not a gate.");
+            $this->assertSame('splicewire/laravel-beam', $registrations[$audit]->package);
+        }
+    }
+
+    /** The bridge is gone, so nothing may still be registering a check that only knew how to look for it. */
+    public function test_the_deleted_static_bridge_audit_is_not_registered(): void
+    {
+        $audits = array_map(
+            fn ($registration): string => $registration->audit,
+            $this->app->make(BeamDoctorManifest::class)->registrations(),
+        );
+
+        $this->assertNotContains('Splicewire\Beam\Doctor\StaticBridgeAudit', $audits);
+    }
+
+    /**
+     * A finding from any of the five must never fail the exit code. The command already has this
+     * property for advisories in general; this pins it for the regime that arrived with a measured
+     * day-one backlog of its own.
+     */
+    public function test_a_facade_conformance_finding_does_not_fail_the_exit_code(): void
+    {
+        $this->pointBaseAt(
+            ['minimum-stability' => 'dev', 'prefer-stable' => true],
+            ['packages' => [], 'packages-dev' => []],
+        );
+
+        $this->app->bind(TablePrefixBypassAudit::class, fn () => new class(new FacadeConformanceScope([])) extends TablePrefixBypassAudit
+        {
+            public function bypasses(): array
+            {
+                return [[
+                    'file' => 'src/Models/BeamUxEntry.php',
+                    'line' => 119,
+                    'form' => 'protected $table',
+                    'table' => 'beam_ux_entries',
+                    'stem' => 'ux_entries',
+                ]];
+            }
+        });
+
+        $this->artisan('splicewire:beam:doctor')
+            ->expectsOutputToContain('beam_ux_entries')
+            ->assertExitCode(BeamDoctorCommand::SUCCESS);
     }
 
     // ---- BeamDependencyContractAudit (the hard gate) -------------------------------
