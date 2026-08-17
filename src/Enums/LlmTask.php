@@ -2,7 +2,7 @@
 
 namespace Splicewire\Beam\Enums;
 
-use Splicewire\Beam\Capabilities\ExternalCapability;
+use Splicewire\Beam\Capabilities\GatedCapability;
 
 /**
  * The distinct LLM tasks a tenant may steer to different models (TLC-05). Each is a
@@ -17,11 +17,11 @@ use Splicewire\Beam\Capabilities\ExternalCapability;
  * default — never the text chat model.
  *
  * Named LlmTask, NOT LlmCapability (app ADR-0205): this is MODEL ROUTING — which model handles
- * which job — and shares nothing with {@see ExternalCapability},
- * which declares an access axis and a cost axis. "Capability" is the estate's most overloaded
- * noun (three unrelated classes already carry the bare name); this enum never meant that sense
- * of it. The backing STRING VALUES are unchanged — they are persisted in every tenant's
- * `llm_config.capabilities` map, so the rename is source-level only.
+ * which job — and shares nothing with {@see GatedCapability}, which declares an access axis and
+ * a cost axis. "Capability" is the estate's most overloaded noun (three unrelated classes carry
+ * the bare name, which is why ADR-0208 named that contract `Gated` rather than claiming it);
+ * this enum never meant that sense of it. The backing STRING VALUES are unchanged — they are
+ * persisted in every tenant's `llm_config.capabilities` map, so the rename is source-level only.
  */
 enum LlmTask: string
 {

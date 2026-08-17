@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Tests\Capabilities;
 
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
-use Splicewire\Beam\Capabilities\ExternalCapability;
+use Splicewire\Beam\Capabilities\GatedCapability;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -46,7 +46,7 @@ class CapabilityRegistryTest extends TestCase
     }
 }
 
-class UnmeteredCapability implements ExternalCapability
+class UnmeteredCapability implements GatedCapability
 {
     public function key(): string
     {
@@ -64,7 +64,7 @@ class UnmeteredCapability implements ExternalCapability
     }
 }
 
-class MeteredCapability implements ExternalCapability
+class MeteredCapability implements GatedCapability
 {
     public function key(): string
     {

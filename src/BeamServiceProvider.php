@@ -1327,10 +1327,10 @@ class BeamServiceProvider extends PackageServiceProvider
             ),
             new ManifestDescriptor(
                 name: 'CapabilityRegistry',
-                of: 'external capabilities by key + entitlement (web search, schema-LLM migration, node types)',
+                of: 'gated capabilities by key + entitlement (web search, schema-LLM migration, node types)',
                 seam: ManifestSeam::SingletonAccumulator,
                 arity: ManifestArity::PickOne,
-                registerHint: 'resolve the singleton and register(ExternalCapability) from your provider',
+                registerHint: 'resolve the singleton and register(GatedCapability) from your provider',
                 where: CapabilityRegistry::class,
                 package: $pkg, order: 15,
             ),
