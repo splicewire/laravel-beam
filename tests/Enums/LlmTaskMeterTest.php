@@ -20,6 +20,19 @@ class LlmTaskMeterTest extends TestCase
         $this->assertSame('audio.stt', LlmTask::SpeechToText->meter());
         $this->assertSame('video.generation', LlmTask::VideoGeneration->meter());
         $this->assertSame('music.generation', LlmTask::MusicGeneration->meter());
+        $this->assertSame('image.generation', LlmTask::ImageGeneration->meter());
+    }
+
+    /**
+     * The three music-role tasks are routing declarations with no producer behind them — nothing
+     * calls them, so there is no operation to meter. This pins that as a decision, not an oversight:
+     * when a producer lands, this test fails and forces the meter to be declared with it.
+     */
+    public function test_producerless_music_roles_declare_no_meter(): void
+    {
+        foreach ([LlmTask::ReferenceCover, LlmTask::VocalSeparation, LlmTask::VoiceConversion] as $task) {
+            $this->assertNull($task->meter(), "{$task->value} should not declare a meter until a producer exists");
+        }
     }
 
     /**

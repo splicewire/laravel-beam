@@ -74,8 +74,9 @@ enum LlmTask: string
      * Null for the two cases where no fixed key exists:
      *  - text-modality tasks (chat, title, quick_prompt, extraction, composition) and embeddings
      *    meter as `{provider}.tokens`, keyed from the provider resolved on each ledger row;
-     *  - image generation and the three music-role tasks (reference cover, vocal separation,
-     *    voice conversion) carry no registered meter of their own today.
+     *  - the three music-role tasks (reference cover, vocal separation, voice conversion) are
+     *    routing declarations with no producer behind them — no operation exists to meter, so
+     *    inventing a key would assert a seam that isn't there. They gain one when a producer does.
      */
     public function meter(): ?string
     {
@@ -85,6 +86,7 @@ enum LlmTask: string
             self::SpeechToText => 'audio.stt',
             self::VideoGeneration => 'video.generation',
             self::MusicGeneration => 'music.generation',
+            self::ImageGeneration => 'image.generation',
             default => null,
         };
     }
