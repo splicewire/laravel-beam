@@ -58,8 +58,21 @@ class MigrationOrderingAudit implements DoctorAudit
                 [$created, $altered] = $this->tablesIn((string) file_get_contents($file));
 
                 foreach ($created as $table) {
-                    // First package to claim a create owns it; a later duplicate is a different
-                    // problem (and one the migrations' own guards handle).
+                    // First package to claim a create owns it, for THIS audit's purpose: an ALTER needs
+                    // exactly one CREATE to be ordered against, and the earliest claim is the one an
+                    // ALTER has to install after.
+                    //
+                    // A later duplicate is a genuinely different problem and is out of scope here — but
+                    // NOT, as this comment previously said, one the migrations' own guards handle. The
+                    // guard is what makes it silent: two CREATEs of one table race on filename, the
+                    // loser's `hasTable` sees the winner's table and returns, and `migrate` reports
+                    // success over whichever schema happened to sort first. Demonstrated 2026-08-17 in
+                    // laravel-beam-starter, where a stale unguarded `beam_submissions` fork beat the
+                    // canonical guarded create and built a table BeamSubmission cannot read.
+                    //
+                    // `$order` cannot fix that shape — both files are already ordered, one simply wins —
+                    // so it needs its own check rather than an extension of this one. See
+                    // `docs/agents/migration-publish-ordering.convention.md` for the boundary.
                     $creates[$table] ??= $step->package;
                 }
 
