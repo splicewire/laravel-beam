@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\InstallStep;
 
@@ -273,7 +274,7 @@ class BeamInstallCommand extends Command
     {
         $mode = $tenancy ?? (string) config('beam.core.tenancy', 'single');
         $sharedDir = database_path('migrations/shared');
-        $table = (string) config('beam.core.table_prefix', 'beam_').'particles';
+        $table = Beam::table('particles');
 
         if (! is_dir($sharedDir)) {
             $this->line("  ↳ trap 1 (shared migrations): {$sharedDir} not published yet — publish + migrate first.");

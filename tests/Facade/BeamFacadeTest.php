@@ -5,7 +5,6 @@ namespace Splicewire\Beam\Tests\Facade;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
-use Splicewire\Beam\Beam as StaticBridge;
 use Splicewire\Beam\BeamManager;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
@@ -23,7 +22,7 @@ use Splicewire\Beam\Write\ParticleWriter;
  * asserts that rather than leaving it to inspection.
  *
  * It also covers the two NEW members ({@see BeamManager::tableFor()}, {@see BeamManager::write()}), the
- * `scoped()` binding, and the deprecated {@see StaticBridge} that keeps the mid-sweep estate green.
+ * `scoped()` binding, and — since ticket 18 — that the deprecated static bridge stays deleted.
  */
 class BeamFacadeTest extends TestCase
 {
@@ -160,15 +159,15 @@ class BeamFacadeTest extends TestCase
     }
 
     /**
-     * The deprecated bridge (ticket 05) keeps unswept call sites green until ticket 08 deletes it. It must
-     * delegate, never re-resolve the prefix itself — the seam's single-place guarantee depends on that.
+     * The cutover (ticket 18): the deprecated static bridge is gone, and staying gone is the point.
+     * Ticket 19's conformance audits watch host code; nothing there can see whether the class this
+     * package once shipped came back, so the guarantee is asserted here, where it is owned.
      */
-    public function test_the_deprecated_static_bridge_delegates_to_the_instance(): void
+    public function test_the_deprecated_static_bridge_no_longer_exists(): void
     {
-        config()->set('beam.core.table_prefix', 'bridge_');
-
-        $this->assertSame('bridge_particles', StaticBridge::table('particles'));
-        $this->assertSame('bridge_', StaticBridge::tablePrefix());
-        $this->assertSame(Beam::table('particles'), StaticBridge::table('particles'));
+        $this->assertFalse(
+            class_exists(\Splicewire\Beam\Beam::class),
+            'The static bridge was deleted at ticket 18 — the facade is the only Beam:: entry point.'
+        );
     }
 }

@@ -49,8 +49,9 @@ Called before the container is booted (from a published `config/*.php`, say) the
 `beam_` and handed a retrofit host wrong table names with no error. Read the prefix in a config
 file with `config('beam.core.table_prefix')`, not through the facade.
 
-`Splicewire\Beam\Beam` is a `@deprecated` static bridge kept only while the estate is repointed;
-`splicewire:beam:doctor` warns until it is deleted.
+`Splicewire\Beam\Facades\Beam` is the only `Beam::` entry point. The `@deprecated`
+`Splicewire\Beam\Beam` static bridge that carried the estate through the sweep was deleted at the
+cutover, along with the `splicewire:beam:doctor` warning that nagged about it.
 
 ## Testing
 

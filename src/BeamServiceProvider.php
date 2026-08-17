@@ -50,7 +50,6 @@ use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
-use Splicewire\Beam\Doctor\StaticBridgeAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
@@ -754,14 +753,6 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             AgentsMdConventionAudit::class,
-        );
-
-        // beam-facade ticket 05: nag until the deprecated static bridge (Splicewire\Beam\Beam) is gone.
-        // Advisory — the bridge existing IS the intended mid-sweep state; ticket 08 deletes bridge and
-        // audit together, which is the only reason this registration is here to read.
-        $this->app->make(BeamDoctorManifest::class)->register(
-            'splicewire/laravel-beam',
-            StaticBridgeAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered
