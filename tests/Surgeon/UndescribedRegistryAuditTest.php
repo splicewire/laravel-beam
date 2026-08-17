@@ -310,12 +310,13 @@ class UndescribedRegistryAuditTest extends TestCase
         }
 
         // The sanctioned additions, and nothing else: beam-core describes exactly the frozen twelve
-        // plus the two ticket-13 realm registries, the JN-15 SchemaSources tier registry, and the
-        // AuditScanPaths audit scan-path contribution seam.
+        // plus the two ticket-13 realm registries, the JN-15 SchemaSources tier registry, the
+        // AuditScanPaths audit scan-path contribution seam, and the ResourceRenderingRegistry that moved
+        // in from laravel-composition-engine along with Route::resourceRenderings().
         $names = array_keys($actual);
-        $wanted = [...array_keys($expected), 'RealmOverlayRegistry', 'RealmResourceRegistry', 'SchemaSources', 'AuditScanPaths'];
+        $wanted = [...array_keys($expected), 'RealmOverlayRegistry', 'RealmResourceRegistry', 'SchemaSources', 'AuditScanPaths', 'ResourceRenderingRegistry'];
         sort($names);
         sort($wanted);
-        $this->assertSame($wanted, $names, 'beam-core describes the frozen twelve plus exactly the sanctioned additions (ticket-13 realms + JN-15 SchemaSources + AuditScanPaths)');
+        $this->assertSame($wanted, $names, 'beam-core describes the frozen twelve plus exactly the sanctioned additions (ticket-13 realms + JN-15 SchemaSources + AuditScanPaths + ResourceRenderingRegistry)');
     }
 }

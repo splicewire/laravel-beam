@@ -167,6 +167,16 @@ return [
         'discover_paths' => [],
     ],
 
+    /*
+    | The per-resource rendering registry `Route::resourceRenderings()` enumerates (moved from
+    | laravel-composition-engine into beam core). Resource token => list of ResourceRendering
+    | class-strings, resolved from the container on demand. A package may also `register()` a rendering
+    | onto the ResourceRenderingRegistry singleton imperatively from its own provider, so this key is a
+    | seeding convenience, not the only way in. Empty by default — a resource with no renderings mounts no
+    | routes.
+    */
+    'renderings' => [],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 
