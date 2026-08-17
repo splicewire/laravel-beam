@@ -73,7 +73,7 @@ return [
 
     /*
     | RETROFIT SEAM (beam-particle-rename ticket 01). Every Beam table name is `table_prefix . $name`,
-    | resolved in ONE place ({@see \Splicewire\Beam\Beam::table()}). A greenfield/satellite host keeps
+    | resolved in ONE place ({@see \Splicewire\Beam\Facades\Beam::table()}). A greenfield/satellite host keeps
     | the default `beam_`; a RETROFIT host dropping Beam into a pre-existing Laravel app changes this ONE
     | value (`''`, `acme_beam_`, …) so Beam's generic-noun tables never collide with the host's own
     | `posts`/`teams`/`categories`. No table is renamed by this knob yet — later tickets route model
