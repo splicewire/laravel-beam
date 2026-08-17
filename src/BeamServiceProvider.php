@@ -51,6 +51,7 @@ use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
+use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Entitlements\EntitlementGate;
@@ -511,7 +512,16 @@ class BeamServiceProvider extends PackageServiceProvider
         ));
         $this->app->bind(ConfigFacadeReferenceAudit::class, fn () => ConfigFacadeReferenceAudit::forApp());
 
+        // The key-type conformance check is unconditional and NOT part of the facade regime — it is
+        // registered here only because this is where beam's static, host-scoped schema checks live. It
+        // reports a defect already present in a schema rather than a style drift: a primary key and the
+        // model that reads it disagreeing, a foreign key that will not constrain, or an identity table
+        // keyed against the estate's uuid convention. Advisory like the rest, but a finding here is worth
+        // acting on the day it appears.
+        $this->app->bind(KeyTypeConformanceAudit::class, fn () => KeyTypeConformanceAudit::forApp());
+
         $manifest = $this->app->make(BeamDoctorManifest::class);
+        $manifest->register('splicewire/laravel-beam', KeyTypeConformanceAudit::class);
         $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', ConfigFacadeReferenceAudit::class);
 
