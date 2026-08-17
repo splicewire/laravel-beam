@@ -12,6 +12,13 @@ Before adding or changing any I/O surface (HTTP route, MCP tool, Inertia page, c
 declare-every-boundary-crossing-shape invariant, its three declaration sites, the four exceptions,
 and `splicewire:beam:manifests --json` for locating the registry behind a surface.
 
+## API parameter documentation
+
+A documented API parameter is declared on a Data class — `#[RequestFromData]` / `#[QueryFromData]` plus
+`#[Description]` on the properties — never in a `@bodyParam` / `@queryParam` docblock, and path
+parameters are derived from the route's particle stamp rather than annotated. See
+`docs/agents/api-parameter-documentation.convention.md`.
+
 ## Vendored family-package conventions
 
 Any repo that vendors another family repo's code (composer `vendor/<vendor>/<pkg>/`, npm
