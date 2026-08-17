@@ -15,21 +15,13 @@ namespace Splicewire\Beam\Install;
  *
  * ## `$order` is migration order, not just cosmetics
  *
- * Publishing STAMPS a migration at publish time (spatie/laravel-package-tools' `generateMigrationName`),
- * so the order steps run here IS the order the published migrations sort in on a greenfield install.
+ * Publishing STAMPS a migration at publish time, so the order steps run here IS the order the published
+ * migrations sort in on a greenfield install. A package shipping an ALTER against a table ANOTHER
+ * package creates must therefore register a higher `$order` than the package that creates it.
  *
- * That makes one rule binding: **a package shipping an ALTER against a table ANOTHER package creates
- * must register at a higher `$order` than the package that creates it.** Two packages left on the
- * default 100 are separated only by provider boot order, so the ALTER can be stamped ahead of the
- * CREATE and run against a table that does not exist yet. It is not hypothetical — `splicewire/tower`
- * ships `add_federation_scope_to_silos` against beam-taxonomy's `silos` and now registers at 200 for
- * exactly this reason.
- *
- * A package whose ALTERs only target its OWN tables needs nothing: `->hasMigrations([...])` stamps its
- * own entries a second apart in declared order, so creates precede their alters within the package.
- *
- * The corollary is that hand-editing a published migration's timestamp is never the fix. It is undone by
- * the next `vendor:publish`, and it papers over an ordering the install is supposed to guarantee.
+ * The rule, the current order tiers, and the two things that are NOT the fix live in ONE place —
+ * `docs/agents/migration-publish-ordering.convention.md`. Deliberately not restated here: a rule
+ * written in two places is a rule that drifts.
  */
 class BeamInstallManifest
 {

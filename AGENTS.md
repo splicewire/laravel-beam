@@ -19,6 +19,15 @@ A documented API parameter is declared on a Data class — `#[RequestFromData]` 
 parameters are derived from the route's particle stamp rather than annotated. See
 `docs/agents/api-parameter-documentation.convention.md`.
 
+## Migration publish ordering
+
+Publishing stamps a migration at publish time, so the order packages install in IS the order their
+migrations run in on a greenfield install. A package shipping an ALTER against a table ANOTHER
+package creates must register a higher `$order` on its `BeamInstallManifest` step than the package
+that creates it — two packages on the default `100` are separated only by provider boot order.
+Hand-editing a published timestamp is never the fix. See
+`docs/agents/migration-publish-ordering.convention.md`.
+
 ## Vendored family-package conventions
 
 Any repo that vendors another family repo's code (composer `vendor/<vendor>/<pkg>/`, npm
