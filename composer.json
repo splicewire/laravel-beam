@@ -10,6 +10,7 @@
         "nette/php-generator": "^3.4|^4.0",
         "rushing/codegen": "dev-main",
         "rushing/laravel-data-filters": "*",
+        "rushing/laravel-data-schemas-scribe": "*",
         "rushing/laravel-doctor": "*",
         "rushing/laravel-permission-cascade": "*",
         "rushing/laravel-popcorn": "dev-main",
