@@ -28,6 +28,14 @@ that creates it — two packages on the default `100` are separated only by prov
 Hand-editing a published timestamp is never the fix. See
 `docs/agents/migration-publish-ordering.convention.md`.
 
+## Convergent migration guards
+
+A published `create_*` migration declares the shape it needs, not the table it creates. Guard it with
+`Splicewire\Beam\Schema\ConvergentTable` — create when absent, add missing columns when a copy already
+exists, throw on a column that exists with the wrong type — never a bare `Schema::hasTable($t) → return`,
+which hands the table to whichever migration sorts first and reports success to the loser. See
+`docs/agents/convergent-migration-guards.convention.md`.
+
 ## Vendored family-package conventions
 
 Any repo that vendors another family repo's code (composer `vendor/<vendor>/<pkg>/`, npm

@@ -5,6 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Schema\ConvergentTable;
 use Splicewire\Beam\Source\SourceWriteTier;
 
 /**
@@ -42,38 +43,38 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Ubiquitous-table guard: a host that migrates BOTH the central and the tenant pass into ONE
-        // schema (the shared-test-DB harness) would otherwise re-create this table. In production the
-        // passes target separate schemas, so the guard is simply false. Mirrors the app's own ubiquitous
-        // tables (e.g. tenant/create_users_table).
-        if (Schema::hasTable(Beam::table('particles'))) {
-            return;
-        }
+        // CONVERGENT guard (docs/agents/convergent-migration-guards.convention.md): create when absent,
+        // top up when a copy of this table already exists, throw when one exists with an incompatible
+        // column type. It subsumes the ubiquitous-table guard this file used to carry — a host that
+        // migrates BOTH the central and the tenant pass into ONE schema (the shared-test-DB harness)
+        // finds the table already matching and writes nothing.
+        ConvergentTable::named(Beam::table('particles'))
+            ->define(function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->string('schema_ref')->nullable()->index();
+                $table->string('schema_id')->nullable()->index();
+                $table->string('migration_status')->nullable()->index();
+                $table->string('head_version')->nullable();
+                $table->json('payload')->nullable();
+                $table->json('meta')->nullable();
 
-        Schema::create(Beam::table('particles'), function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->string('schema_ref')->nullable()->index();
-            $table->string('schema_id')->nullable()->index();
-            $table->string('migration_status')->nullable()->index();
-            $table->string('head_version')->nullable();
-            $table->json('payload')->nullable();
-            $table->json('meta')->nullable();
+                // Source provenance + lifecycle tier (ticket 06).
+                $table->string('source_tier')->default('local')->index();
+                $table->string('external_ref')->nullable();
+                $table->string('source_revision')->nullable();
+                $table->string('projector_version')->nullable();
+                $table->timestamp('fetched_at')->nullable();
 
-            // Source provenance + lifecycle tier (ticket 06).
-            $table->string('source_tier')->default('local')->index();
-            $table->string('external_ref')->nullable();
-            $table->string('source_revision')->nullable();
-            $table->string('projector_version')->nullable();
-            $table->timestamp('fetched_at')->nullable();
-
-            $table->timestamps();
-        });
+                $table->timestamps();
+            })
+            ->assert();
 
         // Partial UNIQUE: one shadow per (external_ref, source_revision); local rows (NULL external_ref)
-        // unconstrained. Raw statement — Blueprint has no partial-index DSL. Postgres-shaped (sqlite
-        // honours the same syntax); a host on another engine adapts.
+        // unconstrained. Raw statement — Blueprint has no partial-index DSL, so it sits outside the
+        // convergent definition and carries its own IF NOT EXISTS to stay convergent alongside it.
+        // Postgres-shaped (sqlite honours the same syntax); a host on another engine adapts.
         DB::statement(
-            'CREATE UNIQUE INDEX '.Beam::table('particles').'_external_ref_source_revision_unique '
+            'CREATE UNIQUE INDEX IF NOT EXISTS '.Beam::table('particles').'_external_ref_source_revision_unique '
             .'ON '.Beam::table('particles').' (external_ref, source_revision) '
             .'WHERE external_ref IS NOT NULL'
         );

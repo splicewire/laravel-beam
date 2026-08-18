@@ -36,9 +36,13 @@ tied with beam-taxonomy and the winner was boot order.
 
 ## Two things that are NOT the fix
 
-**Hand-editing a published migration's timestamp.** The next `vendor:publish` undoes it, and it
-papers over an ordering the install is supposed to guarantee. A greenfield app must come up correct
-straight from install, with no hand-patched files in `database/migrations/`.
+**Hand-editing a published migration's timestamp.** It papers over an ordering the install is supposed
+to guarantee: a greenfield app must come up correct straight from install, with no hand-patched files
+in `database/migrations/`. (This used to add "the next `vendor:publish` undoes it" — that reason is
+**false** and is corrected in
+[`convergent-migration-guards.convention.md`](convergent-migration-guards.convention.md): package-tools
+re-finds a published file by basename, so a re-date survives. What does not survive is the next
+greenfield clone, which is the real objection.)
 
 **Re-stamping one file to move it.** Re-stamping is relative to *every* already-published file, not
 just the one you were thinking about. Moving beam-taxonomy's creates forward once pushed them past
@@ -71,3 +75,9 @@ two ever disagree, the audit is right and this page is stale.
 It is advisory (warns, never fails the exit code) and deliberately conservative — a dynamically-named
 table (`Beam::table('media')`, `$this->target()`) is unresolvable without booting the declaring
 package, so it is skipped rather than guessed at.
+
+## The other half of the collision family
+
+This page is about **ALTER-vs-CREATE across packages**. It does not address **two CREATEs of the same
+table**, where sequencing is not the lever because both sides believe they own the table — see
+[`convergent-migration-guards.convention.md`](convergent-migration-guards.convention.md).

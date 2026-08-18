@@ -73,6 +73,13 @@ class MigrationOrderingAudit implements DoctorAudit
                     // `$order` cannot fix that shape — both files are already ordered, one simply wins —
                     // so it needs its own check rather than an extension of this one. See
                     // `docs/agents/migration-publish-ordering.convention.md` for the boundary.
+                    //
+                    // RESOLVED 2026-08-18, and not by a check: the fix is that the migration itself
+                    // converges ({@see \Splicewire\Beam\Schema\ConvergentTable} and
+                    // `docs/agents/convergent-migration-guards.convention.md`), so whoever runs first
+                    // creates, whoever runs second tops up, and a type conflict throws instead of
+                    // reporting success. The static check for a stub that ships WITHOUT that guard is
+                    // its own audit, deliberately built after the estate is swept.
                     $creates[$table] ??= $step->package;
                 }
 

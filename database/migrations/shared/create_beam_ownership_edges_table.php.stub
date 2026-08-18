@@ -5,6 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Ownership\OwnershipEdgeType;
+use Splicewire\Beam\Schema\ConvergentTable;
 
 /**
  * The ownership / GC edge store (sourced-particles ticket 08, ADR-0161 Position 3 + MAP §Graphine).
@@ -32,25 +33,24 @@ return new class extends Migration
     {
         $table = Beam::table('ownership_edges');
 
-        // Ubiquitous-table guard: a host that migrates BOTH the central and the tenant pass into ONE
-        // schema (the shared-test-DB harness) would otherwise re-create this table. In production the
-        // passes target separate schemas, so the guard is simply false. Mirrors the app's own ubiquitous
-        // tables (e.g. tenant/create_users_table).
-        if (Schema::hasTable($table)) {
-            return;
-        }
+        // CONVERGENT guard (docs/agents/convergent-migration-guards.convention.md): create when absent,
+        // top up when a copy of this table already exists, throw when one exists with an incompatible
+        // column type. It subsumes the ubiquitous-table guard this file used to carry — a host that
+        // migrates BOTH the central and the tenant pass into ONE schema (the shared-test-DB harness)
+        // finds the table already matching and writes nothing.
+        ConvergentTable::named($table)
+            ->define(function (Blueprint $t) use ($table) {
+                $t->uuid('id')->primary();
+                $t->uuid('owner_id');
+                $t->uuid('target_id');
+                $t->string('edge_type')->default(OwnershipEdgeType::Owns->value);
+                $t->timestamps();
 
-        Schema::create($table, function (Blueprint $t) use ($table) {
-            $t->uuid('id')->primary();
-            $t->uuid('owner_id');
-            $t->uuid('target_id');
-            $t->string('edge_type')->default(OwnershipEdgeType::Owns->value);
-            $t->timestamps();
-
-            $t->unique(['owner_id', 'target_id', 'edge_type'], $table.'_pair_unique');
-            $t->index('owner_id', $table.'_owner_idx');
-            $t->index(['target_id', 'edge_type'], $table.'_target_type_idx');
-        });
+                $t->unique(['owner_id', 'target_id', 'edge_type'], $table.'_pair_unique');
+                $t->index('owner_id', $table.'_owner_idx');
+                $t->index(['target_id', 'edge_type'], $table.'_target_type_idx');
+            })
+            ->assert();
     }
 
     public function down(): void

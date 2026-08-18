@@ -4,6 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Schema\ConvergentTable;
 
 /**
  * The spatie/laravel-activitylog table, as ONE shared/ stub — run in BOTH the central pass and every
@@ -33,49 +34,57 @@ use Illuminate\Support\Facades\Schema;
  * and fall back to subclass + `getTable()` only where it does not (which is why beam-media renames
  * medialibrary's table via the model — medialibrary ships no table-name config).
  *
- * SORT ORDER IS LOAD-BEARING. `lunarphp/core` ships its own `activity_log` migration at a FIXED date
- * (`2026_01_01_900001`), guarded with `Schema::hasTable()`. Whichever runs first owns the table, and
- * Lunar's shape is `nullableMorphs` — BIGINT ids — which cannot hold a tenant slug: writing one throws
- * `invalid input syntax for type bigint`, the silent-wrong-schema failure class that also produced the
- * bigint-vs-uuid `roles.id` break. So this stub must be PUBLISHED with a `0001_01_01_*` filename, ahead
- * of Lunar's fixed date, exactly as the published `users` and permission tables already are. Publishing
- * it under a `now()` stamp would hand the central audit trail Lunar's incompatible table.
+ * THIS TABLE HAS A HOSTILE COMPETITOR. `lunarphp/core` ships its own `activity_log` migration at a
+ * FIXED date (`2026_01_01_900001`) guarded with a bare `Schema::hasTable()`, and its shape is
+ * `nullableMorphs` — BIGINT ids — which cannot hold a tenant slug: writing one throws `invalid input
+ * syntax for type bigint`. Under two bare existence guards whichever migration sorts first simply owns
+ * the table and the loser reports success, which is the silent-wrong-schema failure class.
  *
- * The guard below is therefore belt-and-braces rather than the mechanism: it keeps the migration
- * idempotent and lets Lunar's copy win harmlessly in a host that has no central audit trail at all.
- * It is CURRENT-SCHEMA-EXPLICIT, not `Schema::hasTable()`, because under stancl schema-per-tenant the
- * search_path is `("tenant_x", public)` — a plain hasTable inside a tenant would see the central copy
- * and skip creating the tenant-local one.
+ * THE GUARD IS THE MECHANISM, not the filename (beam-facade ticket 22). The convergent guard below
+ * refuses to report success against Lunar's shape: `hasColumns()` would say the morph columns are
+ * present, so a top-up-what-is-missing guard tops up nothing — but the columns are the wrong TYPE, and
+ * that is tier three, which throws. See `docs/agents/convergent-migration-guards.convention.md`.
+ *
+ * A previous version of this comment required the published copy to be hand-dated `0001_01_01_*` to
+ * outrank Lunar. That requirement had no mechanism behind it — it described a hand edit — and is
+ * deleted rather than implemented. What replaces it is the install declaring table ownership
+ * explicitly ({@see \Splicewire\Beam\Install\BeamInstallCommand}'s numbered traps), so a host that
+ * wants beam's shape to win says so and the installer acts on it, and a host that does not gets a loud
+ * migrate rather than a quiet wrong table.
+ *
+ * The presence question stays CURRENT-SCHEMA-EXPLICIT rather than `Schema::hasTable()`, because under
+ * stancl schema-per-tenant the search_path is `("tenant_x", public)` — a plain hasTable inside a tenant
+ * would see the central copy and skip creating the tenant-local one.
  */
 return new class extends Migration
 {
     public function up(): void
     {
-        if ($this->existsInCurrentSchema($this->table())) {
-            return; // Already present in THIS schema (a plugin's copy, or an idempotent re-run).
-        }
+        ConvergentTable::named($this->table())
+            ->existsUsing(fn (string $table) => $this->existsInCurrentSchema($table))
+            ->define(function (Blueprint $table) {
+                $table->id();
+                $table->string('log_name')->nullable()->index();
+                $table->text('description');
 
-        Schema::create($this->table(), function (Blueprint $table) {
-            $table->id();
-            $table->string('log_name')->nullable()->index();
-            $table->text('description');
+                // STRING morphs, not uuid/bigint: central subjects have mixed key types (bigint token id,
+                // uuid user id, string tenant slug) and a tenant's subjects are a subset of that range.
+                // This is exactly where Lunar's copy conflicts, and where the guard throws.
+                $table->string('subject_type')->nullable();
+                $table->string('subject_id')->nullable();
+                $table->string('event')->nullable();
+                $table->string('causer_type')->nullable();
+                $table->string('causer_id')->nullable();
 
-            // STRING morphs, not uuid/bigint: central subjects have mixed key types (bigint token id,
-            // uuid user id, string tenant slug) and a tenant's subjects are a subset of that range.
-            $table->string('subject_type')->nullable();
-            $table->string('subject_id')->nullable();
-            $table->string('event')->nullable();
-            $table->string('causer_type')->nullable();
-            $table->string('causer_id')->nullable();
+                $table->json('attribute_changes')->nullable();
+                $table->json('properties')->nullable();
+                $table->uuid('batch_uuid')->nullable();
+                $table->timestamps();
 
-            $table->json('attribute_changes')->nullable();
-            $table->json('properties')->nullable();
-            $table->uuid('batch_uuid')->nullable();
-            $table->timestamps();
-
-            $table->index(['subject_type', 'subject_id'], 'activity_log_subject_index');
-            $table->index(['causer_type', 'causer_id'], 'activity_log_causer_index');
-        });
+                $table->index(['subject_type', 'subject_id'], 'activity_log_subject_index');
+                $table->index(['causer_type', 'causer_id'], 'activity_log_causer_index');
+            })
+            ->assert();
     }
 
     public function down(): void

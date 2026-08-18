@@ -5,6 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamSubmission;
+use Splicewire\Beam\Schema\ConvergentTable;
 
 /**
  * The shared submission ledger — beam-core's first schema-driven-CMS consumer (ADR-0138). One
@@ -34,26 +35,31 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Ubiquitous-table guard: a host that migrates BOTH the central and the tenant pass into ONE
-        // schema (the shared-test-DB harness) would otherwise re-create this table. In production the
-        // passes target separate schemas, so the guard is simply false. Mirrors the app's own ubiquitous
-        // tables (e.g. tenant/create_users_table).
-        if (Schema::hasTable(Beam::table('submissions'))) {
-            return;
-        }
-
-        Schema::create(Beam::table('submissions'), function (Blueprint $table): void {
-            $table->uuid('id')->primary();
-            $table->string('form_key')->index();
-            $table->string('schema_ref')->nullable();
-            $table->string('schema_id')->nullable()->index();
-            $table->string('migration_status')->nullable()->index();
-            $table->json('payload');
-            $table->json('context')->nullable();
-            $table->json('meta')->nullable();
-            $table->uuid('user_id')->nullable()->index();
-            $table->timestamps();
-        });
+        // CONVERGENT guard (docs/agents/convergent-migration-guards.convention.md): create when absent,
+        // top up when a copy of this table already exists, throw when one exists with an incompatible
+        // column type. It subsumes the ubiquitous-table guard this file used to carry — a host that
+        // migrates BOTH the central and the tenant pass into ONE schema (the shared-test-DB harness)
+        // finds the table already matching and writes nothing.
+        //
+        // This is the table the convention was WRITTEN against (beam-facade ticket 23): three hosts
+        // carried a fork of `beam_submissions` under the same name, disjoint in columns and NOT NULL in
+        // both directions. Convergence cannot repair that — `form_key` and `payload` are NOT NULL with
+        // no default, and the fork's own `schema_record_id` survives — so here the guard THROWS, which
+        // is the whole point: the fork was invisible for months behind a bare `hasTable`.
+        ConvergentTable::named(Beam::table('submissions'))
+            ->define(function (Blueprint $table): void {
+                $table->uuid('id')->primary();
+                $table->string('form_key')->index();
+                $table->string('schema_ref')->nullable();
+                $table->string('schema_id')->nullable()->index();
+                $table->string('migration_status')->nullable()->index();
+                $table->json('payload');
+                $table->json('context')->nullable();
+                $table->json('meta')->nullable();
+                $table->uuid('user_id')->nullable()->index();
+                $table->timestamps();
+            })
+            ->assert();
     }
 
     public function down(): void

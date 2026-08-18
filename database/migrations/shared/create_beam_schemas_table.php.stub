@@ -5,6 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Schema\ConvergentTable;
 
 /**
  * Runtime, DB-backed schema registry (slice 16) — routed through the single table-prefix seam
@@ -33,27 +34,36 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if ($this->tablePresent($this->target())) {
-            return; // Already renamed / created in this schema — idempotent re-run.
-        }
-
-        // Data-preserving rename of the pre-rename table when it is present in THIS schema.
-        if ($this->tablePresent('schema_registry')) {
+        // Data-preserving rename of the pre-rename table when it is present in THIS schema and the
+        // target is not. Still a rename rather than a drop+create: every frozen row is preserved.
+        if (! $this->tablePresent($this->target()) && $this->tablePresent('schema_registry')) {
             Schema::rename('schema_registry', $this->target());
-
-            return;
         }
 
-        // Fresh install: neither name present in this schema — create the target directly.
-        Schema::create($this->target(), function (Blueprint $table): void {
-            $table->uuid('id')->primary();
-            $table->string('schema_id')->unique();
-            $table->string('schema_name')->nullable()->index();
-            $table->integer('version')->nullable();
-            $table->string('fingerprint');
-            $table->jsonb('artifact');
-            $table->timestamps();
-        });
+        // CONVERGENT guard (docs/agents/convergent-migration-guards.convention.md): create when absent,
+        // top up when a copy is already present, throw when one is present with an incompatible column
+        // type. It subsumes the idempotent-re-run guard this file used to carry — and it now also runs
+        // over a JUST-RENAMED table, which the old early-return skipped: a pre-rename `schema_registry`
+        // from a host predating a column addition is converged onto the current shape rather than left
+        // one column short under a new name.
+        //
+        // The presence question is delegated because on PostgreSQL it is not `Schema::hasTable()`: that
+        // follows the tenant search_path (`tenant_x, public`) and would see public's copy, so both
+        // migration sets applied to one shared schema in a shared-connection harness must be checked
+        // against current_schema(). On single-schema drivers (sqlite/mysql) there is no search_path to
+        // be fooled by, and the predicate degrades to plain hasTable().
+        ConvergentTable::named($this->target())
+            ->existsUsing(fn (string $table) => $this->tablePresent($table))
+            ->define(function (Blueprint $table): void {
+                $table->uuid('id')->primary();
+                $table->string('schema_id')->unique();
+                $table->string('schema_name')->nullable()->index();
+                $table->integer('version')->nullable();
+                $table->string('fingerprint');
+                $table->jsonb('artifact');
+                $table->timestamps();
+            })
+            ->assert();
     }
 
     public function down(): void
