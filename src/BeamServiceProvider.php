@@ -104,6 +104,7 @@ use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
 use Splicewire\Beam\Source\LadderForeignSourceProjector;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Source\ParticleShadower;
+use Splicewire\Beam\Storage\GitRepoRegistrar;
 use Splicewire\Beam\Surgeon\AuditScanPaths;
 use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\ClientRuntimeContractAudit;
@@ -208,6 +209,11 @@ class BeamServiceProvider extends PackageServiceProvider
                 // `2026_01_01_900001` copy with an incompatible BIGINT-morph shape, so the published
                 // copy must carry a `0001_01_01_*` filename to win the race — see the stub's docblock.
                 'shared/create_activity_log_table',
+                // The GitRepo cache table (mirror-status-ui ticket 02) — promoted here from
+                // laravel-beam-ux via surgeon:move (a repo-status cache is generic infra, not a
+                // beam-ux-specific concept), so it ships under the same convention as every other
+                // core table.
+                'shared/create_beam_git_repos_table',
             ]);
     }
 
@@ -447,6 +453,12 @@ class BeamServiceProvider extends PackageServiceProvider
         // Registered UNCONDITIONALLY (outside the surgeon-installed guard below): contributors push
         // during boot regardless of whether a sweep ever runs here.
         $this->app->singleton(AuditScanPaths::class);
+
+        // GitRepoRegistrar (mirror-status-ui ticket 02, promoted here via surgeon:move): its own
+        // in-process cache (N calls for the same repo within one request skip both the DB and the
+        // shell-out) only helps if the container hands back the SAME instance — an explicit singleton,
+        // not reflection-resolved fresh on every `make()`.
+        $this->app->singleton(GitRepoRegistrar::class);
 
         // The beam-install self-registration manifest (ticket 08): a singleton every beam-* package
         // pushes its own install step into, from its own provider. beam-core never learns consumer names.

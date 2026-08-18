@@ -10,18 +10,23 @@ use Splicewire\Beam\Schema\ConvergentTable;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * The worked proof for `docs/agents/convergent-migration-guards.convention.md`: beam's own six published
- * migration stubs, run TWICE each, on the real schema builder.
+ * The worked proof for `docs/agents/convergent-migration-guards.convention.md`: every one of beam's
+ * published migration stubs, run TWICE each, on the real schema builder.
  *
  * This is the acceptance the convention actually needs, and it is not the same claim as
  * {@see ConvergentTableTest}. That one exercises the tiers against a synthetic table; this one asserts
- * the six declarations beam ships are convergent against THEMSELVES — that a second pass over a table
- * the first pass created finds nothing to do and nothing to complain about.
+ * every declaration beam ships is convergent against ITSELF — that a second pass over a table the
+ * first pass created finds nothing to do and nothing to complain about.
  *
  * The second-pass assertion is where {@see ColumnTypeEquivalence} is really under
- * test: every declared type in these six files is compiled by the driver, read back through
+ * test: every declared type in these files is compiled by the driver, read back through
  * `Schema::getColumns()`, and compared. A gap in the map surfaces here as a false conflict rather than
  * as a silent nothing, which is why the run asserts `unchanged()` and not merely "no exception".
+ *
+ * `$tables` is a closed allowlist, not derived from {@see stubs()}'s glob — a NEW stub must add its
+ * table name here too, or its own `test_the_stub_creates_then_converges_onto_itself` case fails with
+ * "created none of the tables this test knows about" (found live, adding `create_beam_git_repos_table`
+ * without updating this list first).
  */
 class SharedMigrationStubsConvergeTest extends TestCase
 {
@@ -32,6 +37,7 @@ class SharedMigrationStubsConvergeTest extends TestCase
         'beam_submissions',
         'beam_ownership_edges',
         'beam_schemas',
+        'beam_git_repos',
         'activity_log',
     ];
 
@@ -87,7 +93,7 @@ class SharedMigrationStubsConvergeTest extends TestCase
         }
     }
 
-    public function test_the_six_stubs_together_produce_the_expected_tables(): void
+    public function test_the_shipped_stubs_together_produce_the_expected_tables(): void
     {
         foreach (static::stubs() as [$path]) {
             $this->migration($path)->up();

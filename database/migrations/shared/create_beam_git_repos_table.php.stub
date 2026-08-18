@@ -1,0 +1,46 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Schema\ConvergentTable;
+use Splicewire\Beam\Storage\GitRepoRegistrar;
+
+/**
+ * The `GitRepo` cache table (mirror-status-ui ticket 02) — one row per DISTINCT git repo root this
+ * app has resolved a file into (typically exactly one: the app's own working tree), keyed by its
+ * canonical absolute path. `dirty_paths`/`untracked_paths`/`tracked_paths` are the repo-wide
+ * `git status --porcelain` + `git ls-files` result, refreshed at most once per
+ * {@see GitRepoRegistrar::TTL_SECONDS} — the whole point is answering "is
+ * this file dirty" for N files with ~1 process spawn per repo instead of N.
+ *
+ * Same publish-only stub convention every beam-core table ships under — see
+ * `create_beam_particles_table.php.stub`'s own docblock for the full rationale (`hasMigrations`,
+ * `runsMigrations` false, beam-tenancy's shared-migrations pass). Table name routes through
+ * {@see Beam::table()} so a retrofit host's one prefix override follows.
+ */
+return new class extends Migration
+{
+    public function up(): void
+    {
+        ConvergentTable::named(Beam::table('git_repos'))
+            ->define(function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->string('root_path')->unique();
+                $table->string('branch')->nullable();
+                $table->string('head_sha')->nullable();
+                $table->json('dirty_paths');
+                $table->json('untracked_paths');
+                $table->json('tracked_paths');
+                $table->timestamp('checked_at')->nullable();
+                $table->timestamps();
+            })
+            ->assert();
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists(Beam::table('git_repos'));
+    }
+};
