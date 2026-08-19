@@ -44,6 +44,10 @@ in `database/migrations/`. (This used to add "the next `vendor:publish` undoes i
 re-finds a published file by basename, so a re-date survives. What does not survive is the next
 greenfield clone, which is the real objection.)
 
+The objection is to the **hand** edit, not to re-dating as such — see "Re-dating IS the fix once the
+install causes it" below. The same file at the same timestamp is correct when the install put it there
+and wrong when a person did, because only one of those survives a fresh clone.
+
 **Re-stamping one file to move it.** Re-stamping is relative to *every* already-published file, not
 just the one you were thinking about. Moving beam-taxonomy's creates forward once pushed them past
 tower's other ALTERs still sitting at their original stamps, and a fresh migrate died on a duplicate
@@ -75,6 +79,46 @@ two ever disagree, the audit is right and this page is stale.
 It is advisory (warns, never fails the exit code) and deliberately conservative — a dynamically-named
 table (`Beam::table('media')`, `$this->target()`) is unresolvable without booting the declaring
 package, so it is skipped rather than guessed at.
+
+## Re-dating IS the fix once the install causes it
+
+Everything above is about packages *inside* the family, where `$order` is the lever. Against a
+**third party** it is not: `lunarphp/core` ships `activity_log`, `media`, `tags` and the permission
+tables at fixed `2026_01_01_*` stamps behind bare `Schema::hasTable() → return` guards. We do not own
+that guard, so the loser reports success over the winner's schema and filename order is the only lever
+left.
+
+`splicewire:beam:install` spends it, between publish and migrate:
+
+```
+php artisan splicewire:beam:install                     # asks; every collision defaults to beam
+php artisan splicewire:beam:install --own-tables=       # decline all — the other package wins
+php artisan splicewire:beam:install --own-tables=media  # claim one
+php artisan splicewire:beam:install --no-interaction    # silently takes the default (beam owns all)
+```
+
+It finds every published `database/migrations/**` file whose name matches a migration a package
+registers from its own source, asks who owns each, and re-dates beam's copy **one tick below** the
+earliest competitor. `Splicewire\Beam\Install\TableOwnershipResolver` is the mechanism.
+
+Four things about it are deliberate, and each answers an objection on this page:
+
+- **The unit is the filename stem, not the table.** A table name is routinely dynamic
+  (`Beam::table('particles')`, `config('activitylog.table_name')`) — the same blindness
+  `MigrationOrderingAudit` refuses to guess around. A stem is a literal on disk.
+- **One tick, never a `0001_01_01_*` band.** "Re-stamping one file to move it" above is a real
+  incident, and a band maximises the blast radius that incident is about. One tick minimises it, and
+  it is derived from the competitor's own stamp rather than chosen.
+- **It warns about the one direction that can break.** Moving a CREATE *earlier* is safe for every
+  ALTER against that table; it is unsafe only where the create itself references a table created
+  later. The resolver reports those (literal FK targets only) and claims anyway — the operator
+  declared the ownership, and a failed migrate is loud.
+- **Two migrations a HOST wrote itself are invisible to it.** Both are "ours", neither is a package's
+  own source, and beam has no standing to arbitrate between two of an app's migrations.
+
+Declining an entry is a real answer, not a mistake: the competitor's migration wins and beam's
+convergent guard then throws on the type conflict instead of reporting success. Loud, chosen, and
+recoverable — which is the whole trade this collision family is decided on.
 
 ## The other half of the collision family
 

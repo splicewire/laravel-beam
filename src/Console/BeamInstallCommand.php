@@ -3,10 +3,14 @@
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\InstallStep;
+use Splicewire\Beam\Install\MigrationCollision;
+use Splicewire\Beam\Install\TableOwnershipResolver;
+use Splicewire\Beam\Schema\ConvergentTable;
 
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\multiselect;
@@ -30,6 +34,14 @@ use function Laravel\Prompts\text;
  * schema-sources `file` and beam provisions no `beam_schemas` table, dropping cleanly into a host that
  * already owns its tables. Every answer is also exposed as an option, so the wizard is fully scripted for
  * non-interactive runs (CI, tests) — no prompt fires when `--no-interaction` is set.
+ *
+ * Phase 3 (beam-facade ticket 29) adds the one answer here that ACTS instead of verifying: **table
+ * ownership**. Between publish and migrate the command finds every published beam migration racing a
+ * third-party one of the same filename, asks who owns each (default beam, `--own-tables` to script it),
+ * and re-dates beam's copy to run first. It sits there and nowhere else because the question's options
+ * are the files publish just wrote, and the answer has to land before anything runs them.
+ * {@see TableOwnershipResolver} for why filename order is the only lever
+ * against a package whose guard we do not own.
  */
 class BeamInstallCommand extends Command
 {
@@ -38,7 +50,8 @@ class BeamInstallCommand extends Command
         {--prefix= : Beam table prefix (config beam.core.table_prefix); pass an empty string for no prefix}
         {--schema-sources= : Comma list of schema sources in read/write order, e.g. "db,file" or "file"}
         {--tenancy= : "single" (one database) or "multi" (tenant-scoped)}
-        {--modules= : Comma list of optional beam modules to install (name substrings); empty ⇒ core only}';
+        {--modules= : Comma list of optional beam modules to install (name substrings); empty ⇒ core only}
+        {--own-tables= : Comma list of colliding migration stems beam should own (run first); empty ⇒ own none. Default: all}';
 
     protected $description = 'Interactively configure + install the whole beam stack (core-first) from the self-registration manifest.';
 
@@ -103,8 +116,16 @@ class BeamInstallCommand extends Command
         $runSteps = array_merge($core, $selected);
 
         // 4. Run the chained install (Phase-1 mechanics), then persist the answered config so the choices
-        //    survive the next boot.
-        $this->runSteps($runSteps, $this->stepsMigrate($runSteps));
+        //    survive the next boot. Publish and migrate are SEPARATE calls with the table-ownership
+        //    answer between them: the question's options are the collisions on disk, so it cannot be
+        //    asked until the files exist, and it has to be answered before anything runs them.
+        $this->publishSteps($runSteps);
+        $this->resolveTableOwnership($interactive);
+
+        if ($this->stepsMigrate($runSteps)) {
+            $this->call('migrate', $this->option('force') ? ['--force' => true] : []);
+        }
+
         $this->persistConfig($prefix, $sources, $tenancy);
 
         // 5. Verify the three fresh-host provisioning traps (beam-install-turnkey). Each fix lands as a
@@ -208,11 +229,12 @@ class BeamInstallCommand extends Command
     }
 
     /**
-     * The Phase-1 publish/migrate mechanics, over the chosen steps.
+     * The Phase-1 publish mechanics, over the chosen steps. Migrating is the caller's separate step —
+     * see the ownership pass in {@see handle()} for why the two cannot be one call any more.
      *
      * @param  list<InstallStep>  $steps
      */
-    private function runSteps(array $steps, bool $migrates): void
+    private function publishSteps(array $steps): void
     {
         $force = (bool) $this->option('force');
 
@@ -230,9 +252,158 @@ class BeamInstallCommand extends Command
                 ));
             }
         }
+    }
 
-        if ($migrates) {
-            $this->call('migrate', $force ? ['--force' => true] : []);
+    /**
+     * Table ownership: the one answer on this command that ACTS rather than verifies (beam-facade
+     * ticket 29, ruled by 22).
+     *
+     * A published beam migration and a third-party one can ship the same `create_*` filename. Inside
+     * the family that no longer matters — {@see ConvergentTable} means whoever
+     * runs first creates and whoever runs second tops up. Against a package whose guard we do not own
+     * (`lunarphp/core`'s bare `hasTable → return` over a bigint-morph `activity_log`) filename order is
+     * the only lever, and 22 rejected spending it as an invisible publish band. So it is spent as a
+     * DECLARED answer: option-first, prompting when interactive, defaulting to beam, and re-dating the
+     * published copy so a fresh clone of this install reproduces the result instead of inheriting a
+     * hand edit one host has and the next does not.
+     *
+     * A host that declines an entry gets the competitor's schema and, thanks to the convergent guard, a
+     * loud red migrate rather than a quiet wrong table. Never fatal here: a fresh host that cannot reach
+     * its database still installs.
+     */
+    private function resolveTableOwnership(bool $interactive): void
+    {
+        $resolver = TableOwnershipResolver::forApplication($this->laravel);
+        $collisions = $resolver->collisions();
+
+        if ($collisions === []) {
+            return;
+        }
+
+        $this->line('splicewire:beam:install → table ownership');
+
+        $contested = [];
+
+        foreach ($collisions as $collision) {
+            if ($collision->beamWins()) {
+                $this->line("  ↳ `{$collision->stem}`: OK — beam's copy already sorts ahead of {$collision->competitor()}.");
+
+                continue;
+            }
+
+            $contested[] = $collision;
+        }
+
+        if ($contested === []) {
+            return;
+        }
+
+        foreach ($this->selectOwnedTables($contested, $interactive) as $collision) {
+            $this->claim($resolver, $collision);
+        }
+    }
+
+    /**
+     * Which contested stems beam should own. `--own-tables` (even empty) is authoritative; else a
+     * multiselect with every entry pre-selected when interactive; else all of them — which is the
+     * defaults-true answer `--no-interaction` takes silently.
+     *
+     * @param  list<MigrationCollision>  $contested
+     * @return list<MigrationCollision>
+     */
+    private function selectOwnedTables(array $contested, bool $interactive): array
+    {
+        $option = $this->option('own-tables');
+
+        if ($option !== null) {
+            $wanted = $this->parseList($option);
+
+            return array_values(array_filter($contested, fn ($c): bool => $this->matchesAny($c->stem, $wanted)));
+        }
+
+        if (! $interactive) {
+            return $contested;
+        }
+
+        $options = [];
+        foreach ($contested as $c) {
+            $options[$c->stem] = "{$c->stem} — currently {$c->competitor()} wins";
+        }
+
+        $chosen = multiselect(
+            label: 'Which of these tables does beam own? (unchecked ⇒ the other package\'s migration wins)',
+            options: $options,
+            default: array_keys($options),
+            hint: 'Beam\'s copy is re-dated to run first. Space to toggle.',
+        );
+
+        return array_values(array_filter($contested, static fn ($c): bool => in_array($c->stem, $chosen, true)));
+    }
+
+    /** Re-date one published migration so it wins, reporting what moved and what that move risks. */
+    private function claim(TableOwnershipResolver $resolver, MigrationCollision $collision): void
+    {
+        $old = $collision->ourMigrationName();
+        $prefix = $resolver->winningPrefix($collision);
+
+        if ($prefix === null) {
+            $this->warn("  ↳ `{$collision->stem}`: cannot be moved ahead of {$collision->competitor()} ".
+                "({$collision->theirPrefix}) — claim it by hand or let the other package own it.");
+
+            return;
+        }
+
+        // Read the risks while the file is still where the collision says it is.
+        $risks = $resolver->dependencyRisks($collision, $prefix);
+        $target = $resolver->claim($collision);
+
+        if ($target === null) {
+            $this->warn("  ↳ `{$collision->stem}`: could not re-date {$collision->ourFile} — check permissions.");
+
+            return;
+        }
+
+        $new = basename($target, '.php');
+
+        $this->line("  ↳ `{$collision->stem}`: beam owns it — {$old} → {$new}, ahead of ".
+            "{$collision->competitor()} at {$collision->theirPrefix}.");
+
+        foreach ($risks as $risk) {
+            $this->warn("     ! {$risk}");
+        }
+
+        $this->carryMigrationRecord($old, $new);
+    }
+
+    /**
+     * Carry an already-run migration's ledger row onto the new filename.
+     *
+     * Without this a re-dated file the host has already migrated reads as a brand-new migration and runs
+     * again. The convergent guard makes that survivable, not free — it would still add a duplicate
+     * ledger row. Updating the row keeps "already ran" exactly true, and is honest about what it does
+     * NOT do: it cannot change a database that already holds the competitor's shape. Ordering governs
+     * the next FRESH migrate (a new environment, a new tenant schema, `migrate:fresh`), which is where
+     * the collision is decided; an existing wrong table is the guard's and ticket 30's business.
+     */
+    private function carryMigrationRecord(string $old, string $new): void
+    {
+        try {
+            $table = config('database.migrations', 'migrations');
+            $table = is_array($table) ? ($table['table'] ?? 'migrations') : $table;
+
+            if (! Schema::hasTable($table)) {
+                return;
+            }
+
+            $moved = DB::table($table)->where('migration', $old)->update(['migration' => $new]);
+
+            if ($moved > 0) {
+                $this->line("     ↳ ledger: `{$old}` was already migrated — carried onto `{$new}`, so it ".
+                    'does not re-run. The live table keeps whatever shape it already has; the new order '.
+                    'governs the next fresh migrate.');
+            }
+        } catch (\Throwable $e) {
+            $this->line('     ↳ ledger: skipped (database unreachable) — re-run the install once the database is up.');
         }
     }
 

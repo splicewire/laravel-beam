@@ -113,8 +113,16 @@ class.
 sort first was considered and rejected on merit, not cost (`generateMigrationName` is `protected`; the
 band was ~10 lines). It is invisible magic, and it would also outrank a host's own deliberate migration
 — an install nobody chose is worse than an install that fails. What a band was reaching for, the
-**installer** owns explicitly instead: table ownership is a declared, defaulted answer at install time,
-in the shape `BeamInstallCommand`'s numbered traps already use.
+**installer** owns explicitly instead, and now does (beam-facade ticket 29): `splicewire:beam:install`
+asks who owns each colliding table between publish and migrate, defaults to beam, takes `--own-tables`
+to script it, and re-dates the published copy **one tick** below the competitor rather than into a
+band. `Splicewire\Beam\Install\TableOwnershipResolver`; the full rule is in
+[`migration-publish-ordering.convention.md`](migration-publish-ordering.convention.md) under
+"Re-dating IS the fix once the install causes it".
+
+**That lever is for third parties only.** Inside the family a convergent guard already dissolves the
+collision, so nothing here needs ordering; the installer's answer exists because
+`lunarphp/core`'s bare `hasTable → return` is a guard we cannot edit.
 
 **Hand-editing a published migration's timestamp.**
 [`migration-publish-ordering.convention.md`](migration-publish-ordering.convention.md) lists this as a

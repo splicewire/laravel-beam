@@ -25,8 +25,10 @@ Publishing stamps a migration at publish time, so the order packages install in 
 migrations run in on a greenfield install. A package shipping an ALTER against a table ANOTHER
 package creates must register a higher `$order` on its `BeamInstallManifest` step than the package
 that creates it — two packages on the default `100` are separated only by provider boot order.
-Hand-editing a published timestamp is never the fix. See
-`docs/agents/migration-publish-ordering.convention.md`.
+Hand-editing a published timestamp is never the fix — but re-dating *is*, once the install causes it:
+against a third-party migration we cannot re-guard, `splicewire:beam:install` asks who owns each
+colliding table (default beam, `--own-tables` to script it) and re-dates beam's published copy one tick
+below the competitor. See `docs/agents/migration-publish-ordering.convention.md`.
 
 ## Convergent migration guards
 

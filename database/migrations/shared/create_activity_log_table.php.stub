@@ -46,11 +46,14 @@ use Splicewire\Beam\Schema\ConvergentTable;
  * that is tier three, which throws. See `docs/agents/convergent-migration-guards.convention.md`.
  *
  * A previous version of this comment required the published copy to be hand-dated `0001_01_01_*` to
- * outrank Lunar. That requirement had no mechanism behind it — it described a hand edit — and is
- * deleted rather than implemented. What replaces it is the install declaring table ownership
- * explicitly ({@see \Splicewire\Beam\Install\BeamInstallCommand}'s numbered traps), so a host that
- * wants beam's shape to win says so and the installer acts on it, and a host that does not gets a loud
- * migrate rather than a quiet wrong table.
+ * outrank Lunar. That requirement had no mechanism behind it — it described a hand edit — and was
+ * deleted rather than implemented. It now HAS one: `splicewire:beam:install` asks who owns each
+ * colliding table (default beam, `--own-tables` to script it) and re-dates the published copy to one
+ * tick below Lunar's stamp — see {@see \Splicewire\Beam\Install\TableOwnershipResolver}, driven from
+ * {@see \Splicewire\Beam\Console\BeamInstallCommand}. So the ordering is caused by the install and
+ * reproduces from a fresh clone, and a host that declines gets the loud migrate above rather than a
+ * quiet wrong table. Note the re-date is one tick, never a `0001_01_01_*` band: a band was rejected on
+ * merit (beam-facade ticket 22) and would also outrank a host's own deliberate migration.
  *
  * The presence question stays CURRENT-SCHEMA-EXPLICIT rather than `Schema::hasTable()`, because under
  * stancl schema-per-tenant the search_path is `("tenant_x", public)` — a plain hasTable inside a tenant
