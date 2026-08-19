@@ -25,6 +25,7 @@
         "spatie/laravel-package-tools": "^1.16",
         "spatie/laravel-schemaless-attributes": "*",
         "spatie/typescript-transformer": "^2.0|^3.0",
+        "symfony/yaml": "^6.0|^7.0|^8.0",
         "rushing/laravel-schema-convergence": "*"
     },
     "require-dev": {

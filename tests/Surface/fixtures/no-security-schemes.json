@@ -1,0 +1,20 @@
+{
+  "openapi": "3.0.1",
+  "info": { "title": "Foreign Vendor API", "version": "2026-01-01" },
+  "paths": {
+    "/v2/orders": {
+      "get": {
+        "operationId": "listOrders",
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "purgeOrders",
+        "responses": { "204": { "description": "gone" } }
+      }
+    }
+  }
+}

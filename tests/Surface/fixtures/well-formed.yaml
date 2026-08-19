@@ -1,0 +1,74 @@
+openapi: 3.1.0
+info:
+  title: Widgets API
+  version: 1.4.0
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+  schemas:
+    WidgetData:
+      type: object
+paths:
+  /api/v1/widgets:
+    parameters:
+      - name: page
+        in: query
+    get:
+      operationId: widgets.index
+      tags: [Widgets]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WidgetData'
+    post:
+      operationId: widgets.store
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WidgetData'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetData'
+  /api/v1/widgets/{id}:
+    get:
+      operationId: widgets.show
+      security:
+        - apiKey: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetData'
+  /up:
+    get:
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: ok
+  /api/v1/widgets/{id}/optional:
+    get:
+      operationId: widgets.optional
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '204':
+          description: no content

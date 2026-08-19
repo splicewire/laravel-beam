@@ -105,6 +105,8 @@ use Splicewire\Beam\Source\LadderForeignSourceProjector;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Source\ParticleShadower;
 use Splicewire\Beam\Storage\GitRepoRegistrar;
+use Splicewire\Beam\Surface\OpenApiSpecCorroborator;
+use Splicewire\Beam\Surface\RuntimeCorroborator;
 use Splicewire\Beam\Surgeon\AuditScanPaths;
 use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\ClientRuntimeContractAudit;
@@ -641,6 +643,20 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->bind(UndeclaredSurfaceAudit::class, fn ($app) => new UndeclaredSurfaceAudit(
             $app->make(ParticleResourceRegistry::class),
             $app->make(ParticleOperationRegistry::class),
+        ));
+        // The surface-posture projector and the document/runtime composer (soc2-readiness-dogfood 03).
+        // The projector CONSUMES the negative-space audit above rather than re-walking the route table:
+        // the exemptions, the tiering, and the closure handling are decisions already made there, and a
+        // second copy would drift from them. Both are plain services — a mechanism, not a particle.
+        $this->app->bind(RuntimeCorroborator::class, fn ($app) => new RuntimeCorroborator(
+            $app->make(Router::class),
+            $app->make(ParticleResourceRegistry::class),
+            $app->make(ParticleOperationRegistry::class),
+            $app->make(UndeclaredSurfaceAudit::class),
+            (array) config('beam.surface.middleware_signals', []),
+        ));
+        $this->app->bind(OpenApiSpecCorroborator::class, fn ($app) => new OpenApiSpecCorroborator(
+            $app->make(RuntimeCorroborator::class),
         ));
         // The Inertia leg of the same detector. Unlike the HTTP leg above it IS host-scoped and
         // filesystem-bound — `Inertia::render` props live in host source, not in any registry or route table —
