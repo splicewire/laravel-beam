@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Surface;
 
+use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
 use Splicewire\Beam\Particle\OperationKind;
@@ -73,6 +74,27 @@ class RuntimeCorroboratorTest extends TestCase
 
         $this->assertTrue($posture->facet(PostureFacet::AuthRequired));
         $this->assertTrue($posture->facet(PostureFacet::RateLimited));
+    }
+
+    /**
+     * The regression the first real run produced. An application mounts its OWN subclass of the
+     * framework's auth middleware (to override `redirectTo()`/`unauthenticated()`), so name-only
+     * matching reports a fully authenticated API as wide open — 320 of 321 seams, in the run that
+     * caught this.
+     */
+    public function test_a_host_subclass_of_the_auth_middleware_still_proves_authentication(): void
+    {
+        Route::middleware(HostAuthenticateFixture::class.':sanctum')->get('api/v1/subclassed', fn () => []);
+
+        $this->assertTrue($this->postureFor('GET /api/v1/subclassed')->facet(PostureFacet::AuthRequired));
+    }
+
+    /** The inverse: an unrelated middleware whose name merely resembles one must not count. */
+    public function test_an_unrelated_middleware_does_not_prove_authentication(): void
+    {
+        Route::middleware(NotAuthenticationFixture::class)->get('api/v1/lookalike', fn () => []);
+
+        $this->assertFalse($this->postureFor('GET /api/v1/lookalike')->facet(PostureFacet::AuthRequired));
     }
 
     public function test_a_can_middleware_proves_an_authorization_gate(): void
@@ -192,5 +214,23 @@ class RuntimeCorroboratorTest extends TestCase
 
         $this->assertArrayHasKey('GET /api/v1/multi', $postures);
         $this->assertArrayHasKey('POST /api/v1/multi', $postures);
+    }
+}
+
+/** A host's own auth middleware — the shape almost every real application actually mounts. */
+class HostAuthenticateFixture extends Authenticate
+{
+    protected function redirectTo($request): ?string
+    {
+        return null;
+    }
+}
+
+/** Named to look adjacent, related to nothing. */
+class NotAuthenticationFixture
+{
+    public function handle($request, \Closure $next)
+    {
+        return $next($request);
     }
 }

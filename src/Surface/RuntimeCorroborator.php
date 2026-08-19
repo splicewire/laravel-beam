@@ -193,6 +193,19 @@ class RuntimeCorroborator
     }
 
     /**
+     * Whether the resolved stack carries a signal for this facet.
+     *
+     * **Matching is inheritance-aware, and that is load-bearing rather than defensive.** Applications
+     * almost never mount `Illuminate\Auth\Middleware\Authenticate` directly — they mount their own
+     * subclass of it, so they can override `redirectTo()` or `unauthenticated()`. Name-only matching
+     * therefore misses the real gate on most real applications and reports a fully authenticated API as
+     * wide open. The first run of this projector against splicewire-app did exactly that: 320 of 321
+     * documented seams came back as "documented as authenticated but actually open" because every one
+     * of them sits behind `App\Http\Middleware\Authenticate:sanctum`.
+     *
+     * A signal ending in a namespace separator is a **prefix**; anything else is a class or alias, matched
+     * exactly or by subclass.
+     *
      * @param  list<string>  $middleware
      * @param  list<string>  $defaults
      */
@@ -207,7 +220,19 @@ class RuntimeCorroborator
             foreach ($signals as $signal) {
                 $signal = ltrim($signal, '\\');
 
-                if ($name === $signal || str_starts_with($name, $signal)) {
+                if (str_ends_with($signal, '\\')) {
+                    if (str_starts_with($name, $signal)) {
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                if ($name === $signal) {
+                    return true;
+                }
+
+                if (class_exists($signal) && (class_exists($name) || interface_exists($name)) && is_a($name, $signal, true)) {
                     return true;
                 }
             }
