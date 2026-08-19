@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
-use Splicewire\Beam\Schema\ConvergentTable;
+use Rushing\SchemaConvergence\ConvergentTable;
 
 /**
  * Runtime, DB-backed schema registry (slice 16) — routed through the single table-prefix seam
@@ -40,7 +40,7 @@ return new class extends Migration
             Schema::rename('schema_registry', $this->target());
         }
 
-        // CONVERGENT guard (docs/agents/convergent-migration-guards.convention.md): create when absent,
+        // CONVERGENT guard (rushing/laravel-schema-convergence/docs/agents/convergent-migration-guards.convention.md): create when absent,
         // top up when a copy is already present, throw when one is present with an incompatible column
         // type. It subsumes the idempotent-re-run guard this file used to carry — and it now also runs
         // over a JUST-RENAMED table, which the old early-return skipped: a pre-rename `schema_registry`

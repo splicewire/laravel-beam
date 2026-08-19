@@ -10,7 +10,7 @@ use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\InstallStep;
 use Splicewire\Beam\Install\MigrationCollision;
 use Splicewire\Beam\Install\TableOwnershipResolver;
-use Splicewire\Beam\Schema\ConvergentTable;
+use Rushing\SchemaConvergence\ConvergentTable;
 
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\multiselect;

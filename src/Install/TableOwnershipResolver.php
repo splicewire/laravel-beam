@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Install;
 
 use Illuminate\Contracts\Foundation\Application;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
-use Splicewire\Beam\Schema\ConvergentTable;
+use Rushing\SchemaConvergence\ConvergentTable;
 
 /**
  * Finds the published beam migrations that lose a filename race to a third-party migration of the same
@@ -32,7 +32,7 @@ use Splicewire\Beam\Schema\ConvergentTable;
  * "theirs" is only ever a path a package registered from its own source. Two migrations a HOST wrote
  * itself are both "ours", collide with nothing here, and stay the host's own bug — beam has no standing
  * to arbitrate between two of an app's migrations
- * (`docs/agents/convergent-migration-guards.convention.md`, "Scope").
+ * (`rushing/laravel-schema-convergence/docs/agents/convergent-migration-guards.convention.md`, "Scope").
  */
 final class TableOwnershipResolver
 {

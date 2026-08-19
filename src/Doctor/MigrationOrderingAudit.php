@@ -75,8 +75,8 @@ class MigrationOrderingAudit implements DoctorAudit
                     // `docs/agents/migration-publish-ordering.convention.md` for the boundary.
                     //
                     // RESOLVED 2026-08-18, and not by a check: the fix is that the migration itself
-                    // converges ({@see \Splicewire\Beam\Schema\ConvergentTable} and
-                    // `docs/agents/convergent-migration-guards.convention.md`), so whoever runs first
+                    // converges ({@see \Rushing\SchemaConvergence\ConvergentTable} and
+                    // `rushing/laravel-schema-convergence/docs/agents/convergent-migration-guards.convention.md`), so whoever runs first
                     // creates, whoever runs second tops up, and a type conflict throws instead of
                     // reporting success. The static check for a stub that ships WITHOUT that guard is
                     // its own audit, deliberately built after the estate is swept.

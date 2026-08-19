@@ -33,10 +33,19 @@ below the competitor. See `docs/agents/migration-publish-ordering.convention.md`
 ## Convergent migration guards
 
 A published `create_*` migration declares the shape it needs, not the table it creates. Guard it with
-`Splicewire\Beam\Schema\ConvergentTable` — create when absent, add missing columns when a copy already
+`Rushing\SchemaConvergence\ConvergentTable` — create when absent, add missing columns when a copy already
 exists, throw on a column that exists with the wrong type — never a bare `Schema::hasTable($t) → return`,
-which hands the table to whichever migration sorts first and reports success to the loser. See
-`docs/agents/convergent-migration-guards.convention.md`.
+which hands the table to whichever migration sorts first and reports success to the loser.
+
+**The guard and its convention live in `rushing/laravel-schema-convergence`, not here** (beam-facade
+tickets 34/35). It left beam because the rule is wider than beam: five `rushing/*` packages publish
+`create_*` stubs into the same hosts while carrying no beam dependency, so a guard homed here was one
+they could not import. Beam requires the package like anyone else. The rule, the tiers, both terminals,
+and what convergence cannot do are all in
+`rushing/laravel-schema-convergence/docs/agents/convergent-migration-guards.convention.md`.
+
+What stays in beam is the OTHER half of the collision family — `docs/agents/migration-publish-ordering.convention.md`,
+above — because the installer that spends its filename-order lever is beam's.
 
 ## Vendored family-package conventions
 

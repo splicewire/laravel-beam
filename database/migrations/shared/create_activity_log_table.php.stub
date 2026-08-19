@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Splicewire\Beam\Schema\ConvergentTable;
+use Rushing\SchemaConvergence\ConvergentTable;
 
 /**
  * The spatie/laravel-activitylog table, as ONE shared/ stub — run in BOTH the central pass and every
@@ -43,7 +43,7 @@ use Splicewire\Beam\Schema\ConvergentTable;
  * THE GUARD IS THE MECHANISM, not the filename (beam-facade ticket 22). The convergent guard below
  * refuses to report success against Lunar's shape: `hasColumns()` would say the morph columns are
  * present, so a top-up-what-is-missing guard tops up nothing — but the columns are the wrong TYPE, and
- * that is tier three, which throws. See `docs/agents/convergent-migration-guards.convention.md`.
+ * that is tier three, which throws. See `rushing/laravel-schema-convergence/docs/agents/convergent-migration-guards.convention.md`.
  *
  * A previous version of this comment required the published copy to be hand-dated `0001_01_01_*` to
  * outrank Lunar. That requirement had no mechanism behind it — it described a hand edit — and was

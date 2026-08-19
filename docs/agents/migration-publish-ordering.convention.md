@@ -40,7 +40,7 @@ tied with beam-taxonomy and the winner was boot order.
 to guarantee: a greenfield app must come up correct straight from install, with no hand-patched files
 in `database/migrations/`. (This used to add "the next `vendor:publish` undoes it" — that reason is
 **false** and is corrected in
-[`convergent-migration-guards.convention.md`](convergent-migration-guards.convention.md): package-tools
+`rushing/laravel-schema-convergence`'s `docs/agents/convergent-migration-guards.convention.md`: package-tools
 re-finds a published file by basename, so a re-date survives. What does not survive is the next
 greenfield clone, which is the real objection.)
 
@@ -124,4 +124,4 @@ recoverable — which is the whole trade this collision family is decided on.
 
 This page is about **ALTER-vs-CREATE across packages**. It does not address **two CREATEs of the same
 table**, where sequencing is not the lever because both sides believe they own the table — see
-[`convergent-migration-guards.convention.md`](convergent-migration-guards.convention.md).
+`rushing/laravel-schema-convergence`'s `docs/agents/convergent-migration-guards.convention.md`.

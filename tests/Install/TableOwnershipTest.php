@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\File;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Install\MigrationCollision;
 use Splicewire\Beam\Install\TableOwnershipResolver;
-use Splicewire\Beam\Schema\ConvergentTable;
+use Rushing\SchemaConvergence\ConvergentTable;
 use Splicewire\Beam\Tests\TestCase;
 use Symfony\Component\Console\Input\ArrayInput;
 
@@ -139,7 +139,7 @@ class TableOwnershipTest extends TestCase
     /**
      * Two migrations a HOST wrote itself are both "ours" and are deliberately invisible here — beam has
      * no standing to arbitrate between two of an app's own migrations
-     * (`convergent-migration-guards.convention.md`, "Scope"). The asymmetry that licenses the rename is
+     * (`rushing/laravel-schema-convergence`'s `convergent-migration-guards.convention.md`, "Scope"). The asymmetry that licenses the rename is
      * that we may re-date a published copy and may never touch a package's own source.
      */
     public function test_two_host_owned_migrations_are_not_a_collision_this_command_arbitrates(): void

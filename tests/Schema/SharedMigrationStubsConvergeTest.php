@@ -5,12 +5,12 @@ namespace Splicewire\Beam\Tests\Schema;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Splicewire\Beam\Schema\ColumnTypeEquivalence;
-use Splicewire\Beam\Schema\ConvergentTable;
+use Rushing\SchemaConvergence\ColumnTypeEquivalence;
+use Rushing\SchemaConvergence\ConvergentTable;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * The worked proof for `docs/agents/convergent-migration-guards.convention.md`: every one of beam's
+ * The worked proof for `rushing/laravel-schema-convergence/docs/agents/convergent-migration-guards.convention.md`: every one of beam's
  * published migration stubs, run TWICE each, on the real schema builder.
  *
  * This is the acceptance the convention actually needs, and it is not the same claim as

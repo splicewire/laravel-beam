@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
-use Splicewire\Beam\Schema\ConvergentTable;
+use Rushing\SchemaConvergence\ConvergentTable;
 
 /**
  * The polymorphic durable-version store that `rushing/laravel-versioning`'s Versionable / VersionStore
@@ -34,7 +34,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // CONVERGENT guard (docs/agents/convergent-migration-guards.convention.md): create when absent,
+        // CONVERGENT guard (rushing/laravel-schema-convergence/docs/agents/convergent-migration-guards.convention.md): create when absent,
         // top up when a copy of this table already exists, throw when one exists with an incompatible
         // column type. It subsumes the ubiquitous-table guard this file used to carry — a host that
         // migrates BOTH the central and the tenant pass into ONE schema (the shared-test-DB harness)

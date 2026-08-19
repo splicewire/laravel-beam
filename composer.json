@@ -24,7 +24,8 @@
         "spatie/laravel-model-status": "*",
         "spatie/laravel-package-tools": "^1.16",
         "spatie/laravel-schemaless-attributes": "*",
-        "spatie/typescript-transformer": "^2.0|^3.0"
+        "spatie/typescript-transformer": "^2.0|^3.0",
+        "rushing/laravel-schema-convergence": "*"
     },
     "require-dev": {
         "laravel/pint": "^1.0",

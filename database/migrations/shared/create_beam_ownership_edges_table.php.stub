@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Ownership\OwnershipEdgeType;
-use Splicewire\Beam\Schema\ConvergentTable;
+use Rushing\SchemaConvergence\ConvergentTable;
 
 /**
  * The ownership / GC edge store (sourced-particles ticket 08, ADR-0161 Position 3 + MAP §Graphine).
@@ -33,7 +33,7 @@ return new class extends Migration
     {
         $table = Beam::table('ownership_edges');
 
-        // CONVERGENT guard (docs/agents/convergent-migration-guards.convention.md): create when absent,
+        // CONVERGENT guard (rushing/laravel-schema-convergence/docs/agents/convergent-migration-guards.convention.md): create when absent,
         // top up when a copy of this table already exists, throw when one exists with an incompatible
         // column type. It subsumes the ubiquitous-table guard this file used to carry — a host that
         // migrates BOTH the central and the tenant pass into ONE schema (the shared-test-DB harness)

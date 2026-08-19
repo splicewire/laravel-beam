@@ -2,7 +2,7 @@
 
 namespace Splicewire\Beam\Install;
 
-use Splicewire\Beam\Schema\ConvergentTable;
+use Rushing\SchemaConvergence\ConvergentTable;
 
 /**
  * One published beam migration racing a third-party migration of the SAME name.
