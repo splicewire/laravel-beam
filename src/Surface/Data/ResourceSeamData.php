@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Surface\Data;
 
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Surface\SurfaceSignature;
 
 /**
  * One **resource seam** — a single addressable operation on an API surface (`GET /api/v1/specs/{id}`),
@@ -41,7 +42,7 @@ class ResourceSeamData extends Data
     /** The stable identity a runtime route is matched against: `GET /api/v1/specs/{id}`. */
     public function signature(): string
     {
-        return $this->method.' '.$this->path;
+        return SurfaceSignature::compose($this->method, $this->path);
     }
 
     /** Whether the document claims this operation requires authentication of some kind. */

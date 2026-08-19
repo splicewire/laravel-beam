@@ -19,6 +19,18 @@ namespace Splicewire\Beam\Surface;
  */
 class SurfaceSignature
 {
+    /**
+     * Build a signature from a verb and a path.
+     *
+     * Construction lives here beside normalization because the two have to agree. When each caller
+     * hand-rolled its own `strtoupper($m).' /'.ltrim($p, '/')` they drifted — one site emitted a
+     * multi-verb `GET|POST /x` that {@see normalize()} could never match against anything.
+     */
+    public static function compose(string $method, string $path): string
+    {
+        return strtoupper($method).' /'.ltrim(trim($path), '/');
+    }
+
     public static function normalize(string $signature): string
     {
         [$method, $path] = array_pad(explode(' ', trim($signature), 2), 2, '');

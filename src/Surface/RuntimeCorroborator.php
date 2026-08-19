@@ -145,7 +145,7 @@ class RuntimeCorroborator
         }
 
         return new RoutePostureData(
-            signature: strtoupper($method).' /'.ltrim($route->uri(), '/'),
+            signature: SurfaceSignature::compose($method, $route->uri()),
             path: '/'.ltrim($route->uri(), '/'),
             method: strtoupper($method),
             name: $route->getName(),

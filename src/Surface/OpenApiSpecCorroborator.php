@@ -88,15 +88,21 @@ class OpenApiSpecCorroborator
         // recomputed. It is a gap, not a disagreement: the document and the router do not contradict
         // each other about a route whose shape nobody declared — nobody said anything at all.
         foreach ($this->runtime->undeclared() as $row) {
-            $gaps[] = new SurfaceFindingData(
-                kind: SurfaceFindingData::KIND_UNDECLARED_SHAPE,
-                signature: implode('|', $row['methods']).' /'.ltrim($row['uri'], '/'),
-                facet: 'shape',
-                documented: 'none',
-                observed: $row['tier'],
-                provenanceRank: SurfaceFindingData::RANK_OBSERVED,
-                location: $row['location'],
-            );
+            // One finding per VERB. An earlier draft emitted `GET|POST /x` as a single signature, which
+            // is a shape no other finding in the system uses and which `SurfaceSignature::normalize()`
+            // can never match against a route or a seam — so those findings could not be correlated with
+            // anything, which is most of what a finding is for.
+            foreach ($row['methods'] as $method) {
+                $gaps[] = new SurfaceFindingData(
+                    kind: SurfaceFindingData::KIND_UNDECLARED_SHAPE,
+                    signature: SurfaceSignature::compose($method, $row['uri']),
+                    facet: 'shape',
+                    documented: 'none',
+                    observed: $row['tier'],
+                    provenanceRank: SurfaceFindingData::RANK_OBSERVED,
+                    location: $row['location'],
+                );
+            }
         }
 
         return new SeamCorroborationData(
