@@ -54,8 +54,10 @@ use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
+use Splicewire\Beam\Doctor\RetiredMigrationAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
+use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Facades\Beam;
@@ -903,6 +905,26 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             AgentsMdConventionAudit::class,
+        );
+
+        // The fleet test-runner convention (docs/agents/test-runner.convention.md): family repos test on
+        // Pest. Same self-registering, advisory shape as the AGENTS.md check above — a repo answers for
+        // itself and nothing gates. Beam core is currently one of the thirteen holdouts, so this package
+        // ships an audit it fails; that is the TablePrefixBypassAudit shape, not an oversight.
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            TestRunnerConformanceAudit::class,
+        );
+
+        // Published copies of migrations beam has since RETIRED. Publishing is a copy, so a squash
+        // upstream cannot reach back into a host — and a stale copy usually sorts EARLIER than the stub
+        // that replaced it, creating the table in a shape the survivor then refuses to converge onto.
+        // One such file produced 421 failures in tower's suite; the guard was right and the cause was
+        // invisible. Advisory: the remedy deletes a file from the host's own database/migrations, which
+        // is the host's call.
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            RetiredMigrationAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered
