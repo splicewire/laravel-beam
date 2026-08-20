@@ -12,6 +12,7 @@ use Splicewire\Beam\Install\InstallStep;
 use Splicewire\Beam\Install\MigrationCollision;
 use Splicewire\Beam\Install\TableOwnershipResolver;
 use Splicewire\Beam\OpenApi\ConfiguredArtifactSpecSource;
+use Splicewire\Beam\Seed\BeamSeedManifest;
 
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\multiselect;
@@ -52,7 +53,8 @@ class BeamInstallCommand extends Command
         {--schema-sources= : Comma list of schema sources in read/write order, e.g. "db,file" or "file"}
         {--tenancy= : "single" (one database) or "multi" (tenant-scoped)}
         {--modules= : Comma list of optional beam modules to install (name substrings); empty ⇒ core only}
-        {--own-tables= : Comma list of colliding migration stems beam should own (run first); empty ⇒ own none. Default: all}';
+        {--own-tables= : Comma list of colliding migration stems beam should own (run first); empty ⇒ own none. Default: all}
+        {--no-seed : Skip the package-registered seed pass (splicewire:beam:seed) at the end of the install}';
 
     protected $description = 'Interactively configure + install the whole beam stack (core-first) from the self-registration manifest.';
 
@@ -134,6 +136,13 @@ class BeamInstallCommand extends Command
         //     the generator. Publishing beam's scribe stub happened above; this is the step that turns it
         //     into bytes.
         $this->generateOpenApiArtifact();
+
+        // 4c. Run the package-registered seed pass, so a fresh host boots with the data its packages
+        //     need to serve anything at all — beam-ux's `site` realm root above all (ADR-0209 §9: the
+        //     public renderer never writes, so its absence means "nothing to serve", and until now
+        //     nothing created it). Each seeder is already config-gated and per-seeder failures are
+        //     non-fatal inside `splicewire:beam:seed`, so this cannot fail an install.
+        $this->runSeeders();
 
         // 5. Verify the three fresh-host provisioning traps (beam-install-turnkey). Each fix lands as a
         //    package DEFAULT (so a host that never runs this command is still safe); the command's job here
@@ -442,6 +451,39 @@ class BeamInstallCommand extends Command
      *    today, so this is defence rather than a real branch — but a host that removed it should not get a
      *    crash out of an installer.
      */
+    /**
+     * Run `splicewire:beam:seed` — the seed-side twin of this command, over the same self-registration
+     * shape. Install has always publish-and-migrated without ever seeding, which was invisible while the
+     * only registered seeder was a nav restamp; it stopped being invisible when ADR-0209 made the realm
+     * root a thing SOMETHING has to create, because the renderer deliberately does not.
+     *
+     * `--no-seed` opts out for a host that seeds on its own schedule. Skipped when nothing is
+     * registered, and never fatal: `splicewire:beam:seed` already reports per-seeder failures and
+     * carries on, matching how every step of this command reports.
+     */
+    private function runSeeders(): void
+    {
+        if ($this->option('no-seed')) {
+            return;
+        }
+
+        if (! $this->getLaravel()->bound(BeamSeedManifest::class)) {
+            return;
+        }
+
+        if ($this->getLaravel()->make(BeamSeedManifest::class)->steps() === []) {
+            return;
+        }
+
+        $this->line('splicewire:beam:install → seed (splicewire:beam:seed)');
+
+        try {
+            $this->call('splicewire:beam:seed', $this->option('force') ? ['--force' => true] : []);
+        } catch (\Throwable $e) {
+            $this->warn('  ↳ seeding failed (the rest of the install is unaffected): '.$e->getMessage());
+        }
+    }
+
     private function generateOpenApiArtifact(): void
     {
         $app = $this->getApplication();
