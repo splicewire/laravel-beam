@@ -186,6 +186,35 @@ eight roots (Knowledge, Composition, Automation, Governance, Access, Commerce, P
 every beam host would ship one estate's ontology to all of them — the exact mistake `api-groups.php`'s
 own header warns about: *"a package cannot know the taxonomy of every host that mounts it."*
 
+> **Built 2026-08-20 (ticket 21) — §6's default path was wrong on a real host, and is amended here.**
+>
+> The ADR named a literal default of `storage_path('app/scribe/openapi.yaml')`. On a fresh
+> `laravel-beam-starter` that 404s: Scribe writes the artifact through **`Storage::disk('local')`**
+> (`Writer::writeOpenAPISpec()`), and the Laravel 11+ skeleton roots the local disk at
+> `storage/app/private`. The starter generated to `storage/app/private/scribe/openapi.yaml` while beam
+> looked one directory up.
+>
+> `beam.core.openapi.artifact` therefore ships as **`null` ⇒ derive**, with
+> `ConfiguredArtifactSpecSource` resolving `filesystems.disks.local.root` + `/scribe/openapi.yaml`. This is
+> not the coupling §6 argued against — that was about reading Scribe's *internal* `$this->paths`
+> resolution. The local disk root is ordinary published Laravel config, it is the same value Scribe itself
+> resolves through, and it follows a host that repoints the disk. An explicit path still wins, which is
+> what a `--scribe-dir` host sets.
+>
+> Two smaller findings from the same bare-host run:
+>
+> - **`openapi.version` must be `3.1.0` in the stub, not Scribe's `3.0.3`.** `DataSchemaGenerator` stamps
+>   `openapi: 3.1.0` on the assembled document unconditionally (hoisting Data-class `$defs` into
+>   `components/schemas` needs 3.1's JSON Schema compatibility), so a stub saying 3.0.3 makes Scribe emit
+>   3.0-shaped fragments into a document that declares 3.1.
+> - **`type => 'laravel'` still writes a Blade view and public assets** on every generate, even with
+>   `add_routes` false. Nothing routes to them, so the §8 guarantee holds — but the files appear, and the
+>   stub says so rather than letting a host discover it as a surprise.
+>
+> §7's deploy-time composer script could not ship from beam: a package has no `artisan`. It ships instead
+> as the **third check in the §8 doctor audit**, which reports when no composer script invokes
+> `scribe:generate` and names the line to add.
+
 ## Consequences
 
 - A headless beam install — no `beam-ux` — still serves its own spec at `beam/openapi.{yaml,json}`.

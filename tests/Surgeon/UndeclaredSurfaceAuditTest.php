@@ -184,6 +184,20 @@ class UndeclaredSurfaceAuditTest extends TestCase
         }
     }
 
+    /**
+     * Beam mounts its own OpenAPI artifact routes unconditionally (ADR-0211), so unlike every other
+     * exemption here these are LIVE in the bare test app. The body is an OpenAPI document, not a
+     * boundary-crossing application data shape — and it can never appear in the document it serves, since
+     * the published Scribe stub extracts `api/*` only.
+     */
+    public function test_beams_own_openapi_artifact_routes_are_exempt(): void
+    {
+        $uris = $this->uris();
+
+        $this->assertNotContains('beam/openapi.yaml', $uris);
+        $this->assertNotContains('beam/openapi.json', $uris);
+    }
+
     public function test_a_vendor_owned_action_is_exempt_because_we_did_not_declare_it(): void
     {
         Route::get('api/v1/vendor-mounted', '\\Laravel\\Sanctum\\Http\\Controllers\\CsrfCookieController@show');

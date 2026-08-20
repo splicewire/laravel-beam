@@ -72,6 +72,37 @@ return [
     ],
 
     /*
+    | The OpenAPI artifact beam serves at `beam/openapi.yaml` + `beam/openapi.json` (ADR-0211). Both URLs
+    | are FIXED and package-owned — a docs page links them with route('beam.openapi.yaml') — and both are
+    | mounted unconditionally, because with no artifact on disk they simply 404. Mounting opens nothing.
+    |
+    | Generation happens at INSTALL and at DEPLOY, never on request: extraction reflects over every route
+    | in the app, and a public GET must not write to storage.
+    */
+    'openapi' => [
+        // Where the generated spec lives on DISK — a path, not a URL, so it does not reopen the public
+        // docs-path question (that comes from entry containment, never config).
+        //
+        // NULL ⇒ derive it, which is the right default and not merely a lazy one: Scribe writes through
+        // `Storage::disk('local')`, and that disk is rooted at `storage/app/private` on a Laravel 11+
+        // skeleton and `storage/app` on an older one. A hardcoded literal is wrong on one of them (and on
+        // any host that repoints the disk). ConfiguredArtifactSpecSource resolves
+        // `filesystems.disks.local.root` + `/scribe/openapi.yaml` — the same value Scribe itself resolves.
+        //
+        // Set it explicitly if you generate with `--scribe-dir` or keep the artifact somewhere else. A
+        // host serving pre-made VARIANTS rebinds Splicewire\Beam\OpenApi\OpenApiSpecSource instead of
+        // pointing this key at one of them.
+        'artifact' => null,
+
+        // Route middleware, shaped exactly like `intake.throttle` above. PUBLIC BY DEFAULT: a docs
+        // surface nobody can read is not a docs surface. The real contract boundary is the published
+        // config/scribe.php stub's `routes.match.prefixes` (`api/*` only) — what never enters the
+        // artifact cannot leak from this route. A host that wants the spec behind auth lists middleware
+        // here (e.g. ['auth'] or a signed-url guard).
+        'middleware' => [],
+    ],
+
+    /*
     | RETROFIT SEAM (beam-particle-rename ticket 01). Every Beam table name is `table_prefix . $name`,
     | resolved in ONE place ({@see \Splicewire\Beam\Facades\Beam::table()}). A greenfield/satellite host keeps
     | the default `beam_`; a RETROFIT host dropping Beam into a pre-existing Laravel app changes this ONE

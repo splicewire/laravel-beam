@@ -8,6 +8,13 @@ use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\InstallStep;
+use Splicewire\Beam\Scribe\Strategies\GroupStrategy;
+use Splicewire\Beam\Scribe\Strategies\ModelsResponseEnvelope;
+use Splicewire\Beam\Scribe\Strategies\ParticleRequestStrategy;
+use Splicewire\Beam\Scribe\Strategies\ParticleResponseStrategy;
+use Splicewire\Beam\Scribe\Strategies\ParticleTitleStrategy;
+use Splicewire\Beam\Scribe\Strategies\ReturnsResponseStrategy;
+use Splicewire\Beam\Scribe\Strategies\RouteTitleStrategy;
 use Splicewire\Beam\Tests\TestCase;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -82,7 +89,70 @@ class BeamInstallTest extends TestCase
         // vendor:publish group names are `beam-config` / `beam-migrations` (NOT `laravel-beam-*`).
         $this->assertContains('beam-config', $core->publishTags);
         $this->assertContains('beam-migrations', $core->publishTags);
+        // ADR-0211 §7: the scribe stub is an INSTALL step, unlike beam-stubs — a fresh starter must boot
+        // with a spec, and it cannot generate one worth reading from Scribe's stock config.
+        $this->assertContains('beam-scribe', $core->publishTags);
         $this->assertTrue($core->migrates);
+    }
+
+    /**
+     * ADR-0211 §7: publishing the stub puts beam's emitter-only Scribe config in the host — the pair that
+     * keeps Scribe from growing a second docs UI, and the `api/*` match rules that are the exposure
+     * boundary for the (public by default) artifact route.
+     */
+    public function test_the_scribe_stub_publishes_beams_emitter_only_defaults(): void
+    {
+        $this->artisan('vendor:publish', ['--tag' => 'beam-scribe'])->assertExitCode(0);
+
+        $published = config_path('scribe.php');
+        $this->assertFileExists($published);
+
+        $config = require $published;
+
+        $this->assertSame('laravel', $config['type']);
+        $this->assertFalse($config['laravel']['add_routes']);
+        $this->assertTrue($config['openapi']['enabled']);
+        $this->assertFalse($config['postman']['enabled']);
+        $this->assertSame(['api/*'], $config['routes'][0]['match']['prefixes']);
+        $this->assertSame([], $config['routes'][0]['include']);
+        $this->assertSame([], $config['routes'][0]['exclude']);
+
+        // The particle-aware extraction, without which a generated spec is bare paths (ADR-0211 §9).
+        $this->assertContains(GroupStrategy::class, $config['strategies']['metadata']);
+        $this->assertContains(ParticleTitleStrategy::class, $config['strategies']['metadata']);
+        $this->assertContains(RouteTitleStrategy::class, $config['strategies']['metadata']);
+        $this->assertContains(ParticleRequestStrategy::class, $config['strategies']['bodyParameters']);
+        $this->assertContains(ReturnsResponseStrategy::class, $config['strategies']['responses']);
+        $this->assertContains(ParticleResponseStrategy::class, $config['strategies']['responses']);
+
+        // A trait the two response strategies share — listing it as a strategy would blow up extraction.
+        $this->assertNotContains(ModelsResponseEnvelope::class, $config['strategies']['responses']);
+
+        // Beam ships the taxonomy EMPTY: a host's groups derive from its own declared particle resources,
+        // never from one estate's ontology seeded into every host (ADR-0211 §10).
+        $this->assertSame([], $config['groups']['order']);
+
+        @unlink($published);
+    }
+
+    /**
+     * ADR-0211 §4: a fresh host gets its artifact at install time. Scribe is not registered in this
+     * package's testbench (beam boots with only its own provider), so the step must SKIP silently rather
+     * than crash — the same shape as the pnpm-overrides delegation.
+     */
+    public function test_artifact_generation_skips_silently_when_scribe_is_not_registered(): void
+    {
+        $command = $this->app->make(BeamInstallCommand::class);
+
+        $output = new BufferedOutput;
+        $command->setLaravel($this->app);
+        $command->setOutput(new OutputStyle(new ArrayInput([]), $output));
+
+        $method = new \ReflectionMethod($command, 'generateOpenApiArtifact');
+        $method->setAccessible(true);
+        $method->invoke($command);
+
+        $this->assertSame('', $output->fetch());
     }
 
     public function test_a_consumer_self_registers_without_beam_naming_it(): void

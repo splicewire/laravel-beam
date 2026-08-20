@@ -55,6 +55,7 @@ use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
+use Splicewire\Beam\Doctor\ScribeOutputContractAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
@@ -68,6 +69,7 @@ use Splicewire\Beam\Frame\ParticleResourceRegistryPort;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
+use Splicewire\Beam\Http\OpenApiSpecController;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Http\PublicIntakeController;
@@ -77,6 +79,8 @@ use Splicewire\Beam\Manifest\ManifestDescriptor;
 use Splicewire\Beam\Manifest\ManifestIndex;
 use Splicewire\Beam\Manifest\ManifestSeam;
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\OpenApi\ConfiguredArtifactSpecSource;
+use Splicewire\Beam\OpenApi\OpenApiSpecSource;
 use Splicewire\Beam\Ownership\Contracts\OwnershipEdgeStore;
 use Splicewire\Beam\Ownership\EloquentOwnershipEdgeStore;
 use Splicewire\Beam\Ownership\OwnershipGraph;
@@ -491,6 +495,13 @@ class BeamServiceProvider extends PackageServiceProvider
         // may carry a config gate so a demo-only seeder fires only where its gate is on.
         $this->app->singleton(BeamSeedManifest::class);
 
+        // The OpenAPI spec-source seam (ADR-0211 §3). Beam ships ONE spec, read off the configured
+        // artifact — the VARIANCE lives in this binding, not in the artifact. A host that wants
+        // per-capability specs pre-generates them (`scribe:generate --config=<name>`) and rebinds this
+        // contract; the route, the docs page, and <ApiReference> never learn about it. A plain bind, so a
+        // host's own register() — which runs after every package's — simply wins.
+        $this->app->bind(OpenApiSpecSource::class, ConfiguredArtifactSpecSource::class);
+
         // The index of indexes (beam-manifest-index): the same self-registration singleton pattern turned
         // on the registries themselves. Every registry/manifest describes itself in, so `beam:manifests`
         // lists the estate's injection points. beam-core self-describes its own set in packageBooted().
@@ -874,6 +885,19 @@ class BeamServiceProvider extends PackageServiceProvider
                 dirname(__DIR__).'/stubs/client-runtime/api.ts' => resource_path('js/lib/api.ts'),
                 dirname(__DIR__).'/stubs/client-runtime/routes.ts' => resource_path('js/lib/routes.ts'),
             ], 'beam-client-runtime');
+
+            // The Scribe stub (ADR-0211 §7). A publish-only STUB, never a merged package config: once
+            // published the file is the host's, and Scribe's own defaults still apply to a host that
+            // never publishes it. What the stub carries that those defaults do not is the emitter-only
+            // pair (`type` = laravel + `add_routes` = false, ADR-0028), the `api/*` match rules that ARE
+            // the exposure boundary given the artifact route is public, and the Splicewire\Beam\Scribe\*
+            // strategies + generators without which a generated spec is bare paths.
+            //
+            // Unlike beam-stubs, this IS an install step (registered below): a fresh starter must boot
+            // with a spec, and it cannot generate one worth reading from Scribe's stock config.
+            $this->publishes([
+                dirname(__DIR__).'/stubs/scribe/scribe.php' => config_path('scribe.php'),
+            ], 'beam-scribe');
         }
 
         // beam-core registers ITS OWN install step, core-first (order 0), like any consumer — the config
@@ -886,7 +910,7 @@ class BeamServiceProvider extends PackageServiceProvider
         // so the freshly-published copies apply.
         $this->app->make(BeamInstallManifest::class)->register(
             package: 'splicewire/laravel-beam (core)',
-            publishTags: ['beam-config', 'beam-migrations'],
+            publishTags: ['beam-config', 'beam-migrations', 'beam-scribe'],
             migrates: true,
             order: 0,
         );
@@ -914,6 +938,15 @@ class BeamServiceProvider extends PackageServiceProvider
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             TestRunnerConformanceAudit::class,
+        );
+
+        // ADR-0211 §8: Scribe stays an EMITTER (no second docs UI), the host has an artifact to serve, and
+        // something regenerates it on deploy. Advisory — beam reserves `gate: true` for "an agent is
+        // building a thing wrong", and a host that deliberately wants Scribe's own static UI, or that has
+        // simply not generated yet, is making a defensible choice to report, not to block.
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            ScribeOutputContractAudit::class,
         );
 
         // Published copies of migrations beam has since RETIRED. Publishing is a copy, so a squash
@@ -959,6 +992,12 @@ class BeamServiceProvider extends PackageServiceProvider
         if (config('beam.core.intake.enabled', false)) {
             $this->registerIntakeRoute();
         }
+
+        // The OpenAPI artifact routes (ADR-0211 §1). UNCONDITIONAL, unlike the intake door above: with no
+        // artifact on disk both URLs 404, so mounting opens nothing either — and a headless beam host (no
+        // laravel-beam-ux) still serves its own spec, which is the whole reason this is a package route
+        // rather than a docs entry.
+        $this->registerOpenApiRoutes();
 
         // Attributed-realm registration (realm-architecture ticket 08 slice D). Realms are ~4
         // (admin·tenant·user·docs), so a filesystem scan is overkill — register the configured
@@ -1639,5 +1678,27 @@ class BeamServiceProvider extends PackageServiceProvider
             ->where('schema', '.*')
             ->middleware($middleware)
             ->name('beam.intake.submit');
+    }
+
+    /**
+     * Mount `GET beam/openapi.yaml` + `GET beam/openapi.json` onto {@see OpenApiSpecController}
+     * (ADR-0211 §1/§2), with host-configured middleware — public by default.
+     *
+     * Two fixed routes, not one negotiated on `Accept`: every consumer of a spec takes a URL, so
+     * negotiation alone would leave a caller with no JSON link to paste. The path is fixed and NOT
+     * configurable — ticket 02 established that public docs paths come from containment, and this
+     * inherits that ruling by being a package-owned namespaced path rather than a docs path at all.
+     */
+    protected function registerOpenApiRoutes(): void
+    {
+        $middleware = (array) config('beam.core.openapi.middleware', []);
+
+        Route::get('beam/openapi.yaml', [OpenApiSpecController::class, 'yaml'])
+            ->middleware($middleware)
+            ->name('beam.openapi.yaml');
+
+        Route::get('beam/openapi.json', [OpenApiSpecController::class, 'json'])
+            ->middleware($middleware)
+            ->name('beam.openapi.json');
     }
 }

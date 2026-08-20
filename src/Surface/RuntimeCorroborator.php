@@ -103,6 +103,15 @@ class RuntimeCorroborator
         $postures = [];
 
         foreach ($this->router->getRoutes() as $route) {
+            // A surface outside the invariant's extension has no posture worth corroborating, and — more
+            // pointedly — no obligation to appear in the document. Without this skip, every health probe,
+            // vendor handshake, and beam's own `beam/openapi.{yaml,json}` artifact route reports as an
+            // UNDOCUMENTED SURFACE in every host, forever. The exemption is read from the audit that
+            // already owns the question rather than restated here.
+            if ($this->undeclaredSurface->exemptsUri($route->uri())) {
+                continue;
+            }
+
             foreach ($this->methods($route) as $method) {
                 $posture = $this->postureFor($route, $method);
                 $postures[SurfaceSignature::normalize($posture->signature)] = $posture;

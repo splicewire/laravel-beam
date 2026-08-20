@@ -5,12 +5,13 @@ namespace Splicewire\Beam\Console;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Rushing\SchemaConvergence\ConvergentTable;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\InstallStep;
 use Splicewire\Beam\Install\MigrationCollision;
 use Splicewire\Beam\Install\TableOwnershipResolver;
-use Rushing\SchemaConvergence\ConvergentTable;
+use Splicewire\Beam\OpenApi\ConfiguredArtifactSpecSource;
 
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\multiselect;
@@ -127,6 +128,12 @@ class BeamInstallCommand extends Command
         }
 
         $this->persistConfig($prefix, $sources, $tenancy);
+
+        // 4b. Generate the OpenAPI artifact, so a fresh host serves its OWN spec at
+        //     beam/openapi.{yaml,json} on first boot rather than 404ing until someone remembers to run
+        //     the generator. Publishing beam's scribe stub happened above; this is the step that turns it
+        //     into bytes.
+        $this->generateOpenApiArtifact();
 
         // 5. Verify the three fresh-host provisioning traps (beam-install-turnkey). Each fix lands as a
         //    package DEFAULT (so a host that never runs this command is still safe); the command's job here
@@ -417,6 +424,69 @@ class BeamInstallCommand extends Command
         }
 
         return false;
+    }
+
+    /**
+     * Generate the OpenAPI artifact so the OTB docs promise holds on FIRST boot (ADR-0211 §4).
+     *
+     * Three things this deliberately does:
+     *
+     *  - **Re-reads the just-published config.** `config/scribe.php` was written by the publish pass a few
+     *    steps up, in a process that loaded its config before that file existed. Without this the install's
+     *    own generate would run against Scribe's STOCK defaults — Postman on, `add_routes` on, none of
+     *    beam's strategies — and produce an artifact of bare paths that looks like a successful install.
+     *  - **Never fails the install.** Extraction reflects over every route in the application, which is
+     *    exactly where a half-configured fresh host throws. A host that cannot generate yet still has a
+     *    working stack and a doctor check telling it so; a host that cannot *install* has nothing.
+     *  - **Skips silently when Scribe is not registered.** It is a hard transitive dependency of beam
+     *    today, so this is defence rather than a real branch — but a host that removed it should not get a
+     *    crash out of an installer.
+     */
+    private function generateOpenApiArtifact(): void
+    {
+        $app = $this->getApplication();
+
+        if ($app === null || ! $app->has('scribe:generate')) {
+            return;
+        }
+
+        $this->line('splicewire:beam:install → OpenAPI artifact (scribe:generate)');
+
+        $published = config_path('scribe.php');
+
+        if (is_file($published)) {
+            try {
+                $fresh = require $published;
+
+                if (is_array($fresh)) {
+                    config(['scribe' => $fresh]);
+                }
+            } catch (\Throwable $e) {
+                $this->warn('  ↳ could not read the published config/scribe.php — generating against the '.
+                    'config already loaded. ('.$e->getMessage().')');
+            }
+        }
+
+        try {
+            $this->callSilent('scribe:generate');
+        } catch (\Throwable $e) {
+            $this->warn('  ↳ extraction failed, so no spec was written: '.$e->getMessage());
+            $this->line('     beam/openapi.{yaml,json} will 404 until `php artisan scribe:generate` '.
+                'succeeds. The rest of the install is unaffected; `beam:doctor` reports the missing artifact.');
+
+            return;
+        }
+
+        $artifact = app(ConfiguredArtifactSpecSource::class)->artifactPath();
+
+        if (is_file($artifact)) {
+            $this->line("  ↳ OK — {$artifact} written; beam/openapi.yaml + beam/openapi.json now serve it.");
+
+            return;
+        }
+
+        $this->warn("  ↳ scribe:generate ran but no artifact landed at {$artifact} — check that ".
+            '`scribe.openapi.enabled` is true and that `beam.core.openapi.artifact` points where Scribe writes.');
     }
 
     /**

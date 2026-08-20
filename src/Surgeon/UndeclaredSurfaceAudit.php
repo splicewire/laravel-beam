@@ -14,6 +14,7 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Source\RouteManifestSource;
+use Splicewire\Beam\Surface\RuntimeCorroborator;
 
 /**
  * The **negative-space detector**: the full live surface MINUS the declared set.
@@ -83,6 +84,15 @@ class UndeclaredSurfaceAudit implements DoctorAudit
         '.well-known/oauth-authorization-server',
         '.well-known/oauth-protected-resource',
         'sanctum/',
+        // Beam's own OpenAPI artifact routes (ADR-0211). Outside the extension for the same reason `up`
+        // is: the response body is an OpenAPI *document* — the description of the API contract — not a
+        // boundary-crossing application data shape, and declaring it would mean modelling OpenAPI itself
+        // as a Data class. They can also never appear in the document they serve: the published Scribe
+        // stub extracts `api/*` only, so a `beam/*` route is excluded by the same rule that makes the
+        // artifact safe to serve publicly. Both spellings, because the exemption matcher is
+        // segment-based and these differ only by extension.
+        'beam/openapi.yaml',
+        'beam/openapi.json',
     ];
 
     /**
@@ -207,14 +217,30 @@ class UndeclaredSurfaceAudit implements DoctorAudit
         return $this->method($route) === null ? self::TIER_MANUAL : self::TIER_GUIDED;
     }
 
-    private function isExempt(RouteInstance $route): bool
+    /**
+     * Whether a URI sits outside the invariant's extension (or is exempt at the site).
+     *
+     * Public because the corroboration side needs the SAME answer: a surface that owes no data-shape
+     * declaration also owes no appearance in the OpenAPI document, and computing that twice is how the two
+     * directions drift apart. {@see RuntimeCorroborator::posture()} reads it.
+     */
+    public function exemptsUri(string $uri): bool
     {
-        $uri = ltrim($route->uri(), '/');
+        $uri = ltrim($uri, '/');
 
         foreach ($this->exemptUris as $prefix) {
             if ($uri === $prefix || str_starts_with($uri, rtrim($prefix, '/').'/')) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    private function isExempt(RouteInstance $route): bool
+    {
+        if ($this->exemptsUri($route->uri())) {
+            return true;
         }
 
         $action = $route->getActionName();
