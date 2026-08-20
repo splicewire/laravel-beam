@@ -107,6 +107,7 @@ use Splicewire\Beam\Source\LadderForeignSourceProjector;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Source\ParticleShadower;
 use Splicewire\Beam\Storage\GitRepoRegistrar;
+use Splicewire\Beam\Surface\GroupRegistry;
 use Splicewire\Beam\Surface\OpenApiSpecCorroborator;
 use Splicewire\Beam\Surface\RuntimeCorroborator;
 use Splicewire\Beam\Surgeon\AuditScanPaths;
@@ -400,6 +401,15 @@ class BeamServiceProvider extends PackageServiceProvider
             $app->make(RealmResourceRegistry::class),
         ))->loadRealmMap((array) config('frame.realms', [])));
         $this->app->singleton(ParticleOperationRegistry::class);
+
+        // The host's API taxonomy and the chain that resolves a route into it (api-surface-coherence 17).
+        // Beam ships the registry EMPTY on purpose: a taxonomy belongs to the host, and seeding this
+        // estate's roots from core would ship one host's engine names to every beam site — the mistake the
+        // glob map it replaces warned about in its own header. A fresh beam host still groups its reference
+        // correctly, off its declared particle resources, with no taxonomy config at all.
+        $this->app->singleton(GroupRegistry::class, fn ($app) => new GroupRegistry(
+            $app->make(ParticleResourceRegistry::class),
+        ));
         $this->app->bind(ResponseEnvelope::class, ArrayResponseEnvelope::class);
 
         // data-filters' model-resolver port (its ADR-0008). The foundation package declares the seam
@@ -1450,6 +1460,15 @@ class BeamServiceProvider extends PackageServiceProvider
                 arity: ManifestArity::PickOne,
                 registerHint: 'annotate a Data class #[ParticleResource] (or add its dir to beam.core.resources.discover_paths)',
                 where: '#[ParticleResource] → '.ParticleResourceRegistry::class,
+                package: $pkg, order: 12,
+            ),
+            new ManifestDescriptor(
+                name: 'GroupRegistry',
+                of: 'the API taxonomy — group tree (key/name/description/parent) plus the chain that resolves a route into it',
+                seam: ManifestSeam::SingletonAccumulator,
+                arity: ManifestArity::PickOne,
+                registerHint: "app(GroupRegistry::class)->register(new ApiGroup(key:, name:, description:, parent:)) from your provider; ->assign(resourceKey, groupKey) to override a package's declared default",
+                where: GroupRegistry::class,
                 package: $pkg, order: 12,
             ),
             new ManifestDescriptor(

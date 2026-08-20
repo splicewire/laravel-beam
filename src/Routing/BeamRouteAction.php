@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Routing;
 
 use Illuminate\Routing\Route;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Http\Particle\ParticleOperationController;
 
 /**
  * The read side of the `->beam()` route-metadata namespace (api-surface-coherence ticket 15).
@@ -64,10 +65,19 @@ class BeamRouteAction
      * The resource key this route belongs to — whether stamped by `Route::particleResource()` or declared
      * by `->beam()->inResource()`. Both write the same route default, so this reader cannot tell them
      * apart, which is the point (ticket 01).
+     *
+     * An OPERATION route (`Route::particleOp()`/`particleOps()`) stamps its resource under a second key,
+     * because the operation controller resolves the op by (resource, name) rather than serving the
+     * resource's own CRUD. That is an implementation detail of the mount, not a second kind of belonging —
+     * `POST /circuits/{id}/op/duplicate` belongs to `circuits` exactly as `GET /circuits` does — so this
+     * reader falls through to it. Ticket 17 found this while wiring the group chain: the ticket's own note
+     * claimed there was one stamp to read, and there are two.
      */
     public static function resourceKey(Route $route): ?string
     {
-        $value = $route->defaults[ParticleController::RESOURCE] ?? null;
+        $value = $route->defaults[ParticleController::RESOURCE]
+            ?? $route->defaults[ParticleOperationController::RESOURCE]
+            ?? null;
 
         return is_string($value) ? $value : null;
     }
