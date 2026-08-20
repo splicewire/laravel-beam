@@ -76,6 +76,26 @@ class FacadeReferenceScanner
     }
 
     /**
+     * The short names `$source` has bound to `$fqcn` via `use`, read from the file's own import map.
+     * Public because a third check needs the same map for a different class: {@see SchemaCreateScanner}
+     * resolves `Schema::create(…)` (beam-facade ticket 30) and `Schema` tokenizes as a bare `T_STRING`
+     * exactly the way `Beam` does — 19 found a qualified-name scan finds every import and not one call
+     * under it, and that finding is about the substrate, not about which class is being looked for.
+     *
+     * @return list<string> the short names, empty when the file never imports `$fqcn`
+     */
+    public static function importedShortNames(string $source, string $fqcn): array
+    {
+        $tokens = static::tokenize($source);
+
+        if ($tokens === null) {
+            return [];
+        }
+
+        return array_keys(static::aliasesFor($tokens, ltrim($fqcn, '\\')));
+    }
+
+    /**
      * The short names this file has bound to `$target` via `use` — usually one, `Beam`. Reading the
      * import map is what makes a call site visible: `Beam::table()` tokenizes as a bare `T_STRING`
      * carrying no namespace at all, so a scan for qualified names alone sees the import and misses every

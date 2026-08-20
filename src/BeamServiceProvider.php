@@ -56,6 +56,7 @@ use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
+use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
@@ -500,7 +501,12 @@ class BeamServiceProvider extends PackageServiceProvider
      *
      * ## One registration block, five siblings, all advisory
      * The estate's ~30 audits are single-purpose with one check key each, and this follows that: five keys,
-     * five `order` slots, each independently promotable to `gate: true` later. **None gates.** Precedent is
+     * five `order` slots, each independently promotable to `gate: true` later. **None gates.**
+     *
+     * **Six as of beam-facade ticket 30** — {@see UnguardedCreateAudit} joined the block without being a
+     * facade check at all, because what it shares with the five is the *scope*, which is the expensive
+     * part. Read the regime as "beam's static, host-scoped conformance checks" rather than as five things
+     * about the facade; the same is already true of {@see KeyTypeConformanceAudit} below. Precedent is
      * lopsided — exactly one audit in the estate is `gate: true` ({@see UndescribedRegistryAudit}, carrying
      * an in-code justification for being the sole exception) — and the specific argument here is that
      * ticket 10's census measured 238 naive flags across 16 repos on day one. That is how a check gets its
@@ -529,6 +535,16 @@ class BeamServiceProvider extends PackageServiceProvider
         ));
         $this->app->bind(ConfigFacadeReferenceAudit::class, fn () => ConfigFacadeReferenceAudit::forApp());
 
+        // The sixth audit (beam-facade tickets 22 Q8a and 30). Not a facade check — it watches the
+        // migration-collision family that 27–29 closed at its mechanism — but it shares this scope: the
+        // memoized walk, the symlink resolution-mode rule and the published-copy exclusion are the same
+        // rules, and a second walk is the one cost 19's construction was most careful about. Doctor-side
+        // and unconditional for StubStaticReferenceAudit's reason: the population is `.php.stub`, which
+        // surgeon cannot see, and an unguarded create damages a host whether or not it installed surgeon.
+        $this->app->bind(UnguardedCreateAudit::class, fn ($app) => new UnguardedCreateAudit(
+            $app->make(FacadeConformanceScope::class),
+        ));
+
         // The key-type conformance check is unconditional and NOT part of the facade regime — it is
         // registered here only because this is where beam's static, host-scoped schema checks live. It
         // reports a defect already present in a schema rather than a style drift: a primary key and the
@@ -541,6 +557,7 @@ class BeamServiceProvider extends PackageServiceProvider
         $manifest->register('splicewire/laravel-beam', KeyTypeConformanceAudit::class);
         $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', ConfigFacadeReferenceAudit::class);
+        $manifest->register('splicewire/laravel-beam', UnguardedCreateAudit::class);
         // Joins the install manifest (package → order) against every package's migration stubs
         // (table → created/altered), so a cross-package ALTER declared ahead of its CREATE is caught
         // at boot rather than by a failed greenfield migrate.
