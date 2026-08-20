@@ -123,12 +123,26 @@ Health endpoints and `/broadcasting/auth` are *outside* the doctrine's extension
   query: the read Data class carries `rushing/laravel-data-filters` attributes —
   `#[Filterable(operator: …)]` per facet, `#[Sortable(default: true)]` for the default order,
   `#[Includable]` for relations — and `filterable: true` on the `#[ParticleResource]` makes
-  data-filters generate the index query from them. That generated query is the index's own read gate
-  (`ParticleController` skips `scope()` on the filterable path); the one thing annotations can't
-  express — the owner row-gate — the host binds by overriding its `ResourceQuery::baseQuery()`
-  (`*Query` suffix, per resource). A `filterable: false` resource still reads the SAME
-  `#[Sortable(default: true)]` for its default order, so sort is single-sourced either way. Model
-  reading: `splicewire/laravel-beam-rank` `src/Data/RankData.php`.
+  data-filters generate the index query from them. **Generate is literal**: `ResourceQuery::apply()`
+  builds `allowedFilters`/`allowedSorts`/`allowedIncludes` off those attributes through
+  `FilterReflector`, so a `ResourceQuery` subclass with an EMPTY BODY is fully functional. The only
+  hand-written part is `baseQuery()` — the owner row-gate annotations can't express — which the host
+  overrides (`*Query` suffix, per resource). That generated query is then the index's own read gate,
+  which is why `ParticleController` and `ParticleFrameResourceHandler` both skip `scope()` on the
+  filterable path. A `filterable: false` resource still reads the SAME `#[Sortable(default: true)]`
+  for its default order, so sort is single-sourced either way. Model reading:
+  `splicewire/laravel-beam-rank` `src/Data/RankData.php`.
+
+  **`filterable: true` requires a data-filters REGISTRATION, and the attribute is not the only way to
+  get one.** Three tiers, strongest first: `config/data-filters.php` seeds and wins ·
+  `#[ResourceFilter]` discovery fills gaps · `DataFilter::resource()` overwrites either. So a
+  correctly-wired resource may carry NO `query:` on its `#[ParticleResource]` at all — the estate's
+  own `tokens` is registered purely in the platform's config, pointing at a `TokensQuery` whose
+  `baseQuery()` is the row-scope. **Do not read a missing `query:` slot as "unscoped"; check the
+  host's config before concluding anything about a resource's gate.** A key registered in no tier
+  makes `ResourceRegistry::get()` throw `InvalidArgumentException` and the index breaks on first
+  request — loudly, with nothing exposed, because no `ResourceQuery` is ever constructed
+  (`particle-doctrine-followups` 15).
 - **Derived vs. published.** A rendering stays derived unless it becomes independently addressable
   *and* independently editable — at which point it is not a rendering, it is a publish, and
   `PublishPayload` is the seam. Fidelity (and therefore whether a write verb exists at all) is read
