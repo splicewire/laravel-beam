@@ -316,9 +316,9 @@ class UndescribedRegistryAuditTest extends TestCase
         // FacadeConformanceScope the beam-facade ticket-19 audits share — the last of which this very
         // audit flagged the moment it was bound, which is the membership ratchet working.
         $names = array_keys($actual);
-        $wanted = [...array_keys($expected), 'RealmOverlayRegistry', 'RealmResourceRegistry', 'SchemaSources', 'AuditScanPaths', 'ResourceRenderingRegistry', 'FacadeConformanceScope'];
+        $wanted = [...array_keys($expected), 'RealmOverlayRegistry', 'RealmResourceRegistry', 'SchemaSources', 'AuditScanPaths', 'ResourceRenderingRegistry', 'FacadeConformanceScope', 'GroupRegistry'];
         sort($names);
         sort($wanted);
-        $this->assertSame($wanted, $names, 'beam-core describes the frozen twelve plus exactly the sanctioned additions (ticket-13 realms + JN-15 SchemaSources + AuditScanPaths + ResourceRenderingRegistry + ticket-19 FacadeConformanceScope)');
+        $this->assertSame($wanted, $names, 'beam-core describes the frozen twelve plus exactly the sanctioned additions (ticket-13 realms + JN-15 SchemaSources + AuditScanPaths + ResourceRenderingRegistry + ticket-19 FacadeConformanceScope + api-surface-coherence-17 GroupRegistry)');
     }
 }
