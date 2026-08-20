@@ -95,6 +95,7 @@ use Splicewire\Beam\Rendering\RenderingCertifier;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
 use Splicewire\Beam\Rendering\Subjects\FindOrFailSubjectResolver;
 use Splicewire\Beam\Rendering\Subjects\ResolvesRenderingSubject;
+use Splicewire\Beam\Routing\BeamRouteProxy;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
@@ -751,6 +752,10 @@ class BeamServiceProvider extends PackageServiceProvider
         // controllers against the RESOURCE/NAME route defaults.
         $this->bootParticleRouteMacros();
 
+        // The `->beam()` route-metadata namespace — one macro on the route INSTANCE carrying every beam
+        // declaration a mounted route can make (api-surface-coherence ticket 15).
+        $this->bootBeamRouteNamespace();
+
         // The `Route::resourceRenderings()` route macro (moved from laravel-composition-engine into beam
         // core) — mounts one read (and, where certified reversible, write) route per registered rendering.
         $this->bootResourceRenderingsMacro();
@@ -1028,6 +1033,32 @@ class BeamServiceProvider extends PackageServiceProvider
      *      stamped with the operation controller's RESOURCE + NAME defaults. Options: 'method' (default
      *      'post'), 'name' (route-name override), 'idConstraint'.
      */
+    /**
+     * Register the `->beam()` route-metadata namespace (api-surface-coherence ticket 15).
+     *
+     * Note this hangs off the route INSTANCE ({@see RouteInstance}), not the {@see Route} facade's Router
+     * — the distinction the bare macros already drew and the reason they can't live next to
+     * `particleResource`. `particleResource` MOUNTS routes, so it is a Router call; `->beam()` DECORATES a
+     * route that already exists, so it is a Route call and only makes sense post-mount.
+     *
+     * Everything the namespace can declare lives on {@see BeamRouteProxy}; adding a fifth declaration is a
+     * method there and touches nothing here. That is the point of the namespace — the global macro table
+     * stops growing one entry per beam concept, so `Macroable::macro()`'s silent overwrite has exactly one
+     * surface to hit instead of four. `BeamRouteNamespaceTest` asserts `->beam()` still returns OUR proxy,
+     * which is what turns a foreign overwrite from invisible into a red test.
+     */
+    protected function bootBeamRouteNamespace(): void
+    {
+        if (RouteInstance::hasMacro('beam')) {
+            return;
+        }
+
+        RouteInstance::macro('beam', function (): BeamRouteProxy {
+            /** @var RouteInstance $this */
+            return new BeamRouteProxy($this);
+        });
+    }
+
     protected function bootParticleRouteMacros(): void
     {
         if (Route::hasMacro('particleResource')) {
