@@ -112,7 +112,7 @@ and not the other:
 
 | Gate | package | shape |
 | --- | --- | --- |
-| `Splicewire\Beam\Validation\SchemaFormValidator` | this package | formatted `{pointer: [messages]}` map (the public-intake 422 body) — vocabulary violations merge into the same map |
+| `Splicewire\Beam\Validation\SchemaIntakeValidator` | this package | formatted `{pointer: [messages]}` map (the public-intake 422 body) — vocabulary violations merge into the same map |
 | `Schemastud\DataSchemas\Migration\AcceptanceGate` | `schemastud/laravel-data-schemas` | boolean pass/fail (the `ParticleWriter` / migration-ladder write path) |
 
 Additive: a schema with no namespace content validates byte-for-byte as before, and a host

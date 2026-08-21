@@ -17,6 +17,13 @@ use stdClass;
  * The FORMATTED-error validation path for the public intake door (beam-write-pipeline ticket 04) —
  * relocated down from the dissolved submissions package's `SchemaValidator`.
  *
+ * Named `SchemaFormValidator` until beam-facade ticket 52. There is no such thing as a form schema
+ * (ticket 41, the owner's: any schema can be used as a form — a form is a rendering/intake MODE of a
+ * schema, never a class of schema), so the old name carried a category the dissolved
+ * `splicewire/laravel-schema-forms` package invented and outlived. `Intake` is the vocabulary the
+ * door already speaks: {@see \Splicewire\Beam\Http\PublicIntakeController}, `IntakeProvenance`,
+ * `PublicIntakeWriteGate`, `config('beam.core.intake')`.
+ *
  * Two validation gates deliberately coexist (DESIGN §7 L10): the boolean {@see AcceptanceGate}
  * the migration ladder and {@see ParticleWriter} use, and THIS formatted path,
  * which returns a field-keyed error map so the HTTP layer can render a 422 body. It is the door's
@@ -31,7 +38,7 @@ use stdClass;
  * payload: they are overlaid onto the submitted document before scoping, so an `@namespaced`
  * scope pointer addresses the PAYLOAD's shape.
  */
-class SchemaFormValidator
+class SchemaIntakeValidator
 {
     /**
      * How many violations one pass may report (beam-facade ticket 51). opis defaults to **1**, and

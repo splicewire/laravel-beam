@@ -8,7 +8,7 @@ use Schemastud\JsonNs\Vocab\VocabularyRegistry;
 use Schemastud\JsonNs\Vocab\VocabularyValidator;
 use Splicewire\Beam\Schema\BeamSchemaRegistry;
 use Splicewire\Beam\Tests\TestCase;
-use Splicewire\Beam\Validation\SchemaFormValidator;
+use Splicewire\Beam\Validation\SchemaIntakeValidator;
 
 /**
  * The namespace-aware formatted validation path (beam-namespace-wiring ticket 02): a schema
@@ -17,11 +17,11 @@ use Splicewire\Beam\Validation\SchemaFormValidator;
  * the SAME `{pointer: [messages]}` map. A schema with no namespace content takes the exact
  * pre-ticket path.
  */
-class SchemaFormValidatorTest extends TestCase
+class SchemaIntakeValidatorTest extends TestCase
 {
     private const VOCAB_URI = 'https://schemas.splicewire.app/splice/grounding-test';
 
-    private function namespacedValidator(): SchemaFormValidator
+    private function namespacedValidator(): SchemaIntakeValidator
     {
         $registry = VocabularyRegistry::make()->registerJson(self::VOCAB_URI, json_encode([
             'type' => 'object',
@@ -29,7 +29,7 @@ class SchemaFormValidatorTest extends TestCase
             'properties' => ['sources' => ['type' => 'array', 'minItems' => 1]],
         ]));
 
-        return new SchemaFormValidator(new VocabularyValidator($registry));
+        return new SchemaIntakeValidator(new VocabularyValidator($registry));
     }
 
     private function namespacedSchema(): array
@@ -128,7 +128,7 @@ class SchemaFormValidatorTest extends TestCase
         $this->app->forgetInstance(VocabularyRegistry::class);
 
         // No injected engine — the door resolves the container's registry-backed binding.
-        $door = new SchemaFormValidator;
+        $door = new SchemaIntakeValidator;
 
         $this->assertNotSame([], $door->validate(
             ['title' => 'ok', 'splice:grounding' => ['nope' => true]],

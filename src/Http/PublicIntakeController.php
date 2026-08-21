@@ -17,7 +17,7 @@ use Splicewire\Beam\Models\BeamSubmission;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Submissions\RecordsSubmissions;
-use Splicewire\Beam\Validation\SchemaFormValidator;
+use Splicewire\Beam\Validation\SchemaIntakeValidator;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\WriteNotAuthorized;
 use Symfony\Component\HttpFoundation\Response;
@@ -56,7 +56,7 @@ class PublicIntakeController
 {
     public function __construct(
         private SchemaTargetResolver $targets,
-        private SchemaFormValidator $validator,
+        private SchemaIntakeValidator $validator,
         private AcceptanceGate $acceptance,
         private Dispatcher $events,
     ) {}
