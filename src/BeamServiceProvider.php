@@ -853,7 +853,7 @@ class BeamServiceProvider extends PackageServiceProvider
         }
 
         // Base-tier readiness command. Moat-free (never touches the satellite); the
-        // frame/schema-forms/data-schemas checks it runs are advisory + presence-conditional.
+        // frame/intake-door/data-schemas checks it runs are advisory + presence-conditional.
         if ($this->app->runningInConsole()) {
             $this->commands([
                 BeamDoctorCommand::class,
