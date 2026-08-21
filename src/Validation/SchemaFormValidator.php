@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Validation;
 use Opis\JsonSchema\Errors\ErrorFormatter;
 use Opis\JsonSchema\Validator;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Schemastud\DataSchemas\Support\OpisSchema;
 use Schemastud\JsonNs\Exceptions\UnboundPrefix;
 use Schemastud\JsonNs\Exceptions\VocabularyArtifactMissing;
 use Schemastud\JsonNs\Vocab\VocabularyValidator;
@@ -32,8 +33,21 @@ use stdClass;
  */
 class SchemaFormValidator
 {
+    /**
+     * How many violations one pass may report (beam-facade ticket 51). opis defaults to **1**, and
+     * nothing in the estate had ever raised it — so a payload breaking two constraints showed the
+     * submitter one field, and the next attempt showed the other. That is not the field-keyed error
+     * map this door promises.
+     *
+     * BOUNDED rather than unbounded on purpose: a large array payload against a strict schema can
+     * generate an error per element, and the 422 body is rendered to a human. Twenty-five is well
+     * past any hand-filled form and far short of a runaway.
+     */
+    public const MAX_ERRORS = 25;
+
     public function __construct(
         private ?VocabularyValidator $vocabularies = null,
+        private int $maxErrors = self::MAX_ERRORS,
     ) {}
 
     /**
@@ -47,15 +61,17 @@ class SchemaFormValidator
     public function validate(array $payload, array $schema): array
     {
         // opis requires an absolute `$id`; a relative one (a bare form ref) would make it choke, so
-        // drop it — the target shape is validated in place, not by reference.
-        if (isset($schema['$id']) && ! str_contains((string) $schema['$id'], '://')) {
-            unset($schema['$id']);
-        }
+        // drop it — the target shape is validated in place, not by reference. Shared with the boolean
+        // gate rather than duplicated here, which is what keeps the two doors in parity.
+        $schema = OpisSchema::withoutRelativeId($schema);
 
         $schemaObject = json_decode(json_encode($schema ?: new stdClass), false);
         $payloadObject = json_decode(json_encode($payload ?: new stdClass), false);
 
-        $result = (new Validator)->validate($payloadObject, $schemaObject);
+        $validator = new Validator;
+        $validator->setMaxErrors($this->maxErrors);
+
+        $result = $validator->validate($payloadObject, $schemaObject);
 
         $errors = $result->isValid() ? [] : (new ErrorFormatter)->format($result->error());
 

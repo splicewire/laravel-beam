@@ -8,12 +8,15 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
 use Splicewire\Beam\Intake\IntakeProvenance;
 use Splicewire\Beam\Intake\PublicIntakeWriteGate;
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Models\BeamSubmission;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaId;
+use Splicewire\Beam\Submissions\RecordsSubmissions;
 use Splicewire\Beam\Validation\SchemaFormValidator;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\WriteNotAuthorized;
@@ -28,11 +31,26 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * Order is deliberately deny-first: resolve the form schema (404 unknown) → authorize the schema through
  * the permissive-but-allow-listed {@see PublicIntakeWriteGate} (403 if not marked public — the write is
  * refused before its payload is even validated) → format-validate the payload (422 with per-field errors)
- * → persist a {@see BeamParticle} carrying {@see IntakeProvenance} facets through the pipeline (which
+ * → persist a {@see BeamSubmission} carrying {@see IntakeProvenance} facets through the pipeline (which
  * re-authorizes, boolean-validates, and emits `BeamParticlePersisted`). The honeypot short-circuit, when
  * enabled, is handled upstream by {@see HoneypotMiddleware}.
  *
- * A "submission" is thus exactly a `BeamParticle` written through the public binding — no separate model.
+ * THE DOOR WRITES A SUBMISSION, not a bare particle (beam-facade ticket 51). It used to write a
+ * {@see BeamParticle}, which is the populator-AGNOSTIC skeleton — and a public form is as plainly
+ * populated as a flow gets. The estate's precedent is that every populator keeps its own table
+ * composing {@see PersistsBeamParticle} ({@see BeamSubmission}, `Thread`, `Message`, `BeamUxEntry`,
+ * `Clip`, `Project`, `Track`, `SitemapRecord`), so `beam_particles` and `beam_submissions` are
+ * SIBLING tables — there is no pivot and no parent/child relation between them. Writing the
+ * submission model is also what puts this door and {@see RecordsSubmissions} on the same store,
+ * which is the whole point of converging a host's hand-rolled intake onto it (ticket 41).
+ *
+ * `form_key` is the route's slug — the unversioned intake identity a host groups captures by, and
+ * what the submitter actually addressed — while `schema_ref` carries the resolved, versioned `$id`.
+ *
+ * It stamps `meta['intake']` and NOT `meta['schema']`, deliberately. The snapshot tier exists for a
+ * record with no `schema_ref` at all; every record this door writes carries one, so under ticket 47's
+ * rule its snapshot is unreachable BY CONSTRUCTION — stamping one would write a decoy nothing reads.
+ * `x-beam-notify` reaches a capture from here through the registry, off the `schema_ref`.
  */
 class PublicIntakeController
 {
@@ -76,7 +94,12 @@ class PublicIntakeController
             ], Response::HTTP_UNPROCESSABLE_ENTITY));
         }
 
-        $record = new BeamParticle(['schema_ref' => $this->schemaRef($stem, $targetSchema)]);
+        // `form_key` is the ROUTE's slug, not the resolved stem: it is the unversioned intake identity
+        // a host groups captures by, and the slug is what the submitter actually addressed.
+        $record = new BeamSubmission([
+            'form_key' => $form,
+            'schema_ref' => $this->schemaRef($stem, $targetSchema),
+        ]);
         $record->meta = ['intake' => $this->provenance($request, $actor)->toArray()];
 
         $writer = new ParticleWriter($gate, $this->targets, $this->acceptance, $this->events);

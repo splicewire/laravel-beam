@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Intake;
 
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Models\BeamSubmission;
 
 /**
  * Optional intake-provenance facets for a record written through the public intake door
@@ -13,8 +14,11 @@ use Splicewire\Beam\Models\BeamParticle;
  * baked into every write. It replaces the dissolved submissions package's `FormSubmission` intake
  * columns (form_key/context/user_id) with a structured facet set carried in the record's `meta`.
  *
- * A "submission" is therefore no longer a package or a model — it is a {@see BeamParticle}
- * written through the public binding, carrying these facets under `meta['intake']`.
+ * A "submission" is therefore no longer a PACKAGE — but it is still a model: the door writes the
+ * canonical {@see BeamSubmission} (beam-facade ticket 51), carrying these facets under
+ * `meta['intake']`. It wrote the populator-agnostic {@see BeamParticle} between ticket 04 and 51,
+ * which is why this class's `form_key`/`context`/`user_id` framing above reads as a replacement
+ * rather than as the columns the door now fills alongside it.
  */
 class IntakeProvenance
 {
