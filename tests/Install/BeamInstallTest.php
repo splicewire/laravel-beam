@@ -97,7 +97,7 @@ class BeamInstallTest extends TestCase
 
     /**
      * ADR-0211 §7: publishing the stub puts beam's emitter-only Scribe config in the host — the pair that
-     * keeps Scribe from growing a second docs UI, and the `api/*` match rules that are the exposure
+     * keeps Scribe from growing a second docs UI, and the DERIVED match rules that are the exposure
      * boundary for the (public by default) artifact route.
      */
     public function test_the_scribe_stub_publishes_beams_emitter_only_defaults(): void
@@ -113,7 +113,14 @@ class BeamInstallTest extends TestCase
         $this->assertFalse($config['laravel']['add_routes']);
         $this->assertTrue($config['openapi']['enabled']);
         $this->assertFalse($config['postman']['enabled']);
-        $this->assertSame(['api/*'], $config['routes'][0]['match']['prefixes']);
+        // The exposure boundary is DERIVED, not the literal `['api/*']` this asserted before ADR-0211 §7
+        // was amended: a bare beam install mounts no route under `api/*` at all, so that default made
+        // every fresh host generate a spec describing nothing. `api/*` plus wherever this host's Frame
+        // socket and entry-body transport actually sit.
+        $this->assertSame(
+            ['api/*', 'frame/*', 'beam/ux/*'],
+            $config['routes'][0]['match']['prefixes'],
+        );
         $this->assertSame([], $config['routes'][0]['include']);
         $this->assertSame([], $config['routes'][0]['exclude']);
 

@@ -63,7 +63,7 @@ use Rushing\LaravelDataSchemasScribe\OpenApi\DataSchemaGenerator;
 use Rushing\LaravelDataSchemasScribe\Strategies\UseDataRequest;
 use Rushing\LaravelDataSchemasScribe\Strategies\UseDataResponse;
 use Rushing\LaravelDataSchemasScribe\Strategies\UseDataStream;
-use Splicewire\Beam\Scribe\OpenApi\TagGroupGenerator;
+use Splicewire\Beam\Scribe\OpenApi\TagHierarchyGenerator;
 use Splicewire\Beam\Scribe\Strategies\GroupStrategy;
 use Splicewire\Beam\Scribe\Strategies\ParticleRequestStrategy;
 use Splicewire\Beam\Scribe\Strategies\ParticleResponseStrategy;
@@ -104,11 +104,16 @@ return [
                 // and beam's own `beam/openapi.*` — an OpenAPI document is not an API resource and cannot
                 // appear in the document it serves, which is why both routes are in
                 // `UndeclaredSurfaceAudit::DEFAULT_EXEMPT_URIS`.
-                'prefixes' => array_values(array_unique(array_filter([
+                // Note the `?:` rather than a `config()` default. A key that is PRESENT AND NULL — a host
+                // that published the config and blanked the value — skips the default argument entirely,
+                // and `trim(null).'/*'` is `/*`, a prefix matching EVERY route on the site. An exposure
+                // boundary whose degenerate case is "publish everything" is worse than no boundary, so
+                // the fallback is applied to the trimmed value, not to the lookup.
+                'prefixes' => array_values(array_unique([
                     'api/*',
-                    trim((string) config('frame.route_prefix', 'frame'), '/').'/*',
-                    trim((string) config('beam.ux.api_root', 'beam/ux'), '/').'/*',
-                ]))),
+                    (trim((string) config('frame.route_prefix'), '/') ?: 'frame').'/*',
+                    (trim((string) config('beam.ux.api_root'), '/') ?: 'beam/ux').'/*',
+                ])),
 
                 'domains' => ['*'],
             ],
@@ -226,7 +231,7 @@ return [
          */
         'generators' => [
             DataSchemaGenerator::class,
-            TagGroupGenerator::class,
+            TagHierarchyGenerator::class,
         ],
     ],
 
