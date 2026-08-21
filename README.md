@@ -94,7 +94,7 @@ at one of three levels — Pass → `info`, Warn → `warn`, Fail → `error` (t
 | `stability configured` | advisory | (warn only) dev-main pins without `minimum-stability`/`prefer-stable` |
 | `schema round-trip` | advisory | never — skips when `data-schemas` absent |
 | `frame manifest` | advisory | never — skips when `frame` absent |
-| `schema-forms door` | advisory | never — skips when `schema-forms` absent |
+| `beam.intake.door` | advisory | never — warns when a mounted intake door cannot answer (no registry, an empty one, an unresolvable slug, or a slug off the allow-list); skips when no door is mounted |
 
 The **exit code is non-zero only on a dependency-contract Fail** (`lock path-free` /
 `repos git-resolved`). Every other check is advisory and never turns the run red — a headless

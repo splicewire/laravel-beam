@@ -11,9 +11,9 @@ use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BeamManifestAudit;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
+use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
-use Splicewire\Beam\Doctor\SchemaFormsDoorAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
 use Splicewire\Beam\Doctor\SitemapReadinessAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
@@ -22,6 +22,7 @@ use Splicewire\Beam\Doctor\SurgeonWiringAudit;
 use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
 use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
+use Splicewire\Beam\Tests\Doctor\IntakeDoorAuditTest;
 
 class BeamDoctorCommandTest extends TestCase
 {
@@ -267,11 +268,17 @@ class BeamDoctorCommandTest extends TestCase
         $this->assertNotSame(DoctorStatus::Fail, $finding->status);
     }
 
-    public function test_schema_forms_door_audit_passes_when_schema_forms_absent(): void
+    /**
+     * The door check in its majority state — no door mounted here, so it skips. Its real cases live in
+     * {@see IntakeDoorAuditTest}; this asserts the command's own wiring,
+     * which is the half that changed shape (it is beam-core's first hardcoded audit returning a LIST).
+     */
+    public function test_intake_door_audit_skips_when_no_door_is_mounted(): void
     {
-        $finding = (new SchemaFormsDoorAudit)->run();
+        $findings = IntakeDoorAudit::forApp($this->app)->run();
 
-        $this->assertSame(DoctorStatus::Pass, $finding->status);
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
     }
 
     // ---- Relocated base/shell audits (moved from the satellite doctor) --------------

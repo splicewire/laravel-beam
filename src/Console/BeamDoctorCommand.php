@@ -12,9 +12,9 @@ use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BeamManifestAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
+use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
-use Splicewire\Beam\Doctor\SchemaFormsDoorAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
 use Splicewire\Beam\Doctor\SitemapReadinessAudit;
 use Splicewire\Beam\Doctor\SurgeonWiringAudit;
@@ -27,7 +27,7 @@ use Splicewire\Beam\Doctor\SurgeonWiringAudit;
  * Owns the base/shell conformance the satellite doctor used to carry (relocated here — a satellite
  * is a beam site *plus* the moat, so beam owns the base): the dependency contract (incl. the
  * marquee deploy-dark launch gate + first-party repository closure), the BEAM.md self-description
- * manifest, the marquee runtime wiring, and Playwright MCP isolation. The frame / schema-forms /
+ * manifest, the marquee runtime wiring, and Playwright MCP isolation. The frame / intake-door /
  * data-schemas checks remain advisory + presence-conditional (a headless beam app with no editor
  * rung is a valid, green configuration — ADR-0082 / ADR-0095). {@see SurgeonWiringAudit} is the
  * absence-half of beam's surgeon integration (beam-surgeon-rollout #01): it reads the host's own
@@ -37,8 +37,9 @@ use Splicewire\Beam\Doctor\SurgeonWiringAudit;
  * report.
  *
  * Gate vs advisory: the dependency contract, the BEAM.md manifest, the marquee runtime gate, and
- * MCP isolation can fail the exit code; sitemap readiness + frame/schema-forms render Pass/Warn but
- * never turn the run red.
+ * MCP isolation can fail the exit code; sitemap readiness + frame + the intake door render Pass/Warn
+ * but never turn the run red. The door is advisory on the estate's precedent (1 of ~30 audits gates)
+ * and because it governs an opt-in feature: a misconfigured door is a 404, not an unbootable app.
  *
  * Aggregation (beam-ux-prototype-extract ticket 08): after its own hardcoded audits, this command
  * hands the {@see BeamDoctorManifest} — the consumer tail every beam-* package self-registers its
@@ -96,14 +97,20 @@ class BeamDoctorCommand extends Command
             ],
         );
 
-        // Advisory, presence-conditional or report-only — never fail the exit code.
-        $advisoryFindings = [
-            (new SchemaRoundTripAudit)->run(),
-            (new FrameManifestAudit)->run(),
-            (new SchemaFormsDoorAudit)->run(),
-            $this->sitemapFinding($base),
-            (new SurgeonWiringAudit)->run($composerJson),
-        ];
+        // Advisory, presence-conditional or report-only — never fail the exit code. The intake door is
+        // the one that returns a LIST: it reports per-slug, because a host declaring four intake slugs
+        // with two of them unresolvable wants both named, not the first one and a count.
+        $advisoryFindings = array_merge(
+            [
+                (new SchemaRoundTripAudit)->run(),
+                (new FrameManifestAudit)->run(),
+            ],
+            IntakeDoorAudit::forApp($this->laravel)->run(),
+            [
+                $this->sitemapFinding($base),
+                (new SurgeonWiringAudit)->run($composerJson),
+            ],
+        );
 
         $gateFailed = false;
 
