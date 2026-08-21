@@ -80,6 +80,8 @@ use Splicewire\Beam\Manifest\ManifestDescriptor;
 use Splicewire\Beam\Manifest\ManifestIndex;
 use Splicewire\Beam\Manifest\ManifestSeam;
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Models\BeamSchema;
+use Splicewire\Beam\Models\BeamSubmission;
 use Splicewire\Beam\OpenApi\ConfiguredArtifactSpecSource;
 use Splicewire\Beam\OpenApi\OpenApiSpecSource;
 use Splicewire\Beam\Ownership\Contracts\OwnershipEdgeStore;
@@ -125,6 +127,7 @@ use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
+use Splicewire\Beam\Surgeon\MorphAliasCoverageAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
 use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
@@ -260,7 +263,22 @@ class BeamServiceProvider extends PackageServiceProvider
         // enforceMorphMap: a beam-composing host (splicewire-app) has many models on class-string morphs,
         // and global enforcement would orphan every one of them. Additive registration is idempotent and
         // composes with whatever map the host already declared.
-        Relation::morphMap(['beam_particle' => BeamParticle::class]);
+        //
+        // `beam_schema` and `beam_submission` join it here. Both models already PINNED those tokens
+        // from their own `getMorphClass()` overrides, but neither was ever registered — so the pin
+        // was write-side only. That half-registration is a real gap, not a stylistic one:
+        // `EloquentVersionStore` writes `versionable_type = $model->getMorphClass()` and
+        // `Version::versionable()` is a `morphTo()`, so a token with no read-side entry produces a
+        // row nothing can resolve back; and the reverse lookup several packages perform —
+        // `array_search($class, Relation::$morphMap)` (TextEmbeddingsService, CompleteRequestLogListener,
+        // ReplayNotificationStatus) — silently misses a write-side-only alias. No `*_type` column
+        // stores either token today, so registering them is additive and safe; it closes the gap
+        // before something does.
+        Relation::morphMap([
+            'beam_particle' => BeamParticle::class,
+            'beam_schema' => BeamSchema::class,
+            'beam_submission' => BeamSubmission::class,
+        ]);
 
         // beam-core's DEFAULT schema-migration wiring (ADR-0138): so a headless beam app
         // gets a working migrate-on-read BeamParticle out of the box. A richer host (e.g.
@@ -750,6 +768,14 @@ class BeamServiceProvider extends PackageServiceProvider
         // blocked build. Reporting a pin is also not a claim it is wrong — the Role/Permission contradiction
         // it surfaces is ADR-sized and deliberately unresolved here.
         $manifest->register('splicewire/laravel-beam', CentralPinJustificationAudit::class);
+        // Advisory: every Eloquent model a family package ships should have its alias registered by that
+        // package's OWN provider, not by the host composing it. Not a gate, and for the same reason the
+        // others here are not — the scope is every model in every installed family package, which includes
+        // many legitimately never used polymorphically (a pivot, a lookup table, timeline's Clip/Track).
+        // A gate over that set blocks every host on day one and gets switched off within the hour. The
+        // burn-down is one `Relation::morphMap()` line per finding; promote to `gate: true` once it is
+        // clear and the permanently-exempt set is decided.
+        $manifest->register('splicewire/laravel-beam', MorphAliasCoverageAudit::class);
         // GATE — the ONLY gating registration in the particle-doctrine-convergence effort. Everything else
         // here is a burn-down backlog; this one protects the discoverability surface the rest of the effort
         // depends on. `splicewire:beam:manifests --json` is what an agent is told to run to answer "where do

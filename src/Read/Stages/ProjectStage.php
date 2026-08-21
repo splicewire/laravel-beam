@@ -47,6 +47,22 @@ class ProjectStage implements ReadStage
      * the first model-backed definition whose `model` the record is an instance of wins (its annotated class
      * IS `data`). Null when no definition claims the record type.
      *
+     * DEAD — measured, not suspected (particle-contribution-seam ticket 09, 2026-08-21). Enumerated live in
+     * four hosts (splicewire-app 30 registrations, audiostud 22, tower 11, beam starter 9): ZERO fall through
+     * to the hydrator arm that reaches this scan, because every declaration carries `data:` or `project:`, and
+     * `ParticleController::projectRecord()` consults the hydrator ONLY when both are null. `ParticleFrameResourceHandler`
+     * never consults it at all — it reads `$definition->data` directly. Also zero model collisions in those
+     * four hosts, so the "first-match-wins race" this scan was suspected of has no live instance either.
+     *
+     * NOT deleted here on purpose: `dataClassFor()` is private to `project()`, and `project()` is a
+     * {@see \Splicewire\Beam\Read\Contracts\ParticleHydrator} method. Narrowing that port to `query()` + `hydrate()`
+     * — the separate read-repair effort ticket 08 diagnosed — removes `project()` and takes this scan with it.
+     * Deleting half of that here would hand that effort a partially-narrowed port.
+     *
+     * The `instanceof` key scheme lost regardless: ticket 09 settled the record → Data map as a DECLARED
+     * `schemaRef` binding (a `SchemaBindingIndex`), because one PHP class can carry many `schema_ref`-discriminated
+     * record types and `instanceof` cannot discriminate them.
+     *
      * @return class-string<Data>|null
      */
     private function dataClassFor(Model $record): ?string
