@@ -34,15 +34,15 @@ class ParticleRouteKeyTest extends TestCase
     {
         parent::setUp();
 
-        $this->actingAs(new RouteKeyUser);
+        $this->actingAs(new RkUser);
         Gate::before(fn () => true);
 
-        Schema::create('rk_sellers', function (Blueprint $table): void {
+        Schema::create('rk_vendors', function (Blueprint $table): void {
             $table->id();
             $table->string('slug')->unique();
         });
 
-        Schema::create('rk_items', function (Blueprint $table): void {
+        Schema::create('rk_listings', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('seller_id');
             $table->string('slug');
@@ -52,8 +52,8 @@ class ParticleRouteKeyTest extends TestCase
 
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'rk-items',
-            model: RkItem::class,
-            data: RkItemData::class,
+            model: Listing::class,
+            data: ListingData::class,
             filterable: false,
             routeKey: 'slug',
         ));
@@ -61,19 +61,19 @@ class ParticleRouteKeyTest extends TestCase
         // The same table, declared WITHOUT a route key — the control for "existing resources are unchanged".
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'rk-items-pk',
-            model: RkItem::class,
-            data: RkItemData::class,
+            model: Listing::class,
+            data: ListingData::class,
             filterable: false,
         ));
 
-        $acme = RkSeller::create(['slug' => 'acme']);
-        $globex = RkSeller::create(['slug' => 'globex']);
+        $acme = Vendor::create(['slug' => 'acme']);
+        $globex = Vendor::create(['slug' => 'globex']);
 
         // BOTH sellers ship a `starter` — the slug is unique per seller, never globally. Resolving one of
         // these correctly is only possible because the route key inherits the relative base query.
-        RkItem::create(['seller_id' => $acme->id, 'slug' => 'starter', 'title' => 'Acme Starter']);
-        RkItem::create(['seller_id' => $acme->id, 'slug' => 'pro', 'title' => 'Acme Pro']);
-        RkItem::create(['seller_id' => $globex->id, 'slug' => 'starter', 'title' => 'Globex Starter']);
+        Listing::create(['seller_id' => $acme->id, 'slug' => 'starter', 'title' => 'Acme Starter']);
+        Listing::create(['seller_id' => $acme->id, 'slug' => 'pro', 'title' => 'Acme Pro']);
+        Listing::create(['seller_id' => $globex->id, 'slug' => 'starter', 'title' => 'Globex Starter']);
     }
 
     // ---- Standalone: the declared key resolves, the primary key does not ------------------------------
@@ -89,7 +89,7 @@ class ParticleRouteKeyTest extends TestCase
     {
         Route::particleResource('items', 'rk-items', ['only' => ['show']]);
 
-        $pro = RkItem::where('slug', 'pro')->firstOrFail();
+        $pro = Listing::where('slug', 'pro')->firstOrFail();
 
         // The PK stops resolving ENTIRELY — the point of the declaration, not a side effect of it.
         $this->getJson("/items/{$pro->id}")->assertNotFound();
@@ -99,7 +99,7 @@ class ParticleRouteKeyTest extends TestCase
     {
         Route::particleResource('pk-items', 'rk-items-pk', ['only' => ['show']]);
 
-        $pro = RkItem::where('slug', 'pro')->firstOrFail();
+        $pro = Listing::where('slug', 'pro')->firstOrFail();
 
         $this->getJson("/pk-items/{$pro->id}")->assertOk()->assertJsonPath('data.title', 'Acme Pro');
 
@@ -111,12 +111,12 @@ class ParticleRouteKeyTest extends TestCase
 
     public function test_a_route_key_resolves_through_the_relative_base_query(): void
     {
-        Route::particleRelative('sellers', RkSeller::class, via: 'items', routes: function () {
+        Route::particleRelative('sellers', Vendor::class, via: 'items', routes: function () {
             Route::particleResource('items', 'rk-items', ['only' => ['show']]);
         });
 
-        $acme = RkSeller::where('slug', 'acme')->firstOrFail();
-        $globex = RkSeller::where('slug', 'globex')->firstOrFail();
+        $acme = Vendor::where('slug', 'acme')->firstOrFail();
+        $globex = Vendor::where('slug', 'globex')->firstOrFail();
 
         // One slug, two sellers, two different rows — the parent segment disambiguates, not the slug.
         $this->getJson("/sellers/{$acme->id}/items/starter")
@@ -128,48 +128,48 @@ class ParticleRouteKeyTest extends TestCase
 
     public function test_a_route_keyed_child_of_another_parent_404s(): void
     {
-        Route::particleRelative('sellers', RkSeller::class, via: 'items', routes: function () {
+        Route::particleRelative('sellers', Vendor::class, via: 'items', routes: function () {
             Route::particleResource('items', 'rk-items', ['only' => ['show']]);
         });
 
-        $globex = RkSeller::where('slug', 'globex')->firstOrFail();
+        $globex = Vendor::where('slug', 'globex')->firstOrFail();
 
         // `pro` exists — under Acme. Reached through Globex it must 404, never resolve.
         $this->getJson("/sellers/{$globex->id}/items/pro")->assertNotFound();
     }
 }
 
-class RouteKeyUser extends User
+class RkUser extends User
 {
     protected $table = 'users';
 
     public $exists = true;
 }
 
-class RkSeller extends Model
+class Vendor extends Model
 {
     public $timestamps = false;
 
-    protected $table = 'rk_sellers';
+    protected $table = 'rk_vendors';
 
     protected $guarded = [];
 
     public function items(): HasMany
     {
-        return $this->hasMany(RkItem::class, 'seller_id');
+        return $this->hasMany(Listing::class, 'seller_id');
     }
 }
 
-class RkItem extends Model
+class Listing extends Model
 {
     public $timestamps = false;
 
-    protected $table = 'rk_items';
+    protected $table = 'rk_listings';
 
     protected $guarded = [];
 }
 
-class RkItemData extends Data
+class ListingData extends Data
 {
     public function __construct(public int $id, public string $slug, public string $title) {}
 }

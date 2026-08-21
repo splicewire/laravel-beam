@@ -136,7 +136,7 @@ class ParticleController extends Controller
     public function show(Request $request, string $id): Responsable
     {
         $resource = $this->particleResource($request);
-        $model = $this->findParticle($resource, $id, $request);
+        $model = $this->findParticle($resource, $this->subjectId($request, $id), $request);
         $this->authorize('view', $model);
 
         return $this->respond($resource, $model, $request);
@@ -175,7 +175,7 @@ class ParticleController extends Controller
     {
         $resource = $this->particleResource($request);
         $input = $this->parseInput($resource, $request);
-        $model = $this->findParticle($resource, $id, $request);
+        $model = $this->findParticle($resource, $this->subjectId($request, $id), $request);
 
         if ($resource->prepare !== null) {
             ($resource->prepare)($model, $input, $request->user());
@@ -189,7 +189,7 @@ class ParticleController extends Controller
     public function destroy(Request $request, string $id): Responsable
     {
         $resource = $this->particleResource($request);
-        $model = $this->findParticle($resource, $id, $request);
+        $model = $this->findParticle($resource, $this->subjectId($request, $id), $request);
         $this->authorize('delete', $model);
         $model->delete();
 
@@ -284,6 +284,29 @@ class ParticleController extends Controller
     protected function writeParticle(ParticleResource $resource, Model $model, mixed $input, mixed $actor): Model
     {
         return $this->writer->write($model, $this->toAttributes($input), $actor, $this->afterHook($resource, $input));
+    }
+
+    /**
+     * The subject `{id}`, read BY NAME off the route — never trusted from the positional method argument.
+     *
+     * Laravel splices route parameters into a controller action POSITIONALLY (only class-typed params are
+     * matched by type; the rest are `array_values`'d in declaration order). Under a relative mount
+     * (`/sellers/{seller}/items/{id}`) the FIRST route parameter is the bound relative, so it — not the
+     * subject — lands in `$id`. The failure is silent rather than loud: `findOrFail()` unwraps a bound Model
+     * to its key, and the relative base query keeps the result inside the parent's own set, so the request
+     * answers **200 with the wrong record** (and `destroy` deletes it). Reading the parameter by name makes
+     * the arity of the mount irrelevant — a standalone and a relative mount resolve identically.
+     *
+     * Falls back to the passed argument when the route carries no `{id}` (an extending controller calling
+     * `show()`/`findParticle()` directly, off-route), and unwraps a Model either way.
+     */
+    protected function subjectId(Request $request, mixed $id): string
+    {
+        $named = $request->route()?->parameter('id');
+
+        $subject = $named ?? $id;
+
+        return $subject instanceof Model ? (string) $subject->getKey() : (string) $subject;
     }
 
     protected function findParticle(ParticleResource $resource, string $id, ?Request $request = null): Model

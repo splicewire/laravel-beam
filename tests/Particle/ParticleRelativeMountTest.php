@@ -121,6 +121,45 @@ class ParticleRelativeMountTest extends TestCase
         $this->getJson('/albums/99999/photos')->assertNotFound();
     }
 
+    /**
+     * The regression: a relative mount has TWO route parameters, and Laravel splices them into the action
+     * POSITIONALLY — so the bound parent, not the subject, landed in `show(Request, string $id)`.
+     * `findOrFail()` unwraps a Model to its key and the relative base query keeps the result inside the
+     * parent's own set, so the request answered **200 with the wrong photo** instead of failing loudly
+     * (`destroy` deleted it). `subjectId()` reads `{id}` by NAME; these pin the read verbs against it.
+     */
+    public function test_a_relative_show_resolves_the_subject_not_the_bound_parent(): void
+    {
+        Route::particleRelative('albums', Album::class, via: 'photos', routes: function () {
+            Route::particleResource('photos', 'photos', ['only' => ['show', 'destroy']]);
+        });
+
+        $album = Album::where('title', 'Vacation')->firstOrFail();
+
+        // 'sunset' is deliberately NOT the album's first photo — resolving the parent's id would return
+        // 'beach' with a 200, which is exactly what this used to do.
+        $sunset = Photo::where('caption', 'sunset')->firstOrFail();
+
+        $this->getJson("/albums/{$album->id}/photos/{$sunset->id}")
+            ->assertOk()->assertJsonPath('data.caption', 'sunset');
+    }
+
+    public function test_a_relative_destroy_deletes_the_subject_not_the_bound_parents_first_child(): void
+    {
+        Route::particleRelative('albums', Album::class, via: 'photos', routes: function () {
+            Route::particleResource('photos', 'photos', ['only' => ['destroy']]);
+        });
+
+        $album = Album::where('title', 'Vacation')->firstOrFail();
+        $sunset = Photo::where('caption', 'sunset')->firstOrFail();
+
+        $this->deleteJson("/albums/{$album->id}/photos/{$sunset->id}")->assertOk();
+
+        $this->assertNull(Photo::find($sunset->id));
+        // The sibling the positional splice would have destroyed instead is untouched.
+        $this->assertNotNull(Photo::where('caption', 'beach')->first());
+    }
+
     // ---- Relative mount — scope-closure via: (scopes, NO auto-associate) -----------------------------
 
     public function test_a_relative_closure_via_scopes_but_does_not_auto_associate(): void
