@@ -61,6 +61,15 @@ use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
  * mean carving an exception into the dated-migration rule this whole regime's construction rests on.
  * **Do not "fix" the exclusion that omits them.**
  *
+ * Ticket 23 reconciled that leak and the count is now **2 calls / 1 file / 1 host** — every flat-key
+ * declaration is gone estate-wide and the two starter forks are deleted. The exclusion stands
+ * unchanged, and the ruling above got *stronger*, not weaker: the one survivor
+ * (`~/Herd/schemastud`'s `2026_07_18_222555_create_beam_submissions_table.php`) turned out **not to be
+ * an orphan at all**. That host still requires `splicewire/laravel-beam-submissions: dev-main` and has
+ * it installed as a real git-resolved `vendor/` directory, so the file is the installed package's own
+ * correctly-published migration — a host one `composer update` behind a dissolution, which is ticket
+ * 31's decision and not something an advisory finding here could nominate a repair for.
+ *
  * Advisory, and unlikely ever to gate: this is a burn-down list whose every item is a real schema
  * decision about a table that already exists in deployed databases.
  */

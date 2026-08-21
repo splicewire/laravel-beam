@@ -2,9 +2,12 @@
 
 namespace Splicewire\Beam\Seed;
 
+use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Install\BeamInstallManifest;
+
 /**
- * The beam-seed self-registration manifest — the seed-side twin of {@see \Splicewire\Beam\Install\BeamInstallManifest}
- * (and {@see \Splicewire\Beam\Doctor\BeamDoctorManifest}). A container SINGLETON every beam-* package pushes its
+ * The beam-seed self-registration manifest — the seed-side twin of {@see BeamInstallManifest}
+ * (and {@see BeamDoctorManifest}). A container SINGLETON every beam-* package pushes its
  * own {@see SeedStep} into — from its OWN service provider — so a host's `DatabaseSeeder` runs the whole stack's
  * seed data from ONE command (`splicewire:beam:seed`) instead of hand-calling each package's seeder by class.
  *

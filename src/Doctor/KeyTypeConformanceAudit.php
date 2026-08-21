@@ -214,9 +214,9 @@ class KeyTypeConformanceAudit implements DoctorAudit
                     'kind' => 'pk-model-disagreement',
                     'table' => $table,
                     'detail' => sprintf(
-                        "`%s` declares a %s primary key (%s) but %s declares %s. Eloquent will key this "
-                        ."model wrongly — it generates no identifier on insert when it believes the key "
-                        ."auto-increments, and any `foreignIdFor()` elsewhere derives its column type from "
+                        '`%s` declares a %s primary key (%s) but %s declares %s. Eloquent will key this '
+                        .'model wrongly — it generates no identifier on insert when it believes the key '
+                        .'auto-increments, and any `foreignIdFor()` elsewhere derives its column type from '
                         .'the model, so the mismatch spreads into foreign keys that a real database will reject.',
                         $table,
                         $declared,
@@ -239,10 +239,10 @@ class KeyTypeConformanceAudit implements DoctorAudit
                 'kind' => 'identity-key-convention',
                 'table' => $table,
                 'detail' => sprintf(
-                    "`%s` is keyed %s (%s), but the estate keys it by uuid. This is reported even though "
-                    ."nothing here disagrees with itself — a site can be perfectly consistent and still be "
-                    ."consistently wrong, which is exactly how this spread: a starter shipped `\$table->id()` "
-                    ."and every site born from it inherited the same bigint identity. Fix the column, any "
+                    '`%s` is keyed %s (%s), but the estate keys it by uuid. This is reported even though '
+                    .'nothing here disagrees with itself — a site can be perfectly consistent and still be '
+                    .'consistently wrong, which is exactly how this spread: a starter shipped `$table->id()` '
+                    .'and every site born from it inherited the same bigint identity. Fix the column, any '
                     ."foreign key that points at it, and the model's `HasUuids`. If this host genuinely "
                     .'retrofits onto a foreign bigint table, set `beam.core.schema.uuid_tables` and make the '
                     .'exception visible.',
@@ -294,10 +294,10 @@ class KeyTypeConformanceAudit implements DoctorAudit
                 'kind' => 'third-party-key-binding',
                 'table' => $table,
                 'detail' => sprintf(
-                    "`%s` is published with a %s primary key (%s), but the model bound to it is `%s`, which "
-                    ."ships in `vendor/` and declares %s. Nothing first-party corrects it, so Eloquent "
-                    ."generates no identifier on insert and the write fails with "
-                    ."`null value in column \"id\" of relation \"%s\"` on the first real database. %sOr "
+                    '`%s` is published with a %s primary key (%s), but the model bound to it is `%s`, which '
+                    .'ships in `vendor/` and declares %s. Nothing first-party corrects it, so Eloquent '
+                    .'generates no identifier on insert and the write fails with '
+                    .'`null value in column "id" of relation "%s"` on the first real database. %sOr '
                     .'publish this table with `$table->id()` to match the package. Set '
                     .'`beam.core.schema.third_party_bindings` if this host binds a different class.',
                     $table,

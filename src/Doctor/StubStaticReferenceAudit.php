@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Doctor;
 
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Doctor\Support\FacadeReferenceScanner;
 
@@ -42,7 +43,7 @@ use Splicewire\Beam\Doctor\Support\FacadeReferenceScanner;
  * `@method` tag pointing at the deleted class is drift, and loose prose naming `Beam::table()` is not —
  * 07 ruled prose stays, since the call syntax never changed.
  *
- * Advisory ({@see \Splicewire\Beam\BeamServiceProvider::registerFacadeConformanceAudits()}).
+ * Advisory ({@see BeamServiceProvider::registerFacadeConformanceAudits()}).
  */
 class StubStaticReferenceAudit implements DoctorAudit
 {

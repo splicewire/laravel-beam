@@ -2,9 +2,11 @@
 
 namespace Splicewire\Beam\Seed;
 
+use Splicewire\Beam\Install\InstallStep;
+
 /**
  * One beam-* package's seed step in the {@see BeamSeedManifest} — the seed-side twin of
- * {@see \Splicewire\Beam\Install\InstallStep}: a `db:seed`-runnable seeder class, an ordering hint so
+ * {@see InstallStep}: a `db:seed`-runnable seeder class, an ordering hint so
  * `splicewire:beam:seed` runs core-first then consumers, and an optional config gate a step is skipped
  * under (so a demo-only seeder never fires in production).
  */

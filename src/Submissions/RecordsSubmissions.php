@@ -6,6 +6,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Intake\IntakeProvenance;
 use Splicewire\Beam\Models\BeamSubmission;
+use Splicewire\Beam\Notifications\Listeners\NotifyOnSubmission;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\PermissiveAcceptanceGate;
@@ -55,7 +56,7 @@ class RecordsSubmissions
      *                                             no notification.
      * @param  IntakeProvenance|null  $intake  optional who/when/where facets, stamped into
      *                                         `meta['intake']` — the shape
-     *                                         {@see \Splicewire\Beam\Notifications\Listeners\NotifyOnSubmission}'s
+     *                                         {@see NotifyOnSubmission}'s
      *                                         `submissionContext()` reads for a notification's
      *                                         `submitted_at`/`source`/`channel`. Omit only when the
      *                                         caller has no request-side provenance to offer.

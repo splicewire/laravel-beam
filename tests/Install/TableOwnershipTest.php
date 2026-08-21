@@ -4,10 +4,10 @@ namespace Splicewire\Beam\Tests\Install;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
+use Rushing\SchemaConvergence\ConvergentTable;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Install\MigrationCollision;
 use Splicewire\Beam\Install\TableOwnershipResolver;
-use Rushing\SchemaConvergence\ConvergentTable;
 use Splicewire\Beam\Tests\TestCase;
 use Symfony\Component\Console\Input\ArrayInput;
 

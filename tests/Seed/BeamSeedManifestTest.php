@@ -3,13 +3,13 @@
 namespace Splicewire\Beam\Tests\Seed;
 
 use Illuminate\Database\Seeder;
-use Splicewire\Beam\Console\BeamSeedCommand;
 use Splicewire\Beam\Seed\BeamSeedManifest;
+use Splicewire\Beam\Seed\SeedStep;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
  * The seed-side aggregation manifest (the twin of BeamInstallManifest / BeamDoctorManifest): a package
- * registers its own {@see \Splicewire\Beam\Seed\SeedStep} DOWN into it, and `splicewire:beam:seed` iterates
+ * registers its own {@see SeedStep} DOWN into it, and `splicewire:beam:seed` iterates
  * the manifest core-first, skipping any step whose config gate is off and tolerating a seeder that throws.
  */
 class BeamSeedManifestTest extends TestCase

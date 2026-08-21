@@ -4,8 +4,10 @@ namespace Splicewire\Beam\Doctor;
 
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Doctor\Support\FacadeReferenceScanner;
+use Splicewire\Beam\Facades\Beam;
 
 /**
  * **No config template a family package publishes may call the facade** (beam-facade tickets 05, 10 §5
@@ -34,7 +36,7 @@ use Splicewire\Beam\Doctor\Support\FacadeReferenceScanner;
  * ## Comment-awareness is what makes it usable
  * Six `config/*.php` files across the estate name `Beam::` and **all six are comments**, several of them
  * explaining that prefixing is beam core's job — including
- * `laravel-beam/config/beam/core.php:76`, which carries a `{@see \Splicewire\Beam\Facades\Beam::table()}`
+ * `laravel-beam/config/beam/core.php:76`, which carries a `{@see Beam::table()}`
  * pointing at exactly the right class. Six false positives on day one is how an advisory check gets
  * ignored. {@see FacadeReferenceScanner::codeReferences()} draws the line where PHP does.
  *
@@ -45,7 +47,7 @@ use Splicewire\Beam\Doctor\Support\FacadeReferenceScanner;
  * business; the {@see StubStaticReferenceAudit} sibling covers the same staleness where it actually
  * ships, in the stub population.
  *
- * Advisory ({@see \Splicewire\Beam\BeamServiceProvider::registerFacadeConformanceAudits()}).
+ * Advisory ({@see BeamServiceProvider::registerFacadeConformanceAudits()}).
  */
 class ConfigFacadeReferenceAudit implements DoctorAudit
 {

@@ -19,10 +19,21 @@
 |     renders it with Scalar through `<ApiReference>`. Flipping either value grows a second, unbranded
 |     docs UI at a URL beam does not own — and collides with the entry renderer's catch-all (ADR-0209).
 |     `beam:doctor` reports it if you do; it does not stop you.
-|  2. `routes.match.prefixes => ['api/*']`. Because the artifact route is PUBLIC by default, these match
-|     rules ARE the exposure boundary for this site. A beam host's public contract is its `api/*`
-|     surface; admin screens, webhook receivers, and the intake door are not things a fresh install
-|     should publish to the world. Widen deliberately.
+|  2. `routes.match.prefixes`, DERIVED from where this host's sockets actually are. Because the artifact
+|     route is PUBLIC by default, these match rules ARE the exposure boundary for this site. Widen
+|     deliberately, and narrow deliberately too.
+|
+|     This used to read `['api/*']` and nothing else, which was true of the host it was written from and
+|     false of a fresh install: a bare beam host mounts NO route under `api/*`. Frame's CRUD socket sits
+|     at `frame/*`, the entry-body transport at `beam/ux/*`, and a starter has no `routes/api.php` at all
+|     — so a "self-documenting" host generated a spec with zero paths and served it proudly (ADR-0211 §7,
+|     amended). The list below therefore derives from `frame.route_prefix` and `beam.ux.api_root`, the
+|     same keys that position those routes, so it cannot describe a layout this host does not have.
+|
+|     What stays out is a judgement, not an oversight: the intake door (`beam/intake/*`), webhook
+|     receivers, and beam's own `beam/openapi.*`. What is now IN includes auth-gated operator sockets —
+|     documenting a gated endpoint is not exposing it, but if this host would rather publish nothing but
+|     its public read surface, cut the derived entries and say so here.
 |  3. The `Splicewire\Beam\Scribe\*` strategies and generators. Without them a generated spec is bare
 |     paths — no groups, no titles, no request/response schemas — which is not worth pointing a
 |     reference at.
@@ -82,8 +93,22 @@ return [
     'routes' => [
         [
             'match' => [
-                // `api/*` only. Everything else — admin, webhooks, `beam/intake/*` — stays unpublished.
-                'prefixes' => ['api/*'],
+                // DERIVED, not a literal list — see note 2. `api/*` is the conventional host API prefix;
+                // the other two are where beam's own JSON sockets actually are on THIS host, read from the
+                // same config keys that position them. A host that re-prefixes its sockets (say, to
+                // `api/frame`) is covered by `api/*` and the duplicate falls out in the unique below; a
+                // host that leaves the defaults is covered by the derived entries. Either way the boundary
+                // tracks the routes instead of describing a host somebody else wrote.
+                //
+                // Still unpublished, deliberately: `beam/intake/*` (the intake door), webhook receivers,
+                // and beam's own `beam/openapi.*` — an OpenAPI document is not an API resource and cannot
+                // appear in the document it serves, which is why both routes are in
+                // `UndeclaredSurfaceAudit::DEFAULT_EXEMPT_URIS`.
+                'prefixes' => array_values(array_unique(array_filter([
+                    'api/*',
+                    trim((string) config('frame.route_prefix', 'frame'), '/').'/*',
+                    trim((string) config('beam.ux.api_root', 'beam/ux'), '/').'/*',
+                ]))),
 
                 'domains' => ['*'],
             ],

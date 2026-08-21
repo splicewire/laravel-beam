@@ -75,6 +75,7 @@ class ParticleResource
      * @param  bool  $showable  Frame per-record detail gate, INDEPENDENT of $readOnly/$editable (F04 show-independent widening); defaults true
      * @param  bool|null  $frame  explicit override for the framed predicate: true forces framed even with an empty label, false forces REST-only even with a label; null ⇒ framed iff the label is non-empty
      * @param  string  $singularLabel  display SINGULAR for docs/titles when the inflector mangles the noun (`media` → "Medium"); empty ⇒ inflect from the label/key. Display-only — no framing/nav semantics
+     * @param  string|null  $routeKey  the column `{id}` resolves against for show/update/destroy (e.g. `'slug'`); null ⇒ the primary key, today's path. A declared route key is the resource saying how it is NAMED — never where it is hung. Resolution still runs through the relative base query and the `scope` gate, so the column need only be unique per PARENT under a relative mount. See {@see \Splicewire\Beam\Particle\ParticleResource::$routeKey}
      */
     public function __construct(
         public string $key,
@@ -101,5 +102,6 @@ class ParticleResource
         public bool $showable = true,
         public ?bool $frame = null,
         public string $singularLabel = '',
+        public ?string $routeKey = null,
     ) {}
 }

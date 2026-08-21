@@ -215,6 +215,44 @@ own header warns about: *"a package cannot know the taxonomy of every host that 
 > as the **third check in the §8 doctor audit**, which reports when no composer script invokes
 > `scribe:generate` and names the line to add.
 
+> **Amended 2026-08-21 (ticket 07) — §7's `api/*` boundary described one host, and made every other one
+> document nothing.**
+>
+> §7 stated the exposure boundary as a doctrine: *"a beam host's public contract is its `api/*` surface."*
+> That was read off `splicewire/splicewire-app`, which has **400** routes under `api/*`. It is false of
+> every other host in the estate, and false of a fresh install:
+>
+> - `splicewire/www` — 85 routes, **zero** under `api/*`. Its machine-facing surface is Frame's CRUD socket
+>   at `frame/*`, the entry-body transport at `beam/ux/entries/*`, and the versions/op triplets.
+> - `laravel-beam-starter` — no `routes/api.php` at all. Frame mounts at the default `frame`, beam-ux at
+>   the default `beam/ux`, and beam's own package routes are `beam/openapi.*`, `beam/intake/{schema}`,
+>   `s/{token}`, `storage/{path}`. `api/*` matches none of them.
+>
+> So the OTB promise this ADR opens with — *"a fresh starter must boot with a live API reference generated
+> from its own routes"* — shipped generating a spec with **zero paths**, served publicly, rendered by
+> Scalar as a tidy empty document. This is §6's bare-host lesson recurring one layer up: the boundary
+> agreed with whatever host it was written from, and a testbench agrees with whatever literal you write.
+>
+> **The stub's `prefixes` is now derived, not literal.** It reads `frame.route_prefix` and
+> `beam.ux.api_root` — the same keys that *position* those routes — alongside `api/*`, and uniques the
+> result. A host that re-prefixes its sockets under `api/` (which is what `www` did at this ticket, and
+> what the app already did with `api/operator/frame`) is covered by `api/*` and the derived duplicates
+> collapse; a host that leaves the defaults is covered by the derived entries. The list cannot go stale
+> against a layout it reads from config, which is the same predicate-is-runtime-truth discipline
+> `DeadConfigKeyAudit` settled on for the same reason.
+>
+> **What this widens, deliberately.** The derived entries are auth-gated operator sockets. Documenting a
+> gated endpoint is not exposing it — the gate is the middleware, not the absence of a description — but
+> it is a real change to what a public artifact enumerates, so the stub says so at the point of the
+> decision and names the cut. Still out: the intake door, webhook receivers, and beam's own
+> `beam/openapi.*`.
+>
+> **§8 gains a fourth check: the spec describes at least one route.** No prefix list can be right for
+> every host, so the durable guard is on the *output*, not the rules. A zero-`paths` artifact is invisible
+> from every other angle — generation succeeds, the file exists, the route 200s, the audit's other three
+> checks all pass — and it is exactly what the old default produced. The check reads the artifact and
+> reports the empty case, naming `route:list` as the comparison. Non-gating, like the rest.
+
 ## Consequences
 
 - A headless beam install — no `beam-ux` — still serves its own spec at `beam/openapi.{yaml,json}`.

@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Doctor\Support;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
 use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
@@ -105,7 +106,7 @@ class FacadeConformanceScope
 
     /**
      * The default host-scoped wiring: the host's own authored code plus every family package it composes
-     * **through the overlay**. Mirrors {@see \Splicewire\Beam\Surgeon\CentralPinJustificationAudit::forApp()}
+     * **through the overlay**. Mirrors {@see CentralPinJustificationAudit::forApp()}
      * in reaching into `vendor/` deliberately — the estate's drift lives overwhelmingly in family
      * PACKAGES, so an `app/`-only scan reports a comfortable zero from inside every host while the
      * backlog sits one directory over — and differs from it in exactly one way, the symlink test above.

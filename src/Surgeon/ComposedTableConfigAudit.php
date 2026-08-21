@@ -14,6 +14,7 @@ use Rushing\Surgeon\Operation\FixableFinding;
 use Rushing\Surgeon\Operation\OperationSuggestion;
 use Rushing\Surgeon\Operation\SuggestsOperations;
 use Splicewire\Beam\BeamManager;
+use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 
 /**
@@ -40,7 +41,7 @@ use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
  * ## `env()` is in this audit's grammar, not the config audit's
  * Ticket 10 left that split open. It belongs here: this check keys on the **shape** — a lookup whose
  * fallback is a prefixed table name — and `env('BEAM_THREADS_TABLE', Beam::table('threads'))` is that
- * shape wearing a different verb. {@see \Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit} keys on
+ * shape wearing a different verb. {@see ConfigFacadeReferenceAudit} keys on
  * **where** (a config template evaluated before the container exists), not on what the expression says.
  * A composed `env()` default sitting in a package config file is legitimately both, flagged twice for
  * two different reasons — a load-order bomb *and* an un-collapsed idiom. The one live specimen of that

@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Doctor;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Rushing\SchemaConvergence\ConvergentTable;
+use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Doctor\Support\SchemaCreateScanner;
 
@@ -58,7 +59,7 @@ use Splicewire\Beam\Doctor\Support\SchemaCreateScanner;
  * stub, which ticket 30 expected to have to exempt. It carries no create at all, so it is invisible
  * twice over and "clean" keeps meaning what it meant.
  *
- * Advisory ({@see \Splicewire\Beam\BeamServiceProvider::registerFacadeConformanceAudits()}).
+ * Advisory ({@see BeamServiceProvider::registerFacadeConformanceAudits()}).
  */
 class UnguardedCreateAudit implements DoctorAudit
 {

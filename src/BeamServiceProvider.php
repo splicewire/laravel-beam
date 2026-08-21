@@ -87,6 +87,7 @@ use Splicewire\Beam\Ownership\EloquentOwnershipEdgeStore;
 use Splicewire\Beam\Ownership\OwnershipGraph;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
+use Splicewire\Beam\Particle\DeadResolvingHookGuard;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceModelResolver;
@@ -1038,6 +1039,12 @@ class BeamServiceProvider extends PackageServiceProvider
         // $song)`) answer one uniform predicate. Inert by default: with no `app.entitlements` configured
         // and the null resolver, no abilities register that would ever pass.
         $this->registerEntitlementAbilities();
+
+        // The tripwire against the one registration idiom that cannot work (particle-contribution-seam
+        // ticket 07): `afterResolving()` on a particle registry beam has ALREADY resolved above. The guard
+        // arms an `Application::booted()` callback rather than checking inline, because a package that
+        // boots after beam has not registered its hook yet at this point in the order.
+        (new DeadResolvingHookGuard($this->app))->arm();
     }
 
     /**

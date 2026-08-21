@@ -3,8 +3,8 @@
 namespace Splicewire\Beam\Install;
 
 use Illuminate\Contracts\Foundation\Application;
-use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 use Rushing\SchemaConvergence\ConvergentTable;
+use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 
 /**
  * Finds the published beam migrations that lose a filename race to a third-party migration of the same

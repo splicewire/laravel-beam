@@ -105,6 +105,18 @@ class ParticleResource
      * @param  bool  $showable  whether Frame serves a per-record detail (`records/{id}`, show), INDEPENDENT of $readOnly and $editable (F04 show-independent widening) — so a `readOnly` INSPECT resource (e.g. `operator-customers`) still exposes a detail view even though it 405s store/update/destroy. Defaults true (readable ⇒ showable); set false to make a resource genuinely list-only (no detail route).
      * @param  bool|null  $frame  explicit override for the {@see isFramed() framed} predicate: `true` forces the resource framed even with an empty label, `false` forces it REST-only even with a label; null (default) ⇒ framed iff the label is non-empty.
      * @param  string  $singularLabel  display SINGULAR for docs/titles, for the mass/irregular nouns the inflector mangles (`media` singularizes to "Medium"; declaring `singularLabel: 'Media'` titles the download op "Media Download"). Empty (default) ⇒ inflect from the label/key as before. Display-only: carries NO framing/nav semantics ({@see isFramed()} still reads {@see $label} alone).
+     * @param  string|null  $routeKey  the column the `{id}` path segment resolves against for
+     *                                 `show`/`update`/`destroy` — a **declared route key**, the resource
+     *                                 saying how it is NAMED (never where it is hung; that is the mount's
+     *                                 concern). null (default) ⇒ `findOrFail($id)` against the primary key,
+     *                                 today's exact path for every existing resource. A non-null column (e.g.
+     *                                 `'slug'`) switches subject resolution to `where($routeKey, $id)->firstOrFail()`
+     *                                 — and the PK stops resolving entirely, which is the point: one public
+     *                                 identifier per resource, never two. Everything upstream is unchanged, so
+     *                                 the lookup still runs THROUGH the relative base query and the {@see $scope}
+     *                                 gate — which is what lets a route key be unique only **per parent** (a
+     *                                 product slug unique per seller under `/sellers/{seller}/extensions/{slug}`)
+     *                                 rather than globally.
      */
     public function __construct(
         public string $key,
@@ -135,6 +147,7 @@ class ParticleResource
         public bool $showable = true,
         public ?bool $frame = null,
         public string $singularLabel = '',
+        public ?string $routeKey = null,
     ) {}
 
     /**

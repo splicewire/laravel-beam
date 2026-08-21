@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Doctor\Support;
 
+use Splicewire\Beam\Facades\Beam;
+
 /**
  * Token-level reference detection for the two doctor-side facade-conformance audits (beam-facade ticket
  * 19) — {@see StubStaticReferenceAudit} and {@see ConfigFacadeReferenceAudit}. Text-level by substrate
@@ -13,7 +15,7 @@ namespace Splicewire\Beam\Doctor\Support;
  * Ticket 07 ruled that **loose prose naming `Beam::table()` stays** — the call syntax never changed, so
  * a sentence about it is not stale — and swept only machine-resolved references (`{@see}`, `@method`,
  * `use`). Six `config/*.php` files across the estate mention `Beam::` and **all six are comments**;
- * `laravel-beam/config/beam/core.php:76` even carries a `{@see \Splicewire\Beam\Facades\Beam::table()}`
+ * `laravel-beam/config/beam/core.php:76` even carries a `{@see Beam::table()}`
  * pointing at the correct class. A naive token match would report six violations where there are zero,
  * on day one, which is how an advisory check gets its floor bumped and then deleted (10 §5).
  *

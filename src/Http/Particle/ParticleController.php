@@ -305,6 +305,16 @@ class ParticleController extends Controller
             $query->with($resource->includes);
         }
 
+        // A DECLARED route key (`ParticleResource(routeKey: 'slug')`) resolves the `{id}` segment against that
+        // column instead of the primary key — and the PK stops resolving entirely, which is the point: one
+        // public identifier per resource, never two. Note this branches BELOW the relative base query and the
+        // `scope` gate above, deliberately: the lookup inherits both, so a route key need only be unique per
+        // PARENT under a relative mount (a product slug unique per seller, the seller slug carrying the single
+        // global constraint). null routeKey ⇒ today's exact `findOrFail`, so every existing resource is unchanged.
+        if ($resource->routeKey !== null) {
+            return $query->where($resource->routeKey, $id)->firstOrFail();
+        }
+
         return $query->findOrFail($id);
     }
 

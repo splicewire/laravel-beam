@@ -140,6 +140,7 @@ class AttributedParticleDiscovery
             showable: $attribute->showable,
             frame: $attribute->frame,
             singularLabel: $attribute->singularLabel,
+            routeKey: $attribute->routeKey,
         );
     }
 

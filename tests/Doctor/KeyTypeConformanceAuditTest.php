@@ -83,7 +83,7 @@ class KeyTypeConformanceAuditTest extends TestCase
      * Silence is read as `int`, not as unknown — that is Eloquent's documented default, and treating it
      * as unknown would have made this audit blind to the only live instance the estate had.
      */
-    public function test_a_model_declaring_HasUuids_against_a_uuid_column_is_clean(): void
+    public function test_a_model_declaring_has_uuids_against_a_uuid_column_is_clean(): void
     {
         $audit = $this->site([
             'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
@@ -136,8 +136,7 @@ class KeyTypeConformanceAuditTest extends TestCase
     public function test_a_legitimately_bigint_vendor_table_is_not_flagged(): void
     {
         $audit = $this->site([
-            'database/migrations/2020_01_01_000000_create_activity_log_table.php' =>
-                "<?php\n\nSchema::create('activity_log', function (Blueprint \$table) {\n \$table->id();\n \$table->string('log_name');\n});\n",
+            'database/migrations/2020_01_01_000000_create_activity_log_table.php' => "<?php\n\nSchema::create('activity_log', function (Blueprint \$table) {\n \$table->id();\n \$table->string('log_name');\n});\n",
         ]);
 
         $this->assertSame([], $audit->disagreements());
@@ -150,8 +149,7 @@ class KeyTypeConformanceAuditTest extends TestCase
         $audit = $this->site([
             'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
             'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
-            'database/migrations/2024_01_01_000000_create_passkeys_table.php' =>
-                "<?php\n\nSchema::create('passkeys', function (Blueprint \$table) {\n \$table->foreignId('user_id')->constrained();\n});\n",
+            'database/migrations/2024_01_01_000000_create_passkeys_table.php' => "<?php\n\nSchema::create('passkeys', function (Blueprint \$table) {\n \$table->foreignId('user_id')->constrained();\n});\n",
         ]);
 
         $rows = $audit->disagreements();
@@ -171,8 +169,7 @@ class KeyTypeConformanceAuditTest extends TestCase
         $audit = $this->site([
             'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
             'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
-            'database/migrations/2024_01_01_000000_create_passkeys_table.php' =>
-                "<?php\n\nSchema::create('passkeys', function (Blueprint \$table) {\n \$table->foreignIdFor(User::class, 'user_id')->constrained();\n});\n",
+            'database/migrations/2024_01_01_000000_create_passkeys_table.php' => "<?php\n\nSchema::create('passkeys', function (Blueprint \$table) {\n \$table->foreignIdFor(User::class, 'user_id')->constrained();\n});\n",
         ]);
 
         $this->assertSame([], $audit->disagreements());
@@ -309,8 +306,7 @@ class KeyTypeConformanceAuditTest extends TestCase
     public function test_a_uuid_table_with_no_model_and_no_registry_entry_is_not_flagged(): void
     {
         $audit = $this->permissionSite([
-            'database/migrations/2024_01_01_000000_create_compliance_evidence_table.php' =>
-                "<?php\n\nSchema::create('compliance_evidence', function (Blueprint \$table) {\n \$table->uuid('id')->primary();\n});\n",
+            'database/migrations/2024_01_01_000000_create_compliance_evidence_table.php' => "<?php\n\nSchema::create('compliance_evidence', function (Blueprint \$table) {\n \$table->uuid('id')->primary();\n});\n",
         ]);
 
         $this->assertSame([], $audit->disagreements());

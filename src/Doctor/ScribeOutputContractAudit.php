@@ -20,6 +20,13 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *     broken OTB promise. Generation happens at install and deploy, never on request.
  *  3. **Deploy-time regeneration is wired.** A composer script invoking `scribe:generate`, so the spec
  *     tracks the routes instead of freezing at whatever the install produced.
+ *  4. **The artifact describes something.** A spec with zero `paths` is the failure mode "self-documenting"
+ *     degrades into, and it is invisible from every other angle: generation succeeds, the file exists, the
+ *     route 200s, and Scalar renders a tidy empty page. It happens whenever the match rules describe a
+ *     route layout this host does not have — which is what the original `['api/*']` default did to every
+ *     bare install (ADR-0211 §7, amended). This check is deliberately about the OUTPUT rather than the
+ *     rules: no prefix list can be right for every host, but "did this produce a document that describes
+ *     anything" is checkable everywhere and cannot go stale.
  *
  * ## Why none of it gates
  *
@@ -41,6 +48,8 @@ class ScribeOutputContractAudit implements DoctorAudit
 
     private const REGENERATION = 'the spec regenerates on deploy';
 
+    private const DESCRIBES = 'the spec describes at least one route';
+
     public function __construct(private ?string $basePath = null) {}
 
     /**
@@ -52,7 +61,96 @@ class ScribeOutputContractAudit implements DoctorAudit
             $this->emitterOnly(),
             $this->artifactPresent(),
             $this->regenerationWired(),
+            $this->specDescribesRoutes(),
         ];
+    }
+
+    /**
+     * Check 4. Reads the artifact rather than the match rules, because the rules are host-shaped and the
+     * output is not: whatever prefixes this host chose, a spec with no `paths` documents nothing.
+     *
+     * Parsed shallowly on purpose — a `paths:` key with at least one child, found by scanning for a
+     * top-level line, not by loading a YAML parser to answer a yes/no question about a file that may be
+     * megabytes. A malformed artifact reports as unreadable rather than as empty; those are different
+     * problems with different fixes.
+     */
+    private function specDescribesRoutes(): Finding
+    {
+        $path = $this->specSource()->artifactPath();
+
+        if (! is_file($path)) {
+            return Finding::warn(
+                self::DESCRIBES,
+                'No artifact to inspect — see the artifact check above, which names the fix.',
+            );
+        }
+
+        $contents = @file_get_contents($path);
+
+        if ($contents === false || trim($contents) === '') {
+            return Finding::warn(self::DESCRIBES, "The artifact at {$path} is empty or unreadable.");
+        }
+
+        if ($this->countsPaths($contents) > 0) {
+            return Finding::pass(self::DESCRIBES, 'The generated spec describes at least one route.');
+        }
+
+        return Finding::warn(
+            self::DESCRIBES,
+            "The artifact at {$path} has no `paths` — this host generated a spec describing ZERO routes, ".
+            'and beam/openapi.yaml is serving it. Nothing else reports this: generation succeeded, the file '.
+            'exists, and the reference page renders an empty document. The cause is almost always '.
+            '`scribe.routes.*.match.prefixes` naming a layout this host does not have — compare it against '.
+            '`php artisan route:list`. A bare beam install mounts no route under `api/*`; its sockets are at '.
+            'frame.route_prefix and beam.ux.api_root, which is why beam\'s stub derives the list from those '.
+            'keys instead of hardcoding one.',
+        );
+    }
+
+    /**
+     * How many path items the spec's top-level `paths` block holds. `paths:` followed by anything that is
+     * not another top-level key means at least one entry; `paths: {}` and a `paths:` with nothing indented
+     * beneath it both mean none.
+     */
+    private function countsPaths(string $yaml): int
+    {
+        $lines = preg_split('/\R/', $yaml) ?: [];
+        $inPaths = false;
+        $count = 0;
+
+        foreach ($lines as $line) {
+            if (preg_match('/^paths:\s*(.*)$/', $line, $matches) === 1) {
+                $inline = trim($matches[1]);
+
+                if ($inline !== '' && $inline !== '{}') {
+                    return 1;
+                }
+
+                $inPaths = true;
+
+                continue;
+            }
+
+            if (! $inPaths) {
+                continue;
+            }
+
+            // A non-indented, non-blank line ends the block — we are back at another top-level key.
+            if (trim($line) === '' || str_starts_with(ltrim($line), '#')) {
+                continue;
+            }
+
+            if (! str_starts_with($line, ' ')) {
+                break;
+            }
+
+            // Exactly one level of indent under `paths:` is a path item ("  /api/users:").
+            if (preg_match('/^\s{1,4}\S/', $line) === 1 && str_contains($line, ':')) {
+                $count++;
+            }
+        }
+
+        return $count;
     }
 
     /**

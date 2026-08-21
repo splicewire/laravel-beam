@@ -20,6 +20,8 @@ class ScribeOutputContractAuditTest extends TestCase
 
     private const REGENERATION = 'the spec regenerates on deploy';
 
+    private const DESCRIBES = 'the spec describes at least one route';
+
     private string $artifact;
 
     protected function setUp(): void
@@ -135,6 +137,46 @@ class ScribeOutputContractAuditTest extends TestCase
         );
     }
 
+    /**
+     * The regression this check exists for (ADR-0211 §7, amended): the artifact is present, generation
+     * succeeded, and every other check passes — but the match rules named a route layout this host does
+     * not have, so the document describes nothing and beam serves it anyway.
+     */
+    public function test_it_warns_when_the_generated_spec_describes_no_routes(): void
+    {
+        $this->writeArtifact("openapi: 3.1.0\ninfo:\n  title: Beam API\npaths: {}\n");
+
+        $finding = $this->finding(self::DESCRIBES);
+
+        $this->assertSame(DoctorStatus::Warn, $finding->status);
+        $this->assertStringContainsString('ZERO routes', $finding->detail);
+        $this->assertStringContainsString('route:list', $finding->detail);
+    }
+
+    public function test_a_paths_key_with_nothing_beneath_it_is_also_empty(): void
+    {
+        $this->writeArtifact("openapi: 3.1.0\npaths:\ncomponents:\n  schemas: {}\n");
+
+        $this->assertSame(DoctorStatus::Warn, $this->finding(self::DESCRIBES)->status);
+    }
+
+    public function test_a_spec_with_paths_passes(): void
+    {
+        $this->writeArtifact(
+            "openapi: 3.1.0\npaths:\n  /api/users:\n    get:\n      summary: List users\ncomponents: {}\n",
+        );
+
+        $this->assertSame(DoctorStatus::Pass, $this->finding(self::DESCRIBES)->status);
+    }
+
+    public function test_it_defers_to_the_artifact_check_when_there_is_no_artifact(): void
+    {
+        $finding = $this->finding(self::DESCRIBES);
+
+        $this->assertSame(DoctorStatus::Warn, $finding->status);
+        $this->assertStringContainsString('No artifact to inspect', $finding->detail);
+    }
+
     /** @param array<string, mixed> $manifest */
     private function fixtureRepo(array $manifest): string
     {
@@ -156,9 +198,9 @@ class ScribeOutputContractAuditTest extends TestCase
         $this->fail("No finding for check '{$check}'.");
     }
 
-    private function writeArtifact(): void
+    private function writeArtifact(?string $contents = null): void
     {
         File::ensureDirectoryExists(dirname($this->artifact));
-        File::put($this->artifact, "openapi: 3.0.3\n");
+        File::put($this->artifact, $contents ?? "openapi: 3.1.0\npaths:\n  /api/ping:\n    get: {}\n");
     }
 }

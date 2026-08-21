@@ -14,6 +14,9 @@ use Rushing\Doctor\Finding;
 use Rushing\Surgeon\Operation\FixableFinding;
 use Rushing\Surgeon\Operation\OperationSuggestion;
 use Rushing\Surgeon\Operation\SuggestsOperations;
+use Splicewire\Beam\BeamManager;
+use Splicewire\Beam\BeamServiceProvider;
+use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -22,7 +25,7 @@ use Splicewire\Beam\Write\ParticleWriter;
  * **The write seam being bypassed**: a call site that service-locates {@see ParticleWriter} and calls
  * `->write()` on it, where `Beam::write()` is the declared seam (beam-facade tickets 04, 10 §6 and 19).
  * Carries a second, distinct finding type — a call site outside the owning package naming
- * {@see \Splicewire\Beam\BeamManager} directly, which is 06's own drift shape and did not exist as a
+ * {@see BeamManager} directly, which is 06's own drift shape and did not exist as a
  * category when ticket 10 was written.
  *
  * **This audit is what supersedes `StaticBridgeAudit`** — and "supersedes" is the accurate verb rather
@@ -66,8 +69,8 @@ use Splicewire\Beam\Write\ParticleWriter;
  * to an agent — the same posture {@see ParticleOperationBypassAudit} takes.
  *
  * Sibling of the two text-level doctor checks ({@see StubStaticReferenceAudit} and
- * {@see \Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit}); registered advisory in
- * {@see \Splicewire\Beam\BeamServiceProvider::registerFacadeConformanceAudits()}.
+ * {@see ConfigFacadeReferenceAudit}); registered advisory in
+ * {@see BeamServiceProvider::registerFacadeConformanceAudits()}.
  */
 class ParticleWriteBypassAudit implements DoctorAudit, SuggestsOperations
 {
@@ -254,7 +257,7 @@ class ParticleWriteBypassAudit implements DoctorAudit, SuggestsOperations
     }
 
     /**
-     * Lines naming {@see \Splicewire\Beam\BeamManager} — 06's drift shape. The instance took a distinct
+     * Lines naming {@see BeamManager} — 06's drift shape. The instance took a distinct
      * name precisely so the facade could keep the short one; a call site reaching past the facade to the
      * manager is naming an implementation detail whose whole purpose was to stay unnamed.
      *
