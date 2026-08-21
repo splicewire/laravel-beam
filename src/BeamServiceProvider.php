@@ -52,6 +52,7 @@ use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
+use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
@@ -576,8 +577,18 @@ class BeamServiceProvider extends PackageServiceProvider
         // acting on the day it appears.
         $this->app->bind(KeyTypeConformanceAudit::class, fn () => KeyTypeConformanceAudit::forApp());
 
+        // A `config()` read whose ROOT nothing loaded resolves to null, silently and forever. The estate
+        // has produced that bug four times in four packages (beam-commerce's webhook route, beam-mdx's
+        // whole suite, beam-workflows' BootTest, and — the argument for a mechanical check over a
+        // convention — beam-commerce's own REGRESSION TEST for the first occurrence, which kept passing
+        // through the second because it set the same wrong key the broken route read). The predicate is
+        // runtime truth rather than a naming rule: it asks the config repository which roots are loaded,
+        // so it needs no list to maintain and cannot go stale as packages are added.
+        $this->app->bind(DeadConfigKeyAudit::class, fn () => new DeadConfigKeyAudit);
+
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', KeyTypeConformanceAudit::class);
+        $manifest->register('splicewire/laravel-beam', DeadConfigKeyAudit::class);
         $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', ConfigFacadeReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', UnguardedCreateAudit::class);
