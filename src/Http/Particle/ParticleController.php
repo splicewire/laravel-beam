@@ -21,6 +21,7 @@ use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
+use Splicewire\Beam\Scribe\Strategies\ParticleListParameterStrategy;
 use Splicewire\Beam\Write\ParticleWriter;
 
 /**
@@ -50,6 +51,16 @@ class ParticleController extends Controller
 
     /** Route-default key naming the {@see ParticleResource} for the inline tier. */
     public const RESOURCE = '_particle';
+
+    /**
+     * The pagination query keys the generic index reads. Named here rather than inlined so the reference
+     * DOCUMENTS the same words the controller ACCEPTS — {@see ParticleListParameterStrategy}
+     * derives the parameter names from these constants instead of restating them, which is what lets the
+     * camelCase cutover flip one word in one place and carry the docs with it.
+     */
+    public const PAGE = 'page';
+
+    public const PER_PAGE = 'per_page';
 
     /**
      * Route-default keys naming the optional **relative** context (HTTP-02). When present, the resource is
@@ -93,7 +104,7 @@ class ParticleController extends Controller
             $query = ($resource->scope)($query) ?? $query;
         }
 
-        $page = $query->paginate($request->integer('per_page', $resource->perPage), ['*'], 'page');
+        $page = $query->paginate($request->integer(self::PER_PAGE, $resource->perPage), ['*'], self::PAGE);
         $page->through(fn (Model $record) => $this->projectRecord($resource, $record, $ctx));
 
         return $this->envelope->paginated($page);
