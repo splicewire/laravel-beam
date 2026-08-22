@@ -63,6 +63,14 @@ class ParticleController extends Controller
     public const PER_PAGE = 'per_page';
 
     /**
+     * The route parameter naming the SUBJECT of a show/update/destroy — read by name (see
+     * {@see subjectId()}), which is what makes a standalone and a relative mount resolve identically.
+     * Named here for the same reason as {@see PAGE}: {@see ParticleUrlParameterStrategy} documents
+     * the parameter this controller resolves, and a second spelling of the word is a drift window.
+     */
+    public const SUBJECT = 'id';
+
+    /**
      * Route-default keys naming the optional **relative** context (HTTP-02). When present, the resource is
      * mounted *through* a route-model-bound relative (e.g. `/fragments/{fragment}/media`): {@see RELATIVE}
      * carries the bound parent model instance, {@see VIA} the relation name (string) or scope (Closure) the
@@ -313,7 +321,7 @@ class ParticleController extends Controller
      */
     protected function subjectId(Request $request, mixed $id): string
     {
-        $named = $request->route()?->parameter('id');
+        $named = $request->route()?->parameter(static::SUBJECT);
 
         $subject = $named ?? $id;
 
