@@ -175,13 +175,74 @@ class OperationPayloadRespondTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    // ── Deliberately empty input (api-surface-coherence 30) ─────────────────────────────────────────
+
+    public function test_an_operation_declaring_no_input_accepts_a_body_because_null_means_undeclared(): void
+    {
+        // The residue state, pinned rather than endorsed: `null` is where every operation starts, so it must
+        // stay permissive until the declaration sweep closes it. This assertion is what the eventual flip to
+        // "null means reject" has to come back and delete on purpose.
+        $op = $this->op(handle: fn () => null);
+
+        $this->controller()->callValidateInput($op, Request::create('/', 'POST', ['anything' => 'goes']));
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_an_operation_declaring_false_rejects_a_body(): void
+    {
+        $op = $this->op(handle: fn () => null, input: false);
+
+        try {
+            $this->controller()->callValidateInput($op, Request::create('/', 'POST', ['label' => 'nope']));
+            $this->fail('Expected an op declared to accept nothing to reject a payload.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('label', $e->errors());
+        }
+    }
+
+    public function test_an_operation_declaring_false_accepts_an_empty_body(): void
+    {
+        $op = $this->op(handle: fn () => null, input: false);
+
+        $this->controller()->callValidateInput($op, Request::create('/', 'POST', []));
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_a_task_declaring_false_still_accepts_the_frameworks_own_async_flag(): void
+    {
+        // `?async` is beam's parameter, not the caller's payload, so an op that accepts nothing of its own
+        // must not reject it — otherwise declaring `input: false` would silently break the one convention
+        // every Task depends on.
+        $op = $this->op(handle: fn () => null, kind: OperationKind::Task, input: false);
+
+        $this->controller()->callValidateInput($op, Request::create('/?async=false', 'POST'));
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_a_get_operation_declaring_false_rejects_query_input_not_body_input(): void
+    {
+        // The mount picks the method, so a GET op's payload axis is the query string. Reading the body here
+        // would examine an axis the endpoint does not accept input on in the first place.
+        $op = $this->op(handle: fn () => null, input: false);
+
+        try {
+            $this->controller()->callValidateInput($op, Request::create('/?unchunk=1', 'GET'));
+            $this->fail('Expected a GET op declared to accept nothing to reject a query parameter.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('unchunk', $e->errors());
+        }
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────
 
     private function op(
         ?callable $handle = null,
         OperationKind $kind = OperationKind::Write,
         ?callable $respond = null,
-        ?string $input = null,
+        string|false|null $input = null,
     ): ParticleOperation {
         return new ParticleOperation(
             resource: 'widgets',

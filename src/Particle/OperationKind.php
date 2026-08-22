@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Particle;
 
+use Splicewire\Beam\Http\Particle\ParticleOperationController;
+
 /**
  * The kind of a {@see ParticleOperation} — the axis that decides how it executes AND how it delivers
  * (ADR-0160: the *transport axis* — Unary vs Queued vs Streamed — folded onto this enum rather than a
@@ -31,4 +33,27 @@ enum OperationKind: string
     case Write = 'write';
     case Task = 'task';
     case Stream = 'stream';
+
+    /**
+     * The parameters the FRAMEWORK accepts on an operation of this kind, as opposed to the ones the host
+     * declares through `input:`.
+     *
+     * A Task honours `?async`, and that flag is beam's rather than the host's — no `input:` a host writes
+     * could ever declare it, which is why it needs a home of its own. Naming it here, once, is what lets
+     * {@see ParticleOperationController::runTask()} read it, the reference publish it, and a
+     * deliberately-input-less op exclude it from what it rejects, without any of the three spelling the
+     * word (api-surface-coherence ticket 30; the `ParticleController::PER_PAGE` precedent from ticket 21).
+     *
+     * A Stream's `text/event-stream` transport is deliberately absent: it is a RESPONSE fact, already
+     * reaching the spec through the streams declaration, and there is no query parameter behind it.
+     *
+     * @return list<string>
+     */
+    public function frameworkParameters(): array
+    {
+        return match ($this) {
+            self::Task => [ParticleOperationController::ASYNC],
+            default => [],
+        };
+    }
 }

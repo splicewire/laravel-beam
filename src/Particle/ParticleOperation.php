@@ -28,6 +28,26 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
  * `input`/`data` pair a {@see ParticleResource} already carries. Both optional, so an op that declares neither
  * behaves exactly as it did before the slots existed.
  *
+ * `input` is THREE-STATE, and the third state is what makes the second auditable (api-surface-coherence
+ * ticket 30):
+ *
+ *   - a **class-string** — the op accepts this payload, validated before `handle` runs and published as the
+ *     endpoint's contract;
+ *   - **`false`** — the op accepts NOTHING, deliberately. Enforced: a request carrying input on the op's
+ *     axis is rejected rather than silently ignored;
+ *   - **`null`** — UNDECLARED, which today means "accept anything, validate nothing". This is the residue,
+ *     not a design: it is the state an op is in because nobody has looked at it yet.
+ *
+ * The axis `input` describes is the ROUTE's, not the declaration's: `Route::particleOp()` chooses the HTTP
+ * method, so the same declared class publishes as a request body on a write op and as query parameters on a
+ * GET one. A declaration says WHAT is accepted; the mount says where it arrives.
+ *
+ * **`null` is scheduled to become a synonym for `false`** — a contract that is only binding when present is
+ * not a contract. That flip is deliberately NOT made here: at the time of writing, zero of the estate's
+ * registered operations declare `input` at all, so making it binding today would break every one of them.
+ * The gate is the count of remaining `null`s reaching zero across the registry, and the flip covers the
+ * resource axis ({@see ParticleResource::$input}) in the same act.
+ *
  * `output` is kind-dependent, and that asymmetry is deliberate rather than an inconsistency: a read/write/task
  * resolves ONE payload, so a single class-string says everything; a Stream emits a sequence of discrete typed
  * events under distinct wire names, so it takes `[eventName => [DataClass, ...]]` — the shape the `->streams()`
@@ -51,7 +71,9 @@ class ParticleOperation
      *                                           e.g. run authorizes `create` on `Fragment`, not the batch)
      * @param  (Closure(mixed): mixed)|null  $respond  a Task's response projector
      *                                                 (given the refreshed model); null ⇒ a bare `{ queued: true|false }`
-     * @param  class-string|null  $input  the Data class this op ACCEPTS — its declared payload contract
+     * @param  class-string|false|null  $input  the Data class this op ACCEPTS — its declared payload
+     *                                          contract; `false` declares it accepts nothing; `null` is
+     *                                          undeclared (see the class docblock)
      * @param  class-string|array<string, list<class-string>>|null  $output  the Data class this op RETURNS; on
      *                                                                       a Stream, an event-name → payload-list
      *                                                                       map (see the class docblock)
@@ -65,7 +87,7 @@ class ParticleOperation
         public ?string $ability = null,
         public ?string $abilityModel = null,
         public ?Closure $respond = null,
-        public ?string $input = null,
+        public string|false|null $input = null,
         public string|array|null $output = null,
     ) {
         $this->assertOutputMatchesKind();

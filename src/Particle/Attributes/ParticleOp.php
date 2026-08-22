@@ -28,7 +28,9 @@ use Splicewire\Beam\Particle\ParticleOperation;
  * `input:`/`output:` are the op's SHAPE SLOTS — the mirror of the resource attribute's `input:`/`data:` pair
  * and the invariant's second legal declaration site (a Data class bound to an operation). Both optional; an
  * op that declares neither still registers and runs exactly as before. {@see ParticleOperation} validates
- * the pairing of `output:` with `kind:`.
+ * the pairing of `output:` with `kind:`, and its docblock carries the three states of `input:` (a class-string,
+ * `false` for "accepts nothing, deliberately", `null` for undeclared) — this attribute is only the twin
+ * declaration site and adds no rules of its own.
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 class ParticleOp
@@ -40,7 +42,8 @@ class ParticleOp
      * @param  class-string  $model  the model the `{id}` resolves to
      * @param  string|null  $ability  an authorization ability checked before the op runs (deny-default)
      * @param  class-string|null  $abilityModel  the model the ability is checked against; null ⇒ the resolved instance
-     * @param  class-string|null  $input  the Data class the op ACCEPTS — its declared payload contract
+     * @param  class-string|false|null  $input  the Data class the op ACCEPTS — its declared payload contract;
+     *                                          `false` declares it accepts nothing; `null` is undeclared
      * @param  class-string|array<string, list<class-string>>|null  $output  the Data class the op RETURNS;
      *                                                                       on {@see OperationKind::Stream} an
      *                                                                       event-name → payload-list map instead
@@ -52,7 +55,7 @@ class ParticleOp
         public string $model,
         public ?string $ability = null,
         public ?string $abilityModel = null,
-        public ?string $input = null,
+        public string|false|null $input = null,
         public string|array|null $output = null,
     ) {}
 }

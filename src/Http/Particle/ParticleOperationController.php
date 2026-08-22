@@ -6,6 +6,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\AbilityResolver;
@@ -43,6 +44,13 @@ class ParticleOperationController extends Controller
     public const RESOURCE = '_particle_op_resource';
 
     public const NAME = '_particle_op_name';
+
+    /**
+     * The framework's own parameter on a {@see OperationKind::Task}: run the job queued (default) or inline.
+     * Spelled here once and read everywhere through {@see OperationKind::frameworkParameters()}, so the
+     * dispatch branch, the published reference and the input-less rejection cannot disagree about its name.
+     */
+    public const ASYNC = 'async';
 
     public function __construct(
         protected ParticleOperationRegistry $operations,
@@ -89,18 +97,60 @@ class ParticleOperationController extends Controller
     }
 
     /**
-     * Validate the request payload against the operation's declared `input:` class before the handler runs.
+     * Enforce the operation's declared `input:` before the handler runs.
      *
-     * The declaration becomes the contract rather than staying implicit in the handler body: an op that
-     * declares what it accepts gets that enforced for free, and one that declares nothing is untouched.
+     * The declaration becomes the contract rather than staying implicit in the handler body, across all
+     * three of its states (api-surface-coherence ticket 30):
+     *
+     *   - a class-string validates the payload;
+     *   - `false` REJECTS one — an op that declares it accepts nothing must not silently ignore what it is
+     *     sent, or "accepts nothing" is prose rather than a contract;
+     *   - `null` is undeclared and stays untouched, which is the state every operation is in until the
+     *     declaration sweep reaches it. {@see ParticleOperation} carries the schedule for closing it.
      */
     protected function validateInput(ParticleOperation $operation, Request $request): void
     {
         $input = $operation->input;
 
+        if ($input === false) {
+            $this->rejectInput($operation, $request);
+
+            return;
+        }
+
         if ($input !== null && is_subclass_of($input, Data::class)) {
             $input::validate($request->all());
         }
+    }
+
+    /**
+     * Refuse a request that carries input to an operation declared to accept none.
+     *
+     * Only the op's OWN axis is examined, and which axis that is belongs to the mount rather than the
+     * declaration: `Route::particleOp()` chooses the HTTP method, so a GET op's input arrives as a query
+     * string and every other op's as a body. Reading both would make `?async` — which is beam's parameter,
+     * not the caller's payload — look like a violation on the very kind that defines it.
+     */
+    protected function rejectInput(ParticleOperation $operation, Request $request): void
+    {
+        $source = match (true) {
+            $request->isMethod('GET') => $request->query(),
+            // A JSON body never reaches the `request` bag, so `post()` alone would read every JSON payload
+            // as empty and this contract would enforce nothing on the format the API actually speaks.
+            $request->isJson() => (array) $request->json()->all(),
+            default => $request->post(),
+        };
+
+        $unexpected = array_diff(array_keys($source), $operation->kind->frameworkParameters());
+
+        if ($unexpected === []) {
+            return;
+        }
+
+        throw ValidationException::withMessages(array_fill_keys(
+            array_values($unexpected),
+            "The `{$operation->name}` operation accepts no input.",
+        ));
     }
 
     /**
@@ -164,7 +214,7 @@ class ParticleOperationController extends Controller
     protected function runTask(ParticleOperation $operation, mixed $model, Request $request): mixed
     {
         $job = ($operation->handle)($model, $request, $request->user());
-        $async = $request->boolean('async', true);
+        $async = $request->boolean(static::ASYNC, true);
 
         if ($async) {
             $this->bus->dispatch($job);

@@ -10,6 +10,7 @@ use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -24,6 +25,11 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * {@see JsonSchemaGenerator} and stashes it under the SAME `custom['dataRequestSchema']` key — so the
  * package's `DataSchemaGenerator` assembly hook needs zero changes.
  *
+ * Both legal declaration sites are read, not just the resource's: an OPERATION route (`…/op/{name}`) carries
+ * its own stamp and its own `input:`, so it documents through the same path (api-surface-coherence ticket 30).
+ * The one asymmetry is the axis — an op's mount chooses the HTTP method, so a GET op's declared input is a
+ * query contract and belongs to {@see ParticleOperationParameterStrategy} instead.
+ *
  * Returns `null` (defer) for any non-particle route, so it composes transparently alongside the existing
  * attribute strategies.
  */
@@ -36,16 +42,21 @@ class ParticleRequestStrategy extends Strategy
     {
         $defaults = $endpointData->route?->defaults ?? [];
 
-        // Operation routes (…/op/{name}): a ParticleOperation has no request-params DTO today, so emit a
-        // generic (empty) request body.
-        // TODO: when ParticleOperation gains a `params` field, generate its schema here like a resource input.
+        // Operation routes (…/op/{name}) declare their payload the same way a resource does — the second
+        // legal declaration site — so they document the same way (api-surface-coherence ticket 30).
         if (isset($defaults[ParticleOperationController::RESOURCE], $defaults[ParticleOperationController::NAME])) {
-            app(ParticleOperationRegistry::class)->get(
+            $operation = app(ParticleOperationRegistry::class)->get(
                 $defaults[ParticleOperationController::RESOURCE],
                 $defaults[ParticleOperationController::NAME],
             );
 
-            return [];
+            // A GET op's declared input is a QUERY contract, not a body: the mount picks the method, so the
+            // same declaration lands on a different axis. {@see ParticleOperationParameterStrategy} owns it.
+            if (in_array('GET', $endpointData->httpMethods, true)) {
+                return [];
+            }
+
+            return $this->fromDataClass($operation->input, $endpointData);
         }
 
         $key = $defaults[ParticleController::RESOURCE] ?? null;
@@ -58,10 +69,23 @@ class ParticleRequestStrategy extends Strategy
             return [];
         }
 
-        $resource = app(ParticleResourceRegistry::class)->get($key);
-        $input = $resource->input;
+        return $this->fromDataClass(app(ParticleResourceRegistry::class)->get($key)->input, $endpointData);
+    }
 
-        if ($input === null || ! is_subclass_of($input, Data::class)) {
+    /**
+     * Generate a declared input class's request-body schema, stashing it on the custom key the package's
+     * `DataSchemaGenerator` assembly hook already reads.
+     *
+     * Shared by both declaration sites — a resource's `input:` and an operation's — because they are the
+     * same declaration answering the same question, and reading them differently is how the two axes drift.
+     *
+     * An undeclared (`null`) or deliberately-empty (`false`) input yields no body. Those two are identical
+     * in the artifact and different in meaning; the distinction is enforced at the controller and audited by
+     * the sweep, not published (see {@see ParticleOperation}).
+     */
+    protected function fromDataClass(string|false|null $input, ExtractedEndpointData $endpointData): array
+    {
+        if (! is_string($input) || ! is_subclass_of($input, Data::class)) {
             return [];
         }
 
