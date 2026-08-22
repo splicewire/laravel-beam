@@ -21,7 +21,31 @@ use Splicewire\Beam\Write\ParticleWriter;
  */
 class ParticleStorageDriver implements StorageDriver
 {
-    public function __construct(protected ParticleWriter $writer) {}
+    /**
+     * Takes either a {@see ParticleWriter} or a **closure resolving one per write**.
+     *
+     * The closure form exists because {@see ParticleWriter} is bound `bind()`, not `singleton()`,
+     * precisely so a caller can rebind {@see \Splicewire\Beam\Write\Contracts\WriteGate} for the
+     * duration of a flow — {@see \Splicewire\Beam\Write\AsSystemWriter} is the whole reason that
+     * matters. A **long-lived** holder that captures the writer in its constructor pins whichever gate
+     * was bound at construction, and a later rebind can never reach it: `BeamUxServiceProvider` binds
+     * `StorageDriverResolver` as a singleton, so on any host that resolved it before
+     * `splicewire:beam:seed` ran, the seeder wrote through a driver still holding the deny-by-default
+     * gate and every seeded page failed with "the write gate refused a write". Same defect class as
+     * beam-docs-satellite tickets 07 and 08, one level further up the graph — and {@see BeamManager}'s
+     * own docblock already states the rule ("collaborators resolve per call") that this violated.
+     *
+     * A caller that has ALREADY chosen its gate for one specific write — `BeamUxEntryBodyController`
+     * hands in a request-scoped writer — passes the instance and gets exactly that writer.
+     *
+     * @param  ParticleWriter|(\Closure(): ParticleWriter)  $writer
+     */
+    public function __construct(protected ParticleWriter|\Closure $writer) {}
+
+    protected function writer(): ParticleWriter
+    {
+        return $this->writer instanceof ParticleWriter ? $this->writer : ($this->writer)();
+    }
 
     public function read(string $key): ?StorageItem
     {
@@ -44,7 +68,7 @@ class ParticleStorageDriver implements StorageDriver
         $particle->meta = $meta;
 
         // The body lands through the SHARED write pipeline — versioning + migrate-on-read intact.
-        $written = $this->writer->write($particle, $body);
+        $written = $this->writer()->write($particle, $body);
 
         return $this->itemFrom($written instanceof BeamParticle ? $written : $particle->refresh());
     }
