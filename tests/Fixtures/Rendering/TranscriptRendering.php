@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Fixtures\Rendering;
 
+use Splicewire\Beam\Rendering\DeclaresDelivery;
 use Splicewire\Beam\Rendering\RenderedDocument;
 use Splicewire\Beam\Rendering\ResourceRendering;
 
@@ -10,7 +11,7 @@ use Splicewire\Beam\Rendering\ResourceRendering;
  * read-only. Its formats come from a mutable static so a test can prove the enumeration is read live per
  * request rather than frozen into the route table.
  */
-class TranscriptRendering implements ResourceRendering
+class TranscriptRendering implements DeclaresDelivery, ResourceRendering
 {
     /** @var list<string> */
     public static array $formats = ['text', 'html'];
@@ -25,10 +26,26 @@ class TranscriptRendering implements ResourceRendering
         return static::$formats;
     }
 
+    public function mediaTypes(): array
+    {
+        return ['text/plain', 'text/html'];
+    }
+
+    public function deliveryHeaders(): array
+    {
+        return ['X-Rendering' => 'Which rendering produced this body.'];
+    }
+
+    public function defaultFormat(): ?string
+    {
+        return 'text';
+    }
+
     public function render(object $subject, ?string $format = null): RenderedDocument
     {
-        // No default is substituted upstream: null means "mine".
-        $format ??= 'text';
+        // No default is substituted upstream: null means "mine" — and "mine" is the DECLARED default, not
+        // a second spelling of it, so the documented default and the applied one cannot drift.
+        $format ??= $this->defaultFormat();
 
         return RenderedDocument::raw(
             "{$format}:{$subject->title}",

@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Routing;
 use Illuminate\Routing\Route;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Rendering\Http\RenderingsController;
 
 /**
  * The read side of the `->beam()` route-metadata namespace (api-surface-coherence ticket 15).
@@ -72,12 +73,18 @@ class BeamRouteAction
      * `POST /circuits/{id}/op/duplicate` belongs to `circuits` exactly as `GET /circuits` does — so this
      * reader falls through to it. Ticket 17 found this while wiring the group chain: the ticket's own note
      * claimed there was one stamp to read, and there are two.
+     *
+     * There are THREE. `Route::resourceRenderings()` stamps its whole per-route config under a third key,
+     * and the resource is a field inside it — so `GET /disclosures/{id}/export` belongs to `disclosures`
+     * on exactly ticket 01's argument, and reading it here is what let the hand-placed
+     * "Renderings & Export" group be deleted rather than replaced (ticket 32 §F). A group of three
+     * endpoints whose only commonality is a shared controller method is a placement, not a taxonomy.
      */
     public static function resourceKey(Route $route): ?string
     {
         $value = $route->defaults[ParticleController::RESOURCE]
             ?? $route->defaults[ParticleOperationController::RESOURCE]
-            ?? null;
+            ?? ($route->defaults[RenderingsController::CONFIG]['resource'] ?? null);
 
         return is_string($value) ? $value : null;
     }

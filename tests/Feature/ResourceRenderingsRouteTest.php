@@ -8,6 +8,7 @@ use Schemastud\DataSchemas\Overlay\Lens\Fidelity;
 use Splicewire\Beam\Rendering\Http\RenderingsController;
 use Splicewire\Beam\Rendering\RenderingCertifier;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
+use Splicewire\Beam\Routing\BeamRouteAction;
 use Splicewire\Beam\Tests\Fixtures\Rendering\LossyTitleLens;
 use Splicewire\Beam\Tests\Fixtures\Rendering\MirrorRendering;
 use Splicewire\Beam\Tests\Fixtures\Rendering\RenderingSubject;
@@ -299,6 +300,84 @@ class ResourceRenderingsRouteTest extends TestCase
         Route::resourceRenderings('loose', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertArrayNotHasKey('id', $this->routeNamed('loose.transcript')->wheres);
+    }
+
+    // ── format validation (api-surface-coherence ticket 32 §D) ────────────────────────────────────────
+
+    public function test_rejects_a_format_outside_the_renderings_enumeration_with_a_422_on_format(): void
+    {
+        $this->renderings([new TranscriptRendering]);
+        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+
+        // Before this ticket the controller forwarded anything and each rendering rejected in its own
+        // shape — which for the disclosure surface meant a bare InvalidArgumentException and a 500.
+        $this->getJson('papers/doc-1/transcript?format=xml')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('format');
+    }
+
+    public function test_does_not_echo_the_rejected_format_back_but_does_name_the_accepted_set(): void
+    {
+        $this->renderings([new TranscriptRendering]);
+        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+
+        $message = $this->getJson('papers/doc-1/transcript?format=<script>')
+            ->assertStatus(422)
+            ->json('errors.format.0');
+
+        $this->assertStringNotContainsString('<script>', $message);
+        $this->assertStringContainsString('text', $message);
+        $this->assertStringContainsString('html', $message);
+    }
+
+    public function test_validates_against_the_live_enumeration_rather_than_the_set_frozen_at_mount(): void
+    {
+        TranscriptRendering::$formats = ['text'];
+
+        $this->renderings([new TranscriptRendering]);
+        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+
+        $this->getJson('papers/doc-1/transcript?format=html')->assertStatus(422);
+
+        // The route table is untouched; only the registry widened. The rendering is re-read per request,
+        // so the enforced set widens with it — the same property the mount already had for the route set.
+        TranscriptRendering::$formats = ['text', 'html'];
+
+        $this->getJson('papers/doc-1/transcript?format=html')->assertOk();
+    }
+
+    public function test_a_rendering_enumerating_no_formats_accepts_anything_because_it_reads_nothing(): void
+    {
+        TranscriptRendering::$formats = [];
+
+        $this->renderings([new TranscriptRendering]);
+        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+
+        // One representation, no format axis. Rejecting a parameter it has never read would be a new
+        // behaviour dressed as a fix — this is the circuits case, decided in ticket 09 §5.
+        $this->get('papers/doc-1/transcript?format=anything')
+            ->assertOk()
+            ->assertSee('anything:Hello');
+    }
+
+    public function test_still_refuses_to_substitute_a_default_so_the_renderings_own_default_survives(): void
+    {
+        $this->renderings([new TranscriptRendering]);
+        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+
+        // Validation lifted; defaulting did not. `null` still means "the rendering's own default".
+        $this->get('papers/doc-1/transcript')->assertOk()->assertSee('text:Hello');
+    }
+
+    public function test_a_rendering_route_reports_the_resource_it_belongs_to(): void
+    {
+        $this->renderings([new TranscriptRendering]);
+        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+
+        // Ticket 32 §F: the third stamp `BeamRouteAction::resourceKey()` reads. It is what let the
+        // hand-placed "Renderings & Export" group be DELETED rather than replaced — the route already
+        // knew it belonged to `papers`, and nothing was reading it.
+        $this->assertSame('papers', BeamRouteAction::resourceKey($this->routeNamed('papers.transcript')));
     }
 
     public function test_refuses_a_write_through_a_stale_route_whose_certification_no_longer_grants_it(): void

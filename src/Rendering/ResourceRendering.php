@@ -16,10 +16,20 @@ namespace Splicewire\Beam\Rendering;
  * exercises the well-behavedness laws. Implement {@see ReversibleRendering} to *submit evidence* for a
  * write verb; you cannot declare your way to one.
  *
- * Format validation is the rendering's own business, not the controller's. `formats()` is the
- * enumeration (for documentation, discovery and manifests); `render()` receives whatever the caller
- * asked for — including `null` for "your default" — and is responsible for rejecting a format it does
- * not support, in whatever shape its surface already rejects it.
+ * **`formats()` is the validation contract** (api-surface-coherence ticket 32 §D). It used to be
+ * decoration — documented here as existing "for documentation, discovery and manifests", with zero call
+ * sites estate-wide, while each rendering rejected a bad format in whatever shape its own surface
+ * happened to reject in. Those shapes were three and two were wrong (a 500, and a silent ignore).
+ * {@see Http\RenderingsController} now validates against this method before calling `render()`, so it is
+ * the set the wire ENFORCES and the set the reference publishes, and the three cannot drift apart.
+ *
+ * `render()` still receives `null` for "your default" — the controller does not substitute one — and a
+ * rendering may still reject on a per-RECORD basis (the route accepts the union; a record's own profile
+ * narrows it). What it no longer has to do is police the union itself.
+ *
+ * Implement {@see DeclaresDelivery} to state what comes back — media types, added headers, and the
+ * default this rendering applies to a null `$format` — so the reference can document a real response
+ * instead of an untyped one.
  */
 interface ResourceRendering
 {
@@ -34,6 +44,11 @@ interface ResourceRendering
      * The formats this rendering can emit, most-canonical first. Enumerated live (typically off a
      * registry) rather than hard-coded, so a newly registered profile widens the rendering without an
      * edit here.
+     *
+     * An EMPTY list means "no format axis" — one representation, no `?format=` parameter documented, and
+     * nothing for the controller to validate against. It is a stronger statement than a one-member list:
+     * a rendering that has never read `$format` should say so here rather than advertise the single
+     * value it would have ignored.
      *
      * @return list<string>
      */

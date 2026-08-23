@@ -1415,7 +1415,7 @@ class BeamServiceProvider extends PackageServiceProvider
                 $name = ($at === '' ? '' : $at.'.').$rendering->name();
 
                 $mount = function (RouteInstance $route) use ($config, $middleware, $idConstraint): RouteInstance {
-                    $route->defaults('_renderings', $config);
+                    $route->defaults(RenderingsController::CONFIG, $config);
 
                     if ($idConstraint === 'uuid') {
                         $route->whereUuid('id');

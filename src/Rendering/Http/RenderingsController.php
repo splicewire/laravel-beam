@@ -7,7 +7,9 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Splicewire\Beam\Rendering\DeclaresDelivery;
 use Splicewire\Beam\Rendering\RenderedDocument;
 use Splicewire\Beam\Rendering\ResourceRendering;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
@@ -24,18 +26,29 @@ use Splicewire\Beam\Rendering\Subjects\ResolvesRenderingSubject;
  * rendering itself is looked up from the registry at REQUEST time, so its live format enumeration is
  * never frozen into the route table.
  *
- * Two deliberate non-behaviours, because these endpoints were migrated onto the macro under a
- * no-change-to-output bar:
+ * **`?format=` is validated here** (api-surface-coherence ticket 32 §D). It did not used to be: the
+ * endpoints were migrated onto the macro under a no-change-to-output bar, so the controller forwarded
+ * whatever arrived and left rejection to whatever shape each rendering already rejected in. Those shapes
+ * were three, and two of them were wrong — a disclosure threw a bare `InvalidArgumentException` and came
+ * back **500**, and a circuit ignored the parameter entirely while advertising a format list. Rejecting
+ * once, here, is what makes {@see ResourceRendering::formats()} a contract instead of decoration: it is
+ * now the set the wire enforces, and it is the set the reference publishes.
  *
- *  - the controller does not validate `?format=`. It forwards it (or null) and lets the rendering reject
- *    what it cannot emit, in whatever shape that surface already rejected it.
- *  - the controller does not substitute a default format. `null` means "the rendering's own default".
+ * A rendering enumerating NO formats is exempt, and that is a decision rather than a gap — it has one
+ * representation and no format axis, so there is nothing to validate against and no parameter documented.
+ *
+ * One deliberate non-behaviour survives: the controller does not SUBSTITUTE a default format. `null`
+ * still means "the rendering's own default", which the rendering states via
+ * {@see DeclaresDelivery::defaultFormat()} and applies itself.
  *
  * @group Renderings
  */
 class RenderingsController extends Controller
 {
     use AuthorizesRequests;
+
+    /** The route default the macro stamps its per-route config under. */
+    public const CONFIG = '_renderings';
 
     public function __construct(
         private ResourceRenderingRegistry $registry,
@@ -49,7 +62,7 @@ class RenderingsController extends Controller
 
         $this->authorizeAbility($config, 'view', $subject);
 
-        return $this->respond($rendering->render($subject, $this->format($request)));
+        return $this->respond($rendering->render($subject, $this->format($request, $rendering)));
     }
 
     /**
@@ -74,7 +87,7 @@ class RenderingsController extends Controller
 
         $this->authorizeAbility($config, 'mutate', $subject);
 
-        return $this->respond($rendering->ingest($subject, $this->format($request), $request->all()));
+        return $this->respond($rendering->ingest($subject, $this->format($request, $rendering), $request->all()));
     }
 
     /**
@@ -85,7 +98,7 @@ class RenderingsController extends Controller
      */
     private function resolve(Request $request, string $id): array
     {
-        $config = $request->route()->defaults['_renderings'] ?? null;
+        $config = $request->route()->defaults[self::CONFIG] ?? null;
 
         if (! is_array($config) || ! isset($config['resource'], $config['rendering'], $config['subject'])) {
             throw new RuntimeException(
@@ -112,12 +125,35 @@ class RenderingsController extends Controller
         return [$config, $rendering, $subject];
     }
 
-    /** The requested format, or null for "the rendering's own default". Never defaulted here. */
-    private function format(Request $request): ?string
+    /**
+     * The requested format, validated against the rendering's enumeration. Null for "the rendering's own
+     * default" — never defaulted here, so a rendering's existing default behaviour stays its own.
+     *
+     * A rendering enumerating no formats accepts anything, because it reads nothing: it has one
+     * representation and no format axis. Rejecting a parameter it has never read would be a new
+     * behaviour dressed as a fix, and the reference documents no `format` for it at all.
+     *
+     * The rejected value is NOT echoed back — a reflected-input smell, and the accepted set is the more
+     * useful half of the message anyway.
+     */
+    private function format(Request $request, ResourceRendering $rendering): ?string
     {
         $format = $request->input('format');
 
-        return $format === null ? null : (string) $format;
+        if ($format === null) {
+            return null;
+        }
+
+        $format = (string) $format;
+        $accepted = $rendering->formats();
+
+        if ($accepted !== [] && ! in_array($format, $accepted, true)) {
+            throw ValidationException::withMessages([
+                'format' => 'Unsupported format. This rendering emits '.implode(', ', $accepted).'.',
+            ]);
+        }
+
+        return $format;
     }
 
     /**
