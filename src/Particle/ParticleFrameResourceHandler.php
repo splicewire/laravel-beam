@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Particle;
 use Closure;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -107,10 +108,16 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      * The list query for a Frame index. A registered, `filterable` {@see ParticleResource} rides the
      * data-filters builder ({@see ParticleHydrator::query}) — the SAME owner-scoped, `filter[...]`-aware,
      * saved-filter-capable query the REST {@see ParticleController::index}
-     * uses — so a Frame list and a REST list are one read (a pinned `filter[circuit_id]` and per-caller
+     * uses — so a Frame list and a REST list are one read (a pinned `filter[circuitId]` and per-caller
      * row-scoping hold in the editor exactly as they do over REST). A manifest-only resource, a
      * non-filterable one, or a host whose hydrator does not compose queries falls back to the plain
-     * includes-eager-loaded, newest-first query.
+     * includes-eager-loaded query, ordered by the declaration's default sort.
+     *
+     * That fallback rides {@see ParticleListQuery}, the same builder the REST transport's
+     * {@see ParticleController::defaultSortedQuery} calls. Until ticket 05 this method hardcoded
+     * `orderByDesc('created_at')` here, silently ignoring the `#[Sortable(default: true)]` attribute the
+     * REST twin reads and calls "the SINGLE source of truth for a resource's default order" — so the two
+     * transports ordered the same declaration's list differently whenever it declared one.
      */
     protected function indexQuery(ResourceDefinition $definition): object
     {
@@ -127,7 +134,13 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
             }
         }
 
-        return $this->query($definition)->orderByDesc('created_at');
+        // A manifest-only resource (no registered ParticleResource) has no declaration to read includes
+        // or a default sort off — it keeps the framework default, which is what `created_at desc` was.
+        if ($resource === null) {
+            return $definition->model::query()->latest();
+        }
+
+        return $this->scoped((new ParticleListQuery)->forList($resource), $resource);
     }
 
     public function show(ResourceDefinition $definition, string $id): array
@@ -285,13 +298,26 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
             $query->with($includes);
         }
 
-        if ($resource?->scope !== null) {
-            $realm = app(Request::class)->route()?->defaults['realm'] ?? null;
+        return $this->scoped($query, $resource);
+    }
 
-            $query = ($resource->scope)($query, $realm) ?? $query;
+    /**
+     * Apply the declaration's row-level `scope` closure, with the resolved editor realm as its second
+     * argument. Extracted so the subject-resolution base ({@see query()}) and the non-filterable list base
+     * ({@see indexQuery()}) gate identically — ticket 05 split the two queries apart, and an authorization
+     * gate applied in only one of them is exactly the drift that split caused elsewhere.
+     *
+     * Null resource, or a declaration with no `scope`, returns the query untouched.
+     */
+    protected function scoped(Builder $query, ?ParticleResource $resource): Builder
+    {
+        if ($resource?->scope === null) {
+            return $query;
         }
 
-        return $query;
+        $realm = app(Request::class)->route()?->defaults['realm'] ?? null;
+
+        return ($resource->scope)($query, $realm) ?? $query;
     }
 
     /**

@@ -14,9 +14,9 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
-use Rushing\DataFilters\Reflection\FilterReflector;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
+use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
@@ -119,37 +119,17 @@ class ParticleController extends Controller
     }
 
     /**
-     * The base query for a NON-filterable index, ordered by the resource DTO's declared default sort.
+     * The base query for a NON-filterable index: the declaration's `includes` eager-loaded, ordered by
+     * its declared default sort.
      *
-     * The default is read from the read Data class's `#[Sortable(default: true)]` property — the SINGLE
-     * source of truth for a resource's default order (the filterable path reads the SAME attribute via its
-     * data-filters query). {@see FilterReflector::defaultSortColumn()} returns the declared COLUMN and
-     * direction; absent any opt-in we fall back to the framework `latest()` (newest `created_at` first —
-     * the historical default when no column was declared).
-     *
-     * Read via `defaultSortColumn()` and not the deprecated `defaultSort()`: this path orders a plain
-     * Eloquent builder, so it needs the column itself. The string `defaultSort()` returns is the sort KEY,
-     * which drops a `#[Sortable(name:, column:)]` mapping whenever the two diverge and leaves this index
-     * ordering by a column that does not exist.
+     * Both axes live in {@see ParticleListQuery}, which the Frame transport calls too. Until ticket 05
+     * this method built its own query and applied ONLY the sort — so a non-filterable REST list lazy-
+     * loaded every declared include per row, while the Frame transport eager-loaded them and hardcoded
+     * `created_at desc` instead. Two transports, one declaration, each missing the half the other had.
      */
     protected function defaultSortedQuery(ParticleResource $resource): Builder
     {
-        $query = $resource->model::query();
-
-        // A resource may legitimately declare NO output DTO (its wire type is a package-owned class,
-        // not an App Data DTO — e.g. `runner_transform`) — FilterReflector::defaultSortColumn() takes a
-        // non-nullable class-string, so skip straight to the framework default rather than TypeError.
-        $default = $resource->data !== null
-            ? (new FilterReflector)->defaultSortColumn($resource->data)
-            : null;
-
-        if ($default === null) {
-            return $query->latest();
-        }
-
-        return $default['direction'] === 'desc'
-            ? $query->orderByDesc($default['column'])
-            : $query->orderBy($default['column']);
+        return (new ParticleListQuery)->forList($resource);
     }
 
     public function show(Request $request, string $id): Responsable
