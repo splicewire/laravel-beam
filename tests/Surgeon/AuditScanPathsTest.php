@@ -97,7 +97,7 @@ class AuditScanPathsTest extends TestCase
             ->register('acme/billing', $this->controllersDir, $this->routesDir);
 
         $registry = new ParticleResourceRegistry;
-        $registry->register(new ParticleResource(key: 'plans', model: 'Acme\\Billing\\Plan'));
+        $registry->register(new ParticleResource(key: 'plans', backing: 'Acme\\Billing\\Plan'));
 
         $findings = ParticleControllerRedundancyAudit::forRoutes(registry: $registry)->suggestOperations();
 

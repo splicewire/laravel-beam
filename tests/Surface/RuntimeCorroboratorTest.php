@@ -183,7 +183,7 @@ class RuntimeCorroboratorTest extends TestCase
     {
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             policy: 'widget',
         ));
 

@@ -28,7 +28,7 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
  */
 #[ParticleResource(
     key: '{{ key }}',
-    model: {{ model }}::class,
+    backing: {{ model }}::class,
     data: {{ class }}::class,
     input: {{ inputClass }}::class,
 )]

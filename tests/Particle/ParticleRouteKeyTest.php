@@ -52,7 +52,7 @@ class ParticleRouteKeyTest extends TestCase
 
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'rk-items',
-            model: Listing::class,
+            backing: Listing::class,
             data: ListingData::class,
             filterable: false,
             routeKey: 'slug',
@@ -61,7 +61,7 @@ class ParticleRouteKeyTest extends TestCase
         // The same table, declared WITHOUT a route key — the control for "existing resources are unchanged".
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'rk-items-pk',
-            model: Listing::class,
+            backing: Listing::class,
             data: ListingData::class,
             filterable: false,
         ));

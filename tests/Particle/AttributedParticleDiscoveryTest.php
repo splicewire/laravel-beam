@@ -37,7 +37,8 @@ class AttributedParticleDiscoveryTest extends TestCase
         $resource = $this->app->make(ParticleResourceRegistry::class)->get('library-lyrics');
 
         $this->assertSame('library-lyrics', $resource->key);
-        $this->assertSame(FixtureModel::class, $resource->model);
+        $this->assertSame(FixtureModel::class, $resource->backing);
+        $this->assertSame(FixtureModel::class, $resource->modelClass());
         $this->assertSame(FixtureInput::class, $resource->input);
         $this->assertSame(['tags'], $resource->includes);
         $this->assertFalse($resource->filterable);
@@ -231,7 +232,7 @@ class FixtureInput {}
 
 #[ParticleResource(
     key: 'library-lyrics',
-    model: FixtureModel::class,
+    backing: FixtureModel::class,
     input: FixtureInput::class,
     includes: ['tags'],
     filterable: false,
@@ -252,12 +253,12 @@ class FixtureLyricResource
     }
 }
 
-#[ParticleResource(key: 'bare', model: FixtureModel::class)]
+#[ParticleResource(key: 'bare', backing: FixtureModel::class)]
 class FixtureBareResource {}
 
 #[ParticleResource(
     key: 'framed-widgets',
-    model: FixtureModel::class,
+    backing: FixtureModel::class,
     data: WidgetGateData::class,
     label: 'Widgets',
     form: 'enriched',

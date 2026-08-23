@@ -33,7 +33,7 @@ class ParticleResourceRegistryTest extends TestCase
 
         $declaration = new ParticleResourceRuntime(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             data: WidgetGateData::class,
             label: 'Widgets',
             section: 'operator',
@@ -58,7 +58,7 @@ class ParticleResourceRegistryTest extends TestCase
         $registry = new ParticleResourceRegistry;
         $registry->register(new ParticleResourceRuntime(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             data: WidgetGateData::class,
             label: 'Widgets',
         ));
@@ -180,13 +180,13 @@ class ParticleResourceRegistryTest extends TestCase
 
 #[ParticleResource(
     key: 'framed-particle',
-    model: 'App\\Models\\Widget',
+    backing: 'App\\Models\\Widget',
     data: WidgetGateData::class,
     label: 'Framed Particle',
 )]
 class FixtureFramedParticleResource {}
 
-#[ParticleResource(key: 'rest-only', model: 'App\\Models\\Widget')]
+#[ParticleResource(key: 'rest-only', backing: 'App\\Models\\Widget')]
 class FixtureRestOnlyParticleResource {}
 
 class FixtureUnannotated {}

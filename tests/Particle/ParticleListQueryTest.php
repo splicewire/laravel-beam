@@ -62,7 +62,7 @@ class ParticleListQueryTest extends TestCase
         // premise the whole test exists to pin.
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'list-crate',
-            model: ListCrate::class,
+            backing: ListCrate::class,
             data: ListCrateData::class,
             includes: ['labels'],
             filterable: false,
@@ -93,7 +93,7 @@ class ParticleListQueryTest extends TestCase
 
     public function test_the_list_base_falls_back_to_the_framework_default_without_a_data_class(): void
     {
-        $resource = new ParticleResource(key: 'bare-crate', model: ListCrate::class, filterable: false);
+        $resource = new ParticleResource(key: 'bare-crate', backing: ListCrate::class, filterable: false);
 
         // No `data:` ⇒ nothing to reflect a `#[Sortable]` off, so newest-`created_at`-first. 'light' is
         // the newest, so it leads — the exact inverse of the declared weight order above.

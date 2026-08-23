@@ -83,12 +83,12 @@ class ModelResourceIndex
     }
 
     /**
-     * The model a declaration is backed by, or null when it declares no single model.
+     * The model a declaration is backed by, or null when its backing declares no single model.
      *
      * @return class-string|null
      */
     protected function modelFor(ParticleResource $resource): ?string
     {
-        return $resource->model;
+        return $resource->modelClass();
     }
 }

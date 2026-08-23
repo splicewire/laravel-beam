@@ -9,6 +9,10 @@ use RuntimeException;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Particle\Backing\BackingResolver;
+use Splicewire\Beam\Particle\Backing\EloquentBacking;
+use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
+use Splicewire\Beam\Particle\Backing\ResourceBacking;
 
 /**
  * The declarative description of a REST resource served by {@see \Splicewire\Beam\Http\Particle\ParticleController}.
@@ -55,7 +59,14 @@ class ParticleResource
     /**
      * @param  string  $key  the registry key AND the data-filters resource key the list query rides
      *                       (`DataFilter::query($key)`), e.g. `'silo'`
-     * @param  class-string  $model  the Eloquent model class
+     * @param  ResourceBacking|class-string  $backing  WHAT backs this resource — a
+     *                                                 {@see ResourceBacking} (instance or class-string, resolved at
+     *                                                 request time) or an Eloquent model class-string, which is
+     *                                                 wrapped in {@see EloquentBacking}. One polymorphic slot,
+     *                                                 replacing the `model` / `source` / `sourceKind` triple and its
+     *                                                 `model` XOR `source` contract (ticket 11). The ordinary case
+     *                                                 still reads `backing: Silo::class`; only a resource whose rows
+     *                                                 are not one plain model names a backing class.
      * @param  class-string|null  $data  the read/output spatie Data class; null ⇒ the hydrator resolves it
      *                                   off beam's `#[ParticleResource]` registry (record → its projection class)
      * @param  class-string|null  $input  the input spatie Data DTO (its `toModelAttributes()` maps the
@@ -120,7 +131,7 @@ class ParticleResource
      */
     public function __construct(
         public string $key,
-        public string $model,
+        public ResourceBacking|string $backing,
         public ?string $data = null,
         public ?string $input = null,
         public array $includes = [],
@@ -149,6 +160,37 @@ class ParticleResource
         public string $singularLabel = '',
         public ?string $routeKey = null,
     ) {}
+
+    /**
+     * Resolve this declaration's {@see $backing} to a live {@see ResourceBacking}.
+     *
+     * Resolution is per-call and happens at REQUEST time, never at boot, so a backing may take
+     * constructor injection (the tenant connection, its sub-source repos).
+     */
+    public function backing(): ResourceBacking
+    {
+        return (new BackingResolver)->resolve($this->backing);
+    }
+
+    /**
+     * The Eloquent model this resource is backed by, or null when its backing declares no single model.
+     *
+     * The successor to the old `$model` field for the readers that genuinely need a model class —
+     * subject resolution, the doc-generation route-key probe, {@see ModelResourceIndex}. It is
+     * **nullable**, which the field was not: `ParticleResource::$model` was a required, non-nullable
+     * `string`, and that was the blocker preventing the two declaration types from merging, since
+     * `members` and `review-queue` ship no model at all (ticket 11 §A10).
+     *
+     * ⚠️ A caller that only wants to QUERY should ask {@see backing()} instead. Reaching for the model
+     * class to build `Model::query()` by hand re-creates the assumption that every resource is one
+     * plain model — the assumption this slot exists to remove.
+     *
+     * @return class-string|null
+     */
+    public function modelClass(): ?string
+    {
+        return (new BackingResolver)->modelFor($this->backing);
+    }
 
     /**
      * Is this resource **framed** — i.e. does it light up the `@schemastud/frame` editor (nav + edit
@@ -183,7 +225,7 @@ class ParticleResource
         return new ResourceDefinition(
             key: $this->key,
             sourceKind: 'model',
-            model: $this->model,
+            model: $this->modelClass(),
             source: null,
             data: $this->data,
             creatable: ! $this->readOnly,

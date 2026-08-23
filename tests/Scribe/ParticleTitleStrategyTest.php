@@ -65,7 +65,7 @@ class ParticleTitleStrategyTest extends TestCase
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: $key,
-            model: 'App\\Models\\Fixture',
+            backing: 'App\\Models\\Fixture',
             label: $label,
             filterable: $filterable,
             frame: false,

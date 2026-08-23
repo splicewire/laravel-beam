@@ -20,7 +20,7 @@ class ParticleResourceManifestTest extends TestCase
     {
         $resource = new ParticleResource(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             data: WidgetGateData::class,
             label: 'Widgets',
             form: 'enriched',
@@ -50,8 +50,8 @@ class ParticleResourceManifestTest extends TestCase
 
     public function test_a_labelled_resource_is_framed_and_a_bare_one_is_not(): void
     {
-        $framed = new ParticleResource(key: 'w', model: 'App\\Models\\Widget', data: WidgetGateData::class, label: 'Widgets');
-        $bare = new ParticleResource(key: 'w', model: 'App\\Models\\Widget');
+        $framed = new ParticleResource(key: 'w', backing: 'App\\Models\\Widget', data: WidgetGateData::class, label: 'Widgets');
+        $bare = new ParticleResource(key: 'w', backing: 'App\\Models\\Widget');
 
         $this->assertTrue($framed->isFramed());
         $this->assertFalse($bare->isFramed());
@@ -60,8 +60,8 @@ class ParticleResourceManifestTest extends TestCase
     public function test_the_explicit_frame_override_wins_over_the_label_heuristic(): void
     {
         // frame:false forces a labelled resource REST-only; frame:true frames a label-less one.
-        $labelledButRestOnly = new ParticleResource(key: 'w', model: 'App\\Models\\Widget', label: 'Widgets', frame: false);
-        $bareButFramed = new ParticleResource(key: 'w', model: 'App\\Models\\Widget', data: WidgetGateData::class, frame: true);
+        $labelledButRestOnly = new ParticleResource(key: 'w', backing: 'App\\Models\\Widget', label: 'Widgets', frame: false);
+        $bareButFramed = new ParticleResource(key: 'w', backing: 'App\\Models\\Widget', data: WidgetGateData::class, frame: true);
 
         $this->assertFalse($labelledButRestOnly->isFramed());
         $this->assertTrue($bareButFramed->isFramed());
@@ -71,7 +71,7 @@ class ParticleResourceManifestTest extends TestCase
     {
         $resource = new ParticleResource(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             data: WidgetGateData::class,
             label: 'Widgets',
             section: 'operator',
@@ -95,7 +95,7 @@ class ParticleResourceManifestTest extends TestCase
     {
         $resource = new ParticleResource(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             data: WidgetGateData::class,
             label: 'Widgets',
         );
@@ -110,7 +110,7 @@ class ParticleResourceManifestTest extends TestCase
     {
         $resource = new ParticleResource(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             label: 'Widgets', // framed, but no data
         );
 

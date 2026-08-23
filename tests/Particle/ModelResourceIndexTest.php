@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Particle;
 
+use Illuminate\Database\Eloquent\Model;
 use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -31,7 +32,7 @@ class ModelResourceIndexTest extends TestCase
     public function test_it_indexes_a_resource_by_its_model(): void
     {
         $index = new ModelResourceIndex($this->registryWith(
-            new ParticleResource(key: 'silos', model: FakeSilo::class),
+            new ParticleResource(key: 'silos', backing: FakeSilo::class),
         ));
 
         $this->assertSame([FakeSilo::class => ['silos']], $index->all());
@@ -44,8 +45,8 @@ class ModelResourceIndexTest extends TestCase
         // The shipped shape: a writable owner-scoped resource and a public read-only projection over
         // one model (audiostud's `songs` + `listen-songs` over `Composition`).
         $index = new ModelResourceIndex($this->registryWith(
-            new ParticleResource(key: 'songs', model: FakeSilo::class),
-            new ParticleResource(key: 'listen-songs', model: FakeSilo::class),
+            new ParticleResource(key: 'songs', backing: FakeSilo::class),
+            new ParticleResource(key: 'listen-songs', backing: FakeSilo::class),
         ));
 
         $this->assertSame(['songs', 'listen-songs'], $index->keysFor(FakeSilo::class));
@@ -56,8 +57,8 @@ class ModelResourceIndexTest extends TestCase
         // Explicitly asserted, because the sibling SchemaBindingIndex does throw here and the two
         // indexes are one letter apart in intent. Getting this wrong fails boot on a legal declaration.
         $index = new ModelResourceIndex($this->registryWith(
-            new ParticleResource(key: 'songs', model: FakeSilo::class),
-            new ParticleResource(key: 'listen-songs', model: FakeSilo::class),
+            new ParticleResource(key: 'songs', backing: FakeSilo::class),
+            new ParticleResource(key: 'listen-songs', backing: FakeSilo::class),
         ));
 
         $this->assertCount(2, $index->keysFor(FakeSilo::class));
@@ -66,8 +67,8 @@ class ModelResourceIndexTest extends TestCase
     public function test_registration_order_decides_key_for(): void
     {
         $index = new ModelResourceIndex($this->registryWith(
-            new ParticleResource(key: 'listen-songs', model: FakeSilo::class),
-            new ParticleResource(key: 'songs', model: FakeSilo::class),
+            new ParticleResource(key: 'listen-songs', backing: FakeSilo::class),
+            new ParticleResource(key: 'songs', backing: FakeSilo::class),
         ));
 
         $this->assertSame('listen-songs', $index->keyFor(FakeSilo::class));
@@ -76,7 +77,7 @@ class ModelResourceIndexTest extends TestCase
     public function test_an_unbacked_model_yields_nothing(): void
     {
         $index = new ModelResourceIndex($this->registryWith(
-            new ParticleResource(key: 'silos', model: FakeSilo::class),
+            new ParticleResource(key: 'silos', backing: FakeSilo::class),
         ));
 
         $this->assertSame([], $index->keysFor(FakeTag::class));
@@ -89,6 +90,6 @@ class ModelResourceIndexTest extends TestCase
     }
 }
 
-class FakeSilo {}
+class FakeSilo extends Model {}
 
-class FakeTag {}
+class FakeTag extends Model {}

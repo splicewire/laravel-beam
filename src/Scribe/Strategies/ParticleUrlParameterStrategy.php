@@ -159,13 +159,20 @@ class ParticleUrlParameterStrategy extends Strategy
         ];
     }
 
+    /**
+     * A throwaway instance of the resource's model, purely to read its key name and key type for the
+     * generated docs. Null when the backing declares no single model — a resource whose rows are pivot
+     * rows or span two record types has no key shape to describe, and the caller falls back to `id`.
+     */
     protected function model(ParticleResource $resource): ?Model
     {
-        if (! is_string($resource->model) || ! class_exists($resource->model)) {
+        $class = $resource->modelClass();
+
+        if ($class === null || ! class_exists($class)) {
             return null;
         }
 
-        $model = new $resource->model;
+        $model = new $class;
 
         return $model instanceof Model ? $model : null;
     }

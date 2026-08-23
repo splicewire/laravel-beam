@@ -16,6 +16,9 @@ use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
+use Splicewire\Beam\Particle\Backing\BackingResolver;
+use Splicewire\Beam\Particle\Backing\QueriesRecords;
+use Splicewire\Beam\Particle\Backing\WritesRecords;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -60,7 +63,7 @@ class ParticleController extends Controller
      */
     public const PAGE = 'page';
 
-    public const PER_PAGE = 'per_page';
+    public const PER_PAGE = 'perPage';
 
     /**
      * The route parameter naming the SUBJECT of a show/update/destroy — read by name (see
@@ -119,6 +122,51 @@ class ParticleController extends Controller
     }
 
     /**
+     * The resource's backing, asserted to compose an Eloquent query.
+     *
+     * The REST transport's subject resolution and relative-mount base both need a `Builder` they can go
+     * on composing (a relation scope, the `scope` closure, `findOrFail`), which is
+     * {@see QueriesRecords} — the Eloquent-only capability, not the general {@see StreamsRecords} one.
+     * A resource whose backing merely streams cannot be served here, and says so by name rather than
+     * failing later on a method the returned value does not have.
+     */
+    protected function queryableBacking(ParticleResource $resource): QueriesRecords
+    {
+        $backing = $resource->backing();
+
+        if (! $backing instanceof QueriesRecords) {
+            throw new RuntimeException(
+                "Resource [{$resource->key}] cannot be served over REST: its backing [".$backing::class
+                .'] does not implement '.QueriesRecords::class.'.'
+            );
+        }
+
+        return $backing;
+    }
+
+    /**
+     * The resource's backing, asserted to write.
+     *
+     * ⚠️ This is a LAST-LINE assertion, not the gate. Capability is checked at REGISTRATION
+     * ({@see BackingResolver::assertAffordancesWithinCapability()}),
+     * so a resource declaring `creatable` against a non-writing backing never boots. Reaching this
+     * throw means a store arrived for a resource that declared no create affordance at all.
+     */
+    protected function writableBacking(ParticleResource $resource): WritesRecords
+    {
+        $backing = $resource->backing();
+
+        if (! $backing instanceof WritesRecords) {
+            throw new RuntimeException(
+                "Resource [{$resource->key}] cannot be written: its backing [".$backing::class
+                .'] does not implement '.WritesRecords::class.'.'
+            );
+        }
+
+        return $backing;
+    }
+
+    /**
      * The base query for a NON-filterable index: the declaration's `includes` eager-loaded, ordered by
      * its declared default sort.
      *
@@ -159,8 +207,9 @@ class ParticleController extends Controller
         // — structural association, never a forgeable body field. `newRelativeModel` returns a fresh model
         // whose inverse is pre-associated (the relation-name `via:` form); a scope-closure `via:` can't
         // auto-associate, so it falls back to a plain `new` and pairs with the resource's own prepare hook.
-        // Absent a relative, this is a plain `new $resource->model` — today's exact code path.
-        $model = $this->newRelativeModel($request) ?? new $resource->model;
+        // Absent a relative, this is the backing's own fresh record — today's exact code path for an
+        // EloquentBacking, which is `new $model`.
+        $model = $this->newRelativeModel($request) ?? $this->writableBacking($resource)->newRecord();
         if ($resource->prepare !== null) {
             ($resource->prepare)($model, $input, $request->user());
         }
@@ -257,7 +306,7 @@ class ParticleController extends Controller
         if ($via instanceof Closure) {
             $resource = $this->particleResource($request);
 
-            return $via($relative, $resource->model::query());
+            return $via($relative, $this->queryableBacking($resource)->query([]));
         }
 
         return $relative->{$via}()->getQuery();
@@ -313,7 +362,8 @@ class ParticleController extends Controller
         // Relative mount (HTTP-02): resolve the `{id}` THROUGH the bound relative when present, so a
         // show/update/destroy can only reach a child hanging off the (authorized) parent — a cross-parent id
         // 404s (never resolves). Absent a relative, `$query` is the unscoped base — today's exact code path.
-        $query = ($request !== null ? $this->relativeBaseQuery($request) : null) ?? $resource->model::query();
+        $query = ($request !== null ? $this->relativeBaseQuery($request) : null)
+            ?? $this->queryableBacking($resource)->query([]);
 
         // Row-level authorization for subject resolution (ADR-0156 §83): the resource's `scope` closure
         // gates the show/update/destroy `findOrFail`, so a resolve-by-id can never reach a row the caller

@@ -92,7 +92,7 @@ class ParticleGeneratorTest extends TestCase
         $input = $this->read('app/Data/LyricInputData.php');
 
         $this->assertStringContainsString("key: 'lyrics',", $read);
-        $this->assertStringContainsString('model: Lyric::class,', $read);
+        $this->assertStringContainsString('backing: Lyric::class,', $read);
         // BOTH shape slots, present and pointing at real emitted classes — the whole point of the ticket.
         $this->assertStringContainsString('data: LyricData::class,', $read);
         $this->assertStringContainsString('input: LyricInputData::class,', $read);

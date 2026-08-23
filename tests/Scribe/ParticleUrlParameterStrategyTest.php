@@ -51,7 +51,7 @@ class ParticleUrlParameterStrategyTest extends TestCase
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: $key,
-            model: UrlFixtureCatalog::class,
+            backing: UrlFixtureCatalog::class,
             label: 'Studio',
             singularLabel: $singularLabel,
             routeKey: $routeKey,
@@ -112,7 +112,7 @@ class ParticleUrlParameterStrategyTest extends TestCase
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'sellers',
-            model: UrlFixtureSeller::class,
+            backing: UrlFixtureSeller::class,
         ));
 
         $parameters = $this->strategy()($this->endpoint('sellers/{seller}', stamped: false));

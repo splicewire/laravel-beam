@@ -110,7 +110,7 @@ class AttributedParticleDiscovery
 
         return new ParticleResourceRuntime(
             key: $attribute->key,
-            model: $attribute->model,
+            backing: $attribute->backing,
             // Single-class default: absent an explicit read Data class, the annotated class IS the projection.
             data: $attribute->data ?? $class,
             input: $attribute->input,

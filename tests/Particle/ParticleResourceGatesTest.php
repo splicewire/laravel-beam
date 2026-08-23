@@ -19,7 +19,7 @@ class ParticleResourceGatesTest extends TestCase
     {
         return new ParticleResource(...array_merge([
             'key' => 'widgets',
-            'model' => 'App\\Models\\Widget',
+            'backing' => 'App\\Models\\Widget',
             'data' => WidgetGateData::class,
             'label' => 'Widgets',
         ], $overrides));

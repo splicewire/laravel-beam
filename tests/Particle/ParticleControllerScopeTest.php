@@ -43,7 +43,7 @@ class ParticleControllerScopeTest extends TestCase
         // A non-filterable resource scoped to owner 1's rows only.
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'scope-widget',
-            model: ScopeWidget::class,
+            backing: ScopeWidget::class,
             data: ScopeWidgetData::class,
             filterable: false,
             scope: fn (Builder $q) => $q->where('owner_id', 1),
@@ -75,7 +75,7 @@ class ParticleControllerScopeTest extends TestCase
 
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'sorted-widget',
-            model: SortedWidget::class,
+            backing: SortedWidget::class,
             data: SortedWidgetData::class,
             filterable: false,
         ));
@@ -110,7 +110,7 @@ class ParticleControllerScopeTest extends TestCase
 
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'weighted-widget',
-            model: WeightedWidget::class,
+            backing: WeightedWidget::class,
             data: WeightedWidgetData::class,
             filterable: false,
         ));

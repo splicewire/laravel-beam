@@ -52,7 +52,7 @@ class ParticleRelativeMountTest extends TestCase
 
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'photos',
-            model: Photo::class,
+            backing: Photo::class,
             data: PhotoData::class,
             input: PhotoInput::class,
             filterable: false,

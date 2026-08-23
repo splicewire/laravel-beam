@@ -13,6 +13,7 @@ use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Frame\ParticleResourceRegistryPort;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
+use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
 
 /**
@@ -156,6 +157,17 @@ class ParticleResourceRegistry
      */
     public function register(ParticleResource $resource, array $realms = []): void
     {
+        // Capability is the CEILING; the affordance flags narrow it (ticket 11 §A5). A resource opening
+        // an affordance its backing cannot honour is a DECLARATION error, caught here at registration
+        // rather than as a runtime failure on the first write — the shape
+        // `ParticleOperation::assertOutputMatchesKind()` already ships. Reads the backing statically, so
+        // registration never resolves it (that stays request-time, so a backing may take injection).
+        (new BackingResolver)->assertAffordancesWithinCapability($resource->key, $resource->backing, [
+            'creatable' => ! $resource->readOnly,
+            'editable' => $resource->editable ?? ! $resource->readOnly,
+            'deletable' => $resource->deletable ?? ! $resource->readOnly,
+        ]);
+
         $this->resources[$resource->key] = $resource;
         $this->registerRealms($resource->key, $realms);
     }

@@ -3,8 +3,11 @@
 namespace Splicewire\Beam\Particle;
 
 use Illuminate\Database\Eloquent\Builder;
+use RuntimeException;
 use Rushing\DataFilters\Reflection\FilterReflector;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\Backing\QueriesRecords;
+use Splicewire\Beam\Particle\Backing\StreamsRecords;
 
 /**
  * The base query for a NON-filterable index — the ONE builder both transports call.
@@ -42,8 +45,12 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 class ParticleListQuery
 {
     /**
-     * The declaration's list base: its model, its declared `includes` eager-loaded, ordered by its
-     * declared default sort.
+     * The declaration's list base: its backing's query, its declared `includes` eager-loaded, ordered
+     * by its declared default sort.
+     *
+     * ⚠️ Requires a backing that {@see QueriesRecords} — this method composes a `Builder`, which is the
+     * Eloquent-only capability. A resource whose backing only {@see StreamsRecords} owns its own paging
+     * and never reaches here.
      *
      * The default order is read from the read Data class's `#[Sortable(default: true)]` property via
      * {@see FilterReflector::defaultSortColumn()}, which returns the declared COLUMN and direction —
@@ -52,9 +59,18 @@ class ParticleListQuery
      * column that does not exist. Absent any opt-in we fall back to the framework `latest()` (newest
      * `created_at` first — the historical default when no column was declared, and what Frame hardcoded).
      */
-    public function forList(ParticleResource $resource): Builder
+    public function forList(ParticleResource $resource, array $filters = []): Builder
     {
-        $query = $resource->model::query();
+        $backing = $resource->backing();
+
+        if (! $backing instanceof QueriesRecords) {
+            throw new RuntimeException(
+                "Resource [{$resource->key}] cannot build a list query: its backing [".$backing::class
+                .'] does not implement '.QueriesRecords::class.'.'
+            );
+        }
+
+        $query = $backing->query($filters);
 
         if ($resource->includes !== []) {
             $query->with($resource->includes);

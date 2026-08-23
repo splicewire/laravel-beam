@@ -92,7 +92,7 @@ class UndeclaredSurfaceAuditTest extends TestCase
         // work item from "commit to an API contract", which is why the tiers exist.
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'shapeless',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
         ));
 
         Route::prefix('resources')->group(fn () => Route::particleResource('shapeless', 'shapeless', ['only' => ['index']]));
@@ -123,7 +123,7 @@ class UndeclaredSurfaceAuditTest extends TestCase
     {
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             data: WidgetGateData::class,
         ));
 

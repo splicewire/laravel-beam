@@ -121,7 +121,7 @@ class ParticleListParameterStrategyTest extends TestCase
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'catalogs',
-            model: ListFixtureModel::class,
+            backing: ListFixtureModel::class,
             data: ListFixtureFilterData::class,
             filterable: $filterable,
             perPage: $perPage,

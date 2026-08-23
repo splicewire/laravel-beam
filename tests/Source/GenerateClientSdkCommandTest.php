@@ -105,7 +105,7 @@ class GenerateClientSdkCommandTest extends TestCase
         $registry = $this->app->make(ParticleResourceRegistry::class);
         $registry->register(new ParticleResource(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             data: 'App\\Data\\WidgetData',
         ));
 
@@ -134,7 +134,7 @@ class GenerateClientSdkCommandTest extends TestCase
         $registry = $this->app->make(ParticleResourceRegistry::class);
         $registry->register(new ParticleResource(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             data: 'App\\Data\\WidgetData',
         ));
 
@@ -244,7 +244,7 @@ class GenerateClientSdkCommandTest extends TestCase
     {
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             data: 'App\\Data\\WidgetData',
         ));
 

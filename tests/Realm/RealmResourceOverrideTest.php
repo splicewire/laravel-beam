@@ -25,7 +25,7 @@ class RealmResourceOverrideTest extends TestCase
 
         $registry->register(new ParticleResourceRuntime(
             key: 'widgets',
-            model: 'App\\Models\\Widget',
+            backing: 'App\\Models\\Widget',
             data: WidgetGateData::class,
             label: 'Widgets',
             group: 'Workspace',

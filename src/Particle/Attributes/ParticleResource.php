@@ -39,7 +39,11 @@ class ParticleResource
 {
     /**
      * @param  string  $key  the registry key AND the data-filters resource key the list query rides
-     * @param  class-string  $model  the Eloquent model class
+     * @param  class-string  $backing  WHAT backs this resource — a `ResourceBacking` class-string
+     *                                 (container-resolved at request time) or an Eloquent model
+     *                                 class-string, which is wrapped in an `EloquentBacking`. One
+     *                                 polymorphic slot replacing the `model`/`source`/`sourceKind`
+     *                                 triple (ticket 11); the ordinary case still names its model.
      * @param  class-string|null  $data  read/output Data class; null ⇒ the annotated class itself is the
      *                                   projection (the single-class default), unless a static `project()`
      *                                   convention method takes precedence
@@ -79,7 +83,7 @@ class ParticleResource
      */
     public function __construct(
         public string $key,
-        public string $model,
+        public string $backing,
         public ?string $data = null,
         public ?string $input = null,
         public array $includes = [],

@@ -88,7 +88,7 @@ class ResolvableGizmo extends Model
 }
 
 /** The read Data class — carries the model declaration, under the shared key. */
-#[ParticleResource(key: 'resolvable-gizmo', model: ResolvableGizmo::class)]
+#[ParticleResource(key: 'resolvable-gizmo', backing: ResolvableGizmo::class)]
 class ResolvableGizmoData extends Data
 {
     public function __construct(public int $id, public string $name) {}

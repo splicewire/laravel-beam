@@ -35,7 +35,7 @@ class ParticleSurfaceTest extends TestCase
     public function test_a_resource_registered_once_is_retrievable_by_key(): void
     {
         $registry = $this->app->make(ParticleResourceRegistry::class);
-        $registry->register(new ParticleResource(key: 'widget', model: 'App\\Models\\Widget'));
+        $registry->register(new ParticleResource(key: 'widget', backing: 'App\\Models\\Widget'));
 
         $this->assertTrue($registry->has('widget'));
         $this->assertSame('widget', $registry->get('widget')->key);
