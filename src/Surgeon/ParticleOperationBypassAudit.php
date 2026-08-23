@@ -14,6 +14,7 @@ use Rushing\Surgeon\Operation\FixableFinding;
 use Rushing\Surgeon\Operation\OperationSuggestion;
 use Rushing\Surgeon\Operation\SuggestsOperations;
 use Splicewire\Beam\Particle\Attributes\BespokeByDesign;
+use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -264,12 +265,15 @@ class ParticleOperationBypassAudit implements DoctorAudit, SuggestsOperations
     }
 
     /**
-     * The registered `model FQN => every resource key registered against it` map, read from the booted
-     * {@see ParticleResourceRegistry}. The registry exposes `get($key)`/`has($key)` but not an enumeration,
-     * so read its private `$resources` map reflectively — the same honest technique
-     * {@see ParticleControllerRedundancyAudit::registeredKeys()} uses. Entries that are a raw
-     * `ResourceDefinition` (the union escape hatch, no `ParticleResource` declaration) are skipped — they
-     * carry no `model` field to key on. Empty when no registry is wired (the pure-unit path).
+     * The registered `model FQN => every resource key registered against it` map, from the booted
+     * {@see ParticleResourceRegistry} via {@see ModelResourceIndex}. Empty when no registry is wired
+     * (the pure-unit path).
+     *
+     * This method used to build the map here by reflecting into the registry's private `$resources`,
+     * on the stated grounds that it *"exposes `get($key)`/`has($key)` but not an enumeration"* —
+     * ⚠️ **false: `all()` exists** (`ParticleResourceRegistry:121-127`) and applies the identical filter.
+     * `ParticleControllerRedundancyAudit` held the same belief and grew the same reflection; ticket 11 §A7
+     * found the pair and gave them one home.
      *
      * Deliberately a LIST per model, not a single key: two resources sharing one Eloquent model (a
      * writable owner-scoped resource and a public read-only projection, e.g. audiostud's `songs` +
@@ -285,27 +289,7 @@ class ParticleOperationBypassAudit implements DoctorAudit, SuggestsOperations
             return [];
         }
 
-        $ref = new \ReflectionClass($this->resourceRegistry);
-        while ($ref !== false && ! $ref->hasProperty('resources')) {
-            $ref = $ref->getParentClass();
-        }
-        if ($ref === false) {
-            return [];
-        }
-
-        $prop = $ref->getProperty('resources');
-        $prop->setAccessible(true);
-        /** @var array<string, mixed> $resources */
-        $resources = $prop->getValue($this->resourceRegistry);
-
-        $models = [];
-        foreach ($resources as $key => $resource) {
-            if ($resource instanceof ParticleResource) {
-                $models[$resource->model][] = $key;
-            }
-        }
-
-        return $models;
+        return (new ModelResourceIndex($this->resourceRegistry))->all();
     }
 
     /**

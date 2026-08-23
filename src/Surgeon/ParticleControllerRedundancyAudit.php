@@ -18,6 +18,7 @@ use Rushing\Surgeon\Operation\OperationSuggestion;
 use Rushing\Surgeon\Operation\SuggestsOperations;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Attributes\BespokeByDesign;
+use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
@@ -396,12 +397,15 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
     }
 
     /**
-     * The registered `model FQN => every resource key registered against it` map, read reflectively from
-     * the booted registry — the behavior path's lens, same honest technique as {@see registeredKeys()} and
-     * deliberately a LIST per model for the same shared-model ambiguity reason
-     * {@see ParticleOperationBypassAudit::registeredModels()} documents. Entries that are a raw
-     * `ResourceDefinition` (no `ParticleResource` declaration, no `model` field) are skipped. Empty when
-     * no registry is wired (the pure-unit path).
+     * The registered `model FQN => every resource key registered against it` map, from the booted
+     * registry — the behavior path's lens. Deliberately a LIST per model for the shared-model ambiguity
+     * reason {@see ModelResourceIndex} documents. Empty when no registry is wired (the pure-unit path).
+     *
+     * Reads {@see ModelResourceIndex}. This method used to build the map here by reflecting into the
+     * registry's private `$resources`, on the stated grounds that *"the registry exposes `has($key)` but
+     * not an enumeration"* — ⚠️ **false: `all()` exists and applies the identical filter.** The same
+     * belief produced the same reflection in `ParticleOperationBypassAudit`; ticket 11 §A7 found both and
+     * gave them one home.
      *
      * @return array<class-string, list<string>>
      */
@@ -411,27 +415,7 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
             return [];
         }
 
-        $ref = new \ReflectionClass($this->registry);
-        while ($ref !== false && ! $ref->hasProperty('resources')) {
-            $ref = $ref->getParentClass();
-        }
-        if ($ref === false) {
-            return [];
-        }
-
-        $prop = $ref->getProperty('resources');
-        $prop->setAccessible(true);
-        /** @var array<string, mixed> $resources */
-        $resources = $prop->getValue($this->registry);
-
-        $models = [];
-        foreach ($resources as $key => $resource) {
-            if ($resource instanceof ParticleResource) {
-                $models[$resource->model][] = $key;
-            }
-        }
-
-        return $models;
+        return (new ModelResourceIndex($this->registry))->all();
     }
 
     /**
