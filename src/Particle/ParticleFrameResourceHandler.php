@@ -18,6 +18,8 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\ResolvesRecord;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
+use Splicewire\Beam\Particle\Contribution\ContributionProjector;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
@@ -141,7 +143,14 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
             return $definition->model::query()->latest();
         }
 
-        return $this->scoped((new ParticleListQuery)->forList($resource), $resource);
+        // The facet bag rides along for the same reason the REST twin forwards it: a CONTRIBUTED include
+        // may be request-parameterized (a constrained eager-load). Frame does not interpret `filter[...]`
+        // on a non-filterable resource — it never did — but uninterpreted is not the same as absent, and
+        // dropping it here would leave the two transports honouring `filter[period]` differently, which
+        // is precisely the drift ticket 05 collapsed these queries to stop.
+        $filters = array_filter((array) app(Request::class)->input('filter', []));
+
+        return $this->scoped((new ParticleListQuery)->forList($resource, $filters), $resource);
     }
 
     public function show(ResourceDefinition $definition, string $id): array
@@ -444,17 +453,60 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         return $attributes;
     }
 
+    /**
+     * Project one record through the resource's READ shape, then fold on every contributed slice.
+     *
+     * This is Frame's half of ticket 04 §A4's TWO application points — the twin of
+     * {@see ParticleController::projectRecord()}. Both call the ONE
+     * shared {@see ContributionProjector}, deliberately rather than each growing its own fold: this map
+     * has already watched these two transports drift apart once, when each owned its own list base query
+     * and each implemented exactly the half the other was missing (ticket 05).
+     *
+     * The fold happens on the `Data` BEFORE `toArray()`, because `additional()` is a Data-level append —
+     * folding into the array afterwards would work by coincidence and diverge the moment a contributed
+     * slice needed its own serialization.
+     */
     protected function projectRead(ResourceDefinition $definition, Model $model): array
     {
         $resource = $this->resource($definition);
+
         if ($resource?->project !== null) {
-            return $this->withId(($resource->project)($model)->toArray(), $model);
+            $data = ($resource->project)($model);
+        } else {
+            /** @var class-string<Data> $dataClass */
+            $dataClass = $definition->data;
+            $data = $dataClass::from($model);
         }
 
-        /** @var class-string<Data> $dataClass */
-        $dataClass = $definition->data;
+        return $this->withId($this->contributed($definition->key, $data, $model)->toArray(), $model);
+    }
 
-        return $this->withId($dataClass::from($model)->toArray(), $model);
+    /**
+     * Fold contributed slices onto a projected row. Resolved off the container so a host with no
+     * contribution registry bound gets an inert projector rather than a resolution error.
+     *
+     * The facet bag is read from the live request — the same `filter[...]` passthrough
+     * {@see streamedIndex()} already forwards to a streaming backing, and what carries `filter[period]`
+     * to a contribution (the `ReadContext` provably cannot — ticket 05 §A3).
+     */
+    protected function contributed(string $key, Data $data, Model $model): Data
+    {
+        $projector = new ContributionProjector(
+            app()->bound(ResourceContributionRegistry::class)
+                ? app(ResourceContributionRegistry::class)
+                : new ResourceContributionRegistry
+        );
+
+        $resource = $this->registry->has($key) ? $this->registry->get($key) : null;
+        $filters = array_filter((array) app(Request::class)->input('filter', []));
+
+        return $projector->apply(
+            $key,
+            $data,
+            $model,
+            ReadContext::detail($resource?->includes ?? [], auth()->user()),
+            $filters,
+        );
     }
 
     protected function projectEdit(ResourceDefinition $definition, Model $model): array

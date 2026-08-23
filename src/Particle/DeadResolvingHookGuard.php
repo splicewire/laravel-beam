@@ -6,6 +6,7 @@ use Illuminate\Container\Container;
 use Illuminate\Contracts\Foundation\Application;
 use ReflectionProperty;
 use RuntimeException;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 
 /**
  * The tripwire against a registration idiom that CANNOT work: hooking `afterResolving()` on a particle
@@ -53,14 +54,21 @@ use RuntimeException;
 class DeadResolvingHookGuard
 {
     /**
-     * The particle registries a package might reasonably try to hook. Both are bound in beam's register
-     * phase and resolved during beam's boot, so both carry the identical trap.
+     * The particle registries a package might reasonably try to hook. Each is bound in beam's register
+     * phase and resolved during beam's boot, so each carries the identical trap.
+     *
+     * {@see ResourceContributionRegistry} joins them because it is the one a CONTRIBUTING package
+     * touches, and a contributor is exactly the caller most tempted by the dead hook: it boots BEFORE
+     * the resource it contributes to (beam-commerce at provider position 4, beam-tenancy at 13), which
+     * is precisely the "order does not matter if I defer" reasoning `afterResolving` looks like it
+     * solves and does not.
      *
      * @var list<class-string>
      */
     protected array $abstracts = [
         ParticleResourceRegistry::class,
         ParticleOperationRegistry::class,
+        ResourceContributionRegistry::class,
     ];
 
     public function __construct(protected Application $app) {}

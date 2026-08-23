@@ -19,6 +19,8 @@ use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\WritesRecords;
+use Splicewire\Beam\Particle\Contribution\ContributionProjector;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -96,6 +98,7 @@ class ParticleController extends Controller
     {
         $resource = $this->particleResource($request);
         $ctx = ReadContext::list($resource->includes, $request->user());
+        $facets = $this->facets($request);
 
         // Relative mount (HTTP-02): when the route bound a relative, the index is a listing THROUGH it
         // (`$relative->{via}()` / the scope closure) instead of `model::query()` — the child rows a caller
@@ -105,7 +108,7 @@ class ParticleController extends Controller
 
         $query = $resource->filterable
             ? $this->hydrator->query($resource->key, $ctx)
-            : ($relativeQuery ?? $this->defaultSortedQuery($resource));
+            : ($relativeQuery ?? $this->defaultSortedQuery($resource, $facets));
 
         // Row-level authorization for the non-filterable list (ADR-0156 §83): a `filterable:false` resource
         // has no data-filters query to gate its index, so its owner/inverse `scope` closure is the ONLY read
@@ -116,7 +119,7 @@ class ParticleController extends Controller
         }
 
         $page = $query->paginate($request->integer(self::PER_PAGE, $resource->perPage), ['*'], self::PAGE);
-        $page->through(fn (Model $record) => $this->projectRecord($resource, $record, $ctx));
+        $page->through(fn (Model $record) => $this->projectRecord($resource, $record, $ctx, $facets));
 
         return $this->envelope->paginated($page);
     }
@@ -174,10 +177,17 @@ class ParticleController extends Controller
      * this method built its own query and applied ONLY the sort — so a non-filterable REST list lazy-
      * loaded every declared include per row, while the Frame transport eager-loaded them and hardcoded
      * `created_at desc` instead. Two transports, one declaration, each missing the half the other had.
+     *
+     * The facet bag is forwarded because a CONTRIBUTED include may be request-parameterized (a
+     * constrained eager-load — `with(['bills' => fn ($q) => $q->forPeriod($period)])`). A non-filterable
+     * resource has no data-filters query interpreting `filter[...]`, but that never made the bag absent —
+     * only uninterpreted, which is exactly the passthrough a streaming backing already gets.
+     *
+     * @param  array<string, mixed>  $filters  the opaque facet bag
      */
-    protected function defaultSortedQuery(ParticleResource $resource): Builder
+    protected function defaultSortedQuery(ParticleResource $resource, array $filters = []): Builder
     {
-        return (new ParticleListQuery)->forList($resource);
+        return (new ParticleListQuery)->forList($resource, $filters);
     }
 
     public function show(Request $request, string $id): Responsable
@@ -467,7 +477,7 @@ class ParticleController extends Controller
         }
 
         $ctx = ReadContext::detail($resource->includes, $request->user());
-        $data = $this->projectRecord($resource, $model, $ctx);
+        $data = $this->projectRecord($resource, $model, $ctx, $this->facets($request));
 
         return $created ? $this->envelope->created($data) : $this->envelope->item($data);
     }
@@ -476,15 +486,55 @@ class ParticleController extends Controller
      * Project one record to its typed Data: the resource's DECLARED Data class when it names one (the
      * extension tier, e.g. `SiloData`), else the hydrator resolves it off beam's `#[ParticleResource]`
      * registry (ADR-0156: the record → Data-class map is read straight from the registry, not a port).
+     *
+     * Then every package that CONTRIBUTES a slice of this resource's projection folds its slice on
+     * ({@see ContributionProjector::apply()}) — the same helper Frame's twin projection path calls, so
+     * a contributed key is on the wire identically over both transports. Inert (identity) for a resource
+     * nobody contributes to, which is all but a handful estate-wide.
+     *
+     * ⚠️ This fires on the LIST path too (`index()` maps it over the page), so the value arm is a
+     * per-row call site. That is a known, accepted cost of this seam rather than an oversight: ticket 04
+     * disposed of it explicitly, and the includes arm — folded upstream in
+     * {@see ParticleResourceRegistry::get()} and {@see ParticleListQuery} — is what keeps the slice's
+     * RELATIONS off the per-row path.
+     *
+     * @param  array<string, mixed>  $filters  the opaque facet bag; it is what carries `filter[period]`
+     *                                         to a contribution, because the `ReadContext` provably
+     *                                         cannot (ticket 05 §A3).
      */
-    protected function projectRecord(ParticleResource $resource, Model $model, ReadContext $ctx): Data
+    protected function projectRecord(ParticleResource $resource, Model $model, ReadContext $ctx, array $filters = []): Data
     {
-        if ($resource->project !== null) {
-            return ($resource->project)($model);
-        }
+        $data = $resource->project !== null
+            ? ($resource->project)($model)
+            : ($resource->data !== null
+                ? $resource->data::from($model)
+                : $this->hydrator->project($model, $ctx));
 
-        return $resource->data !== null
-            ? $resource->data::from($model)
-            : $this->hydrator->project($model, $ctx);
+        return $this->contributions()->apply($resource->key, $data, $model, $ctx, $filters);
+    }
+
+    /**
+     * The shared contribution fold, resolved off the container so a host (or a test) with no
+     * contribution registry bound gets an inert projector rather than a resolution error.
+     */
+    protected function contributions(): ContributionProjector
+    {
+        return new ContributionProjector(
+            app()->bound(ResourceContributionRegistry::class)
+                ? app(ResourceContributionRegistry::class)
+                : new ResourceContributionRegistry
+        );
+    }
+
+    /**
+     * The request's opaque `filter[...]` bag — forwarded verbatim to a contribution's arms. Beam does not
+     * interpret it; the same bag a {@see \Splicewire\Beam\Particle\Backing\StreamsRecords} backing is
+     * already handed.
+     *
+     * @return array<string, mixed>
+     */
+    protected function facets(Request $request): array
+    {
+        return array_filter((array) $request->input('filter', []));
     }
 }

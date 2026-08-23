@@ -88,6 +88,7 @@ use Splicewire\Beam\Ownership\EloquentOwnershipEdgeStore;
 use Splicewire\Beam\Ownership\OwnershipGraph;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\DeadResolvingHookGuard;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -423,8 +424,18 @@ class BeamServiceProvider extends PackageServiceProvider
         // host BINDS its own envelope adapter over its response DTO — and, when it subclasses the registries
         // for its own container FQN, re-aliases these singletons to the same instance (port-in-base /
         // binding-in-host).
+        // The cross-package contribution registry (particle-contribution-seam ticket 04) — where a package
+        // that owns a concern declares THAT concern's named slice of another package's read projection.
+        // Bound in the REGISTER phase, like every other particle registry here, and that is load-bearing:
+        // provider boot order is alphabetical and permanent, so a contributor (beam-commerce, position 4)
+        // boots BEFORE the owner it contributes to (beam-tenancy, 13). Binding here makes `bound()` true
+        // for every package at boot whatever the order, so the direct `make()->register()` idiom ticket 07
+        // established is order-safe by construction. Ships EMPTY — inert until a package contributes.
+        $this->app->singleton(ResourceContributionRegistry::class);
+
         $this->app->singleton(ParticleResourceRegistry::class, fn ($app) => (new ParticleResourceRegistry(
             $app->make(RealmResourceRegistry::class),
+            $app->make(ResourceContributionRegistry::class),
         ))->loadRealmMap((array) config('frame.realms', [])));
         $this->app->singleton(ParticleOperationRegistry::class);
 

@@ -14,6 +14,8 @@ use Splicewire\Beam\Frame\ParticleResourceRegistryPort;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
+use Splicewire\Beam\Particle\Contribution\ContributionProjector;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
 
 /**
@@ -102,15 +104,63 @@ class ParticleResourceRegistry
      * @param  ?RealmResourceRegistry  $overrides  the per-realm presentation-override overlay (RDU-03).
      *                                             Null (the bare test ctor) or an empty overlay registry
      *                                             ⇒ INERT: identity projection in every realm.
+     * @param  ?ResourceContributionRegistry  $contributions  cross-package slices of a resource's read
+     *                                                        projection (particle-contribution-seam ticket
+     *                                                        04). Null or empty ⇒ INERT: {@see get()}
+     *                                                        returns the stored declaration itself.
      */
-    public function __construct(private ?RealmResourceRegistry $overrides = null) {}
+    public function __construct(
+        private ?RealmResourceRegistry $overrides = null,
+        private ?ResourceContributionRegistry $contributions = null,
+    ) {}
 
     // ── REST tier (unchanged signatures — every existing caller of this registry is unaffected) ───────
 
+    /**
+     * The stored declaration for `$key`, with any contributed STATIC includes folded into its
+     * {@see ParticleResource::$includes}.
+     *
+     * ## Why the fold is here and not on the backing
+     *
+     * This is where BOTH transports read `$resource->includes` — REST at
+     * {@see \Splicewire\Beam\Http\Particle\ParticleController} (index, subject resolution, detail
+     * reload) and Frame at {@see ParticleFrameResourceHandler} (its index query and subject-resolution
+     * base). {@see project()}, the sibling seam where the per-realm overlay applies, is the MANIFEST path
+     * and reaches neither of them — which is why the `RealmResourceRegistry` precedent this fold was
+     * modelled on did not transfer and had to be rebuilt here (ticket 04 §A0).
+     *
+     * Ticket 11 §A12 settled where the includes FIELD lives; it did not settle where contributions
+     * COMPOSE, and the two are different questions.
+     *
+     * ## Still a pure declaration lookup
+     *
+     * Deliberately only the STATIC arm. A contribution whose includes are a Closure is a
+     * request-parameterized constrained eager-load, and `get(string $key)` has no request to resolve it
+     * against — folding it here would mean either inventing a facet bag or resolving per record. It
+     * resolves once per request in {@see ParticleListQuery::forList()} instead (ticket 05 §A4).
+     *
+     * Inert by construction: with no contribution registered for `$key` the stored instance is returned
+     * as-is, not a clone, so the overwhelmingly common case costs one array lookup exactly as before.
+     */
     public function get(string $key): ParticleResource
     {
-        return $this->resources[$key]
+        $resource = $this->resources[$key]
             ?? throw new RuntimeException("No particle resource registered for key [{$key}].");
+
+        if ($this->contributions === null || ! $this->contributions->has($key)) {
+            return $resource;
+        }
+
+        $contributed = (new ContributionProjector($this->contributions))->staticIncludes($key);
+
+        if ($contributed === []) {
+            return $resource;
+        }
+
+        $folded = clone $resource;
+        $folded->includes = array_values(array_unique([...$resource->includes, ...$contributed]));
+
+        return $folded;
     }
 
     public function has(string $key): bool

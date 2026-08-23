@@ -8,6 +8,9 @@ use Rushing\DataFilters\Reflection\FilterReflector;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
+use Splicewire\Beam\Particle\Contribution\ContributionProjector;
+use Splicewire\Beam\Particle\Contribution\ResourceContribution;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 
 /**
  * The base query for a NON-filterable index — the ONE builder both transports call.
@@ -76,7 +79,43 @@ class ParticleListQuery
             $query->with($resource->includes);
         }
 
+        $this->withContributedIncludes($query, $resource, $filters);
+
         return $this->ordered($query, $resource);
+    }
+
+    /**
+     * Eager-load the REQUEST-PARAMETERIZED contributed includes — the one job a static `includes:` list
+     * provably cannot do.
+     *
+     * `billStatus`/`billTotal` need `with(['bills' => fn ($q) => $q->forPeriod($period)])`, where
+     * `$period` comes off the request's `filter[period]` facet. A `list<string>` cannot express a
+     * constrained relation, so a contribution may declare its includes arm as a Closure taking the facet
+     * bag instead ({@see ResourceContribution::$includes}).
+     *
+     * ⚠️ It resolves HERE, once per request, and this is the only call site on purpose. The static arm
+     * already folded in {@see ParticleResourceRegistry::get()} — which both transports share, and which
+     * therefore covers the detail and subject-resolution paths this list builder never sees. Resolving
+     * the dynamic arm per record instead would reproduce the very N+1 the includes arm exists to remove
+     * (ticket 05 §A4).
+     *
+     * Inert when nothing is bound or nothing contributes: the projector is resolved off the container so
+     * a bare test that news up this builder keeps working with no contribution registry at all.
+     *
+     * @param  array<string, mixed>  $filters  the opaque facet bag
+     */
+    protected function withContributedIncludes(Builder $query, ParticleResource $resource, array $filters): void
+    {
+        if (! app()->bound(ResourceContributionRegistry::class)) {
+            return;
+        }
+
+        $contributed = (new ContributionProjector(app(ResourceContributionRegistry::class)))
+            ->dynamicIncludes($resource->key, $filters);
+
+        if ($contributed !== []) {
+            $query->with($contributed);
+        }
     }
 
     /**
