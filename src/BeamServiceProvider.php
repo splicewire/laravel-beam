@@ -14,6 +14,7 @@ use Illuminate\Support\Str;
 use Rushing\DataFilters\Contracts\ResourceModelResolver;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
+use Rushing\Popcorn\Registries\RegistryIndex;
 use Rushing\Surgeon\Audit\PackageGraph;
 use Rushing\Surgeon\Operation\CallbackConformanceManifest;
 use Rushing\Surgeon\Operation\ConformanceManifest;
@@ -34,7 +35,6 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\GuardActorPort;
-use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\BeamSeedCommand;
@@ -46,7 +46,6 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
-use Splicewire\Beam\Console\ManifestIndexCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
@@ -75,10 +74,6 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Install\BeamInstallManifest;
-use Splicewire\Beam\Manifest\ManifestArity;
-use Splicewire\Beam\Manifest\ManifestDescriptor;
-use Splicewire\Beam\Manifest\ManifestIndex;
-use Splicewire\Beam\Manifest\ManifestSeam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Models\BeamSubmission;
@@ -522,10 +517,10 @@ class BeamServiceProvider extends PackageServiceProvider
         // host's own register() — which runs after every package's — simply wins.
         $this->app->bind(OpenApiSpecSource::class, ConfiguredArtifactSpecSource::class);
 
-        // The index of indexes (beam-manifest-index): the same self-registration singleton pattern turned
-        // on the registries themselves. Every registry/manifest describes itself in, so `beam:manifests`
-        // lists the estate's injection points. beam-core self-describes its own set in packageBooted().
-        $this->app->singleton(ManifestIndex::class);
+        // The index of indexes has MOVED to `Rushing\Popcorn\Registries\RegistryIndex`, bound by
+        // `laravel-popcorn`'s own provider (registry-kernel tickets 04, 20, 21). Beam does not bind it: the
+        // kernel owns the primitive, and a second binding here would be the estate deciding a registry's
+        // lifetime from outside the package that owns it.
 
         $this->registerSurgeonAudits();
         $this->registerFacadeConformanceAudits();
@@ -740,7 +735,7 @@ class BeamServiceProvider extends PackageServiceProvider
         // The meta-audit reads the LIVE index to derive its own scan scope, so it is bound off the container
         // rather than given a static path list — the governed set is whatever has described itself by boot.
         $this->app->bind(UndescribedRegistryAudit::class, fn ($app) => UndescribedRegistryAudit::forIndex(
-            $app->make(ManifestIndex::class),
+            $app->make(RegistryIndex::class),
         ));
 
         $manifest = $this->app->make(BeamDoctorManifest::class);
@@ -778,7 +773,7 @@ class BeamServiceProvider extends PackageServiceProvider
         $manifest->register('splicewire/laravel-beam', MorphAliasCoverageAudit::class);
         // GATE — the ONLY gating registration in the particle-doctrine-convergence effort. Everything else
         // here is a burn-down backlog; this one protects the discoverability surface the rest of the effort
-        // depends on. `splicewire:beam:manifests --json` is what an agent is told to run to answer "where do
+        // depends on. `popcorn:registries --json` is what an agent is told to run to answer "where do
         // I register this", so an undescribed registry is not a stale document, it is an agent building a
         // parallel mechanism next to one that already exists. It is also the cheapest possible fix (one
         // `describe(...)` call), which is what makes blocking proportionate here and nowhere else. Its
@@ -867,9 +862,6 @@ class BeamServiceProvider extends PackageServiceProvider
                 // its mounted `#[ParticleResource]` routes with no further wiring.
                 GenerateClientSdkCommand::class,
                 GenerateAssetsCommand::class,
-                // The index of indexes: `splicewire:beam:manifests` lists every registry/manifest that has
-                // described itself in, with its injection-point shape and how to register into it.
-                ManifestIndexCommand::class,
                 UndeclaredSurfaceCommand::class,
                 // The particle scaffolders (particle-doctrine-convergence ticket 08). The estate had NO
                 // generator of any kind, and that absence is the mechanical reason deviation propagates: an
@@ -1019,11 +1011,6 @@ class BeamServiceProvider extends PackageServiceProvider
             'splicewire/laravel-beam',
             SchemaProjectionDriftAudit::class,
         );
-
-        // beam-core self-describes its own registries into the index of indexes (beam-manifest-index),
-        // foundation-first, exactly as it self-registers its install step and doctor audits. Consumers add
-        // their own `describe(...)` from their providers; the host app describes its app-local registries.
-        $this->describeCoreManifests();
 
         // The OPTIONAL public intake door (ticket 04) — mounted only when the host opts in. Deny-default
         // still guards it (a schema must be allow-listed), so mounting alone opens nothing.
@@ -1453,216 +1440,6 @@ class BeamServiceProvider extends PackageServiceProvider
 
         foreach (config('beam.core.realms.classes', []) as $markerClass) {
             $registry->registerClass($markerClass);
-        }
-    }
-
-    /**
-     * Self-describe beam-core's own registries into the {@see ManifestIndex} (beam-manifest-index), the one
-     * catalogue `splicewire:beam:manifests` renders. Foundation-first order; a consumer package or the host
-     * app appends its own `describe(...)` from its provider (the index never reaches up to discover them).
-     */
-    protected function describeCoreManifests(): void
-    {
-        $index = $this->app->make(ManifestIndex::class);
-        $pkg = 'splicewire/laravel-beam';
-
-        foreach ([
-            new ManifestDescriptor(
-                name: 'ManifestIndex',
-                of: 'the registries themselves — this index of indexes',
-                seam: ManifestSeam::SingletonAccumulator,
-                arity: ManifestArity::RunAll,
-                registerHint: 'app(ManifestIndex::class)->describe(new ManifestDescriptor(...)) from your provider',
-                where: ManifestIndex::class,
-                package: $pkg, order: 0,
-            ),
-            new ManifestDescriptor(
-                name: 'BeamInstallManifest',
-                of: 'package install steps (publish tags + migrate flag), run core-first',
-                seam: ManifestSeam::SingletonAccumulator,
-                arity: ManifestArity::RunAll,
-                registerHint: 'app(BeamInstallManifest::class)->register(package:, publishTags:, migrates:, order:)',
-                where: BeamInstallManifest::class,
-                package: $pkg, order: 1,
-            ),
-            new ManifestDescriptor(
-                name: 'BeamDoctorManifest',
-                of: 'per-package readiness audits aggregated by splicewire:beam:doctor',
-                seam: ManifestSeam::SingletonAccumulator,
-                arity: ManifestArity::RunAll,
-                registerHint: 'app(BeamDoctorManifest::class)->register(package:, audit:, gate:, order:)',
-                where: BeamDoctorManifest::class,
-                package: $pkg, order: 2,
-            ),
-            new ManifestDescriptor(
-                name: 'BeamSeedManifest',
-                of: 'per-package seed steps (seeder class + config gate) run by splicewire:beam:seed, core-first',
-                seam: ManifestSeam::SingletonAccumulator,
-                arity: ManifestArity::RunAll,
-                registerHint: 'app(BeamSeedManifest::class)->register(package:, seederClass:, order:, configGate:)',
-                where: BeamSeedManifest::class,
-                package: $pkg, order: 3,
-            ),
-            new ManifestDescriptor(
-                name: 'RouteManifestSource',
-                of: 'client-SDK route manifests, one implementation bound per realm',
-                seam: ManifestSeam::ConfigSource,
-                arity: ManifestArity::RunAll,
-                registerHint: 'bind your RouteManifestSource class-string per realm key in beam.client.sources',
-                where: 'config beam.client.sources',
-                package: $pkg, order: 10,
-            ),
-            new ManifestDescriptor(
-                name: 'BeamSchemaRegistry',
-                of: 'JSON schemas by $id, resolved across ordered sources (fleet → db → file), first match wins',
-                seam: ManifestSeam::ChainedLookup,
-                arity: ManifestArity::PickOne,
-                registerHint: 'order the source list in beam.core.schema.sources; writes go to the first source',
-                where: 'config beam.core.schema.sources',
-                package: $pkg, order: 11,
-            ),
-            new ManifestDescriptor(
-                name: 'SchemaSources',
-                of: 'package-contributed schema-source tier factories composed into BeamSchemaRegistry (JN-15)',
-                seam: ManifestSeam::SingletonAccumulator,
-                arity: ManifestArity::RunAll,
-                registerHint: "app(SchemaSources::class)->register('key', fn () => new FilesystemSchemaRegistry(...)) from your provider",
-                where: SchemaSources::class,
-                package: $pkg, order: 11,
-            ),
-            new ManifestDescriptor(
-                name: 'AuditScanPaths',
-                of: 'package-contributed (controllersDir, routesDir) pairs joining the bypass/redundancy/house-style audit sweeps',
-                seam: ManifestSeam::SingletonAccumulator,
-                arity: ManifestArity::RunAll,
-                registerHint: "app(AuditScanPaths::class)->register('vendor/package', controllersDir, routesDir) from your provider — boot-time, so a package joins only where its provider boots",
-                where: AuditScanPaths::class,
-                package: $pkg, order: 11,
-            ),
-            // Found undescribed by UndescribedRegistryAudit the moment beam-facade ticket 19 bound it — the
-            // meta-audit working exactly as designed, and worth describing rather than dodging. It is
-            // registry-SHAPED without being registered INTO, which is precisely the state that makes an
-            // index untrustworthy if left silent: the next audit regime that needs a scan scope would
-            // otherwise write a second walk beside this one. Its register hint is therefore "you don't —
-            // you rebind", which is real information, not a placeholder.
-            new ManifestDescriptor(
-                name: 'FacadeConformanceScope',
-                of: 'the authorable roots + file set the five facade-conformance audits share (one walk, not five)',
-                // ConstructorPolicy, not SingletonAccumulator: nothing pushes into it after binding. The
-                // roots are seeded once by `forApp()`, which is also where the resolution-mode rule lives —
-                // a `vendor/` package joins the scan only when it is a SYMLINK (co-dev overlay = live
-                // source). A git-resolved host's pinned vendor copy is deliberately unscannable.
-                seam: ManifestSeam::ConstructorPolicy,
-                arity: ManifestArity::RunAll,
-                registerHint: 'nothing registers into it — rebind the singleton with explicit roots if your host lays its source out unusually',
-                where: FacadeConformanceScope::class,
-                package: $pkg, order: 11,
-            ),
-            new ManifestDescriptor(
-                name: 'ParticleResourceRegistry',
-                of: 'Frame resource definitions (model→Data projections) driving reads + the editor',
-                seam: ManifestSeam::AttributeScan,
-                arity: ManifestArity::PickOne,
-                registerHint: 'annotate a Data class #[ParticleResource] (or add its dir to beam.core.resources.discover_paths)',
-                where: '#[ParticleResource] → '.ParticleResourceRegistry::class,
-                package: $pkg, order: 12,
-            ),
-            new ManifestDescriptor(
-                name: 'GroupRegistry',
-                of: 'the API taxonomy — group tree (key/name/description/parent) plus the chain that resolves a route into it',
-                seam: ManifestSeam::SingletonAccumulator,
-                arity: ManifestArity::PickOne,
-                registerHint: "app(GroupRegistry::class)->register(new ApiGroup(key:, name:, description:, parent:)) from your provider; ->assign(resourceKey, groupKey) to override a package's declared default",
-                where: GroupRegistry::class,
-                package: $pkg, order: 12,
-            ),
-            new ManifestDescriptor(
-                name: 'ParticleOperationRegistry',
-                of: 'named particle operations (custom actions) mounted on the generic op controller',
-                seam: ManifestSeam::AttributeScan,
-                arity: ManifestArity::PickOne,
-                registerHint: 'annotate a Data class #[ParticleOp] (discovered alongside #[ParticleResource])',
-                where: '#[ParticleOp] → '.ParticleOperationRegistry::class,
-                package: $pkg, order: 13,
-            ),
-            new ManifestDescriptor(
-                name: 'RealmRegistry',
-                of: 'authorization realms (admin·tenant·user·docs) governing resource access',
-                seam: ManifestSeam::AttributeScan,
-                arity: ManifestArity::PickOne,
-                registerHint: 'declare a #[Realm]-marker class and list it in beam.core.realms.classes',
-                where: '#[Realm] → '.RealmRegistry::class,
-                package: $pkg, order: 14,
-            ),
-            // Found undescribed by UndescribedRegistryAudit (ticket 13) — the two realm registries that sit
-            // BESIDE RealmRegistry. Both were exactly the failure the meta-audit exists to catch: a host
-            // reading the index would find the realm registry, conclude that is where realm shape is
-            // registered, and never learn that presentation overrides and additive overlays are two further
-            // seams with different injection points.
-            new ManifestDescriptor(
-                name: 'RealmOverlayRegistry',
-                of: 'additive realm OVERLAYS folded onto an EXISTING realm descriptor before the manifest emits',
-                seam: ManifestSeam::SingletonAccumulator,
-                arity: ManifestArity::ComposeMany,
-                // Not RunAll: a read is keyed by realm and the overlays for that realm are FOLDED in
-                // registration order, each transforming the descriptor the previous one produced (last write
-                // at a JSONPath target wins). That is a chain, not an enumeration.
-                registerHint: 'resolve the singleton and register(new RealmOverlay(realmKey: ...)) from your provider — enriches only, never creates a realm',
-                where: RealmOverlayRegistry::class,
-                package: $pkg, order: 17,
-            ),
-            new ManifestDescriptor(
-                name: 'RealmResourceRegistry',
-                of: 'per-realm presentation OVERRIDES merged into a resource declaration as it is projected for a realm',
-                seam: ManifestSeam::ConfigSource,
-                arity: ManifestArity::ComposeMany,
-                // ConfigSource over SingletonAccumulator: the binding hydrates it from
-                // `frame.realm_resource_overrides` at resolution, so config is the seam a host reaches for;
-                // `->override()` is the fluent escape hatch the class docblock calls it. ComposeMany because
-                // apply() walks the realm's `[...stack, self]` chain bottom→top and merges each overlay in
-                // turn — the requested realm's own overlay wins by being last, not by being picked.
-                registerHint: 'add `<realm>.<resourceKey>.<field>` entries to frame.realm_resource_overrides (or ->override($key, $realm, $override) imperatively)',
-                where: 'config frame.realm_resource_overrides → '.RealmResourceRegistry::class,
-                package: $pkg, order: 18,
-            ),
-            new ManifestDescriptor(
-                name: 'CapabilityRegistry',
-                of: 'gated capabilities by key + entitlement (web search, schema-LLM migration, node types)',
-                seam: ManifestSeam::SingletonAccumulator,
-                arity: ManifestArity::PickOne,
-                registerHint: 'resolve the singleton and register(GatedCapability) from your provider',
-                where: CapabilityRegistry::class,
-                package: $pkg, order: 15,
-            ),
-            new ManifestDescriptor(
-                name: 'ParticleWriter (write chain)',
-                of: 'the write pipeline: authorize → validate → persist → emit',
-                seam: ManifestSeam::PipelineChain,
-                arity: ManifestArity::ComposeMany,
-                registerHint: 'construct ParticleWriter with an ordered $stages list to insert a WriteStage pipe',
-                where: ParticleWriter::class,
-                package: $pkg, order: 20,
-            ),
-            new ManifestDescriptor(
-                name: 'PayloadParticleReader (read chain)',
-                of: 'the read/projection pipeline (default single ProjectStage); coarser seam is the ParticleHydrator port',
-                seam: ManifestSeam::PipelineChain,
-                arity: ManifestArity::ComposeMany,
-                registerHint: 'construct PayloadParticleReader with an ordered $stages list to insert a ReadStage pipe',
-                where: PayloadParticleReader::class,
-                package: $pkg, order: 21,
-            ),
-            new ManifestDescriptor(
-                name: 'ResourceRenderingRegistry',
-                of: 'renderings per resource — the set Route::resourceRenderings() mounts one route each from',
-                seam: ManifestSeam::ConfigSource,
-                arity: ManifestArity::RunAll,
-                registerHint: 'add class-strings under beam.core.renderings.<resource>, or resolve the singleton and register($resource, $rendering) from your provider',
-                where: 'config beam.core.renderings → '.ResourceRenderingRegistry::class,
-                package: $pkg, order: 22,
-            ),
-        ] as $descriptor) {
-            $index->describe($descriptor);
         }
     }
 

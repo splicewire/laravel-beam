@@ -4,6 +4,9 @@ namespace Splicewire\Beam\Surface;
 
 use Illuminate\Support\Str;
 use RuntimeException;
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
@@ -44,6 +47,18 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * own header warned about. A fresh beam host therefore groups its own reference correctly off its
  * declared particle resources, with no taxonomy config at all.
  */
+#[IsRegistry(
+    root: 'beam.surface.groups',
+    of: 'the API taxonomy — the group tree (key/name/description/parent) plus the chain that resolves a route into it',
+    arity: RegistryArity::PickOne,
+    entryType: ApiGroup::class,
+    onDuplicate: OnDuplicate::Supersede,
+    note: 'A PRECEDENCE registry — registry-kernel ticket 15 archetype (d), explicitly never sweepable. '
+        .'The groups are one keyspace; `$assignments` (rung 1) and `$globs` (rung 3, ordered first-match) '
+        .'are a resolution LADDER over them, not more entries. Only the tree is declared here; how the '
+        .'ladder is expressed is ticket 36\'s.',
+    order: 12,
+)]
 class GroupRegistry
 {
     /** @var array<string, ApiGroup> keyed by group key */

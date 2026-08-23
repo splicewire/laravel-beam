@@ -16,29 +16,49 @@ use ReflectionProperty;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
-use Splicewire\Beam\Manifest\ManifestArity;
-use Splicewire\Beam\Manifest\ManifestDescriptor;
-use Splicewire\Beam\Manifest\ManifestIndex;
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryIndex;
+use Splicewire\Beam\Doctor;
 
 /**
  * The **meta-audit** (particle-doctrine-convergence, ticket 13): every registry-shaped container singleton
- * must `describe()` itself into the {@see ManifestIndex}.
+ * must declare itself with {@see IsRegistry}.
+ *
+ * ## ⚠️ Interim state — registry-kernel ticket 21 moved the goalposts, ticket 35 rebuilds this
+ *
+ * The obligation used to be *"call `describe(new ManifestDescriptor(...))` from your provider"*, and it was
+ * checked against a live index's membership. Ticket 21 deleted that vocabulary: a registry now DECLARES
+ * itself with `#[IsRegistry]` on the class, and separately gets INDEXED once it conforms to the `Registry`
+ * contract — two acts, deliberately, because declaration lands before conformance across a 79-row migration
+ * (ticket 14 D10's three-valued disposition exists precisely for the gap).
+ *
+ * So this audit now asks the DECLARATION question, which is the half that is answerable today, and it is
+ * strictly better at it: matching moved off the descriptor's short `name` onto the attribute itself, which
+ * kills the live defect where all three estate classes called `CapabilityRegistry` reported described by
+ * colliding with each other.
+ *
+ * **The membership ratchet below is vacuous until owners start describing into `RegistryIndex`.** Roots are
+ * derived from index membership, and the index fills as ticket 37/38's migrations land — so a PASS from this
+ * audit today means "nothing is governed yet", not "the estate is clean". Do not read it as the latter, and
+ * do not paper over it here: {@see Doctor} gets `registry.non-conforming` (gating, population
+ * = classes carrying the attribute) and `registry.undeclared-shape` (advisory, carrying every judgement call)
+ * from registry-kernel ticket 35, which supersedes this class's scoping question rather than patching it.
  *
  * ## Why this one is a GATE when everything else in the effort is advisory
  * Every other check in this initiative reports a backlog, and a backlog that fails the build is just a
- * blocked build. This one is different in kind: `splicewire:beam:manifests --json` is what an agent is
- * *told to run* as its entry point for "where do I register this". A registry that is not in the index is a
- * registry an agent cannot find, and an agent that cannot find a registry builds a parallel mechanism next
- * to it. So the cost of the drift is not a stale document, it is a second implementation of something that
- * already exists — the exact failure the rest of this effort is paying to prevent. It is also the cheapest
- * check here (one `describe(...)` call fixes any finding), so it is the one place where blocking is
- * proportionate. Registered `gate: true` in `BeamServiceProvider::registerSurgeonAudits()`, and every
+ * blocked build. This one is different in kind: `popcorn:registries --json` is what an agent is
+ * *told to run* as its entry point for "where do I register this". An undeclared registry is one no
+ * catalogue can show, and an agent that cannot find a registry builds a parallel mechanism next to it. So
+ * the cost of the drift is not a stale document, it is a second implementation of something that already
+ * exists — the exact failure the rest of this effort is paying to prevent. It is also the cheapest check
+ * here (one attribute fixes any finding), so it is the one place where blocking is proportionate. Registered `gate: true` in `BeamServiceProvider::registerSurgeonAudits()`, and every
  * finding is a {@see Finding::fail()} so it blocks at the runner's DEFAULT floor rather than only at a
  * lowered one.
  *
  * ## The scope is the index's own membership — the ratchet
- * `forIndex()` derives its scan roots from the descriptors ALREADY in the index: a package that has
- * described at least one registry is **opted in**, and is then held to describing all of them. A package
+ * `forIndex()` derives its scan roots from the registries ALREADY in the index: a package that has
+ * described at least one registry is **opted in**, and is then held to declaring all of them. A package
  * that has never described anything is not scanned.
  *
  * This is deliberate and it is what makes a gate survivable. The estate has ~55 registry-shaped singletons
@@ -51,7 +71,7 @@ use Splicewire\Beam\Manifest\ManifestIndex;
  *
  * ## What "registry-shaped" means, structurally
  * Not the class NAME. The estate's `Registry`/`Manifest`/`Pipeline`/`Store` suffixes are inconsistent (see
- * {@see ManifestArity}'s docblock on exactly that), and blockdoc's node-type
+ * {@see RegistryArity}'s docblock on exactly that), and blockdoc's node-type
  * registry is bound under the interface `Contracts\Schema` — a name-based test would miss it while
  * flagging every `SchemaTypeProjector` in the fleet. The test is instead the shape a registry actually has:
  *
@@ -71,18 +91,19 @@ use Splicewire\Beam\Manifest\ManifestIndex;
  * obvious seed, but its diff is *attribute-scan-shaped*: `detect($scanPaths, $attributeClass, $manual)`
  * asks an {@see AttributedClassScanner} which classes carry an attribute and
  * diffs that against a manual registration list. Both of this audit's sides are something else — the
- * discovered side is container binding *call sites*, the declared side is a live singleton's descriptor
- * list, and neither has an attribute to scan. Its `RegistrationDrift` DTO could be borrowed to carry the
+ * discovered side is container binding *call sites* and the declared side is `#[IsRegistry]` — so half of
+ * it now IS an attribute scan, but only half, and the halves are asymmetric in exactly the way that engine
+ * cannot express. Its `RegistrationDrift` DTO could be borrowed to carry the
  * diff, but its `toFindings()` emits `warn` with "registered manually but has no attribute" text and no
  * slot for the provider name this audit's findings are required to carry, so borrowing it would mean
  * emitting a strictly worse finding to reuse an `array_diff`. Stated here so the next reader does not
  * re-derive the question.
  *
- * ## The finding names the provider, not just the registry
- * A finding whose remedy is "somebody should describe this" is unactionable, because the index's direction
- * is load-bearing: an owner registers DOWN into it from its OWN provider and beam-core never reaches up to
- * discover anyone. So the fix has exactly one legal home — the provider that binds the singleton — and the
- * finding names that provider and its file:line.
+ * ## The finding names the registry, and the provider only to locate it
+ * The remedy is now unambiguous — put `#[IsRegistry]` on the class that owns the keyspace — so the finding
+ * leads with that. It still names the binding provider and its `file:line`, because that is how a reader
+ * FINDS the class, not because the provider is where the fix goes. That inverted with ticket 21: under the
+ * old descriptor the provider was the only legal home for the fix; under the attribute the class is.
  */
 class UndescribedRegistryAudit implements DoctorAudit
 {
@@ -144,35 +165,53 @@ class UndescribedRegistryAudit implements DoctorAudit
     public function __construct(
         /** @var list<string> */
         protected array $roots,
-        protected ManifestIndex $index,
+        protected RegistryIndex $index,
         /** @var list<string> */
         protected array $excludedPaths = self::DEFAULT_EXCLUDED_PATHS,
     ) {}
 
     /**
      * The governed wiring: scan roots derived from the index's OWN membership (see the class docblock's
-     * ratchet argument). A descriptor with a `package` contributes that package's `src/` under the host's
-     * vendor dir; an app-local descriptor (`package: null`) contributes the host's own `app/`/`src/`.
+     * ratchet argument). A registry owned by a package contributes that package's `src/` under the host's
+     * vendor dir; an app-local one contributes the host's own `app/`/`src/`.
      *
      * `vendor/<pkg>/src` rather than `vendor/<pkg>` on purpose: family packages each carry their own dev
      * `vendor/` tree, and descending into those re-scans the whole estate once per package.
      *
      * @param  list<string>|null  $roots
      */
-    public static function forIndex(ManifestIndex $index, ?array $roots = null): self
+    public static function forIndex(RegistryIndex $index, ?array $roots = null): self
     {
         return new self($roots ?? self::governedRoots($index), $index);
     }
 
     /**
+     * The owning package is now DERIVED from where the owner's class file sits, not read off a hand-written
+     * `package:` field — registry-kernel ticket 07 D4's rule (a declared field beside the thing it describes
+     * drifts; a derived one cannot). It reads the index UNFILTERED: scan scope is a structural question, and
+     * an authorizer narrowing it would silently shrink what the gate governs.
+     *
      * @return list<string>
      */
-    public static function governedRoots(ManifestIndex $index): array
+    public static function governedRoots(RegistryIndex $index): array
     {
         $roots = [];
+        $unfiltered = $index->unfiltered();
 
-        foreach ($index->descriptors() as $descriptor) {
-            if ($descriptor->package === null) {
+        foreach ($unfiltered->keys() as $key) {
+            // The index describes ITSELF at construction under the zero-segment root (ticket 20 D4). That is
+            // a structural property of self-hosting, not a package opting into the ratchet — counting it
+            // would mean a freshly-constructed index governs something, and in a co-dev tree (where the
+            // kernel's path carries no `vendor/` segment) that something is the host's own `app/`.
+            if ((string) $key === '') {
+                continue;
+            }
+
+            $owner = $index->owner($key);
+            $file = $owner === null ? null : (new ReflectionClass($owner))->getFileName();
+            $package = $file === false || $file === null ? null : self::packageOfPath($file);
+
+            if ($package === null) {
                 foreach (['app', 'src'] as $dir) {
                     if (is_dir($path = base_path($dir))) {
                         $roots[$path] = true;
@@ -182,12 +221,12 @@ class UndescribedRegistryAudit implements DoctorAudit
                 continue;
             }
 
-            $package = base_path('vendor/'.$descriptor->package);
+            $dir = base_path('vendor/'.$package);
 
-            if (is_dir($package.'/src')) {
-                $roots[$package.'/src'] = true;
-            } elseif (is_dir($package)) {
-                $roots[$package] = true;
+            if (is_dir($dir.'/src')) {
+                $roots[$dir.'/src'] = true;
+            } elseif (is_dir($dir)) {
+                $roots[$dir] = true;
             }
         }
 
@@ -204,7 +243,7 @@ class UndescribedRegistryAudit implements DoctorAudit
 
         if ($undescribed === []) {
             return [Finding::pass(self::CHECK, sprintf(
-                'All %d registry-shaped singleton(s) in the governed packages describe themselves into the manifest index.',
+                'All %d registry-shaped singleton(s) in the governed packages declare themselves with #[IsRegistry].',
                 count($rows),
             ))];
         }
@@ -338,17 +377,17 @@ class UndescribedRegistryAudit implements DoctorAudit
     protected function detail(array $row): string
     {
         return sprintf(
-            '%s is a registry-shaped singleton bound at %s:%d but is not described into the manifest index. '.
-            '%s must call app(ManifestIndex::class)->describe(new ManifestDescriptor(name:, of:, seam:, arity:, '.
-            'registerHint:, where: %s::class, package: %s)). An undescribed registry is one '.
-            '`splicewire:beam:manifests --json` cannot show, so an agent looking for where to register '.
-            'builds a parallel mechanism beside it.',
+            '%s is a registry-shaped singleton bound at %s:%d but declares no #[IsRegistry]. Put '.
+            '#[IsRegistry(root: ..., of: ..., arity: RegistryArity::...)] on %s itself — the declaration '.
+            'belongs on the class that owns the keyspace, not on the provider (%s) that binds it. The root '.
+            'is a dotted key, domain-first and vendor-free (`beam.realm.overlays`, `schemas.sources`), never '.
+            'derived from the composer coordinate. An undeclared registry is one `popcorn:registries` cannot '.
+            'show, so an agent looking for where to register builds a parallel mechanism beside it.',
             $this->shortName($row['registry']),
             $row['file'],
             $row['line'],
-            $this->shortName($row['provider']),
             $this->shortName($row['registry']),
-            $row['package'] === null ? 'null' : "'".$row['package']."'",
+            $this->shortName($row['provider']),
         );
     }
 
@@ -386,30 +425,25 @@ class UndescribedRegistryAudit implements DoctorAudit
     }
 
     /**
-     * Whether the index already carries this registry. Matched on the descriptor's `where` CONTAINING the
-     * FQCN (several descriptors legitimately decorate it — `'#[ParticleResource] → '.FQCN`, or a config key
-     * instead) or on the descriptor `name` being the registry's short name, optionally with a parenthetical
-     * qualifier (`'ParticleWriter (write chain)'`). Matching loosely is the right error direction here: a
-     * false "described" costs a missing index row, a false "undescribed" hard-blocks a build.
+     * Whether this registry declares itself — `#[IsRegistry]` on the abstract or on the concrete.
+     *
+     * **This replaces a name match, and that is the point.** The old test compared the descriptor's `name`
+     * against the registry's SHORT class name, so all three estate classes called `CapabilityRegistry`
+     * (beam's, tower's subclass of it, and the unrelated `Tower\Circuit\Capabilities` one) satisfied each
+     * other's obligation by collision — one descriptor answered for three registries. An attribute cannot
+     * collide: it is either on this class or it is not.
+     *
+     * Both sides are checked because a host codes against the interface while the declaration belongs on
+     * whatever owns the keyspace, and `singleton(Schema::class, NodeSchema::class)` legitimately puts those
+     * on different classes. Attributes are NOT inherited through `getAttributes()`, so a subclass that
+     * genuinely owns a different root must declare its own — which is the behaviour we want and the reason
+     * tower's `CapabilityRegistry` is a real finding here rather than a false one.
      */
     public function isDescribed(string $abstract, ?string $concrete = null): bool
     {
-        $names = array_values(array_unique(array_filter([
-            $this->shortName($abstract),
-            $concrete !== null ? $this->shortName($concrete) : null,
-        ])));
-
-        foreach ($this->index->descriptors() as $descriptor) {
-            foreach ([$abstract, $concrete] as $fqcn) {
-                if ($fqcn !== null && str_contains($descriptor->where, $fqcn)) {
-                    return true;
-                }
-            }
-
-            foreach ($names as $name) {
-                if ($descriptor->name === $name || str_starts_with($descriptor->name, $name.' (')) {
-                    return true;
-                }
+        foreach ([$abstract, $concrete] as $fqcn) {
+            if ($fqcn !== null && $this->reflect($fqcn) !== null && IsRegistry::of($fqcn) !== null) {
+                return true;
             }
         }
 
@@ -578,6 +612,12 @@ class UndescribedRegistryAudit implements DoctorAudit
      */
     protected function packageOf(string $file): ?string
     {
+        return self::packageOfPath($file);
+    }
+
+    /** The same derivation, callable from {@see governedRoots()} before an instance exists. */
+    protected static function packageOfPath(string $file): ?string
+    {
         $normalized = str_replace('\\', '/', $file);
 
         if (preg_match('#/vendor/([^/]+)/([^/]+)/#', $normalized, $m) !== 1) {
@@ -704,9 +744,13 @@ class UndescribedRegistryAudit implements DoctorAudit
         return $files;
     }
 
-    /** @return list<ManifestDescriptor> */
+    /**
+     * The roots currently in the index, as strings — what used to be the descriptor list.
+     *
+     * @return list<string>
+     */
     public function described(): array
     {
-        return $this->index->descriptors();
+        return array_map('strval', $this->index->unfiltered()->keys());
     }
 }

@@ -4,6 +4,9 @@ namespace Splicewire\Beam\Doctor;
 
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\DoctorRegistration;
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Install\BeamInstallManifest;
 
@@ -26,6 +29,16 @@ use Splicewire\Beam\Install\BeamInstallManifest;
  * is stable). Each registration carries a gate/advisory flag so a consumer decides whether its own Fail
  * blocks the exit code, honouring the same gate-vs-advisory split beam-core already draws.
  */
+#[IsRegistry(
+    root: 'beam.doctor.audits',
+    of: 'per-package readiness audits aggregated by splicewire:beam:doctor',
+    arity: RegistryArity::RunAll,
+    entryType: DoctorRegistration::class,
+    onDuplicate: OnDuplicate::Supersede,
+    note: 'beam-core\'s OWN audits are deliberately not here — they predate the manifest and stay '
+        .'hardcoded in BeamDoctorCommand. This carries the consumer tail only.',
+    order: 2,
+)]
 class BeamDoctorManifest
 {
     /** @var list<DoctorRegistration> */

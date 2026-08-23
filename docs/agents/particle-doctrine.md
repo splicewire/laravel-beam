@@ -157,7 +157,7 @@ Health endpoints and `/broadcasting/auth` are *outside* the doctrine's extension
 ## Before you design any I/O surface, run this
 
 ```
-XDEBUG_MODE=off herd php artisan splicewire:beam:manifests --json
+XDEBUG_MODE=off herd php artisan popcorn:registries --json
 ```
 
 The index of indexes: every registry that has described itself, its injection **seam**, its **arity**,

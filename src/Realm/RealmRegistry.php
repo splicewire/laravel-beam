@@ -5,6 +5,9 @@ namespace Splicewire\Beam\Realm;
 use InvalidArgumentException;
 use ReflectionAttribute;
 use ReflectionClass;
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Splicewire\Beam\Realm\Attributes\Realm;
 
@@ -38,6 +41,18 @@ use Splicewire\Beam\Realm\Attributes\Realm;
  * user↔tenant `collapses()`/`effective()` special-case. The `user` realm's stack is config-driven
  * (`frame.collapse_user_realm`): an app may declare it with or without the tenant in its stack.
  */
+#[IsRegistry(
+    root: 'beam.realm',
+    of: 'authorization realms (admin·tenant·user·docs) governing resource access',
+    arity: RegistryArity::PickOne,
+    entryType: RealmDefinition::class,
+    onDuplicate: OnDuplicate::Supersede,
+    note: 'Seeded-plus-registered: the constructor seeds the base realms AND #[Realm] classes augment the '
+        .'same instance. Contribution is last-wins by key, and deliberately so — a capability package '
+        .'re-registers a differently-shaped realm over the base one. `beam.realm.overlays` nests UNDER '
+        .'this root; longest prefix routes them apart.',
+    order: 14,
+)]
 class RealmRegistry
 {
     /** @var array<string, RealmDefinition> */

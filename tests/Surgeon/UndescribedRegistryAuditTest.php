@@ -6,17 +6,17 @@ use Rushing\Doctor\DoctorFailed;
 use Rushing\Doctor\DoctorRegistration;
 use Rushing\Doctor\DoctorRunner;
 use Rushing\Doctor\DoctorStatus;
+use Rushing\Popcorn\Registries\RegistryIndex;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
-use Splicewire\Beam\Manifest\ManifestArity;
-use Splicewire\Beam\Manifest\ManifestDescriptor;
-use Splicewire\Beam\Manifest\ManifestIndex;
-use Splicewire\Beam\Manifest\ManifestSeam;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * particle-doctrine-convergence ticket 13 — the meta-audit: every registry-shaped singleton must describe
- * itself into the {@see ManifestIndex}, and this is the ONE gating check in the effort.
+ * particle-doctrine-convergence ticket 13 — the meta-audit: every registry-shaped singleton must declare
+ * itself with `#[IsRegistry]`, and this is the ONE gating check in the effort.
+ *
+ * Registry-kernel ticket 21 moved the obligation from "push a ManifestDescriptor into beam's own index" to
+ * "declare the attribute on the class" — see the audit's own docblock for why those are two acts.
  *
  * Two things are proven here that a happy-path test would not prove:
  *
@@ -63,7 +63,8 @@ class UndescribedRegistryAuditTest extends TestCase
         string $properties = 'private array $entries = [];',
         string $methods = 'public function register(string $k, string $v): void { $this->entries[$k] = $v; } public function get(string $k): ?string { return $this->entries[$k] ?? null; }',
         string $binder = '$this->app->singleton(PlantedRegistry%1$d::class);',
-        ?ManifestIndex $index = null,
+        ?RegistryIndex $index = null,
+        string $declaration = '',
     ): array {
         $n = ++self::$plant;
         // "planted-scan" deliberately contains none of DEFAULT_EXCLUDED_PATHS' fragments.
@@ -72,7 +73,7 @@ class UndescribedRegistryAuditTest extends TestCase
 
         $namespace = 'Splicewire\\Beam\\Tests\\Planted'.$n;
 
-        $registry = "<?php\nnamespace {$namespace};\nclass PlantedRegistry{$n} {\n{$properties}\n{$methods}\n}\n";
+        $registry = "<?php\nnamespace {$namespace};\n{$declaration}class PlantedRegistry{$n} {\n{$properties}\n{$methods}\n}\n";
         file_put_contents($registryFile = $this->root.'/PlantedRegistry.php', $registry);
         require $registryFile;
 
@@ -85,7 +86,7 @@ class UndescribedRegistryAuditTest extends TestCase
         file_put_contents($this->root.'/PlantedServiceProvider.php', $provider);
 
         return [
-            new UndescribedRegistryAudit([$this->root], $index ?? new ManifestIndex, excludedPaths: []),
+            new UndescribedRegistryAudit([$this->root], $index ?? new RegistryIndex, excludedPaths: []),
             $namespace.'\\PlantedRegistry'.$n,
             $namespace.'\\PlantedServiceProvider'.$n,
         ];
@@ -115,18 +116,16 @@ class UndescribedRegistryAuditTest extends TestCase
         // The provider is the load-bearing half: the index's direction means the fix has exactly one legal
         // home, and a finding that named only the registry would leave the reader to find it.
         $this->assertStringContainsString('PlantedServiceProvider', $detail);
-        $this->assertStringContainsString('describe(new ManifestDescriptor', $detail);
+        $this->assertStringContainsString('#[IsRegistry(', $detail);
     }
 
-    public function test_describing_the_registry_silences_the_finding(): void
+    public function test_declaring_the_registry_silences_the_finding(): void
     {
-        $index = new ManifestIndex;
-        [$audit, $registry] = $this->plant(index: $index);
-
-        $index->describe(new ManifestDescriptor(
-            name: 'PlantedRegistry', of: 'planted', seam: ManifestSeam::SingletonAccumulator,
-            arity: ManifestArity::PickOne, registerHint: 'register($k, $v)', where: $registry,
-        ));
+        // The remedy the finding prints, applied. Note it is applied to the CLASS, not pushed into an index
+        // from a provider — which is why the audit no longer needs a populated index to answer.
+        [$audit] = $this->plant(
+            declaration: "#[\\Rushing\\Popcorn\\Registries\\IsRegistry(root: 'planted.entries', of: 'planted entries', arity: \\Rushing\\Popcorn\\Registries\\RegistryArity::PickOne)]\n",
+        );
 
         $findings = $audit->run();
 
@@ -233,8 +232,8 @@ class UndescribedRegistryAuditTest extends TestCase
     {
         // The provider is inside the scanned root but the registry class is not: a third-party registry a
         // provider merely configures cannot describe itself, so it is an index nice-to-have, not an
-        // obligation. ManifestIndex itself stands in for "a real registry-shaped class outside this root".
-        [$audit] = $this->plant(binder: '$this->app->singleton(\\Splicewire\\Beam\\Manifest\\ManifestIndex::class);');
+        // obligation. RegistryIndex itself stands in for "a real registry-shaped class outside this root".
+        [$audit] = $this->plant(binder: '$this->app->singleton(\\Rushing\\Popcorn\\Registries\\RegistryIndex::class);');
 
         $this->assertSame([], $audit->registries());
     }
@@ -243,82 +242,37 @@ class UndescribedRegistryAuditTest extends TestCase
     {
         // A package that has described nothing is not scanned at all; describing one registry opts the whole
         // package in. That ratchet is what makes a fleet-wide gate survivable.
-        $this->assertSame([], UndescribedRegistryAudit::governedRoots(new ManifestIndex));
-
-        $index = new ManifestIndex;
-        $index->describe(new ManifestDescriptor(
-            name: 'X', of: 'x', seam: ManifestSeam::SingletonAccumulator, arity: ManifestArity::RunAll,
-            registerHint: 'x', where: 'x', package: 'vendor/does-not-exist',
-        ));
-        $this->assertSame([], UndescribedRegistryAudit::governedRoots($index), 'an absent package contributes no root');
+        //
+        // A freshly-constructed index is NOT empty — it describes itself at the zero-segment root (ticket
+        // 20 D4) — so this also pins that self-hosting governs nothing. Self-hosting is structural; only a
+        // package describing a registry of its own is an opt-in.
+        $this->assertSame([], UndescribedRegistryAudit::governedRoots(new RegistryIndex));
     }
 
-    public function test_beam_cores_own_registries_are_all_described(): void
+    /**
+     * The dogfood assertion: every registry-shaped singleton beam-core binds declares `#[IsRegistry]`.
+     *
+     * This is what caught `RealmOverlayRegistry` and `RealmResourceRegistry` sitting undescribed beside
+     * `RealmRegistry`, and `FacadeConformanceScope` the moment beam-facade bound it.
+     *
+     * **The residue is currently zero, and that is a measurement rather than an aspiration.** Registry-kernel
+     * ticket 21 declared fourteen classes; the five descriptors it did NOT convert — `ManifestIndex` (moved
+     * to the kernel), the two particle pipelines (`bind()`, so not singletons), `BeamSchemaRegistry` (a
+     * resolver, ticket 01) and `RouteManifestSource` (an interface over a config array, ticket 25) — are all
+     * invisible to the structural test for reasons that are each a closed decision. If a legitimate exception
+     * ever does appear, it belongs in `registry.undeclared-shape`'s `const` with its argument inline, not in
+     * a widened assertion here (ticket 14 D10, ticket 35 §2).
+     */
+    public function test_beam_cores_own_registries_all_declare_themselves(): void
     {
-        // The dogfood assertion: beam-core is a member of its own index, so its `src/` is governed and every
-        // registry-shaped singleton it binds must be listed. This is what caught RealmOverlayRegistry and
-        // RealmResourceRegistry, which sat beside RealmRegistry undescribed.
         $audit = new UndescribedRegistryAudit(
             [dirname(__DIR__, 2).'/src'],
-            $this->app->make(ManifestIndex::class),
+            $this->app->make(RegistryIndex::class),
         );
 
         $rows = $audit->registries();
 
         $this->assertNotEmpty($rows, 'the audit must actually see beam-core, or this assertion is vacuous');
         $this->assertSame([], array_column($audit->undescribed(), 'registry'));
-    }
-
-    /**
-     * The pre-existing beam-core catalogue is FROZEN. Ticket 13 adds descriptors; it changes none, and this
-     * pins name/seam/arity/order for all twelve so a later "tidy-up" of the index cannot quietly renumber or
-     * relabel the entries other packages' order values were chosen relative to.
-     */
-    public function test_the_pre_existing_core_descriptors_are_unchanged(): void
-    {
-        $expected = [
-            'ManifestIndex' => ['singleton-accumulator', 'run-all', 0],
-            'BeamInstallManifest' => ['singleton-accumulator', 'run-all', 1],
-            'BeamDoctorManifest' => ['singleton-accumulator', 'run-all', 2],
-            'BeamSeedManifest' => ['singleton-accumulator', 'run-all', 3],
-            'RouteManifestSource' => ['config-source', 'run-all', 10],
-            'BeamSchemaRegistry' => ['chained-lookup', 'pick-one', 11],
-            'ParticleResourceRegistry' => ['attribute-scan', 'pick-one', 12],
-            'ParticleOperationRegistry' => ['attribute-scan', 'pick-one', 13],
-            'RealmRegistry' => ['attribute-scan', 'pick-one', 14],
-            'CapabilityRegistry' => ['singleton-accumulator', 'pick-one', 15],
-            'ParticleWriter (write chain)' => ['pipeline-chain', 'compose-many', 20],
-            'PayloadParticleReader (read chain)' => ['pipeline-chain', 'compose-many', 21],
-        ];
-
-        // Scoped to BEAM-CORE's own descriptors. The index is shared, and a booted dependency describing its
-        // own registries is the ticket-13 membership ratchet working as designed — not a regression here. An
-        // earlier whole-index equality assertion broke the moment `schemastud/laravel-data-schemas` described
-        // `LensRegistry`/`DataOverlayRegistry` (ticket 11), which is exactly the outcome this effort wants.
-        $actual = [];
-        foreach ($this->app->make(ManifestIndex::class)->descriptors() as $descriptor) {
-            if ($descriptor->package !== 'splicewire/laravel-beam') {
-                continue;
-            }
-
-            $actual[$descriptor->name] = [$descriptor->seam->value, $descriptor->arity->value, $descriptor->order];
-        }
-
-        foreach ($expected as $name => $shape) {
-            $this->assertArrayHasKey($name, $actual);
-            $this->assertSame($shape, $actual[$name], "the pre-existing [{$name}] descriptor must not change");
-        }
-
-        // The sanctioned additions, and nothing else: beam-core describes exactly the frozen twelve
-        // plus the two ticket-13 realm registries, the JN-15 SchemaSources tier registry, the
-        // AuditScanPaths audit scan-path contribution seam, the ResourceRenderingRegistry that moved
-        // in from laravel-composition-engine along with Route::resourceRenderings(), and the
-        // FacadeConformanceScope the beam-facade ticket-19 audits share — the last of which this very
-        // audit flagged the moment it was bound, which is the membership ratchet working.
-        $names = array_keys($actual);
-        $wanted = [...array_keys($expected), 'RealmOverlayRegistry', 'RealmResourceRegistry', 'SchemaSources', 'AuditScanPaths', 'ResourceRenderingRegistry', 'FacadeConformanceScope', 'GroupRegistry'];
-        sort($names);
-        sort($wanted);
-        $this->assertSame($wanted, $names, 'beam-core describes the frozen twelve plus exactly the sanctioned additions (ticket-13 realms + JN-15 SchemaSources + AuditScanPaths + ResourceRenderingRegistry + ticket-19 FacadeConformanceScope + api-surface-coherence-17 GroupRegistry)');
     }
 }

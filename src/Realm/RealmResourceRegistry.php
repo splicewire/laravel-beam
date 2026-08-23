@@ -2,6 +2,9 @@
 
 namespace Splicewire\Beam\Realm;
 
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 use Schemastud\Frame\Registry\ResourceDefinition;
 
 /**
@@ -26,6 +29,18 @@ use Schemastud\Frame\Registry\ResourceDefinition;
  * {@see RealmResourceOverride::mergeInto()} → {@see ResourceDefinition::withOverrides()}). The realm
  * concept lives entirely in beam.
  */
+#[IsRegistry(
+    root: 'beam.realm.resource-overrides',
+    of: 'per-realm presentation OVERRIDES merged into a resource declaration as it is projected for a realm',
+    arity: RegistryArity::ComposeMany,
+    entryType: RealmResourceOverride::class,
+    onDuplicate: OnDuplicate::Supersede,
+    note: 'A PRECEDENCE registry — registry-kernel ticket 15 archetype (d), never sweepable. Its state is '
+        .'`[realm][key]`, two DIMENSIONS rather than a dotted key, and `apply()` walks the realm\'s '
+        .'declared `[...stack, self]` ancestry — a DECLARED chain, not lexical reach (ticket 05). It is '
+        .'also config-driven and mutable at runtime, so it cannot be baked. Ticket 36 owns the shape.',
+    order: 18,
+)]
 class RealmResourceRegistry
 {
     /**

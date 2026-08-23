@@ -6,6 +6,9 @@ use InvalidArgumentException;
 use ReflectionClass;
 use RuntimeException;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Frame\ParticleResourceRegistryPort;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
@@ -55,6 +58,19 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
  * ever received one (`AdminResourceRegistry::all()`/`get()` were always called with `$realm = null` from
  * the one real caller, so the overlay/declaration seam existed but never fired).
  */
+#[IsRegistry(
+    root: 'beam.particle.resources',
+    of: 'Frame resource definitions (model→Data projections) driving reads + the editor',
+    arity: RegistryArity::PickOne,
+    entryType: 'mixed',
+    onDuplicate: OnDuplicate::Supersede,
+    note: 'Declared, not inherited: overwrite is intentional here and the class docblock argues it. '
+        .'`mixed` is honest rather than lazy — an entry is a ParticleResource OR a raw ResourceDefinition '
+        .'(the imperative/union escape hatch). Whether the three collections split into three registries '
+        .'is registry-kernel ticket 36\'s, not a thing to improvise. Realm membership is a TAG recorded '
+        .'beside the entry, never a second key dimension: one entry, many realms, no duplicate.',
+    order: 12,
+)]
 class ParticleResourceRegistry
 {
     /**

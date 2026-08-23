@@ -3,8 +3,21 @@
 namespace Splicewire\Beam\Particle;
 
 use RuntimeException;
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 
 /** Container-singleton registry of {@see ParticleOperation}s, keyed `resource:name`. */
+#[IsRegistry(
+    root: 'beam.particle.operations',
+    of: 'named particle operations (custom actions) mounted on the generic op controller',
+    arity: RegistryArity::PickOne,
+    entryType: ParticleOperation::class,
+    onDuplicate: OnDuplicate::Supersede,
+    note: 'Its live keys are `resource:name`, and `:` is REJECTED by Key rather than folded — this '
+        .'registry cannot be migrated by rekeying alone (registry-kernel ticket 05).',
+    order: 13,
+)]
 class ParticleOperationRegistry
 {
     /** @var array<string, ParticleOperation> */

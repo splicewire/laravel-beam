@@ -2,6 +2,9 @@
 
 namespace Splicewire\Beam\Surgeon;
 
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 use Splicewire\Beam\Schema\SchemaSources;
 
 /**
@@ -23,6 +26,16 @@ use Splicewire\Beam\Schema\SchemaSources;
  * only from hosts that compose it (or by its own package-local tooling). The seam widens
  * visibility to whatever the host composes; it is not a fleet-wide census.
  */
+#[IsRegistry(
+    root: 'beam.surgeon.scan-paths',
+    of: 'package-contributed (controllersDir, routesDir) pairs joining the bypass/redundancy/house-style sweeps',
+    arity: RegistryArity::RunAll,
+    onDuplicate: OnDuplicate::Admit,
+    note: 'Admit, not Supersede: state today is an unkeyed append-only list, so a package registering '
+        .'twice contributes two rows and the sweep reads both. Migrating it to a keyed store would '
+        .'CHANGE that behaviour, so the declaration records what it does rather than what it should do.',
+    order: 11,
+)]
 class AuditScanPaths
 {
     /** @var list<array{package: string, controllersDir: string, routesDir: string}> registrations, in boot order */

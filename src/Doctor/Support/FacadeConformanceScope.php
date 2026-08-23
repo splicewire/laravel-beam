@@ -2,6 +2,9 @@
 
 namespace Splicewire\Beam\Doctor\Support;
 
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Facades\Beam;
@@ -67,6 +70,19 @@ use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
  * 04's `SchemaTargetResolver` rejection made mechanical. The audits key on resolution verbs and call
  * positions instead, which is why three of them are AST-side.
  */
+#[IsRegistry(
+    root: 'beam.doctor.facade-scope',
+    of: 'the authorable roots + file set the five facade-conformance audits share (one walk, not five)',
+    arity: RegistryArity::RunAll,
+    entryType: 'mixed',
+    onDuplicate: OnDuplicate::Admit,
+    note: 'Entries are absolute path strings, not objects. Constructor-seeded, and nothing pushes into '
+        .'it after binding — the roots are seeded once by '
+        .'forApp(), which is also where the resolution-mode rule lives (a vendor/ package joins the scan '
+        .'only when it is a SYMLINK). A host with an unusual source layout REBINDS the singleton; it does '
+        .'not register. That is real information, not an absent seam.',
+    order: 11,
+)]
 class FacadeConformanceScope
 {
     /** The family vendor directories whose symlinked children are live source. */

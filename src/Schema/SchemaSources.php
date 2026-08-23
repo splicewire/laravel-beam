@@ -3,6 +3,9 @@
 namespace Splicewire\Beam\Schema;
 
 use Closure;
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Splicewire\Beam\Install\BeamInstallManifest;
 
@@ -25,6 +28,17 @@ use Splicewire\Beam\Install\BeamInstallManifest;
  * vocabulary artifacts NON-shadowable by a tenant, while ordinary content schemas keep their
  * db-over-file tenant-override behavior.
  */
+#[IsRegistry(
+    root: 'schemas.sources',
+    of: 'package-contributed schema-source tier factories composed into BeamSchemaRegistry (JN-15)',
+    arity: RegistryArity::RunAll,
+    entryType: Closure::class,
+    onDuplicate: OnDuplicate::Supersede,
+    note: 'Registration order is NOT resolution order. `config(beam.core.schema.sources)` decides '
+        .'precedence; contributed keys the config does not name are appended at the lowest. The host\'s '
+        .'own binding-side map wins over every registration here.',
+    order: 11,
+)]
 class SchemaSources
 {
     /** @var array<string, Closure(): SchemaRegistry> key → lazy tier factory, in registration order */

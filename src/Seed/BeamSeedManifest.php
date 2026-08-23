@@ -2,6 +2,9 @@
 
 namespace Splicewire\Beam\Seed;
 
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Install\BeamInstallManifest;
 
@@ -21,6 +24,16 @@ use Splicewire\Beam\Install\BeamInstallManifest;
  * seeder registers unconditionally yet fires only where its gate is on (e.g. non-production). The command reports
  * a gated skip rather than silently omitting it.
  */
+#[IsRegistry(
+    root: 'beam.seed.steps',
+    of: 'per-package seed steps (seeder class + config gate) run by splicewire:beam:seed, core-first',
+    arity: RegistryArity::RunAll,
+    entryType: SeedStep::class,
+    onDuplicate: OnDuplicate::Supersede,
+    note: 'A step may carry a $configGate, so a registered step can legitimately not run. Emptiness and '
+        .'skipping are different states; the command reports a gated skip rather than omitting it.',
+    order: 3,
+)]
 class BeamSeedManifest
 {
     /** @var list<SeedStep> */

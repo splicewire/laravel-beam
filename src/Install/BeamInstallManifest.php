@@ -2,6 +2,10 @@
 
 namespace Splicewire\Beam\Install;
 
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
+
 /**
  * The beam-install self-registration manifest (beam-write-pipeline ticket 08). A container SINGLETON
  * every beam-* package pushes its own {@see InstallStep} into — from its OWN service provider — so
@@ -23,6 +27,16 @@ namespace Splicewire\Beam\Install;
  * `docs/agents/migration-publish-ordering.convention.md`. Deliberately not restated here: a rule
  * written in two places is a rule that drifts.
  */
+#[IsRegistry(
+    root: 'beam.install.steps',
+    of: 'package install steps (publish tags + migrate flag), run core-first',
+    arity: RegistryArity::RunAll,
+    entryType: InstallStep::class,
+    onDuplicate: OnDuplicate::Supersede,
+    note: 'Keyed by package name and idempotent by design — a provider that boots twice (test harness) '
+        .'must not double-publish, so re-registering replaces rather than accumulating.',
+    order: 1,
+)]
 class BeamInstallManifest
 {
     /** @var list<InstallStep> */

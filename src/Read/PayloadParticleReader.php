@@ -28,6 +28,13 @@ use Splicewire\Beam\Read\Stages\ProjectStage;
  * {@see ParticleResourceRegistry} (ADR-0156 retired the `SchemaDataResolver` inversion port — beam owns the
  * registry, so it reads it directly). It does NOT compose list queries — that is the query-composing host
  * binding's job, so {@see self::query()} throws.
+ *
+ * ## Deliberately NOT a registry — do not declare `#[IsRegistry]` on it
+ *
+ * It used to carry a manifest descriptor and was undescribed by registry-kernel ticket 07 D5, for the same
+ * reason as {@see ParticleWriter}: `bind()` rather than a singleton, no `register()`, and a `$stages` list
+ * that is constructor-seeded. Coarser extension is the {@see ParticleHydrator} port, which is a binding
+ * swap — also not a registry. The stage-insertion hint the descriptor carried is the paragraph above.
  */
 class PayloadParticleReader implements ParticleHydrator
 {

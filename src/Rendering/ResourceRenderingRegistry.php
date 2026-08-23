@@ -3,6 +3,9 @@
 namespace Splicewire\Beam\Rendering;
 
 use InvalidArgumentException;
+use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RegistryArity;
 
 /**
  * The registry `Route::resourceRenderings()` enumerates. Renderings are keyed by resource — the same
@@ -17,6 +20,18 @@ use InvalidArgumentException;
  *
  * The kernel ships no renderings of its own (engine/host seam), exactly as it ships no profiles.
  */
+#[IsRegistry(
+    root: 'beam.renderings',
+    of: 'renderings per resource — the set Route::resourceRenderings() mounts one route each from',
+    arity: RegistryArity::RunAll,
+    entryType: 'mixed',
+    onDuplicate: OnDuplicate::Admit,
+    note: 'One of the three descriptors registry-kernel ticket 07 D-final found LYING about its seam: it '
+        .'is filled from `beam.core.renderings` config AND by imperative register(), not one way. `mixed` '
+        .'because an entry is a class-string OR a resolved ResourceRendering, and `$resolved` is a '
+        .'memoization cache beside the entries rather than a second keyspace.',
+    order: 22,
+)]
 class ResourceRenderingRegistry
 {
     /** @var array<string, list<class-string<ResourceRendering>|ResourceRendering>> */
