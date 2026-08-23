@@ -208,6 +208,23 @@ return [
     */
     'renderings' => [],
 
+    /*
+    | The registry-conformance ratchet (registry-kernel ticket 35). `artifact` is the committed JSON
+    | `splicewire:beam:registry-conformance` writes and `--check`s — the accountability surface for every
+    | registry-shaped class this host composes and its disposition.
+    |
+    | `tracker_path` is the ROOT of the fleet's file-backed issue tracker, and it exists for exactly one
+    | check: a `deferred` disposition names an open ticket, and a deferral outliving its blocker is the way
+    | that bucket rots into permanent permission. Left null, that staleness check reports the number of rows
+    | it could not verify rather than passing them — an unanswerable question is named, never answered by
+    | default in either direction. It is a per-machine absolute path, so it belongs here and never in the
+    | committed artifact, whose ticket references are relative to it.
+    */
+    'registry_conformance' => [
+        'artifact' => env('BEAM_REGISTRY_CONFORMANCE_ARTIFACT'),
+        'tracker_path' => env('BEAM_TRACKER_PATH'),
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 

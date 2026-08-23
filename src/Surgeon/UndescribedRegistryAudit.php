@@ -20,6 +20,8 @@ use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Splicewire\Beam\Doctor;
+use Splicewire\Beam\Doctor\RegistryConformanceAudit;
+use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 
 /**
  * The **meta-audit** (particle-doctrine-convergence, ticket 13): every registry-shaped container singleton
@@ -41,9 +43,30 @@ use Splicewire\Beam\Doctor;
  * **The membership ratchet below is vacuous until owners start describing into `RegistryIndex`.** Roots are
  * derived from index membership, and the index fills as ticket 37/38's migrations land — so a PASS from this
  * audit today means "nothing is governed yet", not "the estate is clean". Do not read it as the latter, and
- * do not paper over it here: {@see Doctor} gets `registry.non-conforming` (gating, population
- * = classes carrying the attribute) and `registry.undeclared-shape` (advisory, carrying every judgement call)
- * from registry-kernel ticket 35, which supersedes this class's scoping question rather than patching it.
+ * do not paper over it here: {@see Doctor} gets
+ * {@see RegistryConformanceAudit} (gating, population = classes carrying the
+ * attribute) and {@see UndeclaredRegistryShapeAudit} (advisory, carrying every
+ * judgement call) from registry-kernel ticket 35, which supersedes this class's scoping question rather than
+ * patching it. The second of those CONSUMES this class's structural test rather than copying it — see
+ * {@see forHost()}.
+ *
+ * ## It lives in `Surgeon/` and registers on the DOCTOR channel — that is not a contradiction
+ *
+ * Ticket 35 §4 moved this audit's registration into `BeamServiceProvider`'s unconditional doctor block,
+ * because it was the estate's only gate and it was silently absent from every host that did not install
+ * `rushing/laravel-surgeon` (a `require-dev` of beam) — enforcement as a function of host composition, which
+ * is ticket 04 D1's defect wearing a different hat. The directory is a location, not a channel claim: it
+ * never was one, and {@see UndeclaredSurfaceAudit} beside it is a pure `DoctorAudit` too. Only the
+ * registration moved; a namespace move would have been a rename with no reader-facing gain.
+ *
+ * ## Unconditional means it must survive `nikic/php-parser` being absent
+ *
+ * That library arrives through surgeon, so an unconditional registration now runs in hosts that have it and
+ * hosts that do not. Detection here is genuinely AST-shaped — a container binding CALL SITE is not a runtime
+ * fact, which is why ticket 14 D2's move-detection-to-the-container applies to the ticket-35 pair and not to
+ * this one — so where the parser is missing this audit reports its own blindness rather than a clean estate
+ * ({@see detectionAvailable()}). A gate that returns "all clear" because it could not look is worse than one
+ * that fails.
  *
  * ## Why this one is a GATE when everything else in the effort is advisory
  * Every other check in this initiative reports a backlog, and a backlog that fails the build is just a
@@ -52,7 +75,7 @@ use Splicewire\Beam\Doctor;
  * catalogue can show, and an agent that cannot find a registry builds a parallel mechanism next to it. So
  * the cost of the drift is not a stale document, it is a second implementation of something that already
  * exists — the exact failure the rest of this effort is paying to prevent. It is also the cheapest check
- * here (one attribute fixes any finding), so it is the one place where blocking is proportionate. Registered `gate: true` in `BeamServiceProvider::registerSurgeonAudits()`, and every
+ * here (one attribute fixes any finding), so it is the one place where blocking is proportionate. Registered `gate: true` in `BeamServiceProvider::registerRegistryConformanceAudits()`, and every
  * finding is a {@see Finding::fail()} so it blocks at the runner's DEFAULT floor rather than only at a
  * lowered one.
  *
@@ -186,6 +209,65 @@ class UndescribedRegistryAudit implements DoctorAudit
     }
 
     /**
+     * The same structural scan over the WHOLE host composition rather than the index's membership — what
+     * {@see UndeclaredRegistryShapeAudit} is handed (registry-kernel ticket 35 §2).
+     *
+     * The two scopes are the point of having two audits. `forIndex()` is narrow because it feeds a GATE and
+     * the ratchet is what makes a gate survivable; this one is wide because a report that only looks where
+     * someone already opted in cannot report what nobody has opted into. Same verbs, same exclusions, same
+     * ownership rule — one implementation, so the two can never disagree about what a registry looks like.
+     *
+     * Roots are the host's own source plus every installed family package, **expanded one level and
+     * resolved**. Handing in `vendor/<vendor>` whole — which is what
+     * {@see CentralPinJustificationAudit::forApp()} does — reports almost nothing in a co-dev tree, and
+     * silently: `RecursiveDirectoryIterator` does not follow symlinks, and in a co-dev host every
+     * `vendor/<vendor>/<package>` IS a symlink to the working checkout. Measured before this expansion was
+     * added, a whole-host scan of `splicewire-app` produced ONE row. That is the failure mode this effort
+     * exists to end, reproduced inside its own audit: an empty report and an unread one look identical.
+     *
+     * `<pkg>/src` is preferred over `<pkg>` for {@see governedRoots()}'s reason — each family package
+     * carries its own dev `vendor/` tree, and descending into those re-scans the estate once per package.
+     *
+     * @param  list<string>|null  $roots
+     */
+    public static function forHost(RegistryIndex $index, ?array $roots = null): self
+    {
+        if ($roots !== null) {
+            return new self($roots, $index);
+        }
+
+        $found = [];
+
+        foreach (['app', 'src'] as $dir) {
+            if (is_dir($path = base_path($dir))) {
+                $found[(string) realpath($path)] = true;
+            }
+        }
+
+        foreach (['rushing', 'schemastud', 'splicewire'] as $vendor) {
+            foreach ((array) glob(base_path('vendor/'.$vendor.'/*'), GLOB_ONLYDIR) as $package) {
+                $resolved = realpath((string) $package.'/src') ?: realpath((string) $package);
+
+                if (is_string($resolved)) {
+                    $found[$resolved] = true;
+                }
+            }
+        }
+
+        return new self(array_keys($found), $index);
+    }
+
+    /**
+     * Whether this host can actually run the detection. See the class docblock: `nikic/php-parser` arrives
+     * through `rushing/laravel-surgeon`, which is a `require-dev` of beam, and this audit is registered
+     * unconditionally — so "no parser" is a live state in a production host rather than a hypothetical.
+     */
+    public function detectionAvailable(): bool
+    {
+        return class_exists(ParserFactory::class);
+    }
+
+    /**
      * The owning package is now DERIVED from where the owner's class file sits, not read off a hand-written
      * `package:` field — registry-kernel ticket 07 D4's rule (a declared field beside the thing it describes
      * drifts; a derived one cannot). It reads the index UNFILTERED: scan scope is a structural question, and
@@ -238,6 +320,18 @@ class UndescribedRegistryAudit implements DoctorAudit
      */
     public function run(): array
     {
+        if (! $this->detectionAvailable()) {
+            // Warn, not fail: the host is not misconfigured, it simply composed beam without the dev
+            // dependency that carries the parser. Warn, not PASS: a gate reporting "all clear" because it
+            // could not look is the failure mode this whole effort is paying to remove.
+            return [Finding::warn(self::CHECK, sprintf(
+                'Registry declaration is UNCHECKED in this composition: %s detects container binding call '.
+                'sites and nikic/php-parser (via rushing/laravel-surgeon) is not installed. This is not a '.
+                'clean estate, it is an unread one.',
+                self::class,
+            ))];
+        }
+
         $rows = $this->registries();
         $undescribed = array_values(array_filter($rows, fn (array $row) => ! $row['described']));
 
@@ -603,28 +697,68 @@ class UndescribedRegistryAudit implements DoctorAudit
     }
 
     /**
-     * The composer package a binding site belongs to, from the `vendor/<vendor>/<name>/` path segment —
-     * `null` meaning app-local, which is the value an app-local descriptor's `package:` slot takes.
+     * The composer package a binding site belongs to — `null` meaning app-local, which is the value an
+     * app-local descriptor's `package:` slot takes.
      *
-     * Deliberately NOT a walk up to the nearest `composer.json`: a host's own `composer.json` says
-     * `laravel/laravel`, so that walk would attribute every app binding to the skeleton package and put a
-     * wrong `package:` in the remedy the finding prints.
+     * Two derivations, in order, and the second one exists because the first is blind in exactly the tree
+     * this estate develops in:
+     *
+     *   1. the `vendor/<vendor>/<name>/` path segment, which is right in any canonical install;
+     *   2. failing that, a walk up to the nearest `composer.json` — for a **co-dev** checkout, where
+     *      `vendor/<vendor>/<name>` is a SYMLINK and a resolved path therefore carries no `vendor/` segment
+     *      at all. Before this fallback, every row the whole-host scan produced in `splicewire-app` reported
+     *      `package: null`, i.e. "app-local", for classes that live in twenty different packages.
+     *
+     * The walk stops **at the host's own base path**, which is what the original objection to it was about:
+     * a host's `composer.json` says `laravel/laravel`, so a walk that reached it would attribute every app
+     * binding to the skeleton package. Refusing to cross that line keeps app-local reading as `null` while
+     * letting a symlinked package name itself.
      */
     protected function packageOf(string $file): ?string
     {
         return self::packageOfPath($file);
     }
 
-    /** The same derivation, callable from {@see governedRoots()} before an instance exists. */
-    protected static function packageOfPath(string $file): ?string
+    /**
+     * The same derivation, callable from {@see governedRoots()} before an instance exists — and public
+     * because {@see RegistryConformanceAudit} needs the identical answer. One
+     * implementation, so the gate and the report can never attribute the same class to two packages.
+     */
+    public static function packageOfPath(string $file): ?string
     {
         $normalized = str_replace('\\', '/', $file);
 
-        if (preg_match('#/vendor/([^/]+)/([^/]+)/#', $normalized, $m) !== 1) {
-            return null;
+        if (preg_match('#/vendor/([^/]+)/([^/]+)/#', $normalized, $m) === 1) {
+            return $m[1].'/'.$m[2];
         }
 
-        return $m[1].'/'.$m[2];
+        return self::composerNameAbove($normalized);
+    }
+
+    /**
+     * The `name` of the nearest `composer.json` above a file, never crossing the host's own base path.
+     */
+    protected static function composerNameAbove(string $file): ?string
+    {
+        $stop = function_exists('base_path') ? (string) realpath(base_path()) : '';
+        $dir = dirname($file);
+
+        while ($dir !== '' && $dir !== '/' && $dir !== dirname($dir)) {
+            if ($stop !== '' && $dir === $stop) {
+                return null;
+            }
+
+            if (is_file($manifest = $dir.'/composer.json')) {
+                $decoded = json_decode((string) file_get_contents($manifest), true);
+                $name = is_array($decoded) ? ($decoded['name'] ?? null) : null;
+
+                return is_string($name) && $name !== '' ? $name : null;
+            }
+
+            $dir = dirname($dir);
+        }
+
+        return null;
     }
 
     protected function reflect(string $class): ?ReflectionClass

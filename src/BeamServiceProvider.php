@@ -46,6 +46,7 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
+use Splicewire\Beam\Console\RegistryConformanceCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
@@ -54,11 +55,14 @@ use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
+use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
 use Splicewire\Beam\Doctor\ScribeOutputContractAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
+use Splicewire\Beam\Doctor\Support\TrackerTicketStatus;
 use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
+use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Facades\Beam;
@@ -532,6 +536,7 @@ class BeamServiceProvider extends PackageServiceProvider
 
         $this->registerSurgeonAudits();
         $this->registerFacadeConformanceAudits();
+        $this->registerRegistryConformanceAudits();
         $this->registerConformanceManifest();
     }
 
@@ -553,8 +558,8 @@ class BeamServiceProvider extends PackageServiceProvider
      * facade check at all, because what it shares with the five is the *scope*, which is the expensive
      * part. Read the regime as "beam's static, host-scoped conformance checks" rather than as five things
      * about the facade; the same is already true of {@see KeyTypeConformanceAudit} below. Precedent is
-     * lopsided — exactly one audit in the estate is `gate: true` ({@see UndescribedRegistryAudit}, carrying
-     * an in-code justification for being the sole exception) — and the specific argument here is that
+     * lopsided — two audits in the estate are `gate: true`, both in {@see registerRegistryConformanceAudits()}
+     * and both carrying an in-code justification for the exception — and the specific argument here is that
      * ticket 10's census measured 238 naive flags across 16 repos on day one. That is how a check gets its
      * floor bumped and then deleted. Gating stays available to *callers*: ticket 07 made the old bridge
      * audit a gate on every sweep unit without it being registered as one.
@@ -740,12 +745,6 @@ class BeamServiceProvider extends PackageServiceProvider
         // every pin in the estate lives in a package, so an `app/`-only scan would report a comfortable zero
         // from inside every host while the backlog sat one directory over. See the audit's `forApp()`.
         $this->app->bind(CentralPinJustificationAudit::class, fn () => CentralPinJustificationAudit::forApp());
-        // The meta-audit reads the LIVE index to derive its own scan scope, so it is bound off the container
-        // rather than given a static path list — the governed set is whatever has described itself by boot.
-        $this->app->bind(UndescribedRegistryAudit::class, fn ($app) => UndescribedRegistryAudit::forIndex(
-            $app->make(RegistryIndex::class),
-        ));
-
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkEndpointDriftAudit::class);
@@ -779,14 +778,78 @@ class BeamServiceProvider extends PackageServiceProvider
         // burn-down is one `Relation::morphMap()` line per finding; promote to `gate: true` once it is
         // clear and the permanently-exempt set is decided.
         $manifest->register('splicewire/laravel-beam', MorphAliasCoverageAudit::class);
+    }
+
+    /**
+     * The registry-conformance regime (registry-kernel ticket 35, from ticket 14) — three audits and one
+     * ratchet command, all **doctor-side and unconditional**.
+     *
+     * ## Unconditional is the fix, not a detail
+     *
+     * {@see UndescribedRegistryAudit} was registered in {@see registerSurgeonAudits()} until now, which put
+     * the estate's only GATE behind `interface_exists(SuggestsOperations::class)` — and
+     * `rushing/laravel-surgeon` is a `require-dev` of beam. So the one check the effort was willing to block
+     * on was silently absent from every production host: enforcement as a function of host composition,
+     * which is ticket 04 D1's defect wearing a different hat, and the reason ticket 14 D7 moved it here.
+     * The two ticket-35 audits are registered beside it for the same reason rather than for a different one.
+     *
+     * They pay the price that goes with it. `nikic/php-parser` arrives through surgeon, so an unconditional
+     * audit can run in a host without it — and both of the shape-reading audits report their own blindness
+     * there instead of an empty work-list. See {@see UndescribedRegistryAudit::detectionAvailable()}.
+     *
+     * ## One gate, two advisories, and the line between them
+     *
+     * {@see RegistryConformanceAudit} gates because its population OPTED IN by declaring `#[IsRegistry]`, so
+     * it carries no suppression list of any kind (14 D6). That property only holds because
+     * {@see UndeclaredRegistryShapeAudit} exists beside it to carry every judgement call — which is exactly
+     * why the second one never gates. Splitting them was ticket 14's central decision; registering them
+     * apart is what makes the split real rather than documentary.
+     */
+    protected function registerRegistryConformanceAudits(): void
+    {
+        // The meta-audit reads the LIVE index to derive its own scan scope, so it is bound off the container
+        // rather than given a static path list — the governed set is whatever has described itself by boot.
+        $this->app->bind(UndescribedRegistryAudit::class, fn ($app) => UndescribedRegistryAudit::forIndex(
+            $app->make(RegistryIndex::class),
+        ));
+
+        // The gate reads the live container binding table plus the index, so its claim is about THIS
+        // composition and never about the family (14 D2, D12).
+        $this->app->bind(RegistryConformanceAudit::class, fn ($app) => new RegistryConformanceAudit(
+            $app,
+            $app->make(RegistryIndex::class),
+        ));
+
+        // The advisory report consumes the meta-audit's structural test at HOST scope — same verbs, same
+        // exclusions, one implementation, a wider net. A second copy of that heuristic would drift.
+        $this->app->bind(UndeclaredRegistryShapeAudit::class, fn ($app) => new UndeclaredRegistryShapeAudit(
+            UndescribedRegistryAudit::forHost($app->make(RegistryIndex::class)),
+            (string) (config('beam.core.registry_conformance.artifact') ?? base_path('.beam/registry-conformance.json')),
+            UndeclaredRegistryShapeAudit::DEFAULT_WHITELIST,
+            TrackerTicketStatus::fromConfig(),
+        ));
+
+        $manifest = $this->app->make(BeamDoctorManifest::class);
+
         // GATE — the ONLY gating registration in the particle-doctrine-convergence effort. Everything else
         // here is a burn-down backlog; this one protects the discoverability surface the rest of the effort
         // depends on. `popcorn:registries --json` is what an agent is told to run to answer "where do
-        // I register this", so an undescribed registry is not a stale document, it is an agent building a
+        // I register this", so an undeclared registry is not a stale document, it is an agent building a
         // parallel mechanism next to one that already exists. It is also the cheapest possible fix (one
-        // `describe(...)` call), which is what makes blocking proportionate here and nowhere else. Its
-        // findings are Fail, so it blocks at the runner's DEFAULT floor.
+        // attribute), which is what makes blocking proportionate here and nowhere else. Its findings are
+        // Fail, so it blocks at the runner's DEFAULT floor.
         $manifest->register('splicewire/laravel-beam', UndescribedRegistryAudit::class, gate: true);
+
+        // GATE, and the second one the estate has ever had — see the audit's own docblock for why the usual
+        // "blocks every host on day one" objection does not reach a population that opted in by declaring
+        // itself. Its `implements Registry` check reports rather than blocks until tickets 37/38 land the
+        // migration; that is one population-wide flag naming no rows, not a suppression list.
+        $manifest->register('splicewire/laravel-beam', RegistryConformanceAudit::class, gate: true);
+
+        // Advisory, permanently. This is where every judgement call about a registry-SHAPED class lives, and
+        // a judgement call that fails the build is a judgement someone else made for you. It ratchets via
+        // its committed artifact and `splicewire:beam:registry-conformance --check`, not via the gate.
+        $manifest->register('splicewire/laravel-beam', UndeclaredRegistryShapeAudit::class);
     }
 
     /**
@@ -871,6 +934,11 @@ class BeamServiceProvider extends PackageServiceProvider
                 GenerateClientSdkCommand::class,
                 GenerateAssetsCommand::class,
                 UndeclaredSurfaceCommand::class,
+                // The registry ratchet's write/check/json surface (registry-kernel ticket 35 §3). Sits
+                // beside the undeclared-surface command it is modelled on, and unconditional for the same
+                // reason its audits are: the artifact is the accountability, and a command that only exists
+                // where a dev dependency does is a ratchet half the fleet cannot turn.
+                RegistryConformanceCommand::class,
                 // The particle scaffolders (particle-doctrine-convergence ticket 08). The estate had NO
                 // generator of any kind, and that absence is the mechanical reason deviation propagates: an
                 // agent adding a surface reverse-engineers the pattern from whatever example it opened and
