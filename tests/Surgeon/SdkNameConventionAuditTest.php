@@ -131,14 +131,17 @@ class SdkNameConventionAuditTest extends TestCase
 
     public function test_a_live_route_with_no_tag_and_no_declared_exclusion_stays_a_warn_naming_the_gap(): void
     {
+        // Synthetic: the audit is fed these arrays directly, so the route need not exist. Kept
+        // synthetic on purpose — this fixture used to name `/api/schema-forms/relay-section`, which
+        // beam-facade ticket 71 retired, and a fixture naming a live route goes stale when it moves.
         $sdk = [[
-            'fqn' => 'Splicewire\\Client\\Requests\\Intake\\RelaySection',
-            'domain' => 'Intake',
-            'class' => 'RelaySection',
+            'fqn' => 'Splicewire\\Client\\Requests\\Widgets\\SyncWidget',
+            'domain' => 'Widgets',
+            'class' => 'SyncWidget',
             'method' => 'POST',
-            'literal' => '/api/schema-forms/relay-section',
+            'literal' => '/api/widgets/sync',
         ]];
-        $routes = ['api/schema-forms/relay-section']; // live, unspecced, NOT declared excluded
+        $routes = ['api/widgets/sync']; // live, unspecced, NOT declared excluded
         $tags = [];
 
         $findings = $this->audit()->suggestFor($sdk, $routes, $tags);
