@@ -56,6 +56,14 @@ return new class extends Migration
                 $table->json('payload');
                 $table->json('context')->nullable();
                 $table->json('meta')->nullable();
+                // The `x-beam-dedupe` match key (beam-facade ticket 50 §10): nullable and PLAINLY
+                // indexed, never unique — the ledger stays append-only and a repeat is MARKED, not
+                // dropped, so "400 signups, 340 distinct" is a bare `distinct('dedupe_key')`. A real
+                // column and not a `meta` key because that count is a page a host renders, and a
+                // JSON-path query indexes differently across sqlite-in-tests and MySQL. Additive
+                // nullable, so the convergent guard's NOT-NULL-into-a-populated-table hazard
+                // (ticket 27) does not bite when it tops up an existing copy.
+                $table->string('dedupe_key')->nullable()->index();
                 $table->uuid('user_id')->nullable()->index();
                 $table->timestamps();
             })

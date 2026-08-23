@@ -15,6 +15,7 @@ use Splicewire\Beam\Source\ParticleShadower;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\Contracts\WriteStage;
 use Splicewire\Beam\Write\Stages\AuthorizeStage;
+use Splicewire\Beam\Write\Stages\DedupeStage;
 use Splicewire\Beam\Write\Stages\EmitStage;
 use Splicewire\Beam\Write\Stages\PersistStage;
 use Splicewire\Beam\Write\Stages\ValidateStage;
@@ -32,11 +33,20 @@ use Splicewire\Beam\Write\Stages\ValidateStage;
  *   2. {@see ValidateStage} — payload vs. the record type's resolved target schema via the
  *      {@see AcceptanceGate}; non-conforming ⇒ {@see PayloadRejected}, nothing persists (skipped when the
  *      type has no registered schema: a plain app model validates at its own DTO boundary);
- *   3. {@see PersistStage} — fill through the model's {@see PersistsBeamParticle} seam and save (to ANY
+ *   3. {@see DedupeStage} — stamp the capture's match key and act on the target schema's
+ *      `x-beam-dedupe` (beam-facade ticket 66); a no-op when the schema carries no keyword, which is
+ *      every schema in the estate that has not opted in. It sits AFTER the two gates deliberately: an
+ *      unauthorized duplicate is a 403 and an invalid duplicate is a 422, so a dedupe verdict never
+ *      preempts a gate;
+ *   4. {@see PersistStage} — fill through the model's {@see PersistsBeamParticle} seam and save (to ANY
  *      trait-bearing model, which keeps its own table), then run the optional after-persist hook (relation
  *      syncs live HERE, deliberately not their own stage — DESIGN §3a);
- *   4. {@see EmitStage} — one {@see BeamParticlePersisted}, the single post-persist signal every write path
+ *   5. {@see EmitStage} — one {@see BeamParticlePersisted}, the single post-persist signal every write path
  *      shares (suppressible for a light shadow-write).
+ *
+ * A caller reads the WRITTEN MODEL off this method's return value, never off the instance it passed in:
+ * under `x-beam-dedupe`'s `ignore` mode the returned model is the row that MATCHED, a different object
+ * from the one handed in, and the two must stay indistinguishable to the caller.
  *
  * A host layers a cross-cutting concern (audit, tenancy stamp, rate-limit, idempotency) by passing its own
  * ordered `$stages` list — inserting a pipe into the chain, not wrapping or subclassing this writer. Passing
@@ -100,7 +110,7 @@ class ParticleWriter
     }
 
     /**
-     * The shipped default chain — authorize → validate → persist → emit — built from THIS writer's own
+     * The shipped default chain — authorize → validate → dedupe → persist → emit — built from THIS writer's own
      * collaborators (not resolved fresh from the container) so a caller that constructs the writer with a
      * bespoke gate (e.g. the public-intake host binding) has that gate govern authorization.
      *
@@ -111,6 +121,7 @@ class ParticleWriter
         return [
             new AuthorizeStage($this->gate),
             new ValidateStage($this->targets, $this->acceptance),
+            new DedupeStage($this->targets),
             new PersistStage,
             new EmitStage($this->events),
         ];

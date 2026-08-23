@@ -103,9 +103,15 @@ class PublicIntakeController
         $record->meta = ['intake' => $this->provenance($request, $actor)->toArray()];
 
         $writer = new ParticleWriter($gate, $this->targets, $this->acceptance, $this->events);
-        $writer->write($record, $payload, $actor);
 
-        return new JsonResponse(['id' => $record->getKey(), 'schemaRef' => $record->schema_ref], 201);
+        // Report the WRITTEN model, never the instance handed in. Under `x-beam-dedupe`'s `ignore`
+        // mode the pipeline hands back the row that MATCHED — a different object — and the response
+        // must be byte-identical to a fresh capture's (ticket 50 §6): reading `$record` here would
+        // return the unsaved instance's key instead, turning a public door into an
+        // email-existence oracle by the shape of its own success body.
+        $written = $writer->write($record, $payload, $actor);
+
+        return new JsonResponse(['id' => $written->getKey(), 'schemaRef' => $written->schema_ref], 201);
     }
 
     /** Prefer the schema's own absolute `$id` as the binding; fall back to the route ref. */

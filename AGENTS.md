@@ -47,6 +47,19 @@ and what convergence cannot do are all in
 What stays in beam is the OTHER half of the collision family — `docs/agents/migration-publish-ordering.convention.md`,
 above — because the installer that spends its filename-order lever is beam's.
 
+## The dedupe keyword
+
+`x-beam-dedupe: { by: ['email'], mode: 'admit' }` is beam-core's first owned keyword — the one place
+"how a capture behaves when its key matches an earlier one" is declared. All three modes are
+LEDGER-side (`admit` marks the repeat, `ignore` drops it, `reject` refuses it); `update` and
+`version` are deliberately not legal values. Two rules a reader must not have to re-derive:
+**precedence is authorize → validate → dedupe → persist**, so a dedupe verdict never preempts a gate;
+and **`ignore` must stay byte-identical to a fresh capture**, because otherwise a public door is an
+email-existence oracle — read the written model off `ParticleWriter::write()`'s RETURN VALUE, never
+off the instance you passed in. `reject` is an oracle by construction and is legitimate only behind
+an authenticated door. The key recipe is write-once. See
+`docs/agents/dedupe-keyword.convention.md`.
+
 ## Vendored family-package conventions
 
 Any repo that vendors another family repo's code (composer `vendor/<vendor>/<pkg>/`, npm

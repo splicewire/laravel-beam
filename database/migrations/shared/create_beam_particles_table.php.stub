@@ -58,6 +58,13 @@ return new class extends Migration
                 $table->json('payload')->nullable();
                 $table->json('meta')->nullable();
 
+                // The `x-beam-dedupe` match key (beam-facade ticket 50 §10, §11). It lands on BOTH
+                // base particle tables — here and on `beam_submissions` — because dedupe is opt-in
+                // per MODEL (the `Deduplicates` trait) and both base models opt in. Nullable and
+                // plainly indexed, never unique: a repeat is marked, not refused at the storage
+                // layer, which is what keeps the ledger append-only.
+                $table->string('dedupe_key')->nullable()->index();
+
                 // Source provenance + lifecycle tier (ticket 06).
                 $table->string('source_tier')->default('local')->index();
                 $table->string('external_ref')->nullable();

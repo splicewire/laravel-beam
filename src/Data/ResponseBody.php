@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
+use Splicewire\Beam\Write\Dedupe\DuplicateRejected;
 
 #[TypeScript]
 class ResponseBody extends Data
@@ -114,6 +115,20 @@ class ResponseBody extends Data
     {
         $this->success = false;
         $this->statusCode = Response::HTTP_NOT_FOUND;
+
+        return $this;
+    }
+
+    /**
+     * 409 — the request was well-formed and authorized, and the STORE's state refuses it. Beam's
+     * one raiser today is `x-beam-dedupe`'s `reject` mode (beam-facade ticket 50 §5); a caller
+     * letting {@see DuplicateRejected} bubble gets the same status
+     * with no wiring, and reaches for this only when assembling its own body.
+     */
+    public function conflict(): static
+    {
+        $this->success = false;
+        $this->statusCode = Response::HTTP_CONFLICT;
 
         return $this;
     }

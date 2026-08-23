@@ -8,6 +8,7 @@ use Rushing\Versioning\Concerns\Versionable as VersionableTrait;
 use Rushing\Versioning\Contracts\MigratesSnapshotOnRestore;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\Contracts\Versionable;
+use Splicewire\Beam\Concerns\Deduplicates;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Revisions\RecordsRevisions;
@@ -57,6 +58,7 @@ use Splicewire\Beam\Schema\SchemaId;
  */
 class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionable
 {
+    use Deduplicates;
     use PersistsBeamParticle;
     use ReconcilesPayloadOnRead;
     use RecordsRevisions;
