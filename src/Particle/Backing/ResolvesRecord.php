@@ -12,7 +12,7 @@ namespace Splicewire\Beam\Particle\Backing;
  *    the arm of a union a record belongs to, since the same row id can exist under either arm. That is
  *    a filter by any other name, and giving it a dedicated positional parameter meant every backing had
  *    to accept an argument only unions use. It now travels in the same opaque `$filters` bag
- *    {@see StreamsRecords::stream()} and {@see QueriesRecords::query()} take, so **a caller hands every
+ *    {@see StreamsRecords::records()} and {@see QueriesRecords::query()} take, so **a caller hands every
  *    capability the identical argument shape** whatever backs the resource.
  * 2. **`ResolvedUnionItem` became {@see ResolvedRecord}** in beam's namespace, unchanged in shape.
  *

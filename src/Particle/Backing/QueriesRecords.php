@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
  * saved filters, owner scoping, the declared `#[Sortable(default: true)]` order) needs in order to do
  * its work *on* the query rather than after it.
  *
- * A backing that has a real query to compose implements both, and gets `stream()` for free from
+ * A backing that has a real query to compose implements both, and gets `records()` for free from
  * {@see BacksEloquent}. A backing that does not — one fusing several services, or reading a remote API
  * — implements `StreamsRecords` alone and owns its own paging. Neither is the fallback for the other:
  * `StreamsRecords` is more general, `QueriesRecords` is more capable.
@@ -31,7 +31,7 @@ interface QueriesRecords extends ResourceBacking
      * The base query for a list read, before pagination.
      *
      * @param  array<string, mixed>  $filters  the request's opaque `filter[...]` bag — the SAME argument
-     *                                         shape {@see StreamsRecords::stream()} takes, so a caller
+     *                                         shape {@see StreamsRecords::records()} takes, so a caller
      *                                         hands the two capabilities identical input
      */
     public function query(array $filters): Builder;

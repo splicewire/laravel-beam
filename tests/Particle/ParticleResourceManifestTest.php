@@ -82,7 +82,6 @@ class ParticleResourceManifestTest extends TestCase
 
         $this->assertInstanceOf(ResourceDefinition::class, $def);
         $this->assertSame('widgets', $def->key);
-        $this->assertSame('model', $def->sourceKind);
         $this->assertSame('App\\Models\\Widget', $def->model);
         $this->assertSame(WidgetGateData::class, $def->data);
         $this->assertSame('Widgets', $def->nav->label);

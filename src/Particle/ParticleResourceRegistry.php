@@ -75,11 +75,10 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
 class ParticleResourceRegistry
 {
     /**
-     * The stored DECLARATIONS, keyed by resource key — a {@see ParticleResource} (projected per-realm at
-     * build) or a raw {@see ResourceDefinition} (the imperative/union escape hatch — {@see registerDefinition()}
-     * — served as-is; realm-invariant by construction).
+     * The stored DECLARATIONS, keyed by resource key — always a {@see ParticleResource}, projected
+     * per-realm at build.
      *
-     * @var array<string, ParticleResource|ResourceDefinition>
+     * @var array<string, ParticleResource>
      */
     private array $resources = [];
 
@@ -110,16 +109,8 @@ class ParticleResourceRegistry
 
     public function get(string $key): ParticleResource
     {
-        $resource = $this->resources[$key]
+        return $this->resources[$key]
             ?? throw new RuntimeException("No particle resource registered for key [{$key}].");
-
-        if (! $resource instanceof ParticleResource) {
-            throw new RuntimeException(
-                "Resource [{$key}] was registered as a raw ResourceDefinition (registerDefinition); it has no ParticleResource declaration for REST use."
-            );
-        }
-
-        return $resource;
     }
 
     public function has(string $key): bool
@@ -128,19 +119,19 @@ class ParticleResourceRegistry
     }
 
     /**
-     * Every registered {@see ParticleResource} DECLARATION, registration order — for auditors walking
-     * the declared set rather than looking one up (the schema-projection drift audit,
-     * particle-doctrine-followups 14). Raw {@see ResourceDefinition} escape-hatch entries are excluded:
-     * they carry no `data:`/`input:` Data-class declaration to audit.
+     * Every registered DECLARATION, registration order — for auditors walking the declared set rather
+     * than looking one up (the schema-projection drift audit, particle-doctrine-followups 14).
+     *
+     * This used to filter `instanceof ParticleResource` to exclude raw `ResourceDefinition` escape-hatch
+     * entries, on the grounds that they carried no Data class to audit — ⚠️ which was never true
+     * (`ResourceDefinition::$data` is required and non-nullable), so the drift audit was blind to exactly
+     * the resources this map suspected. Under one declaration type the filter is the identity and goes.
      *
      * @return list<ParticleResource>
      */
     public function all(): array
     {
-        return array_values(array_filter(
-            $this->resources,
-            fn ($resource) => $resource instanceof ParticleResource,
-        ));
+        return array_values($this->resources);
     }
 
     // ── Registration — gains the realm axis ─────────────────────────────────────────────────────────
@@ -170,19 +161,6 @@ class ParticleResourceRegistry
 
         $this->resources[$resource->key] = $resource;
         $this->registerRealms($resource->key, $realms);
-    }
-
-    /**
-     * The ->registerDefinition() escape hatch: add an attribute-less resource imperatively as a raw
-     * {@see ResourceDefinition} (e.g. a Frame union `source`). Stored as-is and served realm-invariant —
-     * it carries no per-realm projection or overlay (there is no {@see ParticleResource} to project).
-     *
-     * @param  list<string>  $realms  see {@see register()}.
-     */
-    public function registerDefinition(ResourceDefinition $definition, array $realms = []): void
-    {
-        $this->resources[$definition->key] = $definition;
-        $this->registerRealms($definition->key, $realms);
     }
 
     /**
@@ -285,7 +263,7 @@ class ParticleResourceRegistry
             return false;
         }
 
-        return ! ($resource instanceof ParticleResource && ! $resource->isFramed());
+        return $resource->isFramed();
     }
 
     /**
@@ -298,7 +276,7 @@ class ParticleResourceRegistry
             "No frame resource registered for key [{$key}]."
         );
 
-        if ($resource instanceof ParticleResource && ! $resource->isFramed()) {
+        if (! $resource->isFramed()) {
             throw new InvalidArgumentException(
                 "Resource [{$key}] is a REST-only particle resource; it has no Frame manifest projection."
             );
@@ -322,7 +300,7 @@ class ParticleResourceRegistry
         $manifest = [];
 
         foreach ($this->resources as $key => $resource) {
-            if ($resource instanceof ParticleResource && ! $resource->isFramed()) {
+            if (! $resource->isFramed()) {
                 continue;
             }
 
@@ -367,11 +345,9 @@ class ParticleResourceRegistry
      * Then the {@see RealmResourceRegistry} cross-layer PRESENTATION overlay is applied — a DIFFERENT
      * package/layer's `(realm, key)` override, inert (identity) when none is registered for this pair.
      */
-    private function project(ParticleResource|ResourceDefinition $resource, ?string $realm): ResourceDefinition
+    private function project(ParticleResource $resource, ?string $realm): ResourceDefinition
     {
-        $definition = $resource instanceof ParticleResource
-            ? $resource->toResourceDefinition($realm)
-            : $resource;
+        $definition = $resource->toResourceDefinition($realm);
 
         return $this->overrides === null
             ? $definition

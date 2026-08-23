@@ -207,8 +207,12 @@ class ParticleResource
 
     /**
      * Project into Frame's agnostic manifest contract. Beam reflects this declaration and *feeds* Frame's
-     * manifest machinery (Frame renders what it is handed; it never names a model). Model-backed ⇒
-     * `sourceKind: 'model'`, creatable unless declared {@see $readOnly} (ADR-0156 §83).
+     * manifest machinery (Frame renders what it is handed). Creatable unless declared {@see $readOnly}
+     * (ADR-0156 §83).
+     *
+     * `sourceKind`/`source` are no longer passed because frame no longer HAS them (ticket 13 steps 5+7):
+     * they were beam's contract living in frame's class, with zero branching readers, and the backing
+     * they discriminated is now a type rather than a pair of strings.
      *
      * @param  string|null  $realm  ACCEPTED but IGNORED for now (RDU-01) — the projection is identical for
      *                              every realm. The param exists so later issues (realm-addressable
@@ -224,9 +228,7 @@ class ParticleResource
 
         return new ResourceDefinition(
             key: $this->key,
-            sourceKind: 'model',
             model: $this->modelClass(),
-            source: null,
             data: $this->data,
             creatable: ! $this->readOnly,
             deletable: $this->deletable ?? ! $this->readOnly,

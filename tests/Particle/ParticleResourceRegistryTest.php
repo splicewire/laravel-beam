@@ -2,10 +2,11 @@
 
 namespace Splicewire\Beam\Tests\Particle;
 
+use Illuminate\Pagination\CursorPaginator;
 use InvalidArgumentException;
-use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
+use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleResource as ParticleResourceRuntime;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
@@ -111,61 +112,48 @@ class ParticleResourceRegistryTest extends TestCase
         $this->assertSame('framed-particle', $manifest[0]->key);
     }
 
-    public function test_a_source_backed_union_resource_registers_imperatively_as_a_frozen_definition(): void
+    public function test_a_backing_declared_resource_registers_imperatively(): void
     {
-        // The model-required #[ParticleResource] attribute can't express a source-backed union resource,
-        // so it registers imperatively as a raw ResourceDefinition (RDU-07) — served as-is, realm-invariant.
+        // A resource backed by something other than a plain Eloquent model cannot be expressed by the
+        // attribute (there is nowhere to put a backing class), so it registers imperatively — as a
+        // ParticleResource like everything else. It used to register as a raw ResourceDefinition through
+        // a second entry point; ticket 13 step 9 merged the two types and `registerDefinition()` is gone.
         $registry = new ParticleResourceRegistry;
-        $definition = new ResourceDefinition(
+
+        $registry->register(new ParticleResourceRuntime(
             key: 'union-admin',
-            sourceKind: 'service',
-            model: null,
-            source: 'App\\Sources\\ReviewQueue',
+            backing: FixtureStreamOnlyBacking::class,
             data: WidgetGateData::class,
-            creatable: false,
-            query: null,
-            editData: null,
-            policy: null,
-            form: 'bare',
-            nav: new NavMetadata(label: 'Union Admin'),
+            label: 'Union Admin',
+            readOnly: true,
             deletable: false,
             editable: false,
-        );
-
-        $registry->registerDefinition($definition);
+        ));
 
         $this->assertTrue($registry->hasFramedResource('union-admin'));
 
         $def = $registry->definition('union-admin');
-        $this->assertSame('service', $def->sourceKind);
-        $this->assertSame('App\\Sources\\ReviewQueue', $def->source);
         $this->assertFalse($def->creatable);
         $this->assertFalse($def->deletable);
         $this->assertFalse($def->editable);
     }
 
-    public function test_the_imperative_register_escape_hatch_serves_a_raw_definition(): void
+    public function test_an_affordance_may_not_exceed_what_the_backing_can_do(): void
     {
+        // Capability is the CEILING (ticket 11 §A5). A stream-only backing cannot write, so a resource
+        // declaring itself writable against one is a DECLARATION error caught at registration — not a
+        // 405 discovered on the first store.
         $registry = new ParticleResourceRegistry;
-        $definition = new ResourceDefinition(
-            key: 'imperative',
-            sourceKind: 'model',
-            model: 'App\\Models\\Widget',
-            source: null,
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/cannot write/');
+
+        $registry->register(new ParticleResourceRuntime(
+            key: 'illegal-writable',
+            backing: FixtureStreamOnlyBacking::class,
             data: WidgetGateData::class,
-            creatable: true,
-            query: null,
-            editData: null,
-            policy: null,
-            form: 'bare',
-            nav: new NavMetadata(label: 'Imperative'),
-        );
-
-        $registry->registerDefinition($definition);
-
-        // A raw ResourceDefinition escape hatch is served as-is (realm-invariant).
-        $this->assertSame($definition, $registry->definition('imperative'));
-        $this->assertSame([$definition], $registry->definitions());
+            label: 'Illegal',
+        ));
     }
 
     public function test_an_unannotated_class_throws(): void
@@ -190,3 +178,15 @@ class FixtureFramedParticleResource {}
 class FixtureRestOnlyParticleResource {}
 
 class FixtureUnannotated {}
+
+/**
+ * A backing that can only stream — no query, no write. Stands in for the estate's genuine unions
+ * (tower's `review-queue`, the membership pivots) in a test that only needs the CAPABILITY shape.
+ */
+class FixtureStreamOnlyBacking implements StreamsRecords
+{
+    public function records(array $filters, ?string $cursor, int $perPage): \Illuminate\Contracts\Pagination\CursorPaginator
+    {
+        return new CursorPaginator([], $perPage);
+    }
+}

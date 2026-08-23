@@ -9,12 +9,15 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
-use Schemastud\Frame\Contracts\UnionQuery;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\Backing\QueriesRecords;
+use Splicewire\Beam\Particle\Backing\ResolvesRecord;
+use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
@@ -54,12 +57,12 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     public function index(ResourceDefinition $definition, array $params): array
     {
         // A service-backed (union) resource has no single model to query: its list is a MERGE of N
-        // sub-sources fused behind Frame's {@see UnionSource} port (ADR-0156 §57-58, §83 — widen the
-        // Particle to serve a UnionSource, never keep a bespoke handler). Resolve the source off the
+        // sub-sources fused behind a backing that only STREAMS (ADR-0156 §57-58, §83 — widen the
+        // Particle to serve one, never keep a bespoke handler). Resolve the backing off the
         // definition and flatten its paginated page to the flat row array this handler returns (the
         // Frame socket wraps it into the `{data,…}` envelope). Model-backed resources are unaffected.
-        if ($definition->source !== null) {
-            return $this->unionIndex($definition);
+        if ($this->streamsOnly($definition)) {
+            return $this->streamedIndex($definition);
         }
 
         $query = $this->indexQuery($definition);
@@ -71,8 +74,8 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     }
 
     /**
-     * The list for a service-backed union resource: build a {@see UnionQuery} from the request's opaque
-     * `filter[…]` facets + cursor/perPage, hand it to the definition's {@see UnionSource}, and project
+     * The list for a resource whose backing only {@see StreamsRecords}: take the request's opaque
+     * `filter[…]` bag + cursor/perPage, hand them to the backing, and project
      * each merged item through the resource's read Data class (its spatie magic named constructor, e.g.
      * `ReviewItemResourceData::fromReviewItem`, resolves off the item type). The source owns merge/sort/
      * filter/pagination; Frame only wires it. Read-only by construction (`creatable: false` ⇒ store/
@@ -80,26 +83,24 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      *
      * @return array<int, array<string, mixed>>
      */
-    protected function unionIndex(ResourceDefinition $definition): array
+    protected function streamedIndex(ResourceDefinition $definition): array
     {
         $request = app(Request::class);
 
         /** @var class-string<Data> $dataClass */
         $dataClass = $definition->data;
 
-        $query = new UnionQuery(
-            // The WHOLE `filter[...]` bag, passed through opaquely — the {@see UnionSource} owns its own
-            // facet semantics ({@see UnionQuery}: "opaque bag the service interprets"), Frame does not
-            // interpret it. Every source reads only the keys it knows (review-queue: `source`/`parent_id`/
-            // `keywords`; tenant: `period`) and ignores the rest, so forwarding the full bag is additive —
-            // a source is unaffected by facet keys it does not consume. perPage floored at 1 to guard a
-            // paginator underflow.
-            filters: array_filter((array) $request->input('filter', [])),
-            cursor: $request->query('cursor'),
-            perPage: max(1, (int) $request->integer('perPage', 25)),
-        );
+        // The WHOLE `filter[...]` bag, passed through opaquely — the backing owns its own query
+        // semantics and beam does not interpret it. Every backing reads only the keys it knows
+        // (review-queue: `source`/`parent_id`/`keywords`; tenants: `period`) and ignores the rest, so
+        // forwarding the full bag is additive. perPage floored at 1 to guard a paginator underflow.
+        $filters = array_filter((array) $request->input('filter', []));
+        $cursor = $request->query('cursor');
+        $perPage = max(1, (int) $request->integer('perPage', 25));
 
-        return collect($definition->resolveSource()->index($query)->items())
+        $backing = $this->backing($definition, StreamsRecords::class);
+
+        return collect($backing->records($filters, $cursor, $perPage)->items())
             ->map(fn (mixed $item) => ($item instanceof Data ? $item : $dataClass::from($item))->toArray())
             ->all();
     }
@@ -145,13 +146,13 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     public function show(ResourceDefinition $definition, string $id): array
     {
-        // A service-backed (union) resource resolves ONE item by (source, id) through its UnionSource's
-        // `find()` — a payload-resolved detail (the `schemaRef` dereference seam), NOT a model edit
+        // A stream-only backing resolves ONE record through {@see ResolvesRecord::resolve()} — a
+        // payload-resolved detail (the `schemaRef` dereference seam), NOT a model edit
         // projection. This runs BEFORE the `assertWritable` guard: a union is always detail-capable
         // regardless of its (never-set) `showable`. Model-backed resources fall through to the `showable`-
         // gated projection below (which, post-F04, serves a read-only browse's detail too).
-        if ($definition->source !== null) {
-            return $this->unionShow($definition, $id);
+        if ($this->streamsOnly($definition)) {
+            return $this->resolvedShow($definition, $id);
         }
 
         // A per-record detail (`records/{id}`, show) rides the `showable` gate, INDEPENDENT of `editable`
@@ -179,16 +180,22 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      *
      * @return array<string, mixed>
      */
-    protected function unionShow(ResourceDefinition $definition, string $id): array
+    protected function resolvedShow(ResourceDefinition $definition, string $id): array
     {
-        $source = (string) app(Request::class)->query('source', '');
+        $request = app(Request::class);
 
-        $resolved = $definition->resolveSource()->find($source, $id);
+        // The union-arm discriminator now rides the same opaque bag every other capability takes,
+        // rather than a positional argument only unions ever used. `source` stays a detail-route query
+        // param, so a caller's URL is unchanged; it is merged into the filters the backing already reads.
+        $filters = array_filter((array) $request->input('filter', []));
+        $filters['source'] = (string) $request->query('source', '');
+
+        $resolved = $this->backing($definition, ResolvesRecord::class)->resolve($id, $filters);
 
         abort_if($resolved === null, 404, "No '{$definition->key}' record found.");
 
         return array_merge(
-            $resolved->item->toArray(),
+            $resolved->record->toArray(),
             ['schemaRef' => $resolved->schemaRef],
         );
     }
@@ -266,6 +273,51 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     }
 
     /**
+     * Does this resource's backing yield only a finished PAGE, never a composable query?
+     *
+     * The successor to `$definition->source !== null`, and it asks the honest question. The old test
+     * read a class-string field that existed solely to mean "not a plain model" — a discriminator
+     * standing in for a type test. This IS the type test: a backing that cannot hand back a `Builder`
+     * cannot be served by the model paths (subject resolution, the scope closure, `findOrFail`), so it
+     * takes the streamed path instead.
+     */
+    protected function streamsOnly(ResourceDefinition $definition): bool
+    {
+        $resource = $this->resource($definition);
+
+        return $resource !== null && ! $resource->backing() instanceof QueriesRecords;
+    }
+
+    /**
+     * This resource's backing, asserted to carry the given capability.
+     *
+     * @template T of \Splicewire\Beam\Particle\Backing\ResourceBacking
+     *
+     * @param  class-string<T>  $capability
+     * @return T
+     */
+    protected function backing(ResourceDefinition $definition, string $capability): object
+    {
+        $resource = $this->resource($definition);
+
+        if ($resource === null) {
+            throw new RuntimeException(
+                "Resource [{$definition->key}] has no registered declaration, so it has no backing."
+            );
+        }
+
+        $backing = $resource->backing();
+
+        if (! $backing instanceof $capability) {
+            throw new RuntimeException(
+                "Resource [{$definition->key}]'s backing [".$backing::class."] does not implement {$capability}."
+            );
+        }
+
+        return $backing;
+    }
+
+    /**
      * The registered particle declaration for this resource key, if any — carries the enrichment
      * ({@see ParticleResource::$includes} / `$project` / `$prepare` / `$afterWrite` / `$input`). Null for a
      * manifest-only resource (the zero-glue default).
@@ -289,9 +341,9 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      */
     protected function query(ResourceDefinition $definition)
     {
-        $query = $definition->model::query();
-
         $resource = $this->resource($definition);
+
+        $query = $this->backing($definition, QueriesRecords::class)->query([]);
 
         $includes = $resource?->includes ?? [];
         if ($includes !== []) {

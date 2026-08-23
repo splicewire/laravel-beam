@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Particle\Backing;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 
 /**
- * Expresses {@see StreamsRecords::stream()} in terms of {@see QueriesRecords::query()}, so a backing
+ * Expresses {@see StreamsRecords::records()} in terms of {@see QueriesRecords::query()}, so a backing
  * with a real Eloquent query gets the GENERAL record-yielding capability for free.
  *
  * This is the reason the two capabilities can stay honestly separate. `StreamsRecords` is what an
@@ -15,7 +15,7 @@ use Illuminate\Contracts\Pagination\CursorPaginator;
  * discriminated contract — the thing polymorphism replaced.
  *
  * A backing that needs different paging (a keyset over a non-id column, a joined cursor) implements
- * `stream()` itself and does not use this trait.
+ * `records()` itself and does not use this trait.
  *
  * @see EloquentBacking  the model-backed default that uses it
  */
@@ -24,7 +24,7 @@ trait BacksEloquent
     /**
      * @param  array<string, mixed>  $filters
      */
-    public function stream(array $filters, ?string $cursor, int $perPage): CursorPaginator
+    public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
     {
         return $this->query($filters)->cursorPaginate($perPage, ['*'], 'cursor', $cursor);
     }

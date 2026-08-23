@@ -8,11 +8,10 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use RuntimeException;
-use Schemastud\Frame\Registry\NavMetadata;
-use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Lazy;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
+use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Cardinality;
 use Splicewire\Beam\Read\Contracts\ReadStage;
@@ -54,18 +53,11 @@ class PayloadParticleReaderTest extends TestCase
         $registry = new ParticleResourceRegistry;
 
         if ($dataClass !== null) {
-            $registry->registerDefinition(new ResourceDefinition(
+            $registry->register(new ParticleResource(
                 key: 'reader-fixture',
-                sourceKind: 'model',
-                model: ReaderFixtureModel::class,
-                source: null,
+                backing: ReaderFixtureModel::class,
                 data: $dataClass,
-                creatable: true,
-                query: null,
-                editData: null,
-                policy: null,
-                form: 'bare',
-                nav: new NavMetadata(label: 'Reader Fixture'),
+                label: 'Reader Fixture',
             ));
         }
 
@@ -131,10 +123,11 @@ class PayloadParticleReaderTest extends TestCase
         // A host inserts a redaction pipe AFTER the shipped ProjectStage — the fine-grained read seam
         // (DESIGN §9d). The stage receives the built Data on the pass and transforms it.
         $registry = new ParticleResourceRegistry;
-        $registry->registerDefinition(new ResourceDefinition(
-            key: 'reader-fixture', sourceKind: 'model', model: ReaderFixtureModel::class, source: null,
-            data: ReaderFixtureData::class, creatable: true, query: null, editData: null, policy: null,
-            form: 'bare', nav: new NavMetadata(label: 'Reader Fixture'),
+        $registry->register(new ParticleResource(
+            key: 'reader-fixture',
+            backing: ReaderFixtureModel::class,
+            data: ReaderFixtureData::class,
+            label: 'Reader Fixture',
         ));
 
         $redact = new class implements ReadStage

@@ -127,7 +127,7 @@ class RealmResourceOverrideTest extends TestCase
 
     public function test_runtime_fields_never_vary_by_realm(): void
     {
-        // (d) An overlay carries PRESENTATION fields only — model/data/sourceKind (the runtime wiring)
+        // (d) An overlay carries PRESENTATION fields only — model/data (the runtime wiring)
         // are identical across realms even when a heavy overlay is applied.
         $overrides = (new RealmResourceRegistry(new RealmRegistry))->override(
             'widgets',
@@ -144,8 +144,6 @@ class RealmResourceOverrideTest extends TestCase
             $this->assertInstanceOf(ResourceDefinition::class, $def);
             $this->assertSame('App\\Models\\Widget', $def->model, 'model never varies by realm');
             $this->assertSame(WidgetGateData::class, $def->data, 'data class never varies by realm');
-            $this->assertSame('model', $def->sourceKind, 'sourceKind never varies by realm');
-            $this->assertNull($def->source, 'source never varies by realm');
         }
     }
 

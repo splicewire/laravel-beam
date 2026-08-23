@@ -14,8 +14,12 @@ use Illuminate\Contracts\Pagination\CursorPaginator;
  * this shape (an opaque filter bag in, a `CursorPaginator` out) and exactly this reason: *"the service
  * owns the merge, sort, filter, and pagination — frame does not."*
  *
+ * ⚠️ Named `records()`, not `stream()`. Every backing in this estate already has an internal
+ * `stream()` — the projected collection it pages over — so a capability method of that name would
+ * collide with the implementation it is meant to wrap, on all four of them at once.
+ *
  * A backing over one Eloquent model does NOT hand-roll this. {@see EloquentBacking} implements it via
- * {@see BacksEloquent}, which expresses `stream()` in terms of {@see QueriesRecords::query()} and the
+ * {@see BacksEloquent}, which expresses `records()` in terms of {@see QueriesRecords::query()} and the
  * shared `ParticleListQuery` — so the ordinary case gets the general capability for free and keeps the
  * declared includes and the declared default sort.
  *
@@ -45,5 +49,5 @@ interface StreamsRecords extends ResourceBacking
      * @param  string|null  $cursor  the encoded cursor, or null for the first page
      * @param  int  $perPage  page size
      */
-    public function stream(array $filters, ?string $cursor, int $perPage): CursorPaginator;
+    public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator;
 }
