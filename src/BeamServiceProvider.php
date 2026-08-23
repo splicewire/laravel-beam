@@ -111,6 +111,7 @@ use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
 use Splicewire\Beam\Source\LadderForeignSourceProjector;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Source\ParticleShadower;
+use Splicewire\Beam\Source\RouteManifestSourceRegistry;
 use Splicewire\Beam\Storage\GitRepoRegistrar;
 use Splicewire\Beam\Surface\GroupRegistry;
 use Splicewire\Beam\Surface\OpenApiSpecCorroborator;
@@ -466,6 +467,13 @@ class BeamServiceProvider extends PackageServiceProvider
             $app->make(ParticleResourceRegistry::class),
             $app->make(ParticleOperationRegistry::class),
         ));
+
+        // The declaration `config('beam.client.sources')` never had. `RouteManifestSource` is an
+        // interface over a realm-keyed config array, so registry-kernel ticket 21 had no class to hang
+        // `#[IsRegistry]` on and left this beam-core registry `deferred` — the one descriptor of
+        // nineteen with no home. The adapter closes it without moving the config key or touching a
+        // single consumer (registry-kernel tickets 08 D6, 25).
+        $this->app->singleton(RouteManifestSourceRegistry::class);
 
         // The schema-SOURCE factory registry (ADR-0192 §5, JN-15): a singleton any package's
         // provider pushes `(key, factory)` tiers into, so a package contributes a SchemaRegistry
