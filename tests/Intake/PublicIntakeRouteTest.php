@@ -144,8 +144,8 @@ class PublicIntakeRouteTest extends TestCase
         $this->assertDatabaseCount(Beam::table('particles'), 0);
 
         $record = BeamSubmission::firstOrFail();
-        // `form_key` is the route's slug, not the resolved stem it maps to.
-        $this->assertSame('contact', $record->form_key);
+        // `capture_key` is the route's slug, not the resolved stem it maps to.
+        $this->assertSame('contact', $record->capture_key);
         // Migrate-on-read wiring is live: the write stamped the current schema id + status.
         $this->assertSame(self::CHEAP_STEM.'/2', $record->schema_id);
         $this->assertSame('current', $record->migration_status);
@@ -218,7 +218,7 @@ class PublicIntakeRouteTest extends TestCase
 
         $response->assertStatus(201)->assertJson(['schemaRef' => self::RELATIVE_STEM.'/1']);
         $this->assertDatabaseCount(Beam::table('submissions'), 1);
-        $this->assertSame('relative', BeamSubmission::firstOrFail()->form_key);
+        $this->assertSame('relative', BeamSubmission::firstOrFail()->capture_key);
     }
 
     public function test_a_non_conforming_payload_against_a_relative_id_schema_is_still_a_422(): void
@@ -279,10 +279,10 @@ class PublicIntakeRouteTest extends TestCase
     private function createTables(): void
     {
         // The door's own store (ticket 51) — mirrors `create_beam_submissions_table.php.stub`: NOT NULL
-        // `form_key` and `payload`, no `head_version` (a submission is migrate-on-read, never versioned).
+        // `capture_key` and `payload`, no `head_version` (a submission is migrate-on-read, never versioned).
         Schema::create(Beam::table('submissions'), function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->string('form_key')->index();
+            $table->string('capture_key')->index();
             $table->string('schema_ref')->nullable();
             $table->string('schema_id')->nullable()->index();
             $table->string('migration_status')->nullable()->index();

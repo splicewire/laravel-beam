@@ -43,13 +43,13 @@ return new class extends Migration
         //
         // This is the table the convention was WRITTEN against (beam-facade ticket 23): three hosts
         // carried a fork of `beam_submissions` under the same name, disjoint in columns and NOT NULL in
-        // both directions. Convergence cannot repair that — `form_key` and `payload` are NOT NULL with
+        // both directions. Convergence cannot repair that — `capture_key` and `payload` are NOT NULL with
         // no default, and the fork's own `schema_record_id` survives — so here the guard THROWS, which
         // is the whole point: the fork was invisible for months behind a bare `hasTable`.
         ConvergentTable::named(Beam::table('submissions'))
             ->define(function (Blueprint $table): void {
                 $table->uuid('id')->primary();
-                $table->string('form_key')->index();
+                $table->string('capture_key')->index();
                 $table->string('schema_ref')->nullable();
                 $table->string('schema_id')->nullable()->index();
                 $table->string('migration_status')->nullable()->index();

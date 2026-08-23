@@ -44,7 +44,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * submission model is also what puts this door and {@see RecordsSubmissions} on the same store,
  * which is the whole point of converging a host's hand-rolled intake onto it (ticket 41).
  *
- * `form_key` is the route's slug — the unversioned intake identity a host groups captures by, and
+ * `capture_key` is the route's slug — the unversioned intake identity a host groups captures by, and
  * what the submitter actually addressed — while `schema_ref` carries the resolved, versioned `$id`.
  *
  * It stamps `meta['intake']` and NOT `meta['schema']`, deliberately. The snapshot tier exists for a
@@ -94,10 +94,10 @@ class PublicIntakeController
             ], Response::HTTP_UNPROCESSABLE_ENTITY));
         }
 
-        // `form_key` is the ROUTE's slug, not the resolved stem: it is the unversioned intake identity
+        // `capture_key` is the ROUTE's slug, not the resolved stem: it is the unversioned intake identity
         // a host groups captures by, and the slug is what the submitter actually addressed.
         $record = new BeamSubmission([
-            'form_key' => $form,
+            'capture_key' => $form,
             'schema_ref' => $this->schemaRef($stem, $targetSchema),
         ]);
         $record->meta = ['intake' => $this->provenance($request, $actor)->toArray()];

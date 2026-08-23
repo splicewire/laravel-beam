@@ -62,7 +62,7 @@ class RecordsSubmissions
      *                                         caller has no request-side provenance to offer.
      */
     public function record(
-        string $formKey,
+        string $captureKey,
         ?string $schemaRef,
         array $payload,
         array $context = [],
@@ -71,7 +71,7 @@ class RecordsSubmissions
         ?IntakeProvenance $intake = null,
     ): BeamSubmission {
         $submission = new BeamSubmission([
-            'form_key' => $formKey,
+            'capture_key' => $captureKey,
             'schema_ref' => $schemaRef,
             'context' => $context,
             'user_id' => $userId,

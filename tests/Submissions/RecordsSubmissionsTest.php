@@ -20,7 +20,7 @@ class RecordsSubmissionsTest extends TestCase
 
         Schema::create(Beam::table('submissions'), function (Blueprint $table): void {
             $table->uuid('id')->primary();
-            $table->string('form_key')->index();
+            $table->string('capture_key')->index();
             $table->string('schema_ref')->nullable();
             $table->string('schema_id')->nullable()->index();
             $table->string('migration_status')->nullable()->index();
@@ -35,7 +35,7 @@ class RecordsSubmissionsTest extends TestCase
     public function test_persists_a_capture_as_a_beam_submission_through_the_write_pipeline(): void
     {
         $submission = $this->app->make(RecordsSubmissions::class)->record(
-            formKey: 'waitlist',
+            captureKey: 'waitlist',
             schemaRef: 'waitlist/1',
             payload: ['email' => 'ada@example.test'],
             context: ['source' => 'marquee-soon'],
@@ -43,7 +43,7 @@ class RecordsSubmissionsTest extends TestCase
 
         $this->assertInstanceOf(BeamSubmission::class, $submission);
         $this->assertTrue($submission->exists);
-        $this->assertSame('waitlist', $submission->form_key);
+        $this->assertSame('waitlist', $submission->capture_key);
         $this->assertSame('waitlist/1', $submission->schema_ref);
         $this->assertSame(['email' => 'ada@example.test'], $submission->payload);
         $this->assertSame(['source' => 'marquee-soon'], $submission->context);
@@ -57,7 +57,7 @@ class RecordsSubmissionsTest extends TestCase
     public function test_accepts_a_payload_that_does_not_conform_to_any_schema(): void
     {
         $submission = $this->app->make(RecordsSubmissions::class)->record(
-            formKey: 'interest',
+            captureKey: 'interest',
             schemaRef: null,
             payload: ['name' => 'partial only'],
         );
@@ -82,7 +82,7 @@ class RecordsSubmissionsTest extends TestCase
         ];
 
         $submission = $this->app->make(RecordsSubmissions::class)->record(
-            formKey: 'waitlist',
+            captureKey: 'waitlist',
             schemaRef: 'waitlist/1',
             payload: ['email' => 'ada@example.test'],
             schema: $schema,
@@ -112,7 +112,7 @@ class RecordsSubmissionsTest extends TestCase
         );
 
         $submission = $this->app->make(RecordsSubmissions::class)->record(
-            formKey: 'request-access',
+            captureKey: 'request-access',
             schemaRef: 'request-access',
             payload: ['email' => 'ada@example.test'],
             schema: ['title' => 'Request access'],
@@ -128,7 +128,7 @@ class RecordsSubmissionsTest extends TestCase
         $intake = new IntakeProvenance(submittedAt: '2026-08-11T00:00:00+00:00');
 
         $submission = $this->app->make(RecordsSubmissions::class)->record(
-            formKey: 'interest',
+            captureKey: 'interest',
             schemaRef: null,
             payload: ['name' => 'Ada'],
             intake: $intake,
@@ -142,7 +142,7 @@ class RecordsSubmissionsTest extends TestCase
         Event::fake([BeamParticlePersisted::class]);
 
         $this->app->make(RecordsSubmissions::class)->record(
-            formKey: 'interest',
+            captureKey: 'interest',
             schemaRef: null,
             payload: ['name' => 'Ada'],
         );

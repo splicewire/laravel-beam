@@ -15,7 +15,7 @@ use Splicewire\Beam\Write\ParticleWriter;
  * (the submission populator, peer to generation and the frame editor): it composes beam's
  * {@see PersistsBeamParticle} — the narrow, populator-agnostic skeleton (uuid7 primary key via
  * HasUuids, `payload`/`meta` casts, the inert `extract()` seam) — and layers ONLY the form-runtime
- * facets over it: `form_key`, `context`, and `schema_ref` (a plain string form-def `$id`/key straight
+ * facets over it: `capture_key`, `context`, and `schema_ref` (a plain string form-def `$id`/key straight
  * from the registry, NOT a SchemaIdentity object — that is what keeps beam schema-source-agnostic).
  *
  * As beam-core's customer-zero consumer it ALSO composes {@see ReconcilesPayloadOnRead} —
@@ -47,7 +47,7 @@ class BeamSubmission extends Model
     use ReconcilesPayloadOnRead;
 
     protected $fillable = [
-        'form_key',
+        'capture_key',
         'schema_ref',
         'payload',
         'context',
