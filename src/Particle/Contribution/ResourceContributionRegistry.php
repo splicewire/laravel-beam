@@ -95,6 +95,21 @@ class ResourceContributionRegistry
     }
 
     /**
+     * The contribution registered for one `(key, as)` pair, or null.
+     *
+     * Exists for the re-entrant-boot case, and the distinction it draws is the whole reason it is not
+     * just `has($key)`: a provider whose `packageBooted()` runs twice (a host re-running it, a test
+     * exercising it directly) must be able to recognise ITS OWN contribution and skip, while a
+     * genuinely DIFFERENT package claiming the same pair still hits {@see register()}'s throw. Making
+     * `register()` itself idempotent would collapse those two cases — and cannot be done honestly
+     * anyway, since a contribution carries closures and two closures cannot be compared for identity.
+     */
+    public function contribution(string $key, string $as): ?ResourceContribution
+    {
+        return $this->contributions[$key][$as] ?? null;
+    }
+
+    /**
      * Every contribution to `$key`, registration order. Empty for a resource nobody contributes to —
      * which is the overwhelmingly common case, and why each fold point is a no-op by default.
      *
