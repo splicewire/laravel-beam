@@ -95,6 +95,37 @@ class RetiredMigrationAuditTest extends TestCase
         $this->assertStringContainsString('Retired migration still published', $this->audit()[0]->detail);
     }
 
+    /**
+     * The media-arm extraction's retirement is a sharper case than `activity_log`'s. There the retired
+     * ROOT copy was `create_central_activity_log_table` — a different basename from the survivor, so a
+     * name-only match would have got it right by accident. Here the retired root copy and the canonical
+     * `shared/` one are the SAME basename, differing only by directory, which is the condition the
+     * directory-aware key exists for.
+     */
+    public function test_the_retired_root_media_copy_is_reported_and_the_shared_one_is_not(): void
+    {
+        $this->publish('2026_06_30_000050_create_media_table.php');
+        $this->publish('shared/2026_08_23_201125_create_media_table.php');
+
+        $findings = $this->audit();
+
+        $this->assertCount(1, $findings);
+        $this->assertStringContainsString('2026_06_30_000050_create_media_table.php', $findings[0]->detail);
+        $this->assertStringNotContainsString('shared/2026_08_23_201125', $findings[0]->detail);
+        $this->assertStringContainsString('splicewire/laravel-beam-media', $findings[0]->detail);
+    }
+
+    public function test_the_retired_tenant_media_copy_is_reported(): void
+    {
+        // beam-core shipped `media` as a hand-duplicated flat + tenant/ pair; a host may carry either.
+        $this->publish('tenant/2026_06_30_000050_create_media_table.php');
+
+        $this->assertStringContainsString(
+            'tenant/2026_06_30_000050_create_media_table.php',
+            $this->audit()[0]->detail,
+        );
+    }
+
     public function test_an_unrelated_migration_is_left_alone(): void
     {
         $this->publish('tenant/2026_08_13_195112_create_workflow_awaitings_table.php');

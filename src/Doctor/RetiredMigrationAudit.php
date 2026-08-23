@@ -48,6 +48,16 @@ class RetiredMigrationAudit implements DoctorAudit
     public const BEAM_RETIRED = [
         'tenant/create_activity_log_table' => 'shared/create_activity_log_table',
         'create_central_activity_log_table' => 'shared/create_activity_log_table',
+
+        // The media arm extraction (HTTP-03 / ADR-0178) moved the `media` table OUT of beam-core into
+        // splicewire/laravel-beam-media, where it also gained the `media` → `beam_media` rename. Beam-core
+        // used to ship the same DDL as a hand-duplicated flat + `tenant/` PAIR, so a host installed before
+        // the extraction carries one or both. Leaving them is not cosmetic: on a rebuilt database the stale
+        // copy re-creates `media`, and beam-media's stub then takes its ADOPT branch — renaming a table it
+        // would otherwise have created directly — every single migrate. The superseding stub belongs to
+        // another package, which is the extraction rather than a wrinkle in it.
+        'create_media_table' => 'shared/create_media_table (splicewire/laravel-beam-media)',
+        'tenant/create_media_table' => 'shared/create_media_table (splicewire/laravel-beam-media)',
     ];
 
     /** @param  array<string, string>  $retired */
