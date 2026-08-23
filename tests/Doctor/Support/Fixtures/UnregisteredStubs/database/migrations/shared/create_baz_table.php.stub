@@ -1,0 +1,15 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+
+/**
+ * Fixture only. A well-formed publish-only stub that no `->hasMigrations([...])` entry names, so
+ * nothing will ever publish it — the case {@see \Splicewire\Beam\Doctor\Support\StubMigrationsAudit}
+ * warns on.
+ */
+return new class extends Migration
+{
+    public function up(): void {}
+
+    public function down(): void {}
+};
