@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Particle;
 
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -236,6 +237,65 @@ class OperationPayloadRespondTest extends TestCase
         }
     }
 
+    public function test_the_sync_branch_runs_with_no_host_helpers_in_scope(): void
+    {
+        // beam-facade ticket 93. `runTask()`'s `?async=false` branch calls the bare global
+        // `set_min_time_limit()`, which was a HOST helper (splicewire-app's app/helpers.php) rather than
+        // anything Laravel or beam shipped — so every `?async=false` particle task in the estate fataled
+        // with `Call to undefined function` at every host that had not defined it. Nothing caught it
+        // because nothing had ever driven this branch: the suite covered `?async` as a DECLARED parameter
+        // (the test above) and never as a taken code path.
+        //
+        // What matters is that this completes at all, in a testbench app autoloading no host helpers.
+        $this->assertTrue(function_exists('set_min_time_limit'), 'beam must ship the helper it calls.');
+
+        // An object rather than a by-ref bool: the arrow function below captures by VALUE, so a
+        // `use (&$ran)` inside it would bind the arrow's copy and never report back.
+        $trace = new \stdClass;
+        $trace->ran = false;
+
+        $model = new class
+        {
+            public bool $refreshed = false;
+
+            public function refresh(): void
+            {
+                $this->refreshed = true;
+            }
+        };
+
+        $op = $this->op(
+            kind: OperationKind::Task,
+            handle: fn () => new SyncBranchJob(function () use ($trace) {
+                $trace->ran = true;
+            }),
+        );
+
+        $response = $this->controller()->callRunTask($op, $model, Request::create('/?async=false', 'POST'));
+
+        $this->assertTrue($trace->ran, 'the sync branch must run the job inline, not queue it.');
+        $this->assertTrue($model->refreshed);
+        $this->assertSame(['data' => ['queued' => false]], $this->decode($response));
+    }
+
+    public function test_the_helper_never_lowers_an_already_higher_ceiling(): void
+    {
+        // The guard every host copy carries, and the reason this is not a bare `set_time_limit()`: an op
+        // asking for less than the process already has must not cut it short.
+        $original = ini_get('max_execution_time');
+
+        try {
+            ini_set('max_execution_time', '600');
+            set_min_time_limit(30);
+            $this->assertSame('600', ini_get('max_execution_time'));
+
+            set_min_time_limit(900);
+            $this->assertSame('900', ini_get('max_execution_time'));
+        } finally {
+            ini_set('max_execution_time', (string) $original);
+        }
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────
 
     private function op(
@@ -310,5 +370,24 @@ class ExposedPayloadController extends ParticleOperationController
     public function callValidateInput(ParticleOperation $operation, Request $request): void
     {
         $this->validateInput($operation, $request);
+    }
+
+    public function callRunTask(ParticleOperation $operation, mixed $model, Request $request): mixed
+    {
+        return $this->runTask($operation, $model, $request);
+    }
+}
+
+/**
+ * A minimal queueable for the Task branch — `ShouldQueue` so the bus takes the dispatch path a real op's
+ * job takes, with a closure body so the test can observe that it ran INLINE rather than queued.
+ */
+class SyncBranchJob implements ShouldQueue
+{
+    public function __construct(private \Closure $body) {}
+
+    public function handle(): void
+    {
+        ($this->body)();
     }
 }
