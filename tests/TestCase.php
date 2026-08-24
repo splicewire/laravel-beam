@@ -15,6 +15,18 @@ use Splicewire\Beam\BeamServiceProvider;
 abstract class TestCase extends Orchestra
 {
     /**
+     * The one fixture schema authority this suite mints and asserts `$id`s under.
+     *
+     * Deliberately NOT `https://schemas.splicewire.app`, which is what every `$id` literal in
+     * these tests said before ticket 85: that string is the package default ticket 64 deleted — an
+     * unregistered domain, and one vendor's brand shipped from a schemastud package. Leaving it in
+     * the family's reference suite re-teaches the value the estate removed.
+     *
+     * @see self::schemaAuthority() for why it is path-shaped and why declaring it is per class
+     */
+    public const SCHEMA_AUTHORITY = 'https://beam.test/schemas';
+
+    /**
      * beam boots with ONLY its own provider — no frame, no editor rung. If this
      * list ever needs the frame provider to make beam work, the layering has
      * inverted (ADR-0082) and the test should fail loudly.
@@ -71,5 +83,39 @@ abstract class TestCase extends Orchestra
     protected function defineEnvironment($app): void
     {
         $app['config']->set('cache.default', 'array');
+
+        $app['config']->set('data-schemas.base_uri', $this->schemaAuthority());
+    }
+
+    /**
+     * The schema authority THIS test's app declares — `data-schemas.base_uri`'s tri-state, opted
+     * into per test class (beam-facade ticket 85).
+     *
+     * `schemastud/laravel-data-schemas` ships no default (ticket 64: the authority is the origin
+     * that SERVES the schema, and an `$id` is write-once, so an undecided authority throws rather
+     * than falls back). Nothing here declared one, so every test driving a `SchemaIdentity`
+     * fixture died on `MissingSchemaBaseUri` — 41 of them, across the write pipeline, the
+     * record-versioning seam and the public intake door.
+     *
+     * DECLARING IS PER CLASS, NOT SUITE-WIDE, because ticket 82 made `base_uri` one knob with two
+     * effects: it mints versioned `$id`s AND mounts the public schema door. Setting it globally
+     * mounted a route into all 1057 tests, which is a strictly larger claim than the suite makes —
+     * `UndeclaredSurfaceAudit` and `OpenApiSpecCorroborator` both assert against a bare app whose
+     * route table is only what the test itself mounts, and measured, 28 tests failed on the
+     * surprise route. So the default stays `null` (undecided, mounts nothing, throws if a
+     * versioned fixture is generated) and the classes that simulate a schema-serving host say so.
+     *
+     * The value is PATH-shaped, which is not decoration. A bare-origin authority mounts the door
+     * at `{path}` — a root catch-all — and Laravel's `RouteCollection` is keyed by method+URI, so
+     * a second root catch-all silently REPLACES it. That is not hypothetical: it is why
+     * `~/Herd/splicewire`'s door does not exist (see the ticket). Every other declaring host in
+     * the estate is path-shaped; the fixture authority matches them.
+     *
+     * @return string|bool|null a URI to mint versioned `$id`s, `false` to opt out, `null` to leave
+     *                          the authority undecided
+     */
+    protected function schemaAuthority(): string|bool|null
+    {
+        return null;
     }
 }

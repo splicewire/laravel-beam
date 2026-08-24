@@ -24,7 +24,7 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class IntakeDoorAuditTest extends TestCase
 {
-    private const STEM = 'https://schemas.splicewire.app/test/intake-door-audit';
+    private const STEM = 'https://beam.test/schemas/test/intake-door-audit';
 
     private string $registryDir;
 

@@ -42,9 +42,18 @@ use Splicewire\Beam\Write\WriteNotAuthorized;
  */
 class ParticleWriterTest extends TestCase
 {
+    /**
+     * This test app simulates a host that SERVES its schemas: its fixtures are `SchemaIdentity`
+     * classes, and the `$id` literals below are minted under this authority (ticket 85).
+     */
+    protected function schemaAuthority(): string|bool|null
+    {
+        return self::SCHEMA_AUTHORITY;
+    }
+
     // The stem the Cheap fixtures actually generate ({@see FixtureCheapV1::schemaName()} = the
     // `record-versioning-cheap` name under the generator's base), so the registry resolves the target.
-    private const CHEAP_STEM = 'https://schemas.splicewire.app/test/record-versioning-cheap';
+    private const CHEAP_STEM = 'https://beam.test/schemas/test/record-versioning-cheap';
 
     // A versioned `$id`; its STEM is the record type the writer resolves the target schema off.
     private const CHEAP_REF = self::CHEAP_STEM.'/2';

@@ -18,43 +18,51 @@ use Splicewire\Beam\Tests\TestCase;
  *
  * Homed into beam-core from the app suite (recohere T15): `SchemaId` is a
  * `Splicewire\Beam\Schema\*` symbol, so its unit test belongs in beam-core.
+ *
+ * ITS `$id` LITERALS ARE DELIBERATELY NOT {@see TestCase::SCHEMA_AUTHORITY}. This class parses
+ * strings; it mints nothing, so it is not asserting about the authority this suite serves under,
+ * and its origin is a bare, path-less example on purpose — `name()` strips the scheme and host
+ * only, so a PATH-shaped base (which is what 8 of 9 declaring hosts in the estate use) leaves the
+ * base path glued to the front of the name. Ticket 85 sighted that and it is a defect in `name()`,
+ * not in these fixtures; using the path-shaped fixture authority here would have written the bug
+ * into the expectations.
  */
 class SchemaIdTest extends TestCase
 {
     public function test_parses_and_round_trips_a_well_formed_versioned_id(): void
     {
-        $id = SchemaId::from('https://schemas.splicewire.app/content/article/3');
+        $id = SchemaId::from('https://schemas.example.test/content/article/3');
 
-        $this->assertSame('https://schemas.splicewire.app/content/article/3', (string) $id);
-        $this->assertSame('https://schemas.splicewire.app/content/article', $id->stem());
+        $this->assertSame('https://schemas.example.test/content/article/3', (string) $id);
+        $this->assertSame('https://schemas.example.test/content/article', $id->stem());
         $this->assertSame('content/article', $id->name());
         $this->assertSame(3, $id->version());
     }
 
     public function test_extracts_the_name_as_the_stem_sans_the_base_authority(): void
     {
-        $id = SchemaId::from('https://schemas.splicewire.app/compliance/merchant-declaration/1');
+        $id = SchemaId::from('https://schemas.example.test/compliance/merchant-declaration/1');
 
-        $this->assertSame('https://schemas.splicewire.app/compliance/merchant-declaration', $id->stem());
+        $this->assertSame('https://schemas.example.test/compliance/merchant-declaration', $id->stem());
         $this->assertSame('compliance/merchant-declaration', $id->name());
         $this->assertSame(1, $id->version());
     }
 
     public function test_derives_a_sibling_at_a_different_version_preserving_the_stem(): void
     {
-        $id = SchemaId::from('https://schemas.splicewire.app/content/article/3');
+        $id = SchemaId::from('https://schemas.example.test/content/article/3');
 
         $next = $id->withVersion(4);
 
-        $this->assertSame('https://schemas.splicewire.app/content/article/4', (string) $next);
+        $this->assertSame('https://schemas.example.test/content/article/4', (string) $next);
         $this->assertSame($id->stem(), $next->stem());
         $this->assertSame(4, $next->version());
     }
 
     public function test_treats_two_ids_on_the_same_stem_as_comparable(): void
     {
-        $a = SchemaId::from('https://schemas.splicewire.app/content/article/1');
-        $b = SchemaId::from('https://schemas.splicewire.app/content/article/9');
+        $a = SchemaId::from('https://schemas.example.test/content/article/1');
+        $b = SchemaId::from('https://schemas.example.test/content/article/9');
 
         $this->assertTrue($a->isComparableTo($b));
         $this->assertTrue($b->isComparableTo($a));
@@ -62,8 +70,8 @@ class SchemaIdTest extends TestCase
 
     public function test_treats_ids_on_different_stems_as_non_comparable(): void
     {
-        $a = SchemaId::from('https://schemas.splicewire.app/content/article/1');
-        $b = SchemaId::from('https://schemas.splicewire.app/content/author/1');
+        $a = SchemaId::from('https://schemas.example.test/content/article/1');
+        $b = SchemaId::from('https://schemas.example.test/content/author/1');
 
         $this->assertFalse($a->isComparableTo($b));
         $this->assertFalse($b->isComparableTo($a));
@@ -80,16 +88,16 @@ class SchemaIdTest extends TestCase
 
     public function test_tolerates_a_malformed_non_integer_version_tail_without_throwing(): void
     {
-        $id = SchemaId::from('https://schemas.splicewire.app/content/article/draft');
+        $id = SchemaId::from('https://schemas.example.test/content/article/draft');
 
         $this->assertNull($id->version());
-        $this->assertSame('https://schemas.splicewire.app/content/article', $id->stem());
-        $this->assertSame('https://schemas.splicewire.app/content/article/draft', (string) $id);
+        $this->assertSame('https://schemas.example.test/content/article', $id->stem());
+        $this->assertSame('https://schemas.example.test/content/article/draft', (string) $id);
     }
 
     public function test_a_schema_id_is_a_namespace_uri(): void
     {
-        $id = SchemaId::from('https://schemas.splicewire.app/content/article/3');
+        $id = SchemaId::from('https://schemas.example.test/content/article/3');
 
         $this->assertInstanceOf(NamespaceUri::class, $id);
 
@@ -100,8 +108,8 @@ class SchemaIdTest extends TestCase
 
     public function test_inherited_equality_and_pinnedness_primitives_are_available(): void
     {
-        $pinned = SchemaId::from('https://schemas.splicewire.app/content/article/3');
-        $stem = SchemaId::from('https://schemas.splicewire.app/content/article');
+        $pinned = SchemaId::from('https://schemas.example.test/content/article/3');
+        $stem = SchemaId::from('https://schemas.example.test/content/article');
 
         $this->assertTrue($pinned->isPinned());
         $this->assertFalse($stem->isPinned());
@@ -109,16 +117,16 @@ class SchemaIdTest extends TestCase
 
         // URI-is-identity equality: a stem and a pin are distinct; same raw is equal.
         $this->assertFalse($pinned->equals($stem));
-        $this->assertTrue($pinned->equals(SchemaId::from('https://schemas.splicewire.app/content/article/3')));
+        $this->assertTrue($pinned->equals(SchemaId::from('https://schemas.example.test/content/article/3')));
     }
 
     public function test_agrees_with_the_namespace_uri_parser_on_stem_and_version(): void
     {
         foreach ([
-            'https://schemas.splicewire.app/content/article/3',
-            'https://schemas.splicewire.app/content/article',
+            'https://schemas.example.test/content/article/3',
+            'https://schemas.example.test/content/article',
             'content-only',
-            'https://schemas.splicewire.app/content/article/draft',
+            'https://schemas.example.test/content/article/draft',
         ] as $raw) {
             $id = SchemaId::from($raw);
             $uri = NamespaceUri::from($raw);
@@ -129,9 +137,9 @@ class SchemaIdTest extends TestCase
         }
 
         // isComparableTo() is the historical spelling of sameStemAs() — they agree.
-        $a = 'https://schemas.splicewire.app/content/article/1';
-        $b = 'https://schemas.splicewire.app/content/article/9';
-        $c = 'https://schemas.splicewire.app/content/author/1';
+        $a = 'https://schemas.example.test/content/article/1';
+        $b = 'https://schemas.example.test/content/article/9';
+        $c = 'https://schemas.example.test/content/author/1';
 
         $this->assertSame(
             NamespaceUri::from($a)->sameStemAs(NamespaceUri::from($b)),

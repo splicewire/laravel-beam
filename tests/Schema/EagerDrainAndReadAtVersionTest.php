@@ -34,6 +34,15 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class EagerDrainAndReadAtVersionTest extends TestCase
 {
+    /**
+     * This test app simulates a host that SERVES its schemas: its fixtures are `SchemaIdentity`
+     * classes, and the `$id` literals below are minted under this authority (ticket 85).
+     */
+    protected function schemaAuthority(): string|bool|null
+    {
+        return self::SCHEMA_AUTHORITY;
+    }
+
     private string $frozenDir;
 
     private JsonSchemaGenerator $generator;

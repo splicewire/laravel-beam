@@ -36,13 +36,22 @@ use Splicewire\Beam\Write\ParticleWriter;
  */
 class PublicIntakeRouteTest extends TestCase
 {
-    private const CHEAP_STEM = 'https://schemas.splicewire.app/test/record-versioning-cheap';
+    /**
+     * This test app simulates a host that SERVES its schemas: its fixtures are `SchemaIdentity`
+     * classes, and the `$id` literals below are minted under this authority (ticket 85).
+     */
+    protected function schemaAuthority(): string|bool|null
+    {
+        return self::SCHEMA_AUTHORITY;
+    }
 
-    private const EXPENSIVE_STEM = 'https://schemas.splicewire.app/test/record-versioning-expensive';
+    private const CHEAP_STEM = 'https://beam.test/schemas/test/record-versioning-cheap';
 
-    private const NAMESPACED_STEM = 'https://schemas.splicewire.app/test/namespaced-intake';
+    private const EXPENSIVE_STEM = 'https://beam.test/schemas/test/record-versioning-expensive';
 
-    private const VOCAB_URI = 'https://schemas.splicewire.app/splice/intake-grounding-test';
+    private const NAMESPACED_STEM = 'https://beam.test/schemas/test/namespaced-intake';
+
+    private const VOCAB_URI = 'https://beam.test/schemas/splice/intake-grounding-test';
 
     /** No scheme — the shape a bare form ref stems to, and the one opis refuses to parse. */
     private const RELATIVE_STEM = 'relative-intake';

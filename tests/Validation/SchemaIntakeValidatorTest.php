@@ -19,7 +19,7 @@ use Splicewire\Beam\Validation\SchemaIntakeValidator;
  */
 class SchemaIntakeValidatorTest extends TestCase
 {
-    private const VOCAB_URI = 'https://schemas.splicewire.app/splice/grounding-test';
+    private const VOCAB_URI = 'https://beam.test/schemas/splice/grounding-test';
 
     private function namespacedValidator(): SchemaIntakeValidator
     {

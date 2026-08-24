@@ -89,7 +89,7 @@ class SchemaSourcesTest extends TestCase
     {
         $this->createDbTier();
 
-        $vocabId = 'https://schemas.splicewire.app/splice/vocabulary/1';
+        $vocabId = 'https://beam.test/schemas/splice/vocabulary/1';
 
         // The committed fleet conformance artifact…
         (new FilesystemSchemaRegistry($this->fleetDir))->register($this->schema($vocabId, 'from-fleet'));
@@ -117,7 +117,7 @@ class SchemaSourcesTest extends TestCase
     {
         $this->createDbTier();
 
-        $contentId = 'https://schemas.splicewire.app/content/article/1';
+        $contentId = 'https://beam.test/schemas/content/article/1';
 
         // Not a fleet artifact — committed in the ordinary file tier, overridden by the tenant.
         (new FilesystemSchemaRegistry($this->frozenDir))->register($this->schema($contentId, 'from-file'));

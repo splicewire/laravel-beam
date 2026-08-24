@@ -47,9 +47,18 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class BeamParticleVersioningTest extends TestCase
 {
-    private const CHEAP_STEM = 'https://schemas.splicewire.app/test/record-versioning-cheap';
+    /**
+     * This test app simulates a host that SERVES its schemas: its fixtures are `SchemaIdentity`
+     * classes, and the `$id` literals below are minted under this authority (ticket 85).
+     */
+    protected function schemaAuthority(): string|bool|null
+    {
+        return self::SCHEMA_AUTHORITY;
+    }
 
-    private const EXPENSIVE_STEM = 'https://schemas.splicewire.app/test/record-versioning-expensive';
+    private const CHEAP_STEM = 'https://beam.test/schemas/test/record-versioning-cheap';
+
+    private const EXPENSIVE_STEM = 'https://beam.test/schemas/test/record-versioning-expensive';
 
     // `schema_ref` is a versioned `$id` whose STEM is the record type the reconciler
     // resolves versions off ({@see BeamParticle::resolveRecordType()} = its stem).

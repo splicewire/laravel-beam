@@ -31,6 +31,15 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class ReconcileFourOutcomesTest extends TestCase
 {
+    /**
+     * This test app simulates a host that SERVES its schemas: its fixtures are `SchemaIdentity`
+     * classes, and the `$id` literals below are minted under this authority (ticket 85).
+     */
+    protected function schemaAuthority(): string|bool|null
+    {
+        return self::SCHEMA_AUTHORITY;
+    }
+
     private string $frozenDir;
 
     private JsonSchemaGenerator $generator;
@@ -155,7 +164,7 @@ class ReconcileFourOutcomesTest extends TestCase
 
     public function test_treats_a_cross_stem_stored_version_as_not_comparable_a_non_event_never_mangled(): void
     {
-        $foreignId = 'https://schemas.splicewire.app/test/record-versioning-unrelated/1';
+        $foreignId = 'https://beam.test/schemas/test/record-versioning-unrelated/1';
 
         $outcome = $this->migrator->reconcile(
             ['title' => 'Foreign'],

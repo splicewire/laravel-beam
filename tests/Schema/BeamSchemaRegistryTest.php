@@ -28,7 +28,7 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class BeamSchemaRegistryTest extends TestCase
 {
-    private const STEM = 'https://schemas.splicewire.app/test/registry-collapse';
+    private const STEM = 'https://beam.test/schemas/test/registry-collapse';
 
     private string $frozenDir;
 
