@@ -8,12 +8,15 @@ use Illuminate\Support\Facades\Schema;
 use Rushing\SchemaConvergence\ConvergentTable;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Install\BeamInstallManifest;
+use Splicewire\Beam\Install\ConvergencePreflight;
 use Splicewire\Beam\Install\InstallStep;
 use Splicewire\Beam\Install\MigrationCollision;
+use Splicewire\Beam\Install\RehearsedMigration;
 use Splicewire\Beam\Install\TableOwnershipResolver;
 use Splicewire\Beam\OpenApi\ConfiguredArtifactSpecSource;
 use Splicewire\Beam\Seed\BeamSeedManifest;
 
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\note;
@@ -44,6 +47,13 @@ use function Laravel\Prompts\text;
  * are the files publish just wrote, and the answer has to land before anything runs them.
  * {@see TableOwnershipResolver} for why filename order is the only lever
  * against a package whose guard we do not own.
+ *
+ * Phase 4 (beam-facade ticket 84) puts a second question in that same slot, and the slot now holds both
+ * halves of the collision family: ownership asks whose FILENAME wins, {@see ConvergencePreflight} asks
+ * whether each declared SHAPE can land. It is there for the identical reason and it is the one pass that
+ * can STOP the install — a shape conflict met from inside `migrate` is met three tables in, with the
+ * rest of the queue unasked and the host half-written, so the answer moves to the last moment an abort
+ * is free.
  */
 class BeamInstallCommand extends Command
 {
@@ -54,6 +64,7 @@ class BeamInstallCommand extends Command
         {--tenancy= : "single" (one database) or "multi" (tenant-scoped)}
         {--modules= : Comma list of optional beam modules to install (name substrings); empty ⇒ core only}
         {--own-tables= : Comma list of colliding migration stems beam should own (run first); empty ⇒ own none. Default: all}
+        {--skip-preflight : Skip the convergence preflight and let migrate meet any shape conflict one table at a time}
         {--no-seed : Skip the package-registered seed pass (splicewire:beam:seed) at the end of the install}';
 
     protected $description = 'Interactively configure + install the whole beam stack (core-first) from the self-registration manifest.';
@@ -126,6 +137,13 @@ class BeamInstallCommand extends Command
         $this->resolveTableOwnership($interactive);
 
         if ($this->stepsMigrate($runSteps)) {
+            // 4a. Ask every pending convergent stub what it WOULD do, while an abort is still free.
+            //     Nothing has been written to the database at this point, so a conflict costs the
+            //     operator a re-run and not a half-installed host (beam-facade ticket 84).
+            if (! $this->preflightConvergence($interactive)) {
+                return self::FAILURE;
+            }
+
             $this->call('migrate', $this->option('force') ? ['--force' => true] : []);
         }
 
@@ -389,6 +407,100 @@ class BeamInstallCommand extends Command
         }
 
         $this->carryMigrationRecord($old, $new);
+    }
+
+    /**
+     * The convergence preflight (beam-facade ticket 84): every pending convergent stub asked what it
+     * would do, all at once, before `migrate` does any of it.
+     *
+     * IT SITS IN THE OWNERSHIP PASS'S SLOT AND FOR THE SAME REASON — the question's options are the files
+     * publish just wrote, and the answer has to land before anything runs them. The difference is what is
+     * asked: ownership asks whose FILENAME wins, this asks whether the declared SHAPE can land. A guard
+     * answering from inside `migrate` answers correctly and too late, three tables in, with the rest of
+     * the queue unasked.
+     *
+     * ON A CONFLICT THIS STOPS THE INSTALL, which is the behaviour change. Continuing only reaches the
+     * same throw a few tables later, having written the ones before it — so the choice is offered to an
+     * operator who can see it (interactive) and refused to one who cannot (`--no-interaction` exits
+     * non-zero rather than half-applying). `--skip-preflight` restores the old timing outright.
+     *
+     * @return bool false ⇒ stop the install
+     */
+    private function preflightConvergence(bool $interactive): bool
+    {
+        if ($this->option('skip-preflight')) {
+            return true;
+        }
+
+        $found = ConvergencePreflight::forApplication($this->laravel)->rehearse();
+
+        if ($found === []) {
+            return true;
+        }
+
+        $this->line('splicewire:beam:install → convergence preflight');
+
+        $conflicted = array_values(array_filter($found, fn (RehearsedMigration $m) => $m->hasConflicts()));
+        $skipped = array_values(array_filter($found, fn (RehearsedMigration $m) => ! $m->wasRehearsed()));
+        $changing = array_values(array_filter($found, fn (RehearsedMigration $m) => $m->changes() !== [] && ! $m->hasConflicts()));
+
+        $this->line(sprintf(
+            '  ↳ %d pending convergent migration%s: %d clean, %d will change the schema, %d cannot converge%s. '.
+            'Nothing has been written yet.',
+            count($found),
+            count($found) === 1 ? '' : 's',
+            count($found) - count($conflicted) - count($changing) - count($skipped),
+            count($changing),
+            count($conflicted),
+            $skipped === [] ? '' : ', '.count($skipped).' not rehearsed',
+        ));
+
+        foreach ($changing as $migration) {
+            foreach ($migration->changes() as $report) {
+                $this->line("     + {$report->summary()}");
+            }
+        }
+
+        foreach ($skipped as $migration) {
+            $this->line("     ? `{$migration->migration}` {$migration->skipped}");
+        }
+
+        if ($conflicted === []) {
+            return true;
+        }
+
+        foreach ($conflicted as $migration) {
+            $this->warn("     ✗ `{$migration->migration}`");
+
+            foreach ($migration->conflicts() as $conflict) {
+                $this->warn("       [{$conflict->kind}] {$conflict->detail}");
+
+                if ($conflict->repair !== '') {
+                    $this->line('       repair: '.str_replace("\n", "\n       ", $conflict->repair));
+                }
+            }
+        }
+
+        // The resumability statement, said out loud because its absence made the safe move look risky:
+        // an operator who aborts here has changed nothing, and a convergent guard is idempotent, so the
+        // install can simply be re-run once the shapes are reconciled.
+        $this->line('  ↳ No table was written. Reconcile the shapes above and re-run '.
+            '`splicewire:beam:install` — convergent creates are idempotent, so a re-run creates what is '.
+            'absent, adds what is missing, and does nothing to a table that already matches.');
+
+        if (! $interactive) {
+            $this->error('splicewire:beam:install — stopped before migrating: '.count($conflicted).
+                ' migration(s) cannot converge. Pass --skip-preflight to migrate anyway and meet each '.
+                'conflict one table at a time.');
+
+            return false;
+        }
+
+        return confirm(
+            label: 'Migrate anyway? The tables before the first conflict will be written, then it will fail there.',
+            default: false,
+            hint: 'No is almost always right — nothing is written yet, so aborting costs a re-run.',
+        );
     }
 
     /**

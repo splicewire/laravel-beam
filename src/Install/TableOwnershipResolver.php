@@ -44,13 +44,7 @@ final class TableOwnershipResolver
 
     public static function forApplication(Application $app): self
     {
-        $paths = [$app->databasePath('migrations')];
-
-        if ($app->bound('migrator')) {
-            $paths = array_merge($paths, $app->make('migrator')->paths());
-        }
-
-        return new self(array_values(array_unique($paths)), $app->databasePath());
+        return new self(MigrationFiles::pathsFor($app), $app->databasePath());
     }
 
     /**
@@ -232,38 +226,11 @@ final class TableOwnershipResolver
     /**
      * Every migration file across every registered path, as [prefix, stem, absolute path].
      *
-     * Non-recursive per path and globbed `*_*.php`, matching `Illuminate\Database\Migrations\Migrator`
-     * exactly — a subdirectory is only ever scanned because something registered it as its own path
-     * (which is why beam's `database/migrations/shared/` is seen at all).
-     *
      * @return list<array{0: string, 1: string, 2: string}>
      */
     private function files(): array
     {
-        $seen = [];
-        $files = [];
-
-        foreach ($this->paths as $path) {
-            foreach (glob(rtrim($path, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'*_*.php') ?: [] as $file) {
-                $real = $this->realpath($file);
-
-                if (isset($seen[$real])) {
-                    continue;
-                }
-
-                $seen[$real] = true;
-
-                $name = basename($file, '.php');
-
-                if (! preg_match('/^(\d{4}_\d{2}_\d{2}_\d+)_(.+)$/', $name, $m)) {
-                    continue;
-                }
-
-                $files[] = [$m[1], $m[2], $file];
-            }
-        }
-
-        return $files;
+        return MigrationFiles::in($this->paths);
     }
 
     /** The sortable prefix one tick below $prefix, or null when the date part itself would have to move. */
