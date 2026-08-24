@@ -44,6 +44,7 @@ use Splicewire\Beam\Console\FrameCacheCommand;
 use Splicewire\Beam\Console\FrameClearCommand;
 use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
+use Splicewire\Beam\Console\GenerateContributedTypesCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
@@ -956,6 +957,10 @@ class BeamServiceProvider extends PackageServiceProvider
                 // tenant binding is the particle-route source (below), so a fresh satellite generates from
                 // its mounted `#[ParticleResource]` routes with no further wiring.
                 GenerateClientSdkCommand::class,
+                // The contribution registry's codegen half: an owner resource's read type intersected
+                // with every contributed slice (particle-contribution-seam #22). Unconditional and inert
+                // — a host with no contributions generates an artifact that declares nothing.
+                GenerateContributedTypesCommand::class,
                 GenerateAssetsCommand::class,
                 UndeclaredSurfaceCommand::class,
                 // The registry ratchet's write/check/json surface (registry-kernel ticket 35 §3). Sits

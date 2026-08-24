@@ -11,6 +11,9 @@ use Illuminate\Console\Command;
  * re-implementing them:
  *
  *   - `typescript:transform`             — `#[TypeScript]` Data classes → the TS types (Spatie)
+ *   - `splicewire:beam:generate:contributed-types`
+ *                                        — the contribution registry → each contributed-to resource's
+ *                                          read type (owner Data class & its slices); this package
  *   - `schemas:generate`                 — versioned `#[SchemaIdentity]` Data → JSON schema artifacts (schemastud)
  *   - `splicewire:beam:generate:client`  — the route manifest → route map + typed hooks (this package)
  *
@@ -32,6 +35,9 @@ class GenerateAssetsCommand extends Command
     /** The default pipeline, in dependency order (shapes → schemas → the client that references both). */
     private const DEFAULT_GENERATORS = [
         'typescript:transform',
+        // Derives from `typescript:transform`'s output and verifies against it, so it runs directly
+        // after — the order is a dependency, not a preference (particle-contribution-seam #22).
+        'splicewire:beam:generate:contributed-types',
         'schemas:generate',
         'splicewire:beam:generate:client',
     ];

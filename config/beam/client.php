@@ -59,13 +59,38 @@ return [
     ],
 
     /*
+    | Where `typescript:transform` writes the ambient type tree, and what
+    | `splicewire:beam:generate:contributed-types` writes beside it (particle-contribution-seam #22).
+    |
+    | The derived file declares one type per contributed-to resource key — the owner's own read Data
+    | class intersected with every slice a package contributes to it (`Splicewire.Beam.Particle.Read.
+    | Tenants = TenantData & { commerce: TenantCommerceData | null }`). It is a separate artifact
+    | rather than a widening of the owner's emitted type, because a contribution is registered against
+    | a resource KEY, not against a Data class, and one Data class may serve more than one key.
+    |
+    | `dir`/`source` MUST match this host's spatie writer (a `GlobalNamespaceWriter`'s filename and the
+    | configured output directory) — the generator reads `source` to verify every class it references
+    | actually emitted, which is the guard against a package Data class a host-rooted `#[TypeScript]`
+    | scan never sees. Default: the satellite layout, mirroring `out_dir` above.
+    */
+    'types' => [
+        'dir' => env('BEAM_CLIENT_TYPES_DIR', resource_path('js/types')),
+        'source' => env('BEAM_CLIENT_TYPES_SOURCE', 'generated.d.ts'),
+        'out' => env('BEAM_CLIENT_TYPES_CONTRIBUTED', 'contributed.d.ts'),
+    ],
+
+    /*
     | The umbrella `splicewire:beam:generate:assets` pipeline, in dependency order (shapes →
     | schemas → the client that references both). A generator not registered in this host is
     | skipped with a note, never a hard failure — so a satellite without schemastud still runs.
+    |
+    | `generate:contributed-types` sits directly after `typescript:transform` because it DERIVES from
+    | that command's output and verifies against it — the order is a dependency, not a preference.
     */
     'assets' => [
         'generators' => [
             'typescript:transform',
+            'splicewire:beam:generate:contributed-types',
             'schemas:generate',
             'splicewire:beam:generate:client',
         ],
