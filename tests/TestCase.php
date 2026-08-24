@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests;
 
 use Orchestra\Testbench\TestCase as Orchestra;
 use Rushing\PermissionCascade\PermissionCascadeServiceProvider;
+use Rushing\Popcorn\Laravel\PopcornServiceProvider;
 use Rushing\Versioning\VersioningServiceProvider;
 use Schemastud\DataSchemas\LaravelDataSchemasServiceProvider;
 use Schemastud\JsonNs\Laravel\JsonNsServiceProvider;
@@ -44,6 +45,14 @@ abstract class TestCase extends Orchestra
             // The json-ns host bindings (ADR-0191/0192): the VocabularyRegistry/-Validator the
             // namespace-aware gates resolve, backed by SchemaRegistry when a test binds one.
             JsonNsServiceProvider::class,
+            // The registry kernel's LARAVEL side (registry-kernel ticket 27). Not optional dressing:
+            // `RegistryIndex` is a kernel-side TYPE but a Laravel-side singleton BINDING, so without this
+            // provider `make(RegistryIndex::class)` auto-resolves a FRESH index on every call — measured
+            // here, `$a === $b` was false. Anything describing into it or installing an authorizer would
+            // write to an object nobody reads: green suite, empty index (registry-kernel ticket 40's
+            // "04 D1 reached by a second route"). beam requires `rushing/laravel-popcorn`; the harness was
+            // the only thing not booting it.
+            PopcornServiceProvider::class,
         ];
     }
 
