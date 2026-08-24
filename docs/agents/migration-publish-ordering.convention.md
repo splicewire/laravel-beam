@@ -120,6 +120,60 @@ Declining an entry is a real answer, not a mistake: the competitor's migration w
 convergent guard then throws on the type conflict instead of reporting success. Loud, chosen, and
 recoverable — which is the whole trade this collision family is decided on.
 
+## A published copy is a snapshot, not the source of truth
+
+**Decided:** 2026-08-24, beam-facade ticket 86, after a column rename shipped correctly and reached
+nothing.
+
+> **Editing a `create_*` stub changes what a FRESH database gets and touches nothing that already
+> exists.** Every already-migrated database keeps the old shape, `migrate` says `Nothing to migrate.`,
+> and the test suite stays green because `RefreshDatabase` migrates fresh.
+
+Ticket 65 renamed `form_key` → `capture_key` in beam's `create_beam_submissions_table` stub and in its
+~17 published copies. Correct, complete, and the estate's live databases still had `form_key` while the
+code wrote `capture_key` — nine of them one request from a hard SQL error, flagged by nothing.
+
+The rule this corrects is beam-facade ticket 46's, which is quoted everywhere on that map: *measure the
+rows before pricing a rename*. It is right about **cost** and silent about **reach**. Zero rows means
+the ALTER is trivial; it never meant the ALTER ran.
+
+### The procedure
+
+**Rebuild, don't shim.** The declared repair for a renamed or reshaped published table is to reset the
+database, not to ship a guarded ALTER stub beside the create. The estate is greenfield: drop the
+migrations and tables as needed and rebuild. This is a **dated posture, not a property of renames** —
+it holds because every database in this family is disposable today, and it expires the moment one is
+not:
+
+> **Trigger.** The day any deployed database in this family holds data someone would miss, a rename of
+> a published table owes a guarded shim migration and this section is wrong. `beam-pilot-gcp-cloud-run`
+> is the only deployed root today and is declared resettable — its `docker/entrypoint.sh` runs
+> `migrate --force` on boot, so a redeploy after a `migrate:fresh` is the whole repair.
+
+Do not reach for a shim before that trigger fires, and do not reach for the convergent guard instead:
+it cannot help here and 29's re-dating lever makes it worse. See "What convergence cannot do" in
+`rushing/laravel-schema-convergence`'s `docs/agents/convergent-migration-guards.convention.md`.
+
+### When you meet a migration error at a host
+
+An agent hitting a migration failure from a package-published migration is very likely looking at a
+**stale snapshot, not a bug**. The host's `database/migrations/**` copies were stamped at install time
+and the package has moved since; the host set is presumed **inferior** to the package source, not
+authoritative.
+
+1. **Compare** the published copy against the stub it came from — `vendor/<vendor>/<pkg>/database/
+   migrations/**/<stem>.php.stub`, matched by basename with the timestamp prefix stripped.
+2. **Gap-analyse** the divergence: what the source adds, drops, or reshapes.
+3. **Choose the repair per instance.** Reset and republish, re-publish over the stale copy, or inject a
+   correctly-ordered copy. There is no default and no mechanism that picks for you — the choice depends
+   on what diverged and what the host holds, and it is judgment.
+
+**Detection is deterministic and the repair is not.** That seam is deliberate and it is surgeon's
+existing house pattern — `Rushing\Surgeon\Conformance\StaleDownstreamDuplicateAudit` draws the identical
+line for host-local DTOs that twin a downstream package's ("identical → fixable; drifted → advisory
+only, reconciling a divergence is judgment"). A surgeon sibling enumerates published-migration
+divergence the same way: it names the drift, nominates nothing, and gates nothing.
+
 ## The other half of the collision family
 
 This page is about **ALTER-vs-CREATE across packages**. It does not address **two CREATEs of the same
