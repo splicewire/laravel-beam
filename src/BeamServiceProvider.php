@@ -103,6 +103,8 @@ use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
+use Splicewire\Beam\Rendering\Data\ResourceRenderingCatalogData;
+use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
 use Splicewire\Beam\Rendering\Http\RenderingsController;
 use Splicewire\Beam\Rendering\RenderingCertifier;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
@@ -1444,6 +1446,7 @@ class BeamServiceProvider extends PackageServiceProvider
      *
      *   GET  {at}/{id}/{rendering}  → show   (always)
      *   POST {at}/{id}/{rendering}  → store  (certified LosslessEligible only)
+     *   GET  {at}/renderings        → index  (always — the discovery route, even for zero renderings)
      *
      * Modelled on `Route::recordVersions()`, including its load-bearing discipline: per-route config
      * rides `->defaults()` as a plain serializable array with NO closures, so the table survives
@@ -1487,6 +1490,8 @@ class BeamServiceProvider extends PackageServiceProvider
             $registry = app(ResourceRenderingRegistry::class);
             $certifier = app(RenderingCertifier::class);
 
+            $grants = [];
+
             foreach ($registry->for($resource) as $rendering) {
                 $fidelity = $certifier->certify($rendering);
                 $writable = $fidelity === Fidelity::LosslessEligible;
@@ -1523,7 +1528,36 @@ class BeamServiceProvider extends PackageServiceProvider
                 if ($writable) {
                     $mount($this->post($uri, [RenderingsController::class, 'store']))->name($name.'.ingest');
                 }
+
+                $grants[$rendering->name()] = [
+                    'fidelity' => $fidelity->value,
+                    'writable' => $writable,
+                ];
             }
+
+            // The discovery route (api-surface-coherence ticket 33). OUTSIDE the loop deliberately: a
+            // resource that mounts the macro and has declared no rendering still answers, with an empty
+            // set. Absence of renderings is not absence of resource.
+            //
+            // It carries the mount-time grant map — the same certified verdict the read/write routes
+            // freeze — while leaving the format enumeration to be re-read per request.
+            //
+            // It does NOT inherit `$middleware`. That parameter gates the RENDERING (compositions pass
+            // `consume.engine`, which meters the dogfood loopback); metering a metadata read as engine
+            // consumption would be a new cost on an endpoint that touches no engine. The route group's
+            // own middleware still applies, which is where `abilities: []` says the gate lives.
+            $catalogUri = ($at === '' ? '' : $at.'/').'renderings';
+            $catalogName = ($at === '' ? '' : $at.'.').'renderings';
+
+            $this->get($catalogUri, [RenderingCatalogController::class, 'index'])
+                ->defaults(RenderingCatalogController::CONFIG, [
+                    'resource' => $resource,
+                    'subject' => $subject,
+                    'abilities' => $abilities,
+                    'renderings' => $grants,
+                ])
+                ->name($catalogName)
+                ->beam()->returns(ResourceRenderingCatalogData::class);
         });
     }
 

@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Routing;
 use Illuminate\Routing\Route;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
 use Splicewire\Beam\Rendering\Http\RenderingsController;
 
 /**
@@ -79,12 +80,18 @@ class BeamRouteAction
      * on exactly ticket 01's argument, and reading it here is what let the hand-placed
      * "Renderings & Export" group be deleted rather than replaced (ticket 32 §F). A group of three
      * endpoints whose only commonality is a shared controller method is a placement, not a taxonomy.
+     *
+     * FOUR, since ticket 33: the same macro's discovery route (`GET /disclosures/renderings`) stamps a
+     * fourth key of the same shape. It is a fourth STAMP, not a fourth kind of belonging — the reason it
+     * cannot share the rendering routes' key is that its config describes the whole resource rather than
+     * one rendering, and `RenderingsController` throws on a config without a `rendering` field.
      */
     public static function resourceKey(Route $route): ?string
     {
         $value = $route->defaults[ParticleController::RESOURCE]
             ?? $route->defaults[ParticleOperationController::RESOURCE]
-            ?? ($route->defaults[RenderingsController::CONFIG]['resource'] ?? null);
+            ?? ($route->defaults[RenderingsController::CONFIG]['resource'] ?? null)
+            ?? ($route->defaults[RenderingCatalogController::CONFIG]['resource'] ?? null);
 
         return is_string($value) ? $value : null;
     }
