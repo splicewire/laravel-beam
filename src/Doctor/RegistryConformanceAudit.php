@@ -318,6 +318,16 @@ class RegistryConformanceAudit implements DoctorAudit
     }
 
     /**
+     * Two DIFFERENT registries on one root. The qualifier is what {@see attributeOf()}'s parent walk made
+     * necessary: a base and a bound subclass now both report the base's root, and they are one logical
+     * registry with two seeding sites, not a collision. Reporting them would be a false positive on the
+     * estate's own extension mechanism — and one loud enough to get this gate switched off, which is the
+     * failure its docblock argues it is exempt from.
+     *
+     * Inheritance is the test because it is what the runtime does: only one of the two classes is bound,
+     * so only one branch owner reaches `describe()`, and `OnDuplicate::Reject` never fires. Two UNRELATED
+     * classes claiming one root still collide, and still make that branch unroutable.
+     *
      * @param  list<string>  $population
      */
     protected function collidesOnRoot(string $fqcn, ?IsRegistry $declared, array $population): bool
@@ -327,7 +337,7 @@ class RegistryConformanceAudit implements DoctorAudit
         }
 
         foreach ($population as $other) {
-            if ($other === $fqcn) {
+            if ($other === $fqcn || $this->sharesInheritance($fqcn, $other)) {
                 continue;
             }
 
@@ -337,6 +347,15 @@ class RegistryConformanceAudit implements DoctorAudit
         }
 
         return false;
+    }
+
+    /**
+     * Whether one of these two classes descends from the other — i.e. whether they can share a
+     * declaration rather than compete for a root.
+     */
+    protected function sharesInheritance(string $fqcn, string $other): bool
+    {
+        return is_a($fqcn, $other, true) || is_a($other, $fqcn, true);
     }
 
     /**
@@ -419,6 +438,21 @@ class RegistryConformanceAudit implements DoctorAudit
         return $check !== self::CHECK_CONTRACT || self::CONTRACT_GATES;
     }
 
+    /**
+     * The declaration governing a class — its own, or the nearest one above it.
+     *
+     * The walk is {@see IsRegistry::declaredOn()}'s, not a second copy of it: reading the attribute off a
+     * DIFFERENT class than `IsRegistry::of()` would is how an audit comes to disagree with the kernel it
+     * audits. What is local here is only the tolerance — a class that will not reflect is a miss rather
+     * than a fatal, because an audit that dies on one malformed class reports nothing about the other
+     * forty-nine.
+     *
+     * Before this walked, a host binding a SUBCLASS of a declared registry presented a live registry
+     * object that both this audit and {@see UndeclaredRegistryShapeAudit} filtered out of their
+     * populations before any check ran — the gate could not fail it and the advisory could not row it
+     * (registry-kernel ticket 41 D11, landed by 42). Beam-core ships subclassing as its extension
+     * mechanism, so that population was designed-for, not accidental.
+     */
     protected function attributeOf(?string $fqcn): ?ReflectionAttribute
     {
         if ($fqcn === null || (! class_exists($fqcn) && ! interface_exists($fqcn))) {
@@ -426,7 +460,13 @@ class RegistryConformanceAudit implements DoctorAudit
         }
 
         try {
-            $attributes = (new ReflectionClass($fqcn))->getAttributes(IsRegistry::class);
+            $declaringClass = IsRegistry::declaredOn($fqcn);
+
+            if ($declaringClass === null) {
+                return null;
+            }
+
+            $attributes = (new ReflectionClass($declaringClass))->getAttributes(IsRegistry::class);
         } catch (\Throwable) {
             return null;
         }
@@ -436,6 +476,19 @@ class RegistryConformanceAudit implements DoctorAudit
 
     /**
      * The arguments the author WROTE, normalized so a positional declaration reads the same as a named one.
+     *
+     * ## What "written" means for an inherited declaration
+     *
+     * The **parent's** written arguments — not an empty set. The attribute handed in here is whichever one
+     * {@see attributeOf()}'s walk found governing, so an undeclaring subclass is measured against the
+     * declaration it actually runs under. That is the only reading that keeps `root`/`arity`/`onDuplicate`
+     * meaning the same thing they mean everywhere else in this audit: *what this registry says about
+     * itself.* Scoring the subclass's own (empty) site instead would fail all three checks on a class whose
+     * remedy is to write nothing, and the remedy text would be wrong — the fix would be to un-inherit.
+     *
+     * The consequence to know rather than rediscover: a subclass CANNOT fail these checks on its own, and
+     * cannot fix them on its own either. Fixing the base fixes every descendant at once, which is what one
+     * logical registry with two seeding sites should do.
      *
      * @return array<string, mixed>
      */

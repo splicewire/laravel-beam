@@ -2,7 +2,6 @@
 
 namespace Splicewire\Beam\Doctor;
 
-use ReflectionClass;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Rushing\Popcorn\Registries\IsRegistry;
@@ -435,6 +434,15 @@ class UndeclaredRegistryShapeAudit implements DoctorAudit
         return class_exists($fqcn) || interface_exists($fqcn) ? self::EXPIRY_UNSHAPED : self::EXPIRY_GONE;
     }
 
+    /**
+     * Whether a declaration GOVERNS this class — its own, or the nearest one above it.
+     *
+     * The parent walk is {@see IsRegistry::declaredOn()}'s (registry-kernel ticket 42, landing 41 D11).
+     * Without it this audit rowed every subclass of a declared registry as undeclared shape, which is the
+     * opposite of true: the subclass runs under a declaration, it just does not restate one. Beam-core
+     * ships subclassing as its extension mechanism, so the rows would have been permanent and unfixable —
+     * an advisory backlog whose only remedy was to stop extending.
+     */
     protected function declares(string $fqcn): bool
     {
         if (! class_exists($fqcn) && ! interface_exists($fqcn)) {
@@ -442,7 +450,7 @@ class UndeclaredRegistryShapeAudit implements DoctorAudit
         }
 
         try {
-            return (new ReflectionClass($fqcn))->getAttributes(IsRegistry::class) !== [];
+            return IsRegistry::declaredOn($fqcn) !== null;
         } catch (\Throwable) {
             return false;
         }

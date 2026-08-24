@@ -9,6 +9,7 @@ use Splicewire\Beam\Tests\Doctor\Fixtures\ConformingFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\DeclaredOnlyFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\FirstContestedRootFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\IllegalRootFixtureRegistry;
+use Splicewire\Beam\Tests\Doctor\Fixtures\InheritingFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\SecondContestedRootFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\SilentDuplicateFixtureRegistry;
 use Splicewire\Beam\Tests\TestCase;
@@ -167,6 +168,72 @@ class RegistryConformanceAuditTest extends TestCase
         // A green gate reading as a clean estate is the misreading UndescribedRegistryAudit's docblock had
         // to be rewritten to prevent. The PASS must carry its own caveat or it reproduces it.
         $this->assertStringContainsString(RegistryConformanceAudit::CHECK_CONTRACT, $findings[0]->detail);
+    }
+
+    /**
+     * registry-kernel ticket 42, landing 41 D11. The three cases below are one decision seen from three
+     * sides: a bound subclass is IN the population, it is scored against the declaration it actually runs
+     * under, and it does not collide with the class it inherits from.
+     */
+    public function test_a_bound_subclass_of_a_declared_registry_is_in_the_population(): void
+    {
+        $audit = $this->audit([InheritingFixtureRegistry::class]);
+
+        $this->assertContains(
+            InheritingFixtureRegistry::class,
+            $audit->population(),
+            'Beam-core ships subclassing as its extension mechanism, so a host binding a subclass is the '
+            .'designed case. Filtering it out before any check runs means the gate cannot fail it.',
+        );
+    }
+
+    public function test_an_inherited_declaration_is_scored_on_the_parents_written_arguments(): void
+    {
+        $audit = $this->audit([InheritingFixtureRegistry::class]);
+
+        $this->assertSame(
+            [],
+            $this->failuresFor($audit, InheritingFixtureRegistry::class),
+            'The subclass writes nothing at its own site, but it RUNS under a complete declaration. '
+            .'Scoring its empty site instead would fail root/arity/onDuplicate on a class whose only '
+            .'remedy is to stop extending.',
+        );
+    }
+
+    public function test_a_base_and_its_bound_subclass_are_one_registry_not_a_collision(): void
+    {
+        $audit = $this->audit([
+            ConformingFixtureRegistry::class,
+            InheritingFixtureRegistry::class,
+        ]);
+
+        // Both now report root `fixture.conforming`. They are one logical registry with two seeding
+        // sites — only one of them is ever the bound branch owner, so OnDuplicate::Reject never fires at
+        // describe() time and there is nothing here to catch statically either.
+        $this->assertNotContains(
+            RegistryConformanceAudit::CHECK_ROOT_COLLISION,
+            $this->failuresFor($audit, ConformingFixtureRegistry::class),
+        );
+        $this->assertNotContains(
+            RegistryConformanceAudit::CHECK_ROOT_COLLISION,
+            $this->failuresFor($audit, InheritingFixtureRegistry::class),
+        );
+    }
+
+    public function test_two_unrelated_registries_on_one_root_still_collide_after_the_walk(): void
+    {
+        // The regression the inheritance exemption above could silently buy: if `sharesInheritance()`
+        // were widened to anything looser than a parent/child relationship, this case goes quiet and the
+        // collision check stops existing without a single test turning red.
+        $audit = $this->audit([
+            FirstContestedRootFixtureRegistry::class,
+            SecondContestedRootFixtureRegistry::class,
+        ]);
+
+        $this->assertContains(
+            RegistryConformanceAudit::CHECK_ROOT_COLLISION,
+            $this->failuresFor($audit, FirstContestedRootFixtureRegistry::class),
+        );
     }
 
     public function test_an_undeclared_binding_is_not_in_the_population(): void

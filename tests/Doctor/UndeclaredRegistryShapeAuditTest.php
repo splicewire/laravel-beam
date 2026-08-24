@@ -8,6 +8,7 @@ use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
 use Splicewire\Beam\Tests\Doctor\Fixtures\ConformingFixtureRegistry;
+use Splicewire\Beam\Tests\Doctor\Fixtures\InheritingFixtureRegistry;
 use Splicewire\Beam\Tests\Surgeon\UndescribedRegistryAuditTest;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -243,6 +244,23 @@ class UndeclaredRegistryShapeAuditTest extends TestCase
 
         $this->assertStringContainsString('now declares #[IsRegistry]', $stale);
         $this->assertStringContainsString(RegistryConformanceAudit::CHECK, $stale);
+    }
+
+    /**
+     * registry-kernel ticket 42. An INHERITED declaration counts as declared here, for the same reason it
+     * counts in the gate: the subclass runs under a declaration, it just does not restate one. Rowing it
+     * as undeclared shape would have made a permanent, unfixable advisory entry out of beam-core's own
+     * extension mechanism — the only remedy being to stop extending.
+     */
+    public function test_a_row_whose_class_inherits_a_declaration_is_stale(): void
+    {
+        [$audit] = $this->plant();
+        $this->commit([[
+            'registry' => InheritingFixtureRegistry::class,
+            'disposition' => UndeclaredRegistryShapeAudit::OUTSTANDING,
+        ]]);
+
+        $this->assertStringContainsString('now declares #[IsRegistry]', implode("\n", $audit->staleness()));
     }
 
     public function test_an_unaccounted_row_warns_and_never_fails(): void

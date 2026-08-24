@@ -24,10 +24,12 @@ use Rushing\Popcorn\Registries\RegistryArity;
     onDuplicate: OnDuplicate::Supersede,
     note: 'THREE estate classes are named CapabilityRegistry — this one, tower\'s SUBCLASS of it, and the '
         .'unrelated Tower\Circuit\Capabilities one. That collision is why the index keys on ROOT and not '
-        .'on short name. Attributes are not inherited by reflection, so tower\'s subclass declares its own '
-        .'root and its own OnDuplicate::Admit; a host binding the subclass has ONE live object answering '
-        .'to two declared roots, which is a migration question for registry-kernel ticket 37, not a '
-        .'declaration one.',
+        .'on short name. Tower\'s subclass declares NOTHING and inherits this declaration: since '
+        .'registry-kernel ticket 42, IsRegistry::of() walks the parent chain and the nearest declaration '
+        .'wins, so a host binding the subclass has one live object on ONE root, seeded from two sites. '
+        .'The earlier reading of this note claimed the subclass declared its own root and its own '
+        .'OnDuplicate::Admit — false against the file, and the evidence that a restated argument is a '
+        .'place to drift (41 D11 found it).',
     order: 15,
 )]
 class CapabilityRegistry
