@@ -2,10 +2,14 @@
 
 namespace Splicewire\Beam\Particle\Contribution;
 
+use ReflectionAttribute;
+use ReflectionClass;
 use RuntimeException;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Schemastud\Frame\Attributes\WidgetIn;
+use Schemastud\Frame\Registry\WidgetContextProjector;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
 
@@ -83,9 +87,65 @@ class ResourceContributionRegistry
             );
         }
 
+        $this->assertReadOnlyParticipation($contribution);
+
         $this->contributions[$contribution->key][$contribution->as] = $contribution;
 
         return $this;
+    }
+
+    /**
+     * A contributed slice is LIST-COLUMN ONLY, and declaring anything else on it throws HERE —
+     * at registration, at boot — rather than being dropped at render.
+     *
+     * The seam is a read projection by construction: {@see ContributionProjector::apply()} folds
+     * onto an already-projected row, and {@see ResourceContribution} carries `includes` and
+     * `value` and nothing else. So there are two ways for a slice's `#[WidgetIn]` to be a lie,
+     * and both are refused:
+     *
+     *  - **`row-cell`** would render frame's inline `EditableCell`, whose commit calls
+     *    `onCellCommit(record, 'commerce.plan', value)` — a write into a slice with NO WRITER.
+     *    Ignoring it silently is precisely how that defect returns; a throw is what makes a
+     *    contributor find out at boot that the seam is read-only (ticket 17 §A4).
+     *  - **class-level** contexts (`list-item`, the `#[RowActions]` sugar) are whole-RECORD
+     *    declarations that key to the manifest's root pointer `""`. A slice has no root — its
+     *    pointers are `as.prop` — so {@see ContributionContextNodes} reflects properties only and
+     *    a class-level declaration would vanish without a word. Same rule, same reason.
+     *
+     * ⚠️ Every OTHER context stays legal and unremarked, including `edit` and `detail`: they are
+     * read-side bindings the owner's own surfaces may consult, and nothing here writes.
+     *
+     * @throws RuntimeException when the slice declares participation the seam cannot honour
+     */
+    private function assertReadOnlyParticipation(ResourceContribution $contribution): void
+    {
+        $reflection = new ReflectionClass($contribution->data);
+
+        if ($reflection->getAttributes(WidgetIn::class, ReflectionAttribute::IS_INSTANCEOF) !== []) {
+            throw new RuntimeException(
+                "Resource contribution [{$contribution->key}.{$contribution->as}] declares CLASS-LEVEL widget "
+                ."participation on [{$contribution->data}]. A contributed slice has no root node — its manifest "
+                .'pointers are `'.$contribution->as.'.<property>` — so a whole-record context (list-item, '
+                .'#[RowActions]) has nowhere to land and would be silently dropped. Declare per-property '
+                .'participation instead.'
+            );
+        }
+
+        $projector = new WidgetContextProjector;
+
+        foreach ($reflection->getProperties() as $property) {
+            if (! isset($projector->forProperty($property)['row-cell'])) {
+                continue;
+            }
+
+            throw new RuntimeException(
+                "Resource contribution [{$contribution->key}.{$contribution->as}] declares `row-cell` "
+                ."participation on [{$contribution->data}::\${$property->getName()}]. The contribution seam is "
+                .'READ-ONLY: a slice is folded onto an already-projected row and carries no write arm, so an '
+                .'inline cell editor would commit into a slice nothing can persist. Use `list-column` (the '
+                .'#[Column] sugar) for a contributed field.'
+            );
+        }
     }
 
     /** Whether ANY package contributes to `$key`. The inert-by-default predicate every fold point asks first. */

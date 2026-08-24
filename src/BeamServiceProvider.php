@@ -28,6 +28,7 @@ use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\DataSchemas\Overlay\Lens\Fidelity;
 use Schemastud\Frame\Contracts\FrameFilterProvider;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
+use Schemastud\Frame\Contracts\ResourceContextContributor;
 use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Spatie\LaravelPackageTools\Package;
@@ -88,6 +89,7 @@ use Splicewire\Beam\Ownership\EloquentOwnershipEdgeStore;
 use Splicewire\Beam\Ownership\OwnershipGraph;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
+use Splicewire\Beam\Particle\Contribution\ContributionContextNodes;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\DeadResolvingHookGuard;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -432,6 +434,15 @@ class BeamServiceProvider extends PackageServiceProvider
         // for every package at boot whatever the order, so the direct `make()->register()` idiom ticket 07
         // established is order-safe by construction. Ships EMPTY — inert until a package contributes.
         $this->app->singleton(ResourceContributionRegistry::class);
+
+        // Frame's OPTIONAL plug port, implemented here so a host binds nothing (ticket 19 / 17 §A1).
+        // It is what makes a contributed slice's `#[Column]`s reach the Frame manifest: the manifest
+        // reflects ONE Data class, a slice is another, so without this the columns are declared and
+        // invisible. Frame learns only THAT a key has extra participation — never that contributions
+        // exist — which is what keeps the narrowing ticket 10 landed intact.
+        $this->app->singleton(ResourceContextContributor::class, fn ($app) => new ContributionContextNodes(
+            $app->make(ResourceContributionRegistry::class),
+        ));
 
         $this->app->singleton(ParticleResourceRegistry::class, fn ($app) => (new ParticleResourceRegistry(
             $app->make(RealmResourceRegistry::class),

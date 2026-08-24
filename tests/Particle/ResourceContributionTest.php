@@ -10,6 +10,11 @@ use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
+use Schemastud\Frame\Attributes\Column;
+use Schemastud\Frame\Attributes\RowActions;
+use Schemastud\Frame\Attributes\WidgetIn;
+use Schemastud\Frame\Contracts\ResourceContextContributor;
+use Schemastud\Frame\Registry\ContextManifest;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Contribution\ResourceContribution;
@@ -105,6 +110,113 @@ class ResourceContributionTest extends TestCase
             $this->app->make(ParticleResourceRegistry::class)->definition('contrib-crate'),
             [],
         )[0];
+    }
+
+    // ── The Frame CONTEXT BLOCK half: a contributed slice's columns must RENDER, not just ride ─────
+    //
+    // Ticket 19. The wire half (above) was never enough: `ContextManifest::forResource()` reflects ONE
+    // Data class, a slice is another, and frame's JS treats the manifest as authoritative — so before
+    // this, a contributed `#[Column]` was declared and invisible, and the map's destination
+    // ("a beam host with commerce gets the commerce columns") was false.
+
+    public function test_a_contributed_slice_emits_its_columns_under_dotted_pointers(): void
+    {
+        $this->contributions()->register(new ResourceContribution(
+            key: 'contrib-crate',
+            as: 'weights',
+            data: ContribColumnsData::class,
+            value: fn () => null,
+        ));
+
+        $byNode = $this->contextBlock()['byNode'];
+
+        $this->assertSame(
+            ['list-column' => ['participates' => true, 'sort' => 10, 'label' => 'Total']],
+            $byNode['weights.total'],
+        );
+    }
+
+    public function test_the_owners_own_nodes_are_untouched_by_a_contribution(): void
+    {
+        $bare = $this->contextBlock()['byNode'];
+
+        $this->contributions()->register(new ResourceContribution(
+            key: 'contrib-crate',
+            as: 'weights',
+            data: ContribColumnsData::class,
+            value: fn () => null,
+        ));
+
+        $this->assertSame($bare, array_diff_key($this->contextBlock()['byNode'], ['weights.total' => null]));
+    }
+
+    public function test_a_resource_nobody_contributes_to_gains_no_nodes(): void
+    {
+        $this->assertSame(
+            (new ContextManifest)->forResource(ContribCrateData::class),
+            $this->contextBlock(),
+        );
+    }
+
+    public function test_a_slice_property_with_no_participation_emits_no_node(): void
+    {
+        $this->contributions()->register(new ResourceContribution(
+            key: 'contrib-crate',
+            as: 'weights',
+            data: ContribColumnsData::class,
+            value: fn () => null,
+        ));
+
+        // `quiet` carries no attribute — a slice contributes only what it DECLARES.
+        $this->assertArrayNotHasKey('weights.quiet', $this->contextBlock()['byNode']);
+    }
+
+    // ── Refuse, do not ignore: the seam is read-only and says so at BOOT ────────────────────────────
+
+    public function test_a_slice_declaring_row_cell_throws_at_registration(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('READ-ONLY');
+
+        $this->contributions()->register(new ResourceContribution(
+            key: 'contrib-crate',
+            as: 'weights',
+            data: ContribEditableSliceData::class,
+            value: fn () => null,
+        ));
+    }
+
+    public function test_a_slice_declaring_class_level_participation_throws_at_registration(): void
+    {
+        // A slice has no root pointer — its nodes are `as.<property>` — so a whole-record context
+        // would be dropped without a word. Same rule, same reason as `row-cell`.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('CLASS-LEVEL');
+
+        $this->contributions()->register(new ResourceContribution(
+            key: 'contrib-crate',
+            as: 'weights',
+            data: ContribRootSliceData::class,
+            value: fn () => null,
+        ));
+    }
+
+    public function test_the_port_is_bound_by_beam_so_a_host_binds_nothing(): void
+    {
+        $this->assertInstanceOf(
+            ResourceContextContributor::class,
+            $this->app->make(ResourceContextContributor::class),
+        );
+    }
+
+    /** The resource's Frame context block, built the way a manifest controller builds it. */
+    private function contextBlock(): array
+    {
+        return $this->app->make(ContextManifest::class)->forResource(
+            ContribCrateData::class,
+            null,
+            'contrib-crate',
+        );
     }
 
     // ── The null case: absent ⟺ not installed, present-and-null ⟺ ran and returned null ─────────────
@@ -321,5 +433,34 @@ class ContribWeightsData extends Data
 {
     public function __construct(
         public int $total,
+    ) {}
+}
+
+/** A slice that declares list columns — the ordinary, legal case. */
+class ContribColumnsData extends Data
+{
+    public function __construct(
+        #[Column(label: 'Total', sort: 10)]
+        public int $total = 0,
+        public int $quiet = 0,
+    ) {}
+}
+
+/** Illegal: an inline cell editor would commit into a slice with no writer. */
+class ContribEditableSliceData extends Data
+{
+    public function __construct(
+        #[Column]
+        #[WidgetIn('row-cell')]
+        public int $total = 0,
+    ) {}
+}
+
+/** Illegal: a whole-record context keys to the manifest root, and a slice has no root. */
+#[RowActions(['publish'])]
+class ContribRootSliceData extends Data
+{
+    public function __construct(
+        public int $total = 0,
     ) {}
 }
