@@ -30,7 +30,7 @@ class RouteManifestSourceRegistryTest extends TestCase
 
         $this->assertNotNull($declaration);
         $this->assertSame('beam.client.sources', $declaration->root);
-        $this->assertSame(RegistryArity::PickOne, $declaration->arity);
+        $this->assertSame([RegistryArity::PickOne], $declaration->arity);
     }
 
     public function test_it_reads_the_default_tenant_binding_off_the_real_config_key(): void

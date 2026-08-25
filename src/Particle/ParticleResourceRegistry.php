@@ -65,11 +65,15 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
     root: 'beam.particle.resources',
     of: 'Frame resource definitions (model→Data projections) driving reads + the editor',
     arity: RegistryArity::PickOne,
-    entryType: 'mixed',
+    entryType: ParticleResource::class,
     onDuplicate: OnDuplicate::Supersede,
     note: 'Declared, not inherited: overwrite is intentional here and the class docblock argues it. '
-        .'`mixed` is honest rather than lazy — an entry is a ParticleResource OR a raw ResourceDefinition '
-        .'(the imperative/union escape hatch). Whether the three collections split into three registries '
+        .'This said `mixed` on the grounds that an entry is a ParticleResource OR a raw '
+        .'ResourceDefinition — ⚠️ STALE since the escape hatch was collapsed: `$resources` is '
+        .'`array<string, ParticleResource>` and `all()`\'s instanceof filter was deleted as the identity. '
+        .'Registry-kernel ticket 47 caught it while measuring whether any registry in the estate holds '
+        .'two entry types; none does, which is why `entryType` stayed a scalar. Whether the three '
+        .'collections split into three registries '
         .'is registry-kernel ticket 36\'s, not a thing to improvise. Realm membership is a TAG recorded '
         .'beside the entry, never a second key dimension: one entry, many realms, no duplicate.',
     order: 12,

@@ -74,9 +74,11 @@ use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
     root: 'beam.doctor.facade-scope',
     of: 'the authorable roots + file set the five facade-conformance audits share (one walk, not five)',
     arity: RegistryArity::RunAll,
-    entryType: 'mixed',
+    entryType: 'string',
     onDuplicate: OnDuplicate::Admit,
-    note: 'Entries are absolute path strings, not objects. Constructor-seeded, and nothing pushes into '
+    note: 'Entries are absolute path strings, not objects — which is what `entryType` now SAYS, having '
+        .'said `mixed` while the sentence below said `string` (registry-kernel ticket 47). Constructor-'
+        .'seeded, and nothing pushes into '
         .'it after binding — the roots are seeded once by '
         .'forApp(), which is also where the resolution-mode rule lives (a vendor/ package joins the scan '
         .'only when it is a SYMLINK). A host with an unusual source layout REBINDS the singleton; it does '

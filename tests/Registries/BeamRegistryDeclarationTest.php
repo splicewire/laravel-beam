@@ -112,10 +112,15 @@ class BeamRegistryDeclarationTest extends TestCase
         // The axis the Registry/Manifest naming split was really tracking (canon: the-seam-is-a-registry):
         // both are one primitive, and arity is what differs. Two classes suffixed `Registry` here disagree
         // about arity, and a `Manifest` and a `Registry` agree — which is the whole point.
-        $this->assertSame(RegistryArity::PickOne, IsRegistry::of(RealmRegistry::class)?->arity);
-        $this->assertSame(RegistryArity::ComposeMany, IsRegistry::of(RealmOverlayRegistry::class)?->arity);
-        $this->assertSame(RegistryArity::RunAll, IsRegistry::of(BeamInstallManifest::class)?->arity);
-        $this->assertSame(RegistryArity::RunAll, IsRegistry::of(ResourceRenderingRegistry::class)?->arity);
+        $this->assertSame([RegistryArity::PickOne], IsRegistry::of(RealmRegistry::class)?->arity);
+        $this->assertSame([RegistryArity::ComposeMany], IsRegistry::of(RealmOverlayRegistry::class)?->arity);
+        $this->assertSame([RegistryArity::RunAll], IsRegistry::of(BeamInstallManifest::class)?->arity);
+        // Two steps, outermost first: PickOne selects a resource, RunAll engages that resource's
+        // renderings. The bare RunAll it used to declare was ticket 47's second beneficiary.
+        $this->assertSame(
+            [RegistryArity::PickOne, RegistryArity::RunAll],
+            IsRegistry::of(ResourceRenderingRegistry::class)?->arity,
+        );
     }
 
     public function test_a_non_default_duplicate_policy_is_declared_rather_than_inherited(): void

@@ -23,13 +23,17 @@ use Rushing\Popcorn\Registries\RegistryArity;
 #[IsRegistry(
     root: 'beam.renderings',
     of: 'renderings per resource — the set Route::resourceRenderings() mounts one route each from',
-    arity: RegistryArity::RunAll,
-    entryType: 'mixed',
+    arity: [RegistryArity::PickOne, RegistryArity::RunAll],
+    entryType: 'class-string<'.ResourceRendering::class.'>|'.ResourceRendering::class,
     onDuplicate: OnDuplicate::Admit,
     note: 'One of the three descriptors registry-kernel ticket 07 D-final found LYING about its seam: it '
-        .'is filled from `beam.core.renderings` config AND by imperative register(), not one way. `mixed` '
-        .'because an entry is a class-string OR a resolved ResourceRendering, and `$resolved` is a '
-        .'memoization cache beside the entries rather than a second keyspace.',
+        .'is filled from `beam.core.renderings` config AND by imperative register(), not one way. The '
+        .'read is TWO steps: PickOne selects a resource, then RunAll engages that resource\'s renderings '
+        .'— the bare RunAll ticket 47 found while verifying PipelineRegistry\'s. `entryType` says '
+        .'class-string-OR-instance rather than the `mixed` it used to say, because a class-string here '
+        .'is a LAZY HOLDER of the same type and not a second entry type (47 measured the estate and '
+        .'found no registry that holds two, so the field stays a scalar). `$resolved` is a memoization '
+        .'cache beside the entries rather than a second keyspace.',
     order: 22,
 )]
 class ResourceRenderingRegistry
