@@ -12,6 +12,19 @@ Before adding or changing any I/O surface (HTTP route, MCP tool, Inertia page, c
 declare-every-boundary-crossing-shape invariant, its three declaration sites, the four exceptions,
 and `popcorn:registries --json` for locating the registry behind a surface.
 
+## Check the library before building the mechanism
+
+Before adding a mechanism to beam, check whether a primary dependency already ships it. This has
+gone wrong three times — `afterResolving`, the reverse index, and `project:`, which turned out to be
+a hand-written reimplementation of `spatie/laravel-data`'s magical creation and deleted **13 of the
+estate's 20 `project:` closures to a no-op** (`particle-contribution-seam` ticket 12). Each time the
+affordance was documented, shipped in `vendor/`, and invisible.
+
+`docs/agents/libraries/` holds the orientation docs that fix that: what a library offers, and where
+its real documentation already sits on disk. Read the one for the library you are about to build
+alongside. Note that beam is a **package** — `advanced-usage/in-packages.md` applies, beam ships no
+`config/data.php`, and `^4.0|^5.0` means its code must hold on two majors.
+
 ## API parameter documentation
 
 A documented API parameter is declared on a Data class — `#[RequestFromData]` / `#[QueryFromData]` plus
