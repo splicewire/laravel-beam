@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
+use Rushing\Doctor\AuditError;
 use Rushing\Doctor\Concerns\RunsDoctorFloor;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\DoctorRunner;
@@ -18,6 +19,7 @@ use Splicewire\Beam\Doctor\McpIsolationAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
 use Splicewire\Beam\Doctor\SitemapReadinessAudit;
 use Splicewire\Beam\Doctor\SurgeonWiringAudit;
+use Throwable;
 
 /**
  * `php artisan splicewire:beam:doctor` — base-tier Beam readiness. Moat-free: it never requires
@@ -48,6 +50,13 @@ use Splicewire\Beam\Doctor\SurgeonWiringAudit;
  * beam-core's own audits stay hardcoded (coexist, not migrate) because seven of nine return a bare
  * finding rather than a list and take constructor-external inputs the container cannot supply.
  *
+ * Because that head sits OUTSIDE the runner, the runner's own guard (beam-facade ticket 72) never
+ * reached it, and the head runs FIRST — so one throwing core audit took down the guarded consumer
+ * tail as well as itself, at the base-tier command every host runs and the satellite composes. Each
+ * head audit therefore runs through {@see self::guarded()}, which produces the same
+ * {@see AuditError} finding the runner would: Fail on the gate head, Warn on the advisory head, the
+ * audit named, the rest of the run completing (beam-facade ticket 90).
+ *
  * `--floor` sets the severity a GATE registration's finding must reach to fail the run (default
  * `fail`). A repo mid-migration runs at the default; a converged one runs `--floor=warn` so a
  * warning gate-fails. The floor governs the runner-owned consumer tail; the hardcoded core audits
@@ -76,8 +85,11 @@ class BeamDoctorCommand extends Command
 
         $base = $this->laravel->basePath();
 
-        // Pre-audit bail, deliberately outside the runner: an unreadable composer.json produces
-        // no finding, and the runner has no equivalent.
+        // Pre-audit bail, deliberately outside the guard as well as outside the runner (ticket 90
+        // §3, re-affirmed): this is not a throw and must not become an `audit-errored` finding.
+        // Without a readable composer.json there is no host to audit and nothing to hand the two
+        // audits that take it as an argument — the run is refused, not degraded. `audit-errored`
+        // says "one check could not look"; this says "there is nothing here to look at".
         $composerJson = $this->readJson($base.'/composer.json');
 
         if ($composerJson === null) {
@@ -87,29 +99,60 @@ class BeamDoctorCommand extends Command
         }
 
         // Gate findings — these can fail the exit code (a beam site is not installable/deployable
-        // clean without them).
+        // clean without them). Every one goes through `guarded()`: the head runs BEFORE the runner,
+        // so an unguarded throw here took the guarded consumer tail down with it (ticket 90).
         $gateFindings = array_merge(
-            (new BeamDependencyContractAudit)->run($composerJson, $this->readJson($base.'/composer.lock')),
-            [
-                $this->manifestFinding($base),
-                $this->marqueeGateFinding(),
-                $this->mcpIsolationFinding($base),
-            ],
+            $this->guarded(
+                BeamDependencyContractAudit::class,
+                true,
+                fn (BeamDependencyContractAudit $audit) => $audit->run($composerJson, $this->readJson($base.'/composer.lock')),
+            ),
+            $this->guarded(
+                BeamManifestAudit::class,
+                true,
+                fn (BeamManifestAudit $audit) => $this->manifestFinding($audit, $base),
+            ),
+            $this->guarded(
+                MarqueeGateAudit::class,
+                true,
+                fn (MarqueeGateAudit $audit) => $this->marqueeGateFinding($audit),
+            ),
+            $this->guarded(
+                McpIsolationAudit::class,
+                true,
+                fn (McpIsolationAudit $audit) => $this->mcpIsolationFinding($audit, $base),
+            ),
         );
 
         // Advisory, presence-conditional or report-only — never fail the exit code. The intake door is
         // the one that returns a LIST: it reports per-slug, because a host declaring four intake slugs
         // with two of them unresolvable wants both named, not the first one and a count.
         $advisoryFindings = array_merge(
-            [
-                (new SchemaRoundTripAudit)->run(),
-                (new FrameManifestAudit)->run(),
-            ],
-            IntakeDoorAudit::forApp($this->laravel)->run(),
-            [
-                $this->sitemapFinding($base),
-                (new SurgeonWiringAudit)->run($composerJson),
-            ],
+            $this->guarded(
+                SchemaRoundTripAudit::class,
+                false,
+                fn (SchemaRoundTripAudit $audit) => $audit->run(),
+            ),
+            $this->guarded(
+                FrameManifestAudit::class,
+                false,
+                fn (FrameManifestAudit $audit) => $audit->run(),
+            ),
+            $this->guarded(
+                IntakeDoorAudit::class,
+                false,
+                fn (IntakeDoorAudit $audit) => $audit->run(),
+            ),
+            $this->guarded(
+                SitemapReadinessAudit::class,
+                false,
+                fn (SitemapReadinessAudit $audit) => $this->sitemapFinding($audit, $base),
+            ),
+            $this->guarded(
+                SurgeonWiringAudit::class,
+                false,
+                fn (SurgeonWiringAudit $audit) => $audit->run($composerJson),
+            ),
         );
 
         $gateFailed = false;
@@ -141,17 +184,60 @@ class BeamDoctorCommand extends Command
     }
 
     /**
+     * Run one hardcoded head audit the way {@see DoctorRunner::collect()} runs a registered one:
+     * resolve it, run it, and turn either failure into the fleet's {@see AuditError} finding rather
+     * than a crash. Both phases are separate because they fail for different reasons and the
+     * check-strings already tell them apart (`audit-errored.resolve` vs `audit-errored`).
+     *
+     * **Why a wrapper and not a fold into the runner (ticket 90 §1).** Seven of these nine audits
+     * take their inputs on `run()` — the parsed composer.json, the lock, the front matter, the web
+     * middleware group — which {@see DoctorAudit}'s argument-free contract cannot carry, and that is
+     * the whole reason they stayed hardcoded (coexist, not migrate — see {@see BeamDoctorManifest}).
+     * Folding them in means an adapter or a closure registration per audit whose only purpose is to
+     * reach a `try`. The wrapper buys the same protection at the cost of one call, and leaves the
+     * coexist decision exactly where it was.
+     *
+     * **Why the audit is named explicitly (ticket 90 §2).** A closure has no class-string, and
+     * {@see AuditError} takes one so the operator can tell WHICH check died. The alternative was to
+     * grow the shared factory a caller-supplied label — widening a fleet surface for one caller —
+     * so the call site passes its class instead. Resolving through the container rather than `new`
+     * is what makes that class-string honest (it is the thing that was actually resolved) and is
+     * also the seam the tests bind a throwing double into; these audits have no bindings, so at a
+     * host `make()` is `new`.
+     *
+     * @param  class-string  $audit
+     * @param  callable(object): (Finding|list<Finding>)  $run
+     * @return list<Finding>
+     */
+    private function guarded(string $audit, bool $gate, callable $run): array
+    {
+        try {
+            $instance = $this->laravel->make($audit);
+        } catch (Throwable $e) {
+            return [AuditError::resolving($audit, $gate, $e)];
+        }
+
+        try {
+            $findings = $run($instance);
+        } catch (Throwable $e) {
+            return [AuditError::running($audit, $gate, $e)];
+        }
+
+        return $findings instanceof Finding ? [$findings] : array_values($findings);
+    }
+
+    /**
      * The site is self-describing (ADR-0001): a valid BEAM.md must exist and declare its identity
      * (legacy SATELLITE.md still accepted during the rename). Reads + parses the front matter and
      * hands the parsed identity to the pure audit.
      */
-    private function manifestFinding(string $base): Finding
+    private function manifestFinding(BeamManifestAudit $audit, string $base): Finding
     {
         $path = $this->manifestPath($base);
         $exists = is_file($path);
         $frontMatter = $exists ? $this->frontMatter((string) file_get_contents($path)) : [];
 
-        return (new BeamManifestAudit)->run(
+        return $audit->run(
             $exists,
             $frontMatter['satellite'] ?? null,
             $frontMatter['variant'] ?? null,
@@ -162,14 +248,14 @@ class BeamDoctorCommand extends Command
      * Runtime check: is the site-mode gate actually in the `web` group? The dependency audit
      * proves marquee is declared; this proves it is enforced.
      */
-    private function marqueeGateFinding(): Finding
+    private function marqueeGateFinding(MarqueeGateAudit $audit): Finding
     {
         $middleware = (string) config(
             'beam.marquee.middleware',
             'Rushing\\Marquee\\Middleware\\EnforceSiteMode',
         );
 
-        return (new MarqueeGateAudit)->run(
+        return $audit->run(
             $this->laravel['router']->getMiddlewareGroups()['web'] ?? [],
             $middleware,
             (bool) config('beam.core.marquee.auto_register', true),
@@ -181,7 +267,7 @@ class BeamDoctorCommand extends Command
      * Collect every Playwright MCP registration — the committed `.mcp.json` and the developer's
      * global `~/.claude.json` project entry — and prove each one isolates the browser.
      */
-    private function mcpIsolationFinding(string $base): Finding
+    private function mcpIsolationFinding(McpIsolationAudit $audit, string $base): Finding
     {
         $registrations = [];
 
@@ -199,14 +285,14 @@ class BeamDoctorCommand extends Command
             }
         }
 
-        return (new McpIsolationAudit)->run($registrations);
+        return $audit->run($registrations);
     }
 
     /**
      * Report-only: is the sitemap enabled, and does a static public/ file shadow the mode-aware
      * routes? Reads `beam.sitemap.*`.
      */
-    private function sitemapFinding(string $base): Finding
+    private function sitemapFinding(SitemapReadinessAudit $audit, string $base): Finding
     {
         $public = $base.'/public';
         $path = ltrim((string) config('beam.core.sitemap.path', 'sitemap.xml'), '/');
@@ -218,7 +304,7 @@ class BeamDoctorCommand extends Command
             }
         }
 
-        return (new SitemapReadinessAudit)->run(
+        return $audit->run(
             (bool) config('beam.core.sitemap.enabled', true),
             $shadowing,
         );

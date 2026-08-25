@@ -3,6 +3,9 @@
 namespace Splicewire\Beam\Tests;
 
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\Artisan;
+use RuntimeException;
+use Rushing\Doctor\AuditError;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Console\BeamDoctorCommand;
@@ -22,6 +25,7 @@ use Splicewire\Beam\Doctor\SurgeonWiringAudit;
 use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
 use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
+use Splicewire\Beam\Tests\Doctor\Fixtures\TailSentinelAudit;
 use Splicewire\Beam\Tests\Doctor\IntakeDoorAuditTest;
 
 class BeamDoctorCommandTest extends TestCase
@@ -389,6 +393,125 @@ class BeamDoctorCommandTest extends TestCase
         $this->artisan('splicewire:beam:doctor')
             ->expectsOutputToContain('discoverable via')
             ->assertExitCode(BeamDoctorCommand::SUCCESS);
+    }
+
+    // ---- The head's own guard (beam-facade ticket 90) ------------------------------
+
+    /**
+     * The gate head. A throwing gate audit has not verified its subject, so it reports Fail and the
+     * exit code goes red through the command's own `$gateFailed` — but the run COMPLETES: the four
+     * advisory head audits and the whole consumer tail still report. Before 90 this crashed, taking
+     * the guarded runner (ticket 72) down with it because the head runs first.
+     */
+    public function test_a_throwing_gate_head_audit_reddens_the_run_and_does_not_stop_it(): void
+    {
+        $this->pointBaseAt(
+            ['minimum-stability' => 'dev', 'prefer-stable' => true],
+            ['packages' => [], 'packages-dev' => []],
+        );
+        $this->registerTailSentinel();
+
+        $this->app->bind(MarqueeGateAudit::class, fn () => new class extends MarqueeGateAudit
+        {
+            public function run(array $webGroup, string $middleware, bool $autoRegister, bool $middlewareExists): Finding
+            {
+                throw new RuntimeException('marquee audit boom');
+            }
+        });
+
+        $output = $this->runDoctor(BeamDoctorCommand::FAILURE);
+
+        $this->assertStringContainsString(AuditError::CHECK.': '.MarqueeGateAudit::class.' threw while running', $output);
+        $this->assertStringContainsString('unverified is not passed', $output);
+        $this->assertStringContainsString(TailSentinelAudit::CHECK, $output);
+    }
+
+    /**
+     * The advisory head. An audit that could not run has not found anything, so it must not redden a
+     * run on the strength of not knowing — Warn, named, and the exit code stays green.
+     */
+    public function test_a_throwing_advisory_head_audit_warns_and_the_run_stays_green(): void
+    {
+        $this->pointBaseAt(
+            ['minimum-stability' => 'dev', 'prefer-stable' => true],
+            ['packages' => [], 'packages-dev' => []],
+        );
+        $this->registerTailSentinel();
+
+        $this->app->bind(FrameManifestAudit::class, fn () => new class extends FrameManifestAudit
+        {
+            public function run(): Finding
+            {
+                throw new RuntimeException('frame audit boom');
+            }
+        });
+
+        $output = $this->runDoctor(BeamDoctorCommand::SUCCESS);
+
+        $this->assertStringContainsString(AuditError::CHECK.': '.FrameManifestAudit::class.' threw while running', $output);
+        $this->assertStringContainsString('contributed no findings', $output);
+        $this->assertStringContainsString(TailSentinelAudit::CHECK, $output);
+    }
+
+    /**
+     * The resolution phase, told apart by check-string exactly as the runner tells it apart: a head
+     * audit that cannot be constructed is stale WIRING, not stale host state, and an operator reading
+     * `audit-errored.resolve` knows which of the two they are looking at without opening the code.
+     */
+    public function test_a_head_audit_that_cannot_be_constructed_reports_the_resolve_variant(): void
+    {
+        $this->pointBaseAt(
+            ['minimum-stability' => 'dev', 'prefer-stable' => true],
+            ['packages' => [], 'packages-dev' => []],
+        );
+
+        $this->app->bind(SchemaRoundTripAudit::class, function () {
+            throw new RuntimeException('cannot build the round-trip audit');
+        });
+
+        $this->artisan('splicewire:beam:doctor')
+            ->expectsOutputToContain(AuditError::CHECK_RESOLVE.': '.SchemaRoundTripAudit::class.' could not be resolved')
+            ->assertExitCode(BeamDoctorCommand::SUCCESS);
+    }
+
+    /**
+     * The pre-audit bail stands (ticket 90 §3): an unreadable composer.json is a refusal to run, not an
+     * audit that could not look, so it stays an error line with no finding and never becomes
+     * `audit-errored`.
+     */
+    public function test_the_unreadable_composer_json_bail_is_not_an_audit_error(): void
+    {
+        $this->fixtureBase = sys_get_temp_dir().'/beam-doctor-'.uniqid();
+        @mkdir($this->fixtureBase, 0777, true);
+        $this->app->setBasePath($this->fixtureBase);
+
+        $this->artisan('splicewire:beam:doctor')
+            ->expectsOutputToContain('No readable composer.json at ')
+            ->doesntExpectOutputToContain(AuditError::CHECK)
+            ->assertExitCode(BeamDoctorCommand::FAILURE);
+    }
+
+    /**
+     * Run the doctor and return its output as ONE unwrapped line. `components->error()`/`warn()` wrap at
+     * the terminal width with a hanging indent, so an `expectsOutputToContain()` on a sentence inside a
+     * long detail matches nothing — the assertion fails on the renderer's line breaks rather than on the
+     * text. Collapsing whitespace is what lets a test assert the RULING an operator reads (the closing
+     * sentence of an `AuditError` detail) and not just its check-string.
+     */
+    private function runDoctor(int $expectedExitCode): string
+    {
+        $this->withoutMockingConsoleOutput();
+
+        $this->assertSame($expectedExitCode, $this->artisan('splicewire:beam:doctor'));
+
+        return (string) preg_replace('/\s+/', ' ', Artisan::output());
+    }
+
+    /** A recognisable consumer-tail registration, so "the run completed" is an assertion and not a hope. */
+    private function registerTailSentinel(): void
+    {
+        $this->app->make(BeamDoctorManifest::class)
+            ->register('splicewire/laravel-beam', TailSentinelAudit::class, gate: false, order: 999);
     }
 
     /**
