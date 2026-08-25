@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\Contracts\ReadStage;
 use Splicewire\Beam\Read\ReadPass;
 
@@ -55,7 +56,7 @@ class ProjectStage implements ReadStage
      * four hosts, so the "first-match-wins race" this scan was suspected of has no live instance either.
      *
      * NOT deleted here on purpose: `dataClassFor()` is private to `project()`, and `project()` is a
-     * {@see \Splicewire\Beam\Read\Contracts\ParticleHydrator} method. Narrowing that port to `query()` + `hydrate()`
+     * {@see ParticleHydrator} method. Narrowing that port to `query()` + `hydrate()`
      * — the separate read-repair effort ticket 08 diagnosed — removes `project()` and takes this scan with it.
      * Deleting half of that here would hand that effort a partially-narrowed port.
      *

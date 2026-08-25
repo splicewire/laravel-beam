@@ -10,6 +10,7 @@ use Schemastud\JsonNs\Exceptions\UnboundPrefix;
 use Schemastud\JsonNs\Exceptions\VocabularyArtifactMissing;
 use Schemastud\JsonNs\Vocab\VocabularyValidator;
 use Schemastud\JsonNs\Vocabulary;
+use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Write\ParticleWriter;
 use stdClass;
 
@@ -21,7 +22,7 @@ use stdClass;
  * (ticket 41, the owner's: any schema can be used as a form — a form is a rendering/intake MODE of a
  * schema, never a class of schema), so the old name carried a category the dissolved
  * `splicewire/laravel-schema-forms` package invented and outlived. `Intake` is the vocabulary the
- * door already speaks: {@see \Splicewire\Beam\Http\PublicIntakeController}, `IntakeProvenance`,
+ * door already speaks: {@see PublicIntakeController}, `IntakeProvenance`,
  * `PublicIntakeWriteGate`, `config('beam.core.intake')`.
  *
  * Two validation gates deliberately coexist (DESIGN §7 L10): the boolean {@see AcceptanceGate}

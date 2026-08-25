@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
+use Splicewire\Beam\Threads\Models\Thread;
 use Symfony\Component\Finder\Finder;
 
 /**
@@ -91,7 +92,7 @@ class MorphAliasCoverageAudit implements DoctorAudit
      * @var array<class-string, string>
      */
     protected const EXEMPT = [
-        \Splicewire\Beam\Threads\Models\Thread::class => 'Tier variant of the `thread` particle; '
+        Thread::class => 'Tier variant of the `thread` particle; '
             .'tower owns the single read-side entry. Write-side pin only, by design.',
         \Splicewire\Beam\Embed\Models\Thread::class => 'Tier variant of the `thread` particle; exists so '
             .'Embed (whose own morph is `embed`) can reach its `thread` version lineage. Write-side pin only.',

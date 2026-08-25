@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Storage;
 
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Write\AsSystemWriter;
+use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
 
 /**
@@ -25,8 +27,8 @@ class ParticleStorageDriver implements StorageDriver
      * Takes either a {@see ParticleWriter} or a **closure resolving one per write**.
      *
      * The closure form exists because {@see ParticleWriter} is bound `bind()`, not `singleton()`,
-     * precisely so a caller can rebind {@see \Splicewire\Beam\Write\Contracts\WriteGate} for the
-     * duration of a flow — {@see \Splicewire\Beam\Write\AsSystemWriter} is the whole reason that
+     * precisely so a caller can rebind {@see WriteGate} for the
+     * duration of a flow — {@see AsSystemWriter} is the whole reason that
      * matters. A **long-lived** holder that captures the writer in its constructor pins whichever gate
      * was bound at construction, and a later rebind can never reach it: `BeamUxServiceProvider` binds
      * `StorageDriverResolver` as a singleton, so on any host that resolved it before
