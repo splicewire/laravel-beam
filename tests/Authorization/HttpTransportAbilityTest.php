@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
-use Splicewire\Beam\Authorization\GuardActorPort;
+use Splicewire\Beam\Authorization\GuardActorAdapter;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -137,7 +137,7 @@ class HttpTransportAbilityTest extends TestCase
 
     public function test_the_default_port_binding_reports_the_guard_user(): void
     {
-        $this->assertInstanceOf(GuardActorPort::class, $this->app->make(ActorPort::class));
+        $this->assertInstanceOf(GuardActorAdapter::class, $this->app->make(ActorPort::class));
 
         $user = new PrivilegedUser;
         $this->actingAs($user);

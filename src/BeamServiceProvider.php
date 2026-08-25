@@ -34,7 +34,7 @@ use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
-use Splicewire\Beam\Authorization\GuardActorPort;
+use Splicewire\Beam\Authorization\GuardActorAdapter;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Concerns\BootsParticleRouteMacros;
 use Splicewire\Beam\Concerns\BootsResourceRenderings;
@@ -73,7 +73,7 @@ use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Frame\FrameResourceManifest;
 use Splicewire\Beam\Frame\NullFrameFilterProvider;
-use Splicewire\Beam\Frame\ParticleResourceRegistryPort;
+use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
@@ -360,14 +360,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bind(ParticleHydrator::class, PayloadParticleReader::class);
 
         // Frame's agnostic ResourceRegistry port (ADR-0156: "frame has no concept of admin") is bound onto
-        // the genuinely stateless {@see ParticleResourceRegistryPort} forwarder — it exists only because
+        // the genuinely stateless {@see ParticleResourceRegistryAdapter} forwarder — it exists only because
         // PHP has no overloading (ParticleResourceRegistry's REST-facing `get(): ParticleResource` and the
         // port's `get(): ResourceDefinition` can't share a method name on one class), so every call passes
         // straight through to ParticleResourceRegistry's differently-named projection methods. A SINGLETON
         // so boot-time #[ParticleResource] discovery (packageBooted) persists across the request. Frame's
         // manifest machinery reads the port; it never imports this beam type (arrow points DOWN, beam → frame).
-        $this->app->singleton(ParticleResourceRegistryPort::class);
-        $this->app->alias(ParticleResourceRegistryPort::class, ResourceRegistry::class);
+        $this->app->singleton(ParticleResourceRegistryAdapter::class);
+        $this->app->alias(ParticleResourceRegistryAdapter::class, ResourceRegistry::class);
 
         // The build-time #[ParticleResource] manifest cache (mirrors bootstrap/cache/packages.php). When it
         // exists, discoverResources() reads the cached class-strings instead of re-walking the filesystem
@@ -486,7 +486,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // `bindIf` on the port, because "who is acting" is the transport's answer to give: HTTP has the
         // guard (the default bound here — the only place ambient auth is read), while a transport with no
         // ambient user (MCP over stdio) binds its own. The resolver itself is transport-blind and stateless.
-        $this->app->bindIf(ActorPort::class, GuardActorPort::class);
+        $this->app->bindIf(ActorPort::class, GuardActorAdapter::class);
         $this->app->bind(AbilityResolver::class);
 
         // The client-SDK codegen's default tenant source: reads mounted particle routes off the live route
@@ -1133,7 +1133,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
         // Resource DECLARATION discovery (ADR-0156). Reflect the configured #[ParticleResource] classes +
         // scan the configured discover-paths into beam's singleton ParticleResourceRegistry, which frame's
-        // manifest machinery reads through the ResourceRegistry port (via ParticleResourceRegistryPort). This
+        // manifest machinery reads through the ResourceRegistry port (via ParticleResourceRegistryAdapter). This
         // is the discovery wiring that used to live in frame's FrameServiceProvider — moved here because the
         // #[ParticleResource] opinion is beam's.
         $this->discoverResources();

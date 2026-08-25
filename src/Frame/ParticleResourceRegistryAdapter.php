@@ -18,8 +18,11 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * {@see ParticleResourceRegistry::definitions()}. Replaces the retired `AdminResourceRegistry`, which
  * carried its OWN parallel `$declarations` store (the thing that made a resource need registering twice —
  * once here, once there); this adapter carries nothing.
+ *
+ * Named `Adapter`, not `Port`, per ADR-0213 — which this docblock had already argued for two releases
+ * before the class was renamed to match it: the port is `ResourceRegistry`, and this is what plugs in.
  */
-class ParticleResourceRegistryPort implements ResourceRegistry
+class ParticleResourceRegistryAdapter implements ResourceRegistry
 {
     public function __construct(private ParticleResourceRegistry $registry) {}
 

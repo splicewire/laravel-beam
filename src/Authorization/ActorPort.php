@@ -14,8 +14,8 @@ namespace Splicewire\Beam\Authorization;
  * So the resolver never resolves the actor; it is HANDED one. Each transport supplies the actor through
  * this port, and this interface's implementations are the only place ambient authentication is read.
  *
- * {@see GuardActorPort} is the default binding (the Laravel guard). A transport with no guard binds its
- * own — that is the whole point of the port.
+ * {@see GuardActorAdapter} is the default binding (the Laravel guard). A transport with no guard binds
+ * its own — that is the whole point of the port.
  */
 interface ActorPort
 {
