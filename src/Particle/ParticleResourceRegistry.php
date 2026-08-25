@@ -7,6 +7,7 @@ use ReflectionClass;
 use RuntimeException;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Laddered;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\RegistryArity;
 use Schemastud\Frame\Registry\ResourceDefinition;
@@ -74,11 +75,13 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
         .'Registry-kernel ticket 47 caught it while measuring whether any registry in the estate holds '
         .'two entry types; none does, which is why `entryType` stayed a scalar. Whether the three '
         .'collections split into three registries '
-        .'is registry-kernel ticket 36\'s, not a thing to improvise. Realm membership is a TAG recorded '
+        .'is registry-kernel ticket 36\'s — ANSWERED: they do not split. `$resources` is the keyspace; '
+        .'`$realms`/`$realmMap` are a two-rung membership ladder beside the entry, now declared '
+        .'through {@see Laddered}. Realm membership is a TAG recorded '
         .'beside the entry, never a second key dimension: one entry, many realms, no duplicate.',
     order: 12,
 )]
-class ParticleResourceRegistry
+class ParticleResourceRegistry implements Laddered
 {
     /**
      * The stored DECLARATIONS, keyed by resource key — always a {@see ParticleResource}, projected
@@ -374,6 +377,17 @@ class ParticleResourceRegistry
      *
      * @return list<string>
      */
+    /**
+     * The realm-membership tiers, outermost first (registry-kernel ticket 36). Declarative only —
+     * {@see realmsFor()} is the one thing that climbs them, and the kernel never does.
+     *
+     * @return non-empty-list<string>
+     */
+    public function rungs(): array
+    {
+        return ['explicit', 'realm-map'];
+    }
+
     private function realmsFor(string $key): array
     {
         if (isset($this->realms[$key])) {
