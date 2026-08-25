@@ -10,7 +10,7 @@ use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\RegistryArity;
 use Schemastud\Frame\Registry\ResourceDefinition;
-use Splicewire\Beam\Frame\ParticleResourceRegistryPort;
+use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
@@ -30,7 +30,7 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
  *     DIFFERENTLY NAMED from Frame's `ResourceRegistry::get()`/`all()` on purpose — this class cannot
  *     implement that port directly (PHP has no overloading; `get(): ParticleResource` and a hypothetical
  *     `get(): ResourceDefinition` can't coexist on one class), so a genuinely stateless one-method-per-line
- *     forwarder ({@see ParticleResourceRegistryPort}) sits behind the port and calls
+ *     forwarder ({@see ParticleResourceRegistryAdapter}) sits behind the port and calls
  *     straight through to these.
  *
  * Was two registries: this one (REST-only, no realm concept) and the retired `AdminResourceRegistry`
