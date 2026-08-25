@@ -7,13 +7,13 @@ use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
-use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Str;
 use Rushing\DataFilters\Contracts\ResourceModelResolver;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
+use Rushing\Popcorn\Concerns\ChainsTraitMethods;
+use Rushing\Popcorn\Contracts\ChainsTraitMethods as ChainsTraitMethodsContract;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Rushing\Surgeon\Audit\PackageGraph;
 use Rushing\Surgeon\Operation\CallbackConformanceManifest;
@@ -25,7 +25,6 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
-use Schemastud\DataSchemas\Overlay\Lens\Fidelity;
 use Schemastud\Frame\Contracts\FrameFilterProvider;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
@@ -36,6 +35,9 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\GuardActorPort;
+use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
+use Splicewire\Beam\Concerns\BootsParticleRouteMacros;
+use Splicewire\Beam\Concerns\BootsResourceRenderings;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\BeamSeedCommand;
@@ -93,7 +95,6 @@ use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\Contribution\ContributionContextNodes;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\DeadResolvingHookGuard;
-use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceModelResolver;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -104,14 +105,9 @@ use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
-use Splicewire\Beam\Rendering\Data\ResourceRenderingCatalogData;
-use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
-use Splicewire\Beam\Rendering\Http\RenderingsController;
-use Splicewire\Beam\Rendering\RenderingCertifier;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
 use Splicewire\Beam\Rendering\Subjects\FindOrFailSubjectResolver;
 use Splicewire\Beam\Rendering\Subjects\ResolvesRenderingSubject;
-use Splicewire\Beam\Routing\BeamRouteProxy;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
@@ -191,8 +187,13 @@ use Splicewire\Beam\Write\ParticleWriter;
  * resource DECLARATION — `#[ParticleResource]` + the registry — and feeds frame's generic manifest
  * machinery through frame's ResourceRegistry port). Frame must never reference `Splicewire\Beam\*`.
  */
-class BeamServiceProvider extends PackageServiceProvider
+class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitMethodsContract
 {
+    use BootsBeamRouteNamespace;
+    use BootsParticleRouteMacros;
+    use BootsResourceRenderings;
+    use ChainsTraitMethods;
+
     public function configurePackage(Package $package): void
     {
         $package
@@ -916,18 +917,12 @@ class BeamServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
-        // The `Route::particleResource()` / `Route::particleOp()` route macros — the declarative mount for
-        // the generic particle REST + operation surface, so a host stops hand-mounting the generic
-        // controllers against the RESOURCE/NAME route defaults.
-        $this->bootParticleRouteMacros();
-
-        // The `->beam()` route-metadata namespace — one macro on the route INSTANCE carrying every beam
-        // declaration a mounted route can make (api-surface-coherence ticket 15).
-        $this->bootBeamRouteNamespace();
-
-        // The `Route::resourceRenderings()` route macro (moved from laravel-composition-engine into beam
-        // core) — mounts one read (and, where certified reversible, write) route per registered rendering.
-        $this->bootResourceRenderingsMacro();
+        // Every route macro this package ships, contributed by the trait that OWNS it rather than
+        // hand-listed here: the particle resource/op mounts, the `->beam()` route-metadata namespace,
+        // and the rendering mount. Each link declares its own `order:`, so adding one is `use`-ing a
+        // trait — and the sequence does not rest on where a `use` statement sits, which `pint`'s
+        // `ordered_traits` fixer would resort alphabetically.
+        $this->chainTraitMethods('boot');
 
         // SINGLE-TENANT shared-migrations fallback (beam-install-turnkey trap 1). Every beam-* package
         // publishes its ubiquitous tables into ONE destination, `database/migrations/shared/` — a SUBDIR
@@ -1257,314 +1252,6 @@ class BeamServiceProvider extends PackageServiceProvider
      *      stamped with the operation controller's RESOURCE + NAME defaults. Options: 'method' (default
      *      'post'), 'name' (route-name override), 'idConstraint'.
      */
-    /**
-     * Register the `->beam()` route-metadata namespace (api-surface-coherence ticket 15).
-     *
-     * Note this hangs off the route INSTANCE ({@see RouteInstance}), not the {@see Route} facade's Router
-     * — the distinction the bare macros already drew and the reason they can't live next to
-     * `particleResource`. `particleResource` MOUNTS routes, so it is a Router call; `->beam()` DECORATES a
-     * route that already exists, so it is a Route call and only makes sense post-mount.
-     *
-     * Everything the namespace can declare lives on {@see BeamRouteProxy}; adding a fifth declaration is a
-     * method there and touches nothing here. That is the point of the namespace — the global macro table
-     * stops growing one entry per beam concept, so `Macroable::macro()`'s silent overwrite has exactly one
-     * surface to hit instead of four. `BeamRouteNamespaceTest` asserts `->beam()` still returns OUR proxy,
-     * which is what turns a foreign overwrite from invisible into a red test.
-     */
-    protected function bootBeamRouteNamespace(): void
-    {
-        if (RouteInstance::hasMacro('beam')) {
-            return;
-        }
-
-        RouteInstance::macro('beam', function (): BeamRouteProxy {
-            /** @var RouteInstance $this */
-            return new BeamRouteProxy($this);
-        });
-    }
-
-    protected function bootParticleRouteMacros(): void
-    {
-        if (Route::hasMacro('particleResource')) {
-            return;
-        }
-
-        Route::macro('particleResource', function (
-            string $uri,
-            string $resourceKey,
-            array $options = [],
-        ): void {
-            /** @var Router $this */
-            $only = $options['only'] ?? ['index', 'show', 'store', 'update', 'destroy'];
-            $name = $options['names'] ?? str_replace('-', '_', $resourceKey);
-            $idConstraint = $options['idConstraint'] ?? null;
-            // 'controller' — route THROUGH a dedicated ParticleController subclass (e.g. SiloController) so it
-            // gets the `_particle` default + auto-`@group` like the generic surface, instead of hand-rolled
-            // explicit routes. Defaults to the generic controller (fully backward-compatible).
-            $controller = $options['controller'] ?? ParticleController::class;
-
-            $withId = function (RouteInstance $route) use ($idConstraint): RouteInstance {
-                return $idConstraint === 'uuid' ? $route->whereUuid('id') : $route;
-            };
-
-            $stamp = function (RouteInstance $route, string $verb) use ($resourceKey, $name): RouteInstance {
-                return $route
-                    ->defaults(ParticleController::RESOURCE, $resourceKey)
-                    ->name("{$name}.{$verb}");
-            };
-
-            if (in_array('index', $only, true)) {
-                $stamp($this->get($uri, [$controller, 'index']), 'index');
-            }
-
-            if (in_array('show', $only, true)) {
-                $stamp($withId($this->get("{$uri}/{id}", [$controller, 'show'])), 'show');
-            }
-
-            if (in_array('store', $only, true)) {
-                $stamp($this->post($uri, [$controller, 'store']), 'store');
-            }
-
-            if (in_array('update', $only, true)) {
-                $verbs = ($options['legacyPostUpdate'] ?? false) ? ['put', 'patch', 'post'] : ['put', 'patch'];
-                $stamp($withId($this->match($verbs, "{$uri}/{id}", [$controller, 'update'])), 'update');
-            }
-
-            if (in_array('destroy', $only, true)) {
-                $stamp($withId($this->delete("{$uri}/{id}", [$controller, 'destroy'])), 'destroy');
-            }
-        });
-
-        Route::macro('particleOp', function (
-            string $uri,
-            string $resourceKey,
-            string $op,
-            array $options = [],
-        ): void {
-            /** @var Router $this */
-            $verb = strtolower($options['method'] ?? 'post');
-
-            $route = $this->{$verb}("{$uri}/{id}/op/{$op}", [ParticleOperationController::class, 'invoke'])
-                ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
-                ->defaults(ParticleOperationController::NAME, $op)
-                ->name($options['name'] ?? "{$resourceKey}.op.{$op}");
-
-            if (($options['idConstraint'] ?? null) === 'uuid') {
-                $route->whereUuid('id');
-            }
-
-            // A Stream-kind op (ADR-0160) has no single resolved response — it emits a sequence of
-            // typed SSE events instead. `particleOp` mounts through the generic controller, so there's
-            // no per-route call site to chain `->streams()` onto directly; an `'streams'` option lets
-            // the caller declare it here (surgeon-audit-viability ticket 28).
-            if ($options['streams'] ?? null) {
-                $route->streams($options['streams']);
-            }
-        });
-
-        // `Route::particleOps` (HTTP-02) — the plural loop-collapse sibling of `particleOp`. Takes a LIST of
-        // op declarations and mounts each; the `group()` (middleware/prefix) stays the CALLER's. Each entry is
-        // one of three forms, the op NAME derived from the declaration (you pass the list, not restated names):
-        //   'reorder'                          a bare name — already registered elsewhere, mount only.
-        //   DownloadMedia::class               a #[ParticleOp] class-string — discovered (register) + mounted.
-        //   new ParticleOperation(name: …, …)  an inline object — registered here + mounted (today's 3 sites).
-        Route::macro('particleOps', function (
-            string $uri,
-            string $resourceKey,
-            array $ops,
-            array $options = [],
-        ): void {
-            /** @var Router $this */
-            $discovery = app(AttributedParticleDiscovery::class);
-            $operations = app(ParticleOperationRegistry::class);
-
-            foreach ($ops as $op) {
-                $name = match (true) {
-                    // An inline runtime object — register it, mount by its own name.
-                    $op instanceof ParticleOperation => tap($op->name, fn () => $operations->register($op)),
-                    // A #[ParticleOp] class-string — discover (registers) + read the attribute's name to mount.
-                    is_string($op) && class_exists($op) => tap(
-                        (new \ReflectionClass($op))->getAttributes(ParticleOp::class)[0]?->newInstance()->name
-                            ?? throw new \InvalidArgumentException("Class [{$op}] carries no #[ParticleOp] to mount as a particle op."),
-                        fn () => $discovery->registerClass($op),
-                    ),
-                    // A bare name — already registered elsewhere; mount only.
-                    default => $op,
-                };
-
-                Route::particleOp($uri, $resourceKey, $name, $options);
-            }
-        });
-
-        // `Route::particleRelative` (HTTP-02) — the bound-relative mount (the one genuinely new capability).
-        // Route-model-binds a RELATIVE (the related model an operation is scoped/associated THROUGH — parent
-        // is the common flavor, but hasManyThrough / pivot / an arbitrary scope are all relatives) and pushes
-        // it + its `$via` into the route defaults of everything the `$routes` callback mounts, so the generic
-        // ParticleController reads them (index/find base on the relative; create goes through the relation).
-        //
-        //   $via 'media'   (string relation) — controller scopes `$relative->media()` and AUTO-ASSOCIATES the
-        //                                        inverse on create (`->media()->make()`); covers hasMany /
-        //                                        hasManyThrough / belongsToMany (Eloquent handles "through").
-        //   $via fn($rel, $q) => …  (Closure)  — an arbitrary scope (computed joins, polymorphic, cross-tenant).
-        //                                        CANNOT auto-associate on create — pairs with the resource's
-        //                                        own `prepare` hook for the FK.
-        //
-        // `opts['binding']` overrides the `{param}` name (default: the model's kebab basename). Authorize the
-        // bound relative via a `can:` middleware on the caller's `group()` — resolved once, children inherit.
-        Route::macro('particleRelative', function (
-            string $uri,
-            string $model,
-            string|Closure $via,
-            Closure $routes,
-            array $options = [],
-        ): void {
-            /** @var Router $this */
-            $binding = $options['binding'] ?? Str::kebab(class_basename($model));
-
-            // Route-model-bind the relative (findOrFail → 404 for a stranger id), then mount the child routes
-            // under the `{$uri}/{binding}` prefix, stamping each with the binding name + its via so
-            // ParticleController resolves the bound instance per-request off the route parameter.
-            $this->bind($binding, fn ($value) => $model::query()->findOrFail($value));
-
-            $before = $this->getRoutes()->getRoutes();
-            $beforeIds = [];
-            foreach ($before as $existing) {
-                $beforeIds[spl_object_id($existing)] = true;
-            }
-
-            $this->group(['prefix' => "{$uri}/{{$binding}}"], $routes);
-
-            foreach ($this->getRoutes()->getRoutes() as $route) {
-                if (! isset($beforeIds[spl_object_id($route)])) {
-                    $route->defaults(ParticleController::RELATIVE, $binding);
-                    $route->defaults(ParticleController::RELATIVE_MODEL, $model);
-                    $route->defaults(ParticleController::VIA, $via);
-                }
-            }
-        });
-    }
-
-    /**
-     * Register `Route::resourceRenderings($resource, $subject, ...)`, which mounts EVERY rendering the
-     * {@see ResourceRenderingRegistry} holds for `$resource` — one read route each, plus a write route
-     * only where {@see RenderingCertifier} could prove reversibility:
-     *
-     *   GET  {at}/{id}/{rendering}  → show   (always)
-     *   POST {at}/{id}/{rendering}  → store  (certified LosslessEligible only)
-     *   GET  {at}/renderings        → index  (always — the discovery route, even for zero renderings)
-     *
-     * Modelled on `Route::recordVersions()`, including its load-bearing discipline: per-route config
-     * rides `->defaults()` as a plain serializable array with NO closures, so the table survives
-     * `route:cache`. What is frozen at mount time is only the certified fidelity and the verb grant it
-     * implies; the rendering itself is re-read from the registry per request, so its live format
-     * enumeration is never baked.
-     *
-     * **`Fidelity` decides the verb, and the certifier decides the fidelity.** A rendering cannot declare
-     * itself writable — the write route simply does not exist for a lossy one, which is stronger than a
-     * write route that accepts input and silently discards state.
-     *
-     * `$at` is where the routes MOUNT; `$resource` is the registry KEY. `recordVersions()` couples the two
-     * (its own docblock notes the host must wrap it in a prefix/name group to reach a URL tier, "a name
-     * can't hold a slash"), and that coupling is exactly what stops an existing endpoint from migrating
-     * onto a macro without moving. Splitting them lets `$at: ''` mount at the CURRENT group's root — how
-     * an already-grouped endpoint keeps its URI and route name to the byte.
-     *
-     * `$abilities` defaults to `view`/`update` against the subject. Pass `[]` to state explicitly that
-     * this resource is gated elsewhere (route middleware) and the controller must not authorize — silence
-     * is not the default, an empty map is a decision.
-     */
-    private function bootResourceRenderingsMacro(): void
-    {
-        if (Route::hasMacro('resourceRenderings')) {
-            return;
-        }
-
-        Route::macro('resourceRenderings', function (
-            string $resource,
-            string $subject,
-            ?string $at = null,
-            ?array $abilities = null,
-            array $middleware = [],
-            array $with = [],
-            string $idConstraint = 'uuid',
-        ): void {
-            /** @var Router $this */
-            $at = $at ?? $resource;
-            $abilities = $abilities ?? ['view' => 'view', 'mutate' => 'update'];
-
-            $registry = app(ResourceRenderingRegistry::class);
-            $certifier = app(RenderingCertifier::class);
-
-            $grants = [];
-
-            foreach ($registry->for($resource) as $rendering) {
-                $fidelity = $certifier->certify($rendering);
-                $writable = $fidelity === Fidelity::LosslessEligible;
-
-                $config = [
-                    'resource' => $resource,
-                    'rendering' => $rendering->name(),
-                    'subject' => $subject,
-                    'with' => array_values($with),
-                    'abilities' => $abilities,
-                    'fidelity' => $fidelity->value,
-                    'writable' => $writable,
-                ];
-
-                $uri = ($at === '' ? '' : $at.'/').'{id}/'.$rendering->name();
-                $name = ($at === '' ? '' : $at.'.').$rendering->name();
-
-                $mount = function (RouteInstance $route) use ($config, $middleware, $idConstraint): RouteInstance {
-                    $route->defaults(RenderingsController::CONFIG, $config);
-
-                    if ($idConstraint === 'uuid') {
-                        $route->whereUuid('id');
-                    }
-
-                    if ($middleware !== []) {
-                        $route->middleware($middleware);
-                    }
-
-                    return $route;
-                };
-
-                $mount($this->get($uri, [RenderingsController::class, 'show']))->name($name);
-
-                if ($writable) {
-                    $mount($this->post($uri, [RenderingsController::class, 'store']))->name($name.'.ingest');
-                }
-
-                $grants[$rendering->name()] = [
-                    'fidelity' => $fidelity->value,
-                    'writable' => $writable,
-                ];
-            }
-
-            // The discovery route (api-surface-coherence ticket 33). OUTSIDE the loop deliberately: a
-            // resource that mounts the macro and has declared no rendering still answers, with an empty
-            // set. Absence of renderings is not absence of resource.
-            //
-            // It carries the mount-time grant map — the same certified verdict the read/write routes
-            // freeze — while leaving the format enumeration to be re-read per request.
-            //
-            // It does NOT inherit `$middleware`. That parameter gates the RENDERING (compositions pass
-            // `consume.engine`, which meters the dogfood loopback); metering a metadata read as engine
-            // consumption would be a new cost on an endpoint that touches no engine. The route group's
-            // own middleware still applies, which is where `abilities: []` says the gate lives.
-            $catalogUri = ($at === '' ? '' : $at.'/').'renderings';
-            $catalogName = ($at === '' ? '' : $at.'.').'renderings';
-
-            $this->get($catalogUri, [RenderingCatalogController::class, 'index'])
-                ->defaults(RenderingCatalogController::CONFIG, [
-                    'resource' => $resource,
-                    'subject' => $subject,
-                    'abilities' => $abilities,
-                    'renderings' => $grants,
-                ])
-                ->name($catalogName)
-                ->beam()->returns(ResourceRenderingCatalogData::class);
-        });
-    }
 
     /**
      * Explicit attributed-realm registration: reflect each configured realm-marker class and register its
