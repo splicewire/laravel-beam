@@ -64,7 +64,7 @@ class PublicIntakeRouteTest extends TestCase
 
         // Mount the opt-in door (config is read at boot, so it must be set here, pre-boot).
         $app['config']->set('beam.core.intake.enabled', true);
-        $app['config']->set('beam.core.intake.forms', [
+        $app['config']->set('beam.core.intake.slugs', [
             'contact' => self::CHEAP_STEM,      // public
             'private' => self::EXPENSIVE_STEM,  // resolvable but NOT public
             'namespaced' => self::NAMESPACED_STEM, // public, declares @namespace content (ticket 02)

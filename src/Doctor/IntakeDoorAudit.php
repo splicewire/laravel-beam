@@ -40,7 +40,7 @@ use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
  * {@see PublicIntakeWriteGate} cannot:
  *
  *  1. is the registry answerable at all (an empty one 404s every slug);
- *  2. does each `beam.core.intake.forms` slug's stem resolve to a registered artifact (404 if not);
+ *  2. does each `beam.core.intake.slugs` slug's stem resolve to a registered artifact (404 if not);
  *  3. is that stem on `beam.core.intake.public_schemas` (403 if not — deny-by-default, and a host that
  *     registers the artifact and forgets the allow-list gets a door that is live, correct, and refuses).
  *
@@ -119,12 +119,25 @@ class IntakeDoorAudit implements DoctorAudit
             ))];
         }
 
+        // A host whose PUBLISHED config still carries the pre-126 `forms` key reads as "declares no
+        // slugs" and 404s every slug it thinks it declared — the door falls back to treating the URL
+        // segment as a raw stem. That is silent, so it is reported first and as a WARN, ahead of the
+        // no-slugs PASS it would otherwise be mistaken for.
+        if ($this->config('beam.core.intake.forms', null) !== null) {
+            return [Finding::warn(self::CHECK,
+                'This host publishes the retired beam.core.intake.forms key. It was renamed to '.
+                'beam.core.intake.slugs (beam-facade ticket 126) and NOTHING reads the old name, so '.
+                'every slug it maps 404s: the door falls back to treating the URL segment as a raw '.
+                'schema stem. Rename the key in config/beam/core.php — the values are unchanged.'
+            )];
+        }
+
         $slugs = $this->slugs();
 
         if ($slugs === []) {
             return [Finding::pass(self::CHECK, sprintf(
                 'The intake door is mounted at %s over a registry holding %d schema(s) (%s). '.
-                'beam.core.intake.forms declares no slugs, so the door takes a schema stem straight off '.
+                'beam.core.intake.slugs declares no slugs, so the door takes a schema stem straight off '.
                 'the URL and there is no configured population to resolve ahead of a request.',
                 self::ROUTE,
                 count($ids),
@@ -139,7 +152,7 @@ class IntakeDoorAudit implements DoctorAudit
         foreach ($slugs as $slug => $stem) {
             if ($targets->targetFor($stem) === []) {
                 $findings[] = Finding::warn(self::CHECK, sprintf(
-                    'POST /beam/intake/%s 404s on every submission: beam.core.intake.forms maps it to '.
+                    'POST /beam/intake/%s 404s on every submission: beam.core.intake.slugs maps it to '.
                     'the stem [%s], which has no registered version in the registry (%s). Either the '.
                     'artifact was never registered, or its $id was re-stemmed on one side only.',
                     $slug,
@@ -202,7 +215,7 @@ class IntakeDoorAudit implements DoctorAudit
     {
         $slugs = [];
 
-        foreach ((array) $this->config('beam.core.intake.forms', []) as $slug => $stem) {
+        foreach ((array) $this->config('beam.core.intake.slugs', []) as $slug => $stem) {
             if (is_string($slug) && is_string($stem) && $stem !== '') {
                 $slugs[$slug] = $stem;
             }

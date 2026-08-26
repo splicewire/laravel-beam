@@ -91,7 +91,7 @@ class PublicIntakeController
     {
         // Map the URL-safe schema slug to its schema stem (or accept a resolvable stem passed directly),
         // then resolve the target schema through beam's registry (filesystem tier). Unknown ⇒ 404.
-        $slugs = (array) config('beam.core.intake.forms', []);
+        $slugs = (array) config('beam.core.intake.slugs', []);
         $stem = isset($slugs[$schema]) && $slugs[$schema] !== '' ? (string) $slugs[$schema] : $schema;
         $targetSchema = $this->targets->targetFor($stem);
         if ($targetSchema === []) {

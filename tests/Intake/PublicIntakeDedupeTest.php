@@ -37,7 +37,7 @@ class PublicIntakeDedupeTest extends TestCase
 
         // Config is read at boot, so the door must be mounted pre-boot.
         $app['config']->set('beam.core.intake.enabled', true);
-        $app['config']->set('beam.core.intake.forms', ['waitlist' => self::STEM]);
+        $app['config']->set('beam.core.intake.slugs', ['waitlist' => self::STEM]);
         $app['config']->set('beam.core.intake.public_schemas', [self::STEM]);
         $app['config']->set('beam.core.intake.throttle', '60,1');
     }

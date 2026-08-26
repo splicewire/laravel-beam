@@ -100,7 +100,7 @@ class IntakeDoorAuditTest extends TestCase
     {
         $this->bindRegistry()->register($this->artifact(self::STEM.'/1'));
 
-        config()->set('beam.core.intake.forms', ['feedback' => self::STEM]);
+        config()->set('beam.core.intake.slugs', ['feedback' => self::STEM]);
         config()->set('beam.core.intake.public_schemas', [self::STEM]);
 
         $findings = (new IntakeDoorAudit($this->app))->run();
@@ -116,7 +116,7 @@ class IntakeDoorAuditTest extends TestCase
         // slug points at a stem nothing answers to, and the door 404s every submission.
         $this->bindRegistry()->register($this->artifact(self::STEM.'/1'));
 
-        config()->set('beam.core.intake.forms', [
+        config()->set('beam.core.intake.slugs', [
             'feedback' => self::STEM,
             'moved' => self::STEM.'-elsewhere',
         ]);
@@ -133,7 +133,7 @@ class IntakeDoorAuditTest extends TestCase
     {
         $this->bindRegistry()->register($this->artifact(self::STEM.'/1'));
 
-        config()->set('beam.core.intake.forms', ['feedback' => self::STEM]);
+        config()->set('beam.core.intake.slugs', ['feedback' => self::STEM]);
         config()->set('beam.core.intake.public_schemas', []);
 
         $findings = (new IntakeDoorAudit($this->app))->run();
@@ -143,13 +143,33 @@ class IntakeDoorAuditTest extends TestCase
         $this->assertStringContainsString('403s', $findings[0]->detail);
     }
 
+    /**
+     * beam-facade ticket 126 renamed `beam.core.intake.forms` to `.slugs`. A host that republishes the
+     * retired key looks IDENTICAL to a host that deliberately declares no slugs — a PASS — while 404ing
+     * every slug it thinks it declared, because the door falls back to reading the URL segment as a raw
+     * stem. That silence is the whole reason the rename earns a check rather than a changelog line.
+     */
+    public function test_it_warns_when_a_host_still_publishes_the_retired_forms_key(): void
+    {
+        $this->bindRegistry()->register($this->artifact(self::STEM.'/1'));
+
+        config()->set('beam.core.intake.forms', ['feedback' => self::STEM]);
+        config()->set('beam.core.intake.public_schemas', [self::STEM]);
+
+        $findings = (new IntakeDoorAudit($this->app))->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
+        $this->assertStringContainsString('retired beam.core.intake.forms key', $findings[0]->detail);
+    }
+
     public function test_it_reports_the_registry_when_the_door_declares_no_slugs(): void
     {
         // A host may pass a stem straight down the URL, so there is no configured population to
         // resolve ahead of a request — reported, never asserted against.
         $this->bindRegistry()->register($this->artifact(self::STEM.'/1'));
 
-        config()->set('beam.core.intake.forms', []);
+        config()->set('beam.core.intake.slugs', []);
 
         $findings = (new IntakeDoorAudit($this->app))->run();
 

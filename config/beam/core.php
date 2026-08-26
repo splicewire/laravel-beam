@@ -43,22 +43,29 @@ return [
 
     /*
     | The optional generic PUBLIC INTAKE door (beam-write-pipeline ticket 04 / ADR-0150). A host mounts
-    | this to accept anonymous form submissions with no controller of its own — or leaves it OFF and
+    | this to accept anonymous intake submissions with no controller of its own — or leaves it OFF and
     | calls RecordWriter from its own controller. It is deny-by-default: nothing is anonymously writable
     | unless a schema stem is explicitly listed in `public_schemas`.
     */
     'intake' => [
-        // Mount POST /beam/intake/{form}. Off by default — the door is opt-in.
+        // Mount POST /beam/intake/{schema}. Off by default — the door is opt-in.
         'enabled' => false,
 
-        // URL-safe form slug => the schema stem (or absolute $id) it resolves. The route addresses a
-        // form by its slug; the slug maps to a registered schema. A slug absent here (and not itself a
-        // resolvable stem) is a 404. Being addressable is NOT being public — see `public_schemas`.
-        'forms' => [],
+        // URL-safe slug => the schema stem (or absolute $id) it resolves. The route addresses an intake
+        // surface by its slug; the slug maps to a registered schema. A slug absent here (and not itself
+        // a resolvable stem) is a 404. Being addressable is NOT being public — see `public_schemas`.
+        //
+        // Named `forms` until beam-facade ticket 126. There is no such thing as a form schema (ticket
+        // 41) — a form is a rendering/intake MODE of a schema — so a key holding "the forms" was the
+        // last surviving fragment, in config, of the slug→schema registry that ticket deleted three
+        // host forks of. `slugs` is the vocabulary this map's own reader already used. A host still
+        // publishing the old key is REPORTED by IntakeDoorAudit rather than silently ignored, because
+        // the failure mode is a 404 on every submission.
+        'slugs' => [],
 
         // The allow-list: schema stems (or versioned $ids) a stranger may submit. Empty ⇒ nothing is
         // publicly submittable (the safe default; a bad default here would silently open write access).
-        // A form that resolves but is absent here is refused (403) by the deny-default gate.
+        // A schema that resolves but is absent here is refused (403) by the deny-default gate.
         'public_schemas' => [],
 
         // Opt-in honeypot bot defence, default OFF — never silently imposed.
