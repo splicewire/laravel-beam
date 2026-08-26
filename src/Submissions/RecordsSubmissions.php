@@ -13,12 +13,12 @@ use Splicewire\Beam\Write\PermissiveAcceptanceGate;
 use Splicewire\Beam\Write\PermissiveWriteGate;
 
 /**
- * The generic capture store for a public-facing form (waitlist signup, contact/interest form,
- * anonymous intake) — a form key + a schema-shaped payload becomes exactly one
+ * The generic capture store for a public-facing intake surface (waitlist signup, contact/interest
+ * capture, anonymous intake) — a capture key + a schema-shaped payload becomes exactly one
  * {@see BeamSubmission} (a beam BeamParticle), persisted through beam-core's single write
  * pipeline ({@see ParticleWriter}) and announced on {@see BeamParticlePersisted} — the one signal
  * every beam write path emits. A host that also composes `splicewire/laravel-beam-notifications`
- * gets a free notification for any form whose schema declares `x-beam-notify` (its
+ * gets a free notification for any capture whose schema declares `x-beam-notify` (its
  * `NotifyOnSubmission` listener reacts to this same event, reading the schema this class stamps
  * into `meta.schema` below); this class carries no dependency on that package itself.
  *
@@ -26,10 +26,10 @@ use Splicewire\Beam\Write\PermissiveWriteGate;
  * beam-notifications, beam-accounts, or a satellite-tier package: nothing about it is
  * satellite-specific or account-specific, and every beam host already requires this package.
  *
- * Deliberately does NOT resolve the form's schema itself — the caller (typically a controller
+ * Deliberately does NOT resolve the capture's schema itself — the caller (typically a controller
  * that already validated the payload against its own copy of the schema for human-facing 422
  * errors) passes the resolved schema document straight through for notify-stamping. This keeps
- * the class free of any opinion about WHERE a host's form schemas live (a JSON file, a DB table,
+ * the class free of any opinion about WHERE a host's intake schemas live (a JSON file, a DB table,
  * a registry) — that is entirely the caller's concern.
  *
  * The write rides {@see PermissiveWriteGate} (authorization) and {@see PermissiveAcceptanceGate}
@@ -48,11 +48,11 @@ class RecordsSubmissions
     /**
      * @param  array<string, mixed>  $payload
      * @param  array<string, mixed>  $context
-     * @param  array<string, mixed>|null  $schema  the caller's already-resolved form schema
+     * @param  array<string, mixed>|null  $schema  the caller's already-resolved capture schema
      *                                             document, stamped into `meta['schema']` so a
      *                                             beam-notifications host's snapshot schema
      *                                             resolver can read its `x-beam-notify` keyword.
-     *                                             Null (no registered schema for the form) means
+     *                                             Null (no registered schema for the capture) means
      *                                             no notification.
      * @param  IntakeProvenance|null  $intake  optional who/when/where facets, stamped into
      *                                         `meta['intake']` — the shape

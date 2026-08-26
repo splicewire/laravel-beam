@@ -11,13 +11,15 @@ use Splicewire\Beam\Models\BeamSubmission;
  *
  * This is beam-core reopening the "beam must not learn who submitted" ruling — but bounded: provenance
  * is OPTIONAL and opt-in, recorded only on records written through the public WriteGate binding, never
- * baked into every write. It replaces the dissolved submissions package's `FormSubmission` intake
- * columns (form_key/context/user_id) with a structured facet set carried in the record's `meta`.
+ * baked into every write. It replaces the RETIRED submissions package's `FormSubmission` intake
+ * columns (its `form_key`/`context`/`user_id` — historical names, none of which exist today; beam's
+ * live capture identity is `capture_key`, renamed at beam-facade ticket 65) with a structured facet
+ * set carried in the record's `meta`.
  *
  * A "submission" is therefore no longer a PACKAGE — but it is still a model: the door writes the
  * canonical {@see BeamSubmission} (beam-facade ticket 51), carrying these facets under
  * `meta['intake']`. It wrote the populator-agnostic {@see BeamParticle} between ticket 04 and 51,
- * which is why this class's `form_key`/`context`/`user_id` framing above reads as a replacement
+ * which is why the retired columns cited above read as a replacement
  * rather than as the columns the door now fills alongside it.
  */
 class IntakeProvenance

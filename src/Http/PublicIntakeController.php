@@ -25,10 +25,10 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * The optional generic public intake door (beam-write-pipeline ticket 04): a host accepts anonymous
- * form submissions with NO controller of its own by mounting this route. It generalizes the dissolved
+ * intake submissions with NO controller of its own by mounting this route. It generalizes the dissolved
  * submissions package's `POST /schema-forms/{form}` door DOWN into beam-core, riding {@see ParticleWriter}.
  *
- * Order is deliberately deny-first: resolve the form schema (404 unknown) → authorize the schema through
+ * Order is deliberately deny-first: resolve the target schema (404 unknown) → authorize the schema through
  * the permissive-but-allow-listed {@see PublicIntakeWriteGate} (403 if not marked public — the write is
  * refused before its payload is even validated) → format-validate the payload (422 with per-field errors)
  * → persist a {@see BeamSubmission} carrying {@see IntakeProvenance} facets through the pipeline (which
@@ -44,8 +44,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * submission model is also what puts this door and {@see RecordsSubmissions} on the same store,
  * which is the whole point of converging a host's hand-rolled intake onto it (ticket 41).
  *
- * `capture_key` is the route's slug — the unversioned intake identity a host groups captures by, and
- * what the submitter actually addressed — while `schema_ref` carries the resolved, versioned `$id`.
+ * `capture_key` is the route's `{schema}` slug — the unversioned intake identity a host groups captures
+ * by, and what the submitter actually addressed — while `schema_ref` carries the resolved, versioned `$id`.
  *
  * It stamps `meta['intake']` and NOT `meta['schema']`, deliberately. The snapshot tier exists for a
  * record with no `schema_ref` at all; every record this door writes carries one, so under ticket 47's
@@ -61,15 +61,15 @@ class PublicIntakeController
         private Dispatcher $events,
     ) {}
 
-    public function __invoke(Request $request, string $form): JsonResponse
+    public function __invoke(Request $request, string $schema): JsonResponse
     {
-        // Map the URL-safe form slug to its schema stem (or accept a resolvable stem passed directly),
+        // Map the URL-safe schema slug to its schema stem (or accept a resolvable stem passed directly),
         // then resolve the target schema through beam's registry (filesystem tier). Unknown ⇒ 404.
-        $forms = (array) config('beam.core.intake.forms', []);
-        $stem = isset($forms[$form]) && $forms[$form] !== '' ? (string) $forms[$form] : $form;
+        $slugs = (array) config('beam.core.intake.forms', []);
+        $stem = isset($slugs[$schema]) && $slugs[$schema] !== '' ? (string) $slugs[$schema] : $schema;
         $targetSchema = $this->targets->targetFor($stem);
         if ($targetSchema === []) {
-            throw new NotFoundHttpException("No public intake schema for [{$form}].");
+            throw new NotFoundHttpException("No public intake schema for [{$schema}].");
         }
 
         // Strip the honeypot field so it never reaches the payload (defence works with the middleware
@@ -89,7 +89,7 @@ class PublicIntakeController
         $errors = $this->validator->validate($payload, $targetSchema);
         if ($errors !== []) {
             throw new HttpResponseException(new JsonResponse([
-                'message' => "The submission for [{$form}] is invalid.",
+                'message' => "The submission for [{$schema}] is invalid.",
                 'errors' => $errors,
             ], Response::HTTP_UNPROCESSABLE_ENTITY));
         }
@@ -97,7 +97,7 @@ class PublicIntakeController
         // `capture_key` is the ROUTE's slug, not the resolved stem: it is the unversioned intake identity
         // a host groups captures by, and the slug is what the submitter actually addressed.
         $record = new BeamSubmission([
-            'capture_key' => $form,
+            'capture_key' => $schema,
             'schema_ref' => $this->schemaRef($stem, $targetSchema),
         ]);
         $record->meta = ['intake' => $this->provenance($request, $actor)->toArray()];
