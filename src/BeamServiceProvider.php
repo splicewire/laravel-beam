@@ -141,6 +141,7 @@ use Splicewire\Beam\Surface\GroupRegistry;
 use Splicewire\Beam\Surface\OpenApiSpecCorroborator;
 use Splicewire\Beam\Surface\RuntimeCorroborator;
 use Splicewire\Beam\Surgeon\AuditScanPaths;
+use Splicewire\Beam\Surgeon\BareParticleMountAudit;
 use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\ClientRuntimeContractAudit;
 use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
@@ -817,6 +818,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bind(SdkNameConventionAudit::class, fn () => SdkNameConventionAudit::forClientPackage());
         $this->app->bind(ParticleControllerRedundancyAudit::class, fn () => ParticleControllerRedundancyAudit::forRoutes());
         $this->app->bind(ParticleOperationBypassAudit::class, fn () => ParticleOperationBypassAudit::forRoutes());
+        // The bare-mount census scans `routes/` AND `app/` — half the estate's `Route::particle*()` call
+        // sites are in a service provider, not a route file (api-surface-coherence 93).
+        $this->app->bind(BareParticleMountAudit::class, fn () => BareParticleMountAudit::forRoutes());
         $this->app->bind(DocblockTierAudit::class, function ($app) {
             $root = $app->basePath();
             $graph = PackageGraph::fromRoots([$root]);
@@ -873,6 +877,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $manifest->register('splicewire/laravel-beam', SdkNameConventionAudit::class);
         $manifest->register('splicewire/laravel-beam', ParticleControllerRedundancyAudit::class);
         $manifest->register('splicewire/laravel-beam', ParticleOperationBypassAudit::class);
+        $manifest->register('splicewire/laravel-beam', BareParticleMountAudit::class);
         $manifest->register('splicewire/laravel-beam', DocblockTierAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkHookMigrationAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkReturnsCoverageAudit::class);
