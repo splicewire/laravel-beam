@@ -57,6 +57,9 @@ class UndescribedRegistryAuditTest extends TestCase
      * @param  string  $properties  property declarations for the planted registry
      * @param  string  $methods  method declarations for the planted registry
      * @param  string  $binder  the container call the planted provider makes
+     * @param  string  $contract  an extra interface declaration written into the SAME file as the registry
+     *                            (so both derive the same owning package), `%1$d`-interpolated
+     * @param  string  $implements  the planted registry's `implements` clause, `%1$d`-interpolated
      * @return array{0: UndescribedRegistryAudit, 1: string, 2: string} audit, registry FQCN, provider FQCN
      */
     private function plant(
@@ -65,6 +68,8 @@ class UndescribedRegistryAuditTest extends TestCase
         string $binder = '$this->app->singleton(PlantedRegistry%1$d::class);',
         ?RegistryIndex $index = null,
         string $declaration = '',
+        string $contract = '',
+        string $implements = '',
     ): array {
         $n = ++self::$plant;
         // "planted-scan" deliberately contains none of DEFAULT_EXCLUDED_PATHS' fragments.
@@ -73,7 +78,16 @@ class UndescribedRegistryAuditTest extends TestCase
 
         $namespace = 'Splicewire\\Beam\\Tests\\Planted'.$n;
 
-        $registry = "<?php\nnamespace {$namespace};\n{$declaration}class PlantedRegistry{$n} {\n{$properties}\n{$methods}\n}\n";
+        $registry = sprintf(
+            "<?php\nnamespace %s;\n%s\n%sclass PlantedRegistry%d %s{\n%s\n%s\n}\n",
+            $namespace,
+            sprintf($contract, $n),
+            $declaration,
+            $n,
+            sprintf($implements, $n),
+            $properties,
+            $methods,
+        );
         file_put_contents($registryFile = $this->root.'/PlantedRegistry.php', $registry);
         require $registryFile;
 
@@ -226,6 +240,87 @@ class UndescribedRegistryAuditTest extends TestCase
         );
 
         $this->assertSame([$registry], array_column($audit->registries(), 'registry'));
+    }
+
+    /**
+     * Criterion 4 — the external-store registry. `FilesystemSchemaRegistry` in miniature: no plural state at
+     * all, just a directory; `register()` in, `get()`/`has()` out; bound in a CLOSURE under its own package's
+     * contract interface.
+     *
+     * Both halves of the fix are exercised at once, because either alone leaves the row invisible: without
+     * the closure reader the shape is tested against the interface and falls out at the property check,
+     * and without criterion 4 the concrete has no array to find.
+     */
+    public function test_an_external_store_registry_bound_under_its_own_contract_is_registry_shaped(): void
+    {
+        [$audit, $registry] = $this->plant(
+            properties: '',
+            methods: 'public function __construct(protected string $directory) {} '
+                .'public function register(array $schema): void {} '
+                .'public function get(string $id): ?array { return null; } '
+                .'public function has(string $id): bool { return false; }',
+            binder: '$this->app->singleton(PlantedContract%1$d::class, function ($app) { '
+                .'return new PlantedRegistry%1$d("/tmp"); });',
+            contract: 'interface PlantedContract%1$d { public function register(array $schema): void; '
+                .'public function get(string $id): ?array; }',
+            implements: 'implements PlantedContract%1$d ',
+        );
+
+        $rows = $audit->registries();
+
+        // The row is keyed by the ABSTRACT — the container key a host codes against — with the concrete the
+        // closure builds recorded beside it.
+        $this->assertSame([str_replace('PlantedRegistry', 'PlantedContract', $registry)], array_column($rows, 'registry'));
+        $this->assertSame([$registry], array_column($rows, 'concrete'));
+    }
+
+    public function test_a_value_object_with_a_setter_a_getter_and_a_path_is_not_registry_shaped(): void
+    {
+        // The false positive criterion 4 is tuned against, and the reason condition (b) exists: this has a
+        // write verb, a read verb and a `string $path` constructor, and it is a value object. It is bound
+        // under its own concrete class name, so no contract KEY was ever declared for it.
+        [$audit] = $this->plant(
+            properties: 'private string $value = "";',
+            methods: 'public function __construct(protected string $path = "/tmp") {} '
+                .'public function setValue(string $v): void { $this->value = $v; } '
+                .'public function getValue(): string { return $this->value; }',
+        );
+
+        $this->assertSame([], $audit->registries());
+    }
+
+    public function test_a_contract_bound_class_with_no_external_store_is_not_registry_shaped(): void
+    {
+        // Condition (c) on its own: a contract key and a write/read pair, but nothing saying WHERE the
+        // entries live. A class with neither plural state nor a store handle keeps its entries nowhere.
+        [$audit] = $this->plant(
+            properties: 'private string $only = "";',
+            methods: 'public function set(string $v): void { $this->only = $v; } '
+                .'public function get(): string { return $this->only; }',
+            binder: '$this->app->singleton(PlantedContract%1$d::class, fn () => new PlantedRegistry%1$d);',
+            contract: 'interface PlantedContract%1$d { public function get(): string; }',
+            implements: 'implements PlantedContract%1$d ',
+        );
+
+        $this->assertSame([], $audit->registries());
+    }
+
+    public function test_a_closure_that_names_no_concrete_still_reports_nothing(): void
+    {
+        // The shallowness of the closure reader, pinned. A closure resolving out of the container names no
+        // class, so the shape is tested against the interface and no claim is made — the pre-existing
+        // behaviour, kept, because guessing here would gate a class the provider never built.
+        [$audit] = $this->plant(
+            properties: '',
+            methods: 'public function __construct(protected string $directory) {} '
+                .'public function register(array $schema): void {} '
+                .'public function get(string $id): ?array { return null; }',
+            binder: '$this->app->singleton(PlantedContract%1$d::class, fn ($app) => $app->make("planted"));',
+            contract: 'interface PlantedContract%1$d { public function get(string $id): ?array; }',
+            implements: 'implements PlantedContract%1$d ',
+        );
+
+        $this->assertSame([], $audit->registries());
     }
 
     public function test_a_registry_the_estate_does_not_own_is_not_gated(): void

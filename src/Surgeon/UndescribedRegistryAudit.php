@@ -109,6 +109,56 @@ use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
  * Verbs match on a camelCase prefix, so `resolveGenerate()`/`hasGround()` count — `HandlerRegistry` names
  * its lookups after what they look up, which a whole-name match would miss.
  *
+ * ## Criterion 2 is blind to a registry whose store is EXTERNAL — the fourth signal
+ *
+ * "Plural state" means an array *in the object*, and that is a claim about where a registry keeps its
+ * entries, not about whether it has any. A registry backed by a filesystem, a table or a remote service
+ * holds a DIRECTORY PATH or a CONNECTION and nothing plural at all — its keyspace is real, it is simply not
+ * in memory. Criterion 2 reads that as "not a registry" and says so silently, which is the failure mode this
+ * whole effort exists to end.
+ *
+ * Measured, and this is the case the fourth signal is written against:
+ * `schemastud/laravel-data-schemas` is a GOVERNED package (three of its classes carry `#[IsRegistry]`, so
+ * the ratchet holds it to declaring all of them), and its provider binds
+ * `Contracts\SchemaRegistry` => `new FilesystemSchemaRegistry($dir)`. That class holds
+ * `protected string $directory`, takes `register(array $schema)` in and hands `get()`/`has()`/`ids()` back,
+ * and stores one JSON file per `$id` on disk. It appeared NOWHERE in `.beam/registry-conformance.json` —
+ * not conforming, not outstanding, not even unaccounted — while the artifact reported `unaccounted: 0`. The
+ * map's completeness test is `outstanding == 0 && unaccounted == 0`, so a structurally uncountable class of
+ * registry defeats it while looking clean.
+ *
+ * Two things were wrong, and both had to be fixed before that row could exist at all:
+ *
+ *   - **The concrete was unreadable.** Both of those bindings pass a CLOSURE, and the second argument was
+ *     only ever read as a `Foo::class` literal. With no concrete the shape was tested against the ABSTRACT,
+ *     an interface has no properties, and it fell out at the very first check. See
+ *     {@see concreteFromClosureArg()}: a closure whose returned expression is a single `new X(...)` or
+ *     `X::make(...)` names its concrete as plainly as a class-string does, and nothing else is read out of
+ *     a closure body.
+ *   - **The shape test itself.** Hence criterion 4, an ALTERNATIVE to criterion 2 that relaxes nothing else.
+ *     A class with no plural state qualifies only when ALL of these hold:
+ *       (a) it satisfies criterion 3 by METHODS — a public write verb AND a public read verb (the
+ *           array-constructor entry path is definitionally unavailable here);
+ *       (b) the container ABSTRACT it is bound under is an interface (or abstract class) that this class
+ *           implements, and that lives in the SAME composer package as the class — the owning package
+ *           declared a swappable contract KEY for this keyspace, which a value object never gets;
+ *       (c) its constructor takes an **external store handle**: a `string` parameter named for a store
+ *           location ({@see STORE_PARAM_NAMES}), or a parameter typed as a filesystem/database/cache handle
+ *           ({@see STORE_PARAM_TYPES}). A no-argument constructor does not qualify — something has to say
+ *           WHERE the entries live, and that something is the store.
+ *
+ * ### The precision/recall trade, stated
+ *
+ * This is tuned hard for PRECISION and it under-recalls on purpose. Every row here lands in a gate's
+ * population and in a committed artifact, and a gate that cries wolf is a gate switched off within the week
+ * — the same argument the membership ratchet above is made from. Condition (b) is the expensive half of
+ * that: an external-store registry a package binds under its own CONCRETE class name, or under a contract
+ * living in another package, is invisible to this signal and stays invisible. That is a known, deliberate
+ * miss. It is tolerable because (b) is the only cheap thing that separates "a shared keyspace someone
+ * thought worth a contract" from "a small class with a setter, a getter and a path argument", of which the
+ * estate has many and none of which are registries. A miss is recoverable by widening later; a false row is
+ * a gate nobody trusts. Widen (b) before (a) or (c), and only with a measured case in hand.
+ *
  * ## Why not RegistrationDriftDetector
  * `Rushing\Surgeon\Audit\RegistrationDriftDetector` is the estate's diff-a-registry engine and was the
  * obvious seed, but its diff is *attribute-scan-shaped*: `detect($scanPaths, $attributeClass, $manual)`
@@ -165,6 +215,38 @@ class UndescribedRegistryAudit implements DoctorAudit
         'for', 'get', 'all', 'has', 'find', 'resolve', 'lookup', 'names', 'keys', 'entries', 'only',
         'descriptors', 'registrations', 'sources', 'steps', 'default',
         'apply', 'transform', 'process', 'pipe', 'through', 'run', 'walk', 'compose',
+    ];
+
+    /**
+     * Constructor parameter NAMES that, on a `string` parameter, say "the entries live over there" — the
+     * external-store half of criterion 4 (see the class docblock). Lower-cased on both sides at the compare.
+     *
+     * Deliberately short and location-shaped. `$name`, `$key`, `$id` and friends are absent on purpose: they
+     * name the thing itself rather than where a keyspace is kept, and admitting them would make criterion 4
+     * fire on most of the estate's small value objects.
+     *
+     * @var list<string>
+     */
+    public const STORE_PARAM_NAMES = [
+        'directory', 'directories', 'dir', 'path', 'basepath', 'root', 'rootpath',
+        'disk', 'filesystem', 'table', 'connection', 'bucket', 'store', 'storage',
+    ];
+
+    /**
+     * Constructor parameter TYPES that ARE an external store handle, matched including subclasses and
+     * implementations. A class holding one of these is holding somebody else's storage.
+     *
+     * @var list<string>
+     */
+    public const STORE_PARAM_TYPES = [
+        'Illuminate\\Contracts\\Filesystem\\Filesystem',
+        'Illuminate\\Filesystem\\Filesystem',
+        'Illuminate\\Database\\ConnectionInterface',
+        'Illuminate\\Database\\Eloquent\\Model',
+        'Illuminate\\Contracts\\Cache\\Repository',
+        'Illuminate\\Contracts\\Redis\\Connection',
+        'League\\Flysystem\\FilesystemOperator',
+        'Psr\\SimpleCache\\CacheInterface',
     ];
 
     /**
@@ -440,7 +522,8 @@ class UndescribedRegistryAudit implements DoctorAudit
                     continue;
                 }
 
-                $concrete = $this->classStringArg($call->args[1] ?? null, $namespace, $imports);
+                $concrete = $this->classStringArg($call->args[1] ?? null, $namespace, $imports)
+                    ?? $this->concreteFromClosureArg($call->args[1] ?? null, $namespace, $imports);
 
                 if (! $this->isRegistryShaped($abstract, $concrete) || ! $this->isOwned($abstract, $concrete)) {
                     continue;
@@ -505,17 +588,96 @@ class UndescribedRegistryAudit implements DoctorAudit
 
         $arrayProperty = $this->hasArrayState($shape);
         $arrayConstructorParam = $this->hasArrayConstructorParam($shape);
+        $methods = $this->publicMethodNames($abstractReflection, $concreteReflection);
 
         if (! $arrayProperty && ! $arrayConstructorParam) {
-            return false;
+            // Criterion 4: no plural state, but the entries are kept somewhere else. Both halves of
+            // criterion 3 must come from METHODS here, and the contract/store evidence carries the weight
+            // criterion 2 was carrying. See the class docblock for the precision trade this takes.
+            return $this->matchesVerb($methods, self::WRITE_VERBS)
+                && $this->matchesVerb($methods, self::READ_VERBS)
+                && $this->isBoundUnderOwnContract($abstractReflection, $shape)
+                && $this->hasExternalStoreConstructor($shape);
         }
-
-        $methods = $this->publicMethodNames($abstractReflection, $concreteReflection);
 
         $hasEntry = $arrayConstructorParam || $this->matchesVerb($methods, self::WRITE_VERBS);
         $hasLookup = $this->matchesVerb($methods, self::READ_VERBS);
 
         return $hasEntry && $hasLookup;
+    }
+
+    /**
+     * Criterion 4 (b): the container key is the owning package's OWN contract for this keyspace.
+     *
+     * The abstract must be an interface (or abstract class) the concrete implements, and it must live in the
+     * same composer package as the concrete. Both halves matter. Declaring a contract and binding the
+     * concrete behind it is a deliberate act that says "this key is a seam other code resolves through" —
+     * a per-resolution value object never gets one. Requiring the SAME package keeps the signal on the
+     * owner: a class implementing somebody else's interface is an adapter, and the ownership rule
+     * ({@see isOwned()}) already says the estate does not gate what it cannot ask to declare itself.
+     */
+    protected function isBoundUnderOwnContract(?ReflectionClass $abstract, ReflectionClass $concrete): bool
+    {
+        if ($abstract === null
+            || $abstract->getName() === $concrete->getName()
+            || (! $abstract->isInterface() && ! $abstract->isAbstract())
+            || ! $concrete->isSubclassOf($abstract->getName())) {
+            return false;
+        }
+
+        $abstractFile = $abstract->getFileName();
+        $concreteFile = $concrete->getFileName();
+
+        if ($abstractFile === false || $concreteFile === false) {
+            return false;
+        }
+
+        // `null === null` is a real match, not a degenerate one: it is the app-local case, where a host's own
+        // contract and its own implementation both sit above the base path and neither carries a composer
+        // coordinate. That is the same claim — one owner — and refusing it would exempt every app-local
+        // registry from a signal the packages are held to.
+        return self::packageOfPath($abstractFile) === self::packageOfPath($concreteFile);
+    }
+
+    /**
+     * Criterion 4 (c): the constructor names an EXTERNAL STORE — where the entries actually live.
+     *
+     * A `string` parameter whose name is a store location ({@see STORE_PARAM_NAMES}), or a parameter typed
+     * as a storage handle ({@see STORE_PARAM_TYPES}), including subclasses. A constructor with no parameters
+     * fails: a registry with neither plural state nor a store handle keeps its entries nowhere, which means
+     * it is not a registry.
+     */
+    protected function hasExternalStoreConstructor(ReflectionClass $class): bool
+    {
+        foreach ($class->getConstructor()?->getParameters() ?? [] as $parameter) {
+            $type = $parameter->getType();
+
+            if (! $type instanceof ReflectionNamedType) {
+                continue;
+            }
+
+            if ($type->getName() === 'string'
+                && in_array(strtolower($parameter->getName()), self::STORE_PARAM_NAMES, true)) {
+                return true;
+            }
+
+            if ($this->isStoreHandleType($type->getName())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function isStoreHandleType(string $type): bool
+    {
+        foreach (self::STORE_PARAM_TYPES as $handle) {
+            if ($type === $handle || is_subclass_of($type, $handle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -596,9 +758,22 @@ class UndescribedRegistryAudit implements DoctorAudit
             return null;
         }
 
-        $name = ltrim($arg->value->class->toString(), '\\');
+        return $this->resolveName($arg->value->class->toString(), $namespace, $imports);
+    }
 
-        if (in_array($name, ['self', 'static', 'parent'], true)) {
+    /**
+     * A source-level class name resolved to an FQCN through the file's imports and namespace.
+     *
+     * Shared by the class-string and the closure-body readers so a `Foo::class` argument and a
+     * `new Foo(...)` inside a closure can never resolve to two different classes.
+     *
+     * @param  array<string, string>  $imports
+     */
+    protected function resolveName(string $name, string $namespace, array $imports): ?string
+    {
+        $name = ltrim($name, '\\');
+
+        if ($name === '' || in_array($name, ['self', 'static', 'parent'], true)) {
             return null;
         }
 
@@ -609,6 +784,52 @@ class UndescribedRegistryAudit implements DoctorAudit
         }
 
         return str_contains($name, '\\') || $namespace === '' ? $name : $namespace.'\\'.$name;
+    }
+
+    /**
+     * The concrete a binding CLOSURE builds — `singleton(Contract::class, fn () => new Impl($dir))`.
+     *
+     * Deliberately shallow. Only the closure's returned expression is read, and only when it is a single
+     * `new X(...)` or a static call `X::make(...)` on a resolvable name. A closure that branches, that
+     * resolves out of the container, or that returns a variable names no concrete here and gets `null` —
+     * the same answer this method gave for every closure before it existed. Anything cleverer is
+     * dataflow analysis, and a shape test that guesses wrong produces a gate finding against a class the
+     * provider never built.
+     *
+     * The static-call form is not decoration: `ServedSchemaChain::overDirectories($dirs)` is one of the two
+     * bindings this whole signal was written for. A static call's RETURN type is not consulted — the class
+     * the call is made ON is the answer, because a named constructor by estate convention returns its own
+     * class (`static`/`self`), and following a declared return type would follow it into another package.
+     *
+     * @param  array<string, string>  $imports
+     */
+    protected function concreteFromClosureArg(?Node\Arg $arg, string $namespace, array $imports): ?string
+    {
+        if (! $arg instanceof Node\Arg) {
+            return null;
+        }
+
+        $expr = null;
+
+        if ($arg->value instanceof Node\Expr\ArrowFunction) {
+            $expr = $arg->value->expr;
+        } elseif ($arg->value instanceof Node\Expr\Closure) {
+            /** @var Node\Stmt\Return_|null $return */
+            $return = (new NodeFinder)->findFirstInstanceOf($arg->value->stmts, Node\Stmt\Return_::class);
+            $expr = $return?->expr;
+        }
+
+        $class = match (true) {
+            $expr instanceof Node\Expr\New_ => $expr->class,
+            $expr instanceof StaticCall => $expr->class,
+            default => null,
+        };
+
+        if (! $class instanceof Node\Name) {
+            return null;
+        }
+
+        return $this->resolveName($class->toString(), $namespace, $imports);
     }
 
     /** An array-typed or array-defaulted instance property — the plural state a registry accumulates in. */
