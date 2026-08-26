@@ -63,6 +63,16 @@ use Splicewire\Beam\Doctor\Support\SchemaKeyIndex;
  * by scanning `vendor/`, so the check stays static, connection-free, and reportable at the first-party
  * file where the fix belongs. A binding it cannot load is counted in the Pass line too.
  *
+ * A column's type is the **last** thing a migration declares about it, not the first
+ * ({@see SchemaKeyIndex}'s second pass, ticket 144). A host that got its create wrong and repaired it
+ * with a follow-on `Schema::table(...)` used to read as broken forever — measured at `~/Herd/fable-legacy`,
+ * whose live database agreed with the repair and not with the create this audit was quoting back at it.
+ * The reader now follows those repairs where it can read them and **un-knows the column where it cannot**
+ * (raw DDL that renames a column into another's place, a SQL type it has no mapping for): unknown is a
+ * skip in every predicate here, so the reader never reports a type a later statement contradicted. Those
+ * skips are counted in the Pass line, which is the only place the difference between "agrees" and "could
+ * not read the repair" is visible.
+ *
  * Advisory, like every other conformance check beam registers — but note this one reports a defect that
  * is already in a schema rather than a style drift, so a finding here is worth acting on immediately.
  */
@@ -233,11 +243,13 @@ class KeyTypeConformanceAudit implements DoctorAudit
             return [Finding::pass(self::CHECK, sprintf(
                 'Primary keys, models and foreign keys agree (%d table(s) and %d model(s) checked; '.
                 '%d model(s) skipped — table name not statically resolvable; '.
-                '%d third-party binding(s) skipped — class not loadable here).',
+                '%d third-party binding(s) skipped — class not loadable here; '.
+                '%d column(s) skipped — altered after their create by DDL this reader cannot classify).',
                 $this->index->tableCount(),
                 $this->index->modelCount(),
                 $this->index->unresolvedModelCount(),
                 $this->unresolvedBindings,
+                $this->index->unreadableAlterationCount(),
             ))];
         }
 
@@ -260,7 +272,7 @@ class KeyTypeConformanceAudit implements DoctorAudit
             foreach ($meta['models'] as $model) {
                 $modelType = $model['key_type'];
 
-                if ($declared === null || $modelType === null || $declared === $modelType) {
+                if ($this->modelAgrees($declared, $modelType)) {
                     continue;
                 }
 
@@ -335,7 +347,7 @@ class KeyTypeConformanceAudit implements DoctorAudit
                 continue;
             }
 
-            if ($modelType === $declared) {
+            if ($this->modelAgrees($declared, $modelType)) {
                 continue;
             }
 
@@ -440,6 +452,31 @@ class KeyTypeConformanceAudit implements DoctorAudit
         usort($rows, fn (array $a, array $b): int => [$a['table'], $a['kind']] <=> [$b['table'], $b['kind']]);
 
         return $rows;
+    }
+
+    /**
+     * Whether a model's declared key type agrees with the column's — compared on the **integer / not
+     * integer** axis, because that is the only distinction a model is able to state.
+     *
+     * Eloquent gives a model exactly one lever, `$keyType` plus `$incrementing`, and every non-integer
+     * spelling of it collapses to the same thing: {@see SchemaKeyIndex::keyTypeOfClass()} and
+     * `indexModel()` both read `$keyType = 'string'` as `uuid` because there is nothing finer to read.
+     * A column, meanwhile, can be `uuid`, `ulid`, `char` or `varchar`. Comparing those two vocabularies
+     * for strict equality manufactures a finding out of the reader's own lossiness — measured at
+     * `~/Herd/prahsys-gateway`, whose `users.id` is `string('id', 255)->primary()` and whose `User`
+     * declares `$keyType = 'string'`: the same fact, twice, spelled the only two ways each side can
+     * spell it.
+     *
+     * What it still catches, undiminished, is the defect the audit exists for: a non-integer column
+     * against a model that says nothing and therefore auto-increments.
+     */
+    protected function modelAgrees(?string $declared, ?string $modelType): bool
+    {
+        if ($declared === null || $modelType === null || $declared === $modelType) {
+            return true;
+        }
+
+        return $declared !== 'int' && $modelType !== 'int';
     }
 
     /**

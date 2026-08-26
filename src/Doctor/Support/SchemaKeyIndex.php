@@ -20,6 +20,33 @@ use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
  * schema this host actually builds.** A published migration is exactly where a wrong key type does its
  * damage, and telling a host "your `users` table is bigint" is actionable even though the template it
  * came from lives elsewhere. Same estate, opposite rule, for the same reason: report where the fix is.
+ *
+ * ## The last declaration wins, not the create (beam-facade ticket 144)
+ * A create is the *first* statement about a column, not the last. `~/Herd/fable-legacy` declares
+ * `model_id` as `unsignedBigInteger` in `create_permission_tables` and then, eight months later, drops
+ * and re-adds it as `uuid` in `fix_permission_tables_for_uuid`; the live database agrees with the fix.
+ * Reading only creates reported a schema gap that does not exist — a false positive under three shipped
+ * predicates, and the one thing that reliably gets a check switched off.
+ *
+ * So {@see indexAlterations()} runs a second pass over post-create statements, and the last declaration
+ * of a tracked column wins, ordered by the migration filename's timestamp and then by byte offset within
+ * the file. Three constraints make that safe rather than a half-replay:
+ *
+ *  - **`up()` only.** Every one of these migrations has a `down()` that restores the *old* type verbatim,
+ *    so a whole-file read would reverse the very fix it was trying to see.
+ *  - **Tracked columns only.** An alteration amends a table/column this index already took from a create;
+ *    it never invents a table, a morph key or a foreign key that no create declared.
+ *  - **What it cannot read, it un-knows.** A raw `ALTER TABLE` this reader cannot classify — a
+ *    `RENAME COLUMN` that swaps one column's identity for another's (`~/Herd/prahsys-gateway` migrates
+ *    the `organizations` primary key exactly that way), a `TYPE` it has no mapping for — sets the tracked
+ *    type to `null`, which every predicate already treats as *skip, never guess*. That is deliberate: the
+ *    alternative is to keep trusting a create the same file just contradicted, which trades this ticket's
+ *    false positive for a **false negative**, and a check that stays quiet about a real defect is worse
+ *    than one that nags. Those un-knowings are counted by {@see unreadableAlterationCount()} and reported
+ *    in the audit's Pass line, like every other skip in this regime.
+ *
+ * This is emphatically not a migration evaluator. It reads declarations; it does not execute them,
+ * resolve a config value, follow a conditional, or know whether a migration ever ran.
  */
 class SchemaKeyIndex
 {
@@ -63,10 +90,50 @@ class SchemaKeyIndex
      */
     private array $morphKeys = [];
 
+    /**
+     * SQL type names a raw `ALTER TABLE ... TYPE <t>` can name, mapped to the key type they compare as.
+     * Unlisted means unreadable, which un-knows the column rather than guessing at it.
+     */
+    public const SQL_KEY_TYPES = [
+        'uuid' => 'uuid',
+        'ulid' => 'ulid',
+        'char' => 'string',
+        'varchar' => 'string',
+        'text' => 'string',
+        'citext' => 'string',
+        'bigint' => 'int',
+        'int8' => 'int',
+        'integer' => 'int',
+        'int' => 'int',
+        'int4' => 'int',
+        'smallint' => 'int',
+        'int2' => 'int',
+        'serial' => 'int',
+        'bigserial' => 'int',
+    ];
+
     /** @var list<array{class: string, fqcn: string, key_type: string|null, table: string|null}> */
     private array $models = [];
 
+    /**
+     * Post-create declarations about a column, in the order they would run.
+     *
+     * @var list<array{order: array{string, string, int}, table: string, column: string, type: string|null, source: string}>
+     */
+    private array $alterations = [];
+
+    /**
+     * Where each tracked column was **created**, in the same order key the alterations carry — so an
+     * alteration only counts when it genuinely comes after the create it amends. Without this a migration
+     * dated *before* a create would overrule it, which is not what "last declaration wins" means.
+     *
+     * @var array<string, array{string, string, int}>
+     */
+    private array $declaredAt = [];
+
     private int $unresolvedModels = 0;
+
+    private int $unreadableAlterations = 0;
 
     /** @param  list<string>  $roots */
     public function __construct(public array $roots)
@@ -220,6 +287,16 @@ class SchemaKeyIndex
         return $this->unresolvedModels;
     }
 
+    /**
+     * Tracked columns a post-create statement altered in a way this reader could not classify, so their
+     * type is now `null` — unknown, therefore skipped by every predicate. A counted skip, never a silent
+     * pass and never a stale create reported as current.
+     */
+    public function unreadableAlterationCount(): int
+    {
+        return $this->unreadableAlterations;
+    }
+
     private function build(): void
     {
         $files = [];
@@ -243,8 +320,10 @@ class SchemaKeyIndex
 
             $this->indexModel($source);
             $this->indexMigration($source, $file);
+            $this->indexAlterations($source, $file);
         }
 
+        $this->applyAlterations();
         $this->attachModels();
     }
 
@@ -329,6 +408,7 @@ class SchemaKeyIndex
      */
     private function indexMigration(string $source, string $file): void
     {
+        $order = [$this->stampOf($file), $file, 0];
         $creates = [];
 
         preg_match_all('/Schema::create\(\s*[\'"]([^\'"]+)[\'"]\s*,.*?\n(\s*)\}\)/s', $source, $literal, PREG_SET_ORDER);
@@ -357,6 +437,7 @@ class SchemaKeyIndex
             }
 
             if ($keyType !== null && ! isset($this->tables[$table])) {
+                $this->declaredAt[$table.'.id'] = $order;
                 $this->tables[$table] = [
                     'key_type' => $keyType,
                     'source' => basename($file),
@@ -370,6 +451,7 @@ class SchemaKeyIndex
             // right exactly when the model is, which the primary-key predicate already governs.
             if (preg_match_all('/->foreignId\(\s*[\'"](\w+)_id[\'"]\s*\)/', $block, $fks, PREG_SET_ORDER)) {
                 foreach ($fks as $fk) {
+                    $this->declaredAt[$table.'.'.$fk[1].'_id'] ??= $order;
                     $this->foreignKeys[] = [
                         'table' => $table,
                         'column' => $fk[1].'_id',
@@ -406,6 +488,7 @@ class SchemaKeyIndex
     private function indexMorphKeys(string $block, string $table, string $file): void
     {
         $record = function (string $column, ?string $type) use ($table, $file): void {
+            $this->declaredAt[$table.'.'.$column] ??= [$this->stampOf($file), $file, 0];
             $this->morphKeys[] = [
                 'table' => $table,
                 'column' => $column,
@@ -438,6 +521,190 @@ class SchemaKeyIndex
 
             $record($type[1].'_id', self::MORPH_KEY_TYPES[$decl[1]] ?? null);
         }
+    }
+
+    /**
+     * Every post-create statement in a migration's `up()` that re-declares a column's type — the second
+     * pass the class docblock's "last declaration wins" section describes.
+     *
+     * Scoped to `up()` on purpose. `down()` restores the old type verbatim in every instance the estate
+     * has (`fix_permission_tables_for_uuid` re-adds `unsignedBigInteger` there), so reading a whole file
+     * would cancel out the fix and leave the reader exactly as wrong as it was before, but for a subtler
+     * reason.
+     *
+     * Two statement families, because the estate uses both and one of them is where the reader's honest
+     * limit sits. **Blueprint** re-declarations inside `Schema::table(...)` — with or without `->change()`,
+     * since a drop-then-re-add says the same thing — are read the same way a create's are. **Raw
+     * `ALTER TABLE`** is read only for the shapes that state a type outright (`ALTER COLUMN … TYPE`,
+     * `MODIFY`, `CHANGE`); a `DROP COLUMN` or a `RENAME COLUMN` says the column this index tracked is
+     * gone or is now some other column's data, so it records `null` — unknown — and a later Blueprint
+     * re-add in the same file simply wins over it by byte offset, which is exactly what fable-legacy's
+     * drop/re-add pair needs. Everything else raw DDL does (constraints, indexes, `SET NOT NULL`, adding
+     * a column this index never tracked) states nothing about a tracked type and is ignored.
+     */
+    private function indexAlterations(string $source, string $file): void
+    {
+        $start = strpos($source, 'function up(');
+
+        if ($start === false) {
+            return;
+        }
+
+        $end = strpos($source, 'function down(', $start);
+        $up = substr($source, $start, $end === false ? null : $end - $start);
+        $stamp = $this->stampOf($file);
+
+        $record = function (string $table, string $column, ?string $type, int $offset) use ($file, $stamp): void {
+            $this->alterations[] = [
+                'order' => [$stamp, $file, $offset],
+                'table' => $table,
+                'column' => $column,
+                'type' => $type,
+                'source' => basename($file),
+            ];
+        };
+
+        if (preg_match_all('/Schema::table\(\s*(?:[\'"]([^\'"]+)[\'"]|\$\w+\[\s*[\'"](\w+)[\'"]\s*\])\s*,.*?\n(\s*)\}\)/s', $up, $blocks, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+            foreach ($blocks as $block) {
+                $table = $block[1][0] !== '' ? $block[1][0] : ($block[2] ?? ['', -1])[0];
+
+                if ($table === '') {
+                    continue;
+                }
+
+                $base = $block[0][1];
+
+                if (! preg_match_all('/->(\w+)\(\s*(?:[\'"](\w+)[\'"]|\$\w+\[\s*[\'"](\w+)[\'"]\s*\])/', $block[0][0], $columns, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+                    continue;
+                }
+
+                foreach ($columns as $column) {
+                    $type = self::MORPH_KEY_TYPES[$column[1][0]] ?? (in_array($column[1][0], self::INT_PK_FORMS, true) ? 'int' : null);
+
+                    if ($type === null) {
+                        continue;
+                    }
+
+                    $literal = ($column[2] ?? ['', -1])[0];
+                    $configured = ($column[3] ?? ['', -1])[0];
+                    $name = $literal !== '' ? $literal : str_replace('_morph_key', '_id', $configured);
+
+                    if ($name === '') {
+                        continue;
+                    }
+
+                    $record($table, $name, $type, $base + $column[0][1]);
+                }
+            }
+        }
+
+        if (! preg_match_all('/ALTER\s+TABLE\s+[`"\']?(\w+)[`"\']?\s+([^;\'"`]*)/i', $up, $raw, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+            return;
+        }
+
+        foreach ($raw as $statement) {
+            $table = $statement[1][0];
+            $rest = trim($statement[2][0]);
+            $offset = $statement[0][1];
+
+            if (preg_match('/^ALTER\s+COLUMN\s+[`"]?(\w+)[`"]?\s+(?:SET\s+DATA\s+)?TYPE\s+(\w+)/i', $rest, $m)) {
+                $record($table, $m[1], self::SQL_KEY_TYPES[strtolower($m[2])] ?? null, $offset);
+            } elseif (preg_match('/^MODIFY(?:\s+COLUMN)?\s+[`"]?(\w+)[`"]?\s+(\w+)/i', $rest, $m)) {
+                $record($table, $m[1], self::SQL_KEY_TYPES[strtolower($m[2])] ?? null, $offset);
+            } elseif (preg_match('/^CHANGE(?:\s+COLUMN)?\s+[`"]?\w+[`"]?\s+[`"]?(\w+)[`"]?\s+(\w+)/i', $rest, $m)) {
+                $record($table, $m[1], self::SQL_KEY_TYPES[strtolower($m[2])] ?? null, $offset);
+            } elseif (preg_match('/^DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?[`"]?(\w+)[`"]?/i', $rest, $m)) {
+                $record($table, $m[1], null, $offset);
+            } elseif (preg_match('/^RENAME\s+COLUMN\s+[`"]?(\w+)[`"]?\s+TO\s+[`"]?(\w+)[`"]?/i', $rest, $m)) {
+                $record($table, $m[1], null, $offset);
+                $record($table, $m[2], null, $offset);
+            }
+        }
+    }
+
+    /**
+     * The migration filename's timestamp prefix, which is the order the framework itself runs them in.
+     * A file without one — a `.php.stub`, the authored origin of a published copy — sorts first, so a
+     * dated migration at this host always wins over the template it came from.
+     */
+    private function stampOf(string $file): string
+    {
+        return preg_match('/^(\d{4}_\d{2}_\d{2}_\d{6})/', basename($file), $m) ? $m[1] : '';
+    }
+
+    /**
+     * Fold the alterations onto the creates: last declaration wins, and only for a table/column a create
+     * already put in the index.
+     *
+     * Nothing here can add a table, a morph key or a foreign key — an alteration is an amendment to
+     * something already indexed, never a fresh declaration. That is what keeps the second pass from being
+     * a migration replay: the population it can affect is fixed before it runs.
+     */
+    private function applyAlterations(): void
+    {
+        if ($this->alterations === []) {
+            return;
+        }
+
+        usort($this->alterations, static fn (array $a, array $b): int => $a['order'] <=> $b['order']);
+
+        $before = [];
+
+        foreach ($this->alterations as $alteration) {
+            $table = $alteration['table'];
+            $column = $alteration['column'];
+            $key = $table.'.'.$column;
+
+            if (! isset($this->declaredAt[$key]) || $alteration['order'] <= $this->declaredAt[$key]) {
+                continue;
+            }
+
+            if ($column === 'id' && isset($this->tables[$table])) {
+                $before[$key] = array_key_exists($key, $before) ? $before[$key] : $this->tables[$table]['key_type'];
+                $this->tables[$table]['key_type'] = $alteration['type'];
+                $this->tables[$table]['source'] = $alteration['source'];
+            }
+
+            foreach ($this->morphKeys as $i => $morph) {
+                if ($morph['table'] === $table && $morph['column'] === $column) {
+                    $before[$key] = array_key_exists($key, $before) ? $before[$key] : $morph['type'];
+                    $this->morphKeys[$i]['type'] = $alteration['type'];
+                    $this->morphKeys[$i]['source'] = $alteration['source'];
+                }
+            }
+
+            foreach ($this->foreignKeys as $i => $foreign) {
+                if ($foreign['table'] === $table && $foreign['column'] === $column) {
+                    $before[$key] = array_key_exists($key, $before) ? $before[$key] : $foreign['type'];
+                    $this->foreignKeys[$i]['type'] = $alteration['type'];
+                    $this->foreignKeys[$i]['source'] = $alteration['source'];
+                }
+            }
+        }
+
+        foreach ($before as $key => $original) {
+            [$table, $column] = explode('.', $key, 2);
+
+            $now = $column === 'id'
+                ? ($this->tables[$table]['key_type'] ?? null)
+                : ($this->typeOfTrackedColumn($table, $column));
+
+            if ($original !== null && $now === null) {
+                $this->unreadableAlterations++;
+            }
+        }
+    }
+
+    /** The current type of a tracked morph key or foreign key, whichever holds this column. */
+    private function typeOfTrackedColumn(string $table, string $column): ?string
+    {
+        foreach ([...$this->morphKeys, ...$this->foreignKeys] as $tracked) {
+            if ($tracked['table'] === $table && $tracked['column'] === $column) {
+                return $tracked['type'];
+            }
+        }
+
+        return null;
     }
 
     /**

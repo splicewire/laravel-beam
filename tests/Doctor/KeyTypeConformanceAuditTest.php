@@ -490,6 +490,160 @@ class KeyTypeConformanceAuditTest extends TestCase
         $this->assertSame('model_id', $keys[0]['column']);
         $this->assertSame('uuid', $keys[0]['type']);
     }
+
+    // ---- The second pass: a create is not the last word (ticket 144) --------------
+
+    /** The `~/Herd/fable-legacy` shape verbatim: a raw DROP, a Blueprint re-add, and a `down()` that lies. */
+    private function permissionUuidFix(): string
+    {
+        return "<?php\n\nreturn new class extends Migration {\n public function up(): void {\n"
+            ."  DB::statement('ALTER TABLE model_has_roles DROP COLUMN model_id');\n"
+            ."  Schema::table('model_has_roles', function (Blueprint \$table) {\n"
+            ."   \$table->uuid('model_id');\n"
+            ."   \$table->primary(['role_id', 'model_id', 'model_type']);\n  });\n }\n"
+            ." public function down(): void {\n"
+            ."  Schema::table('model_has_roles', function (Blueprint \$table) {\n"
+            ."   \$table->unsignedBigInteger('model_id');\n  });\n }\n};\n";
+    }
+
+    /** @param  array<string, string>  $extra */
+    private function morphSite(string $morphKey, array $extra = []): KeyTypeConformanceAudit
+    {
+        return $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'database/migrations/2025_09_05_060524_create_permission_tables.php' => $this->morphPivot($morphKey),
+            ...$extra,
+        ]);
+    }
+
+    /**
+     * The defect this pass exists for. Without it the audit reports a gap the database does not have, at
+     * a host with nothing to repair — the one failure mode that reliably gets a check switched off.
+     */
+    public function test_a_follow_on_alter_settles_a_morph_key_the_create_got_wrong(): void
+    {
+        $audit = $this->morphSite("\$table->unsignedBigInteger(\$columnNames['model_morph_key']);", [
+            'database/migrations/2026_05_15_011723_fix_permission_tables_for_uuid.php' => $this->permissionUuidFix(),
+        ]);
+
+        $this->assertSame([], $audit->disagreements());
+    }
+
+    /** Order is the filename's stamp, not the alphabet: an *older* repair cannot overrule a newer create. */
+    public function test_an_alter_older_than_the_create_does_not_win(): void
+    {
+        $audit = $this->morphSite("\$table->unsignedBigInteger(\$columnNames['model_morph_key']);", [
+            'database/migrations/2024_01_01_000000_fix_permission_tables_for_uuid.php' => $this->permissionUuidFix(),
+        ]);
+
+        $rows = $audit->disagreements();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('morph-key-holder-disagreement', $rows[0]['kind']);
+    }
+
+    /** A repair that only exists in `down()` is not a repair — it is the statement that undoes one. */
+    public function test_a_declaration_in_down_is_not_read(): void
+    {
+        $audit = $this->morphSite("\$table->uuid(\$columnNames['model_morph_key']);", [
+            'database/migrations/2026_05_15_011723_revert.php' => "<?php\n\nreturn new class extends Migration {\n public function up(): void {\n  //\n }\n"
+                ." public function down(): void {\n"
+                ."  Schema::table('model_has_roles', function (Blueprint \$table) {\n"
+                ."   \$table->unsignedBigInteger('model_id');\n  });\n }\n};\n",
+        ]);
+
+        $this->assertSame([], $audit->disagreements());
+    }
+
+    /** A `->change()` says the same thing a drop-and-re-add says, and is read the same way. */
+    public function test_a_change_call_is_read_as_a_declaration(): void
+    {
+        $audit = $this->morphSite("\$table->uuid(\$columnNames['model_morph_key']);", [
+            'database/migrations/2026_05_15_011723_widen.php' => "<?php\n\nreturn new class extends Migration {\n public function up(): void {\n"
+                ."  Schema::table('model_has_roles', function (Blueprint \$table) {\n"
+                ."   \$table->unsignedBigInteger('model_id')->change();\n  });\n }\n};\n",
+        ]);
+
+        $rows = $audit->disagreements();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('morph-key-holder-disagreement', $rows[0]['kind']);
+        $this->assertStringContainsString('2026_05_15_011723_widen.php', $rows[0]['detail']);
+    }
+
+    /** Raw DDL that states a type outright is readable, and it is read. */
+    public function test_a_raw_alter_column_type_is_read(): void
+    {
+        $audit = $this->morphSite("\$table->uuid(\$columnNames['model_morph_key']);", [
+            'database/migrations/2026_05_15_011723_downgrade.php' => "<?php\n\nreturn new class extends Migration {\n public function up(): void {\n"
+                ."  DB::statement('ALTER TABLE model_has_roles ALTER COLUMN model_id TYPE bigint');\n }\n};\n",
+        ]);
+
+        $rows = $audit->disagreements();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('morph-key-holder-disagreement', $rows[0]['kind']);
+    }
+
+    /**
+     * The honest limit, and the whole reason this pass is not a half-replay: `~/Herd/prahsys-gateway`
+     * migrates the `organizations` primary key by renaming a different column into its place. No reader
+     * short of an evaluator can say what type that leaves behind — so the column is **un-known** and
+     * skipped, rather than reported from a create the same file just contradicted.
+     */
+    public function test_an_unclassifiable_raw_alter_unknows_the_column_instead_of_guessing(): void
+    {
+        $this->root = sys_get_temp_dir().'/beam-keytype-'.uniqid();
+        @mkdir($this->root.'/database/migrations', 0777, true);
+        file_put_contents(
+            $this->root.'/database/migrations/0001_01_01_000000_create_users_table.php',
+            $this->usersMigration("\$table->uuid('id')->primary();"),
+        );
+        file_put_contents(
+            $this->root.'/database/migrations/2026_04_02_200000_change_users_pk_to_string.php',
+            "<?php\n\nreturn new class extends Migration {\n public function up(): void {\n"
+            ."  DB::statement('ALTER TABLE users DROP COLUMN id');\n"
+            ."  DB::statement('ALTER TABLE users RENAME COLUMN external_id TO id');\n }\n};\n",
+        );
+
+        $index = new SchemaKeyIndex([$this->root]);
+
+        $this->assertNull($index->keyTypeOf('users'));
+        $this->assertSame(1, $index->unreadableAlterationCount());
+        $this->assertSame([], (new KeyTypeConformanceAudit($index, ['users']))->disagreements());
+    }
+
+    /** An alteration amends what a create already indexed; it never invents a table nobody creates. */
+    public function test_an_alter_on_an_uncreated_table_adds_nothing(): void
+    {
+        $this->root = sys_get_temp_dir().'/beam-keytype-'.uniqid();
+        @mkdir($this->root.'/database/migrations', 0777, true);
+        file_put_contents(
+            $this->root.'/database/migrations/2026_04_02_200000_touch_a_stranger.php',
+            "<?php\n\nreturn new class extends Migration {\n public function up(): void {\n"
+            ."  Schema::table('somebody_elses_table', function (Blueprint \$table) {\n"
+            ."   \$table->uuid('id')->change();\n  });\n }\n};\n",
+        );
+
+        $index = new SchemaKeyIndex([$this->root]);
+
+        $this->assertSame([], $index->tables());
+        $this->assertNull($index->keyTypeOf('somebody_elses_table'));
+    }
+
+    /** A primary key repaired by ALTER is a repaired primary key, under the convention predicate too. */
+    public function test_an_altered_primary_key_settles_the_convention_predicate(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration('$table->id();'),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'database/migrations/2026_05_15_011723_users_to_uuid.php' => "<?php\n\nreturn new class extends Migration {\n public function up(): void {\n"
+                ."  DB::statement('ALTER TABLE users ALTER COLUMN id TYPE uuid');\n }\n};\n",
+        ]);
+
+        $this->assertSame([], $audit->disagreements());
+    }
 }
 
 /** Stands in for `Spatie\Permission\Models\Role`: a plain Eloquent model, auto-incrementing by default. */
