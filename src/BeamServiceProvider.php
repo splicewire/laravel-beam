@@ -39,6 +39,7 @@ use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\GuardActorAdapter;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Concerns\BootsParticleRouteMacros;
+use Splicewire\Beam\Concerns\BootsResourceFilters;
 use Splicewire\Beam\Concerns\BootsResourceRenderings;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
@@ -200,6 +201,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 {
     use BootsBeamRouteNamespace;
     use BootsParticleRouteMacros;
+    use BootsResourceFilters;
     use BootsResourceRenderings;
     use ChainsTraitMethods;
 

@@ -7,6 +7,7 @@ use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\Popcorn\Concerns\Chained;
 use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Http\Particle\ParticleController;
@@ -60,6 +61,38 @@ trait BootsParticleRouteMacros
                     ->defaults(ParticleController::RESOURCE, $resourceKey)
                     ->name("{$name}.{$verb}");
             };
+
+            // The per-resource filter sub-surface, mounted AUTOMATICALLY at this exposure
+            // (api-surface-coherence ticket 10 §3, build 35). Not opt-in the way
+            // `Route::resourceRenderings()` is: a rendering is something a host chooses to offer, while
+            // a filter vocabulary is a fact about the resource — it either has a data-filters
+            // registration or it does not. Mounting it here is what makes ticket 10's *registration is
+            // one, exposure is many* true for filters: a resource exposed twice
+            // (`/guest-tokens` and `/circuits/{circuit}/guest-tokens`) gets the sub-surface at both, and
+            // a nested exposure gets it under its parent's binding, with no second declaration.
+            //
+            // ⚠️ FIRST, above the CRUD block, and that is load-bearing rather than tidy. Laravel matches
+            // in REGISTRATION order, and `{uri}/{id}` with no `idConstraint` swallows the literal
+            // `{uri}/filters`. Mounted after `show`, three of the estate's particle resources answered
+            // their filter index with `silos.show` / `agents.show` / `market_extensions.show` — measured,
+            // not theorised. This is the same rule the host route files already state by hand ("`order`
+            // precedes `{id}` so the literal wins"); here it is paid once, in the macro.
+            //
+            // Gated on the registry rather than mounted blind, so a particle resource with no filter
+            // declaration does not publish nine routes that all 404. `has()` is a read of an already-
+            // seeded registry, and `resourceRenderings` sets the precedent for reading one at mount time.
+            //
+            // `filters: false` opts out — for the one shape this cannot serve: an exposure whose route
+            // group is narrower than the resource (a public/unauthenticated mount, say), where the
+            // saved-filter half has no owner to scope to.
+            if (($options['filters'] ?? true) && DataFilter::registry()->has($resourceKey)) {
+                $this->resourceFilters(
+                    resource: $resourceKey,
+                    at: $uri,
+                    names: $name,
+                    idConstraint: $idConstraint ?? 'uuid',
+                );
+            }
 
             if (in_array('index', $only, true)) {
                 $stamp($this->get($uri, [$controller, 'index']), 'index');

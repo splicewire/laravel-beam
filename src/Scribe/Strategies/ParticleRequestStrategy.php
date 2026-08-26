@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Scribe\Strategies;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
 use ReflectionClass;
+use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
 use Rushing\LaravelDataSchemasScribe\Support\ScribeBodyParameters;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Spatie\LaravelData\Data;
@@ -64,12 +65,37 @@ class ParticleRequestStrategy extends Strategy
             return null; // Not a particle route — defer to the other strategies.
         }
 
+        // An EXPLICIT `#[RequestFromData]` on the action is the author's statement and wins over this
+        // route-derived inference — the same precedence the host's `urlParameters` chain states for
+        // `#[UrlParam]`. Without it, a route that carries the `_particle` stamp for GROUPING but declares
+        // its own body publishes the resource's input DTO instead: measured on the per-resource filter
+        // sub-surface (api-surface-coherence 35), whose `store`/`update` happen to be spelled the same as
+        // the generic controller's and so documented `POST /agents/filters` with AgentInputData's fields.
+        // Method NAME is this strategy's only trigger, which is exactly why the opt-out has to exist.
+        if ($this->declaresItsOwnRequestBody($endpointData)) {
+            return null;
+        }
+
         $method = $endpointData->method?->getName();
         if (! in_array($method, self::WRITE_METHODS, true)) {
             return [];
         }
 
         return $this->fromDataClass(app(ParticleResourceRegistry::class)->get($key)->input, $endpointData);
+    }
+
+    /**
+     * Does the action carry an explicit `#[RequestFromData]`?
+     */
+    protected function declaresItsOwnRequestBody(ExtractedEndpointData $endpointData): bool
+    {
+        $method = $endpointData->method;
+
+        if ($method === null) {
+            return false;
+        }
+
+        return $method->getAttributes(RequestFromData::class) !== [];
     }
 
     /**
