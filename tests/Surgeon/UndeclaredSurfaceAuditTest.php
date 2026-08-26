@@ -205,6 +205,37 @@ class UndeclaredSurfaceAuditTest extends TestCase
         $this->assertNotContains('api/v1/vendor-mounted', $this->uris());
     }
 
+    // ── invokable controllers (beam-facade ticket 124) ──────────────────────────────────────────────
+
+    /**
+     * Laravel records an invokable controller as a BARE class string with no `@method` segment, so the
+     * obvious `str_contains('@')` test read it as a closure. The declaration on `__invoke` was then
+     * structurally invisible — beam's own public intake door counted as negative space no matter what
+     * it declared.
+     */
+    public function test_an_invokable_controllers_declaration_is_seen(): void
+    {
+        Route::post('api/v1/invokable-declared', DeclaredInvokableFixtureController::class);
+
+        $this->assertNotContains('api/v1/invokable-declared', $this->uris());
+    }
+
+    /**
+     * The other half: an undeclared invokable is still reported — and as GUIDED, not MANUAL. Manual
+     * means "there is no method to annotate; a controller has to exist first", which is the one thing
+     * that is certainly false about an invokable controller.
+     */
+    public function test_an_undeclared_invokable_is_reported_as_guided_not_manual(): void
+    {
+        Route::post('api/v1/invokable-bare', BareInvokableFixtureController::class);
+
+        $row = $this->rowFor('api/v1/invokable-bare');
+
+        $this->assertNotNull($row);
+        $this->assertSame(UndeclaredSurfaceAudit::TIER_GUIDED, $row['tier']);
+        $this->assertStringNotContainsString('closure route', $row['location']);
+    }
+
     // ── reporting + determinism ─────────────────────────────────────────────────────────────────────
 
     public function test_it_reports_findings_through_the_doctor_vocabulary(): void
@@ -252,4 +283,15 @@ class UndeclaredFixtureController
 
     #[ResponseFromData(WidgetGateData::class)]
     public function declared() {}
+}
+
+class BareInvokableFixtureController
+{
+    public function __invoke() {}
+}
+
+class DeclaredInvokableFixtureController
+{
+    #[ResponseFromData(WidgetGateData::class)]
+    public function __invoke() {}
 }

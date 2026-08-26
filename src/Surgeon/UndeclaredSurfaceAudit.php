@@ -260,16 +260,28 @@ class UndeclaredSurfaceAudit implements DoctorAudit
         return false;
     }
 
-    /** The route's controller method, or null for a closure / invokable / vanished action. */
+    /**
+     * The route's controller method, or null for a closure / vanished action.
+     *
+     * An INVOKABLE controller resolves here too (beam-facade ticket 124). Laravel records it as a bare
+     * class string with no `@method` segment, so the obvious `str_contains('@')` test reads it as a
+     * closure — and an invokable controller then landed in {@see TIER_MANUAL} ("there is no method to
+     * annotate; a controller has to exist first"), which is the one thing that is certainly false about
+     * it. That mis-tiering was not cosmetic: `__invoke`'s own `#[ResponseFromData]` was structurally
+     * invisible to {@see isDeclared()}, so beam's OWN public intake door counted as negative space no
+     * matter what it declared.
+     */
     private function method(RouteInstance $route): ?ReflectionMethod
     {
         $action = $route->getAction('controller');
 
-        if (! is_string($action) || ! str_contains($action, '@')) {
+        if (! is_string($action)) {
             return null;
         }
 
-        [$class, $method] = explode('@', $action, 2);
+        [$class, $method] = str_contains($action, '@')
+            ? explode('@', $action, 2)
+            : [ltrim($action, '\\'), '__invoke'];
 
         if (! class_exists($class) || ! method_exists($class, $method)) {
             return null;

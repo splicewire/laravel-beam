@@ -7,9 +7,14 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
+use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
+use Splicewire\Beam\Intake\Data\PublicIntakeAcceptedData;
+use Splicewire\Beam\Intake\Data\PublicIntakeErrorData;
+use Splicewire\Beam\Intake\Data\PublicIntakeSubmissionData;
 use Splicewire\Beam\Intake\IntakeProvenance;
 use Splicewire\Beam\Intake\PublicIntakeWriteGate;
 use Splicewire\Beam\Models\BeamParticle;
@@ -51,6 +56,16 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * record with no `schema_ref` at all; every record this door writes carries one, so under ticket 47's
  * rule its snapshot is unreachable BY CONSTRUCTION — stamping one would write a decoy nothing reads.
  * `x-beam-notify` reaches a capture from here through the registry, off the `schema_ref`.
+ *
+ * THE DOOR IS DECLARED AT THE THIRD SITE, not as a particle (beam-facade tickets 89 and 124). Particle
+ * doctrine's invariant is that every boundary-crossing shape is a declared Data class at one of three
+ * legal declaration sites — and this surface reaches for the third,
+ * `#[RequestFromData]`/`#[ResponseFromData]`, on purpose. It cannot be a `#[ParticleOp]`: every op
+ * mounts at `{resource}/{id}/op/{name}` and binds an existing record, while intake CREATES one; no op
+ * in the estate is mounted outside `auth:sanctum`; and decisively, an op's `input:` is a PHP
+ * class-string resolved at boot, where this door's input is a JSON Schema resolved per request from a
+ * slug. Requiring a compile-time Data class per intake surface would REVERSE the capability stated two
+ * paragraphs up — a host mounting an intake surface with no controller and no class of its own.
  */
 class PublicIntakeController
 {
@@ -61,6 +76,17 @@ class PublicIntakeController
         private Dispatcher $events,
     ) {}
 
+    /**
+     * Submit an anonymous intake document
+     *
+     * The request body is the document itself, governed by the JSON Schema the `{schema}` slug
+     * resolves to — see {@see PublicIntakeSubmissionData} for why that shape is declared open rather
+     * than fixed. 201 returns the written capture's key; 422 returns a JSON-pointer-keyed violation
+     * map; 403 and 404 render the framework's own `{message}` body.
+     */
+    #[RequestFromData(PublicIntakeSubmissionData::class, description: 'The intake document, shaped by the registered JSON Schema for this route\'s {schema} slug rather than by a fixed class.')]
+    #[ResponseFromData(PublicIntakeAcceptedData::class, status: 201, description: 'The capture was written.')]
+    #[ResponseFromData(PublicIntakeErrorData::class, status: 422, description: 'The document did not validate against its schema.')]
     public function __invoke(Request $request, string $schema): JsonResponse
     {
         // Map the URL-safe schema slug to its schema stem (or accept a resolvable stem passed directly),
@@ -88,10 +114,14 @@ class PublicIntakeController
         // boolean acceptance gate).
         $errors = $this->validator->validate($payload, $targetSchema);
         if ($errors !== []) {
-            throw new HttpResponseException(new JsonResponse([
-                'message' => "The submission for [{$schema}] is invalid.",
-                'errors' => $errors,
-            ], Response::HTTP_UNPROCESSABLE_ENTITY));
+            $body = new PublicIntakeErrorData(
+                message: "The submission for [{$schema}] is invalid.",
+                errors: $errors,
+            );
+
+            throw new HttpResponseException(
+                new JsonResponse($body->toArray(), Response::HTTP_UNPROCESSABLE_ENTITY)
+            );
         }
 
         // `capture_key` is the ROUTE's slug, not the resolved stem: it is the unversioned intake identity
@@ -111,7 +141,12 @@ class PublicIntakeController
         // email-existence oracle by the shape of its own success body.
         $written = $writer->write($record, $payload, $actor);
 
-        return new JsonResponse(['id' => $written->getKey(), 'schemaRef' => $written->schema_ref], 201);
+        $body = new PublicIntakeAcceptedData(
+            id: (string) $written->getKey(),
+            schemaRef: (string) $written->schema_ref,
+        );
+
+        return new JsonResponse($body->toArray(), 201);
     }
 
     /** Prefer the schema's own absolute `$id` as the binding; fall back to the route ref. */
