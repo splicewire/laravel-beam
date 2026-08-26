@@ -105,6 +105,7 @@ use Splicewire\Beam\OpenApi\OpenApiSpecSource;
 use Splicewire\Beam\Ownership\Contracts\OwnershipEdgeStore;
 use Splicewire\Beam\Ownership\EloquentOwnershipEdgeStore;
 use Splicewire\Beam\Ownership\OwnershipGraph;
+use Splicewire\Beam\Data\BeamSchemaData;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
@@ -1513,9 +1514,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $classes = config('beam.core.particle.classes', []);
         $paths = config('beam.core.particle.discover_paths', []);
 
-        if ($classes === [] && $paths === []) {
-            return;
-        }
+        // Beam's OWN declaration sites, always registered — they are not a host's to name.
+        //
+        // This is `particle-contribution-seam` ticket 07's ratified idiom applied to the owner itself:
+        // a package registers its own declarations rather than waiting for a host to list their FQCNs.
+        // The estate-wide `discover_paths` points at the HOST's `app_path('Data')`, which a beam class
+        // can never be inside, so without this line `BeamSchemaData` would reach a registry only where
+        // some host happened to name it — the exact defect ADR-0214 §5 removed for beam-ux.
+        //
+        // Registration is idempotent by key (last wins), so a host that also lists these classes during
+        // a migration window registers the same declaration twice and gets the same result.
+        $classes = [...self::PARTICLE_DECLARATIONS, ...$classes];
 
         (new AttributedParticleDiscovery(
             $this->app->make(ParticleResourceRegistry::class),
@@ -1523,6 +1532,19 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $this->app->make(ParticleRelativeRegistry::class),
         ))->discover($classes, $paths);
     }
+
+    /**
+     * Every `#[ParticleResource]` / `#[ParticleOp]` declaration site inside beam itself.
+     *
+     * `BeamSchemaData` is the `schemas` resource over the DB-backed schema registry (`beam_schemas`),
+     * declared by registry-kernel ticket 65. It mounts no generic CRUD — see that class's docblock for
+     * why none of the five verbs fit a write-once, `$id`-addressed, two-tier surface.
+     *
+     * @var list<class-string>
+     */
+    protected const PARTICLE_DECLARATIONS = [
+        BeamSchemaData::class,
+    ];
 
     /**
      * Fill the publishable-event catalog: the `BeamParticlePersisted` fan-out (one `{resource}.persisted`
