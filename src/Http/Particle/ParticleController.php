@@ -6,6 +6,8 @@ use Closure;
 use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
@@ -225,7 +227,7 @@ class ParticleController extends Controller
             ($resource->prepare)($model, $input, $request->user());
         }
 
-        $model = $this->writeParticle($resource, $model, $input, $request->user());
+        $model = $this->writeParticle($resource, $model, $input, $request->user(), $request);
 
         return $this->respond($resource, $model, $request, created: $created);
     }
@@ -240,7 +242,7 @@ class ParticleController extends Controller
             ($resource->prepare)($model, $input, $request->user());
         }
 
-        $model = $this->writeParticle($resource, $model, $input, $request->user());
+        $model = $this->writeParticle($resource, $model, $input, $request->user(), $request);
 
         return $this->respond($resource, $model, $request);
     }
@@ -367,10 +369,75 @@ class ParticleController extends Controller
         return $relative->{$via}()->make();
     }
 
-    /** Persist through the beam write pipeline: WriteGate authorize → persist → after-hook → emit. */
-    protected function writeParticle(ParticleResource $resource, Model $model, mixed $input, mixed $actor): Model
+    /**
+     * Persist through the beam write pipeline: WriteGate authorize → persist → after-hook → emit.
+     *
+     * `$request` is OPTIONAL and additive (an extending controller calling this off-route passes none): when
+     * given, the payload is first stripped of the bound relative's structural key columns
+     * ({@see withoutStructuralColumns()}), so a relative mount's association can never be overwritten from
+     * the body.
+     */
+    protected function writeParticle(ParticleResource $resource, Model $model, mixed $input, mixed $actor, ?Request $request = null): Model
     {
-        return $this->writer->write($model, $this->toAttributes($input), $actor, $this->afterHook($resource, $input));
+        $attributes = $this->toAttributes($input);
+
+        if ($request !== null) {
+            $attributes = $this->withoutStructuralColumns($request, $attributes);
+        }
+
+        return $this->writer->write($model, $attributes, $actor, $this->afterHook($resource, $input));
+    }
+
+    /**
+     * Strip the bound relative's own key columns from a write payload (api-surface-coherence 65).
+     *
+     * {@see createParticle()} states the relative-mount contract in its own comment — *"the FK is set from
+     * the bound parent — structural association, never a forgeable body field"* — and until this method
+     * existed that was true only by accident, of resources whose `input:` DTO happened not to name the FK.
+     * A resource declaring `input: null` routes the RAW request through {@see toAttributes()}, which
+     * snake-maps EVERY body key onto the model; the live `media` particle's `model_type`/`model_id`
+     * (`uuidMorphs`) were settable that way, on the relative mount as well as the flat one, overwriting the
+     * association `newRelativeModel()` had just made. Measured, not reasoned about.
+     *
+     * So the guarantee is enforced where it is stated — at the mount — rather than delegated to each
+     * resource's DTO. It is deliberately unconditional: the columns are dropped whatever declared them, a
+     * DTO included. A resource that wants its FK settable from a body has no business being mounted
+     * relatively, and a caller that sends one gets it ignored rather than a 422 — the body field is not
+     * *invalid*, it is *not part of the surface*, exactly as `id` already is.
+     *
+     * Only the relation-name `via:` form has key columns to protect; a scope-closure `via:` never
+     * auto-associated (see {@see newRelativeModel()}), so there is nothing structural to defend and the
+     * payload passes through untouched.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    protected function withoutStructuralColumns(Request $request, array $attributes): array
+    {
+        [$relative, $via] = $this->relativeContext($request);
+
+        if ($relative === null || ! is_string($via)) {
+            return $attributes;
+        }
+
+        $relation = $relative->{$via}();
+        $columns = [];
+
+        if ($relation instanceof MorphOneOrMany) {
+            $columns[] = $relation->getMorphType();
+        }
+
+        if ($relation instanceof HasOneOrMany) {
+            $columns[] = $relation->getForeignKeyName();
+        }
+
+        foreach ($columns as $column) {
+            // `getMorphType()`/`getForeignKeyName()` may come back table-qualified depending on how the
+            // relation was built; the payload is keyed by bare column name.
+            unset($attributes[$column], $attributes[Str::afterLast($column, '.')]);
+        }
+
+        return $attributes;
     }
 
     /**
