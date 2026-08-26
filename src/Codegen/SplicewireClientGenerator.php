@@ -322,6 +322,10 @@ class SplicewireClientGenerator implements Generator
      * Retype the binary body param to `mixed` and splice a synthetic `$fileName` param in right after it —
      * the two-arg `(mixed $file, string $fileName)` shape the hand `CreateAttach` takes.
      *
+     * The file part is the ONE place multipart overrides the spec: the binary field loses whatever default
+     * the spec's `required` list earned it, because a request with no file is not a request. Every other
+     * part is left exactly as `constructorPlan()` read it out of the spec — see the note there.
+     *
      * @param  array<int, array<string, mixed>>  $ctorParams
      * @return array<int, array<string, mixed>>
      */
@@ -344,12 +348,12 @@ class SplicewireClientGenerator implements Generator
 
                 continue;
             }
-            // Non-file multipart fields are supplementary form parts — a caller uploads a file and MAY add
-            // metadata. The upload DTO gives them defaults (Scribe over-reports them `required`), so the SDK
-            // makes them optional: the file is the only mandatory ctor arg, the rest trail with a default.
-            if (! array_key_exists('default', $p)) {
-                $p['default'] = ($p['php'] ?? null) === 'array' ? [] : null;
-            }
+            // Non-file multipart fields carry whatever the spec said. This branch used to force a default
+            // onto every one of them, because the spec over-reported them `required`: laravel-data-schemas
+            // marked every non-`Optional` constructor property required, defaulted ones included, so a
+            // supplementary form part published as mandatory. That is fixed at the source (a defaulted
+            // property is optional on the request axis — api-surface-coherence 70), and the compensator has
+            // become a no-op that would quietly outlive its cause and swallow a genuinely mandatory part.
             $out[] = $p;
         }
 

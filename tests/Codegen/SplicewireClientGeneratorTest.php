@@ -263,6 +263,49 @@ class SplicewireClientGeneratorTest extends TestCase
         );
     }
 
+    /**
+     * The spec's `required` list is the authority for every multipart part EXCEPT the binary one
+     * (api-surface-coherence 71). `tags` is declared non-optional here, so it stays a mandatory
+     * constructor arg; `source` is optional and trails with a default. The generator used to force a
+     * default onto both, compensating for a schema generator that over-reported `required` — a defect
+     * fixed at its source in ticket 70.
+     */
+    public function test_a_non_file_multipart_part_keeps_the_arity_the_spec_gave_it(): void
+    {
+        $model = (new CodegenModel)->operation(
+            name: 'attachFragment',
+            method: 'POST',
+            path: '/api/v1/fragments/attach',
+            methods: ['POST'],
+            meta: ['tags' => ['Fragments'], 'multipart' => true, 'multipartFile' => 'file'],
+            body: (function () {
+                $b = new RecordType('AttachBody');
+                $b->field('file', Type::primitive(Primitive::String));
+                $b->field('tags', Type::listOf(Type::primitive(Primitive::String)));
+                $b->field('source', Type::optional(Type::primitive(Primitive::String)));
+
+                return $b;
+            })(),
+        );
+
+        $request = (new SplicewireClientGenerator)->invoke([
+            'model' => $model->toArray(),
+            'options' => [
+                'namespace' => 'Splicewire\\Client',
+                'base_url' => 'https://app.splicewire.test',
+                'domains' => ['Fragments' => ['POST /api/v1/fragments/attach']],
+            ],
+        ])['files']['Requests/Fragments/CreateAttach.php'];
+
+        // The binary part is mandatory whatever the spec says — a request with no file is not a request.
+        $this->assertStringContainsString('protected mixed $file,', $request);
+        // Required in the spec => required in the constructor. No default is manufactured for it.
+        $this->assertStringContainsString('protected array $tags,', $request);
+        $this->assertStringNotContainsString('protected array $tags = []', $request);
+        // Optional in the spec => defaulted in the constructor.
+        $this->assertStringContainsString('protected ?string $source = null,', $request);
+    }
+
     public function test_the_deny_list_drops_matching_paths(): void
     {
         $files = $this->generate([
