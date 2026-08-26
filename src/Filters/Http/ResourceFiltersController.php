@@ -323,6 +323,16 @@ class ResourceFiltersController extends Controller
      * the data-filters query IS the index's gate). What lands here is therefore strictly more gating
      * than the flat routes had, never less, and the row-level scope still governs the actual reads.
      *
+     * ⚠️ It is also STRICTER than a filterable resource's own index, and that is a decision rather
+     * than an oversight. Ticket 35 words the gate as "the same ability the resource's own index
+     * requires", but a filterable index requires NO class-level ability — its data-filters query is
+     * its gate — so there is no same-ability to match and `viewAny` is the nearest honest reading of
+     * ticket 10 §5's "gate EVERY read and write … saved filters *and* options". Measured consequence:
+     * a caller holding no permissions at all gets `200` (an empty, caller-scoped list) from
+     * `GET /circuits` and `403` from `/circuits/filters/schema`. That caller is a bare user with no
+     * role, not a working tenant member — a member holding `circuit.own.view` passes both — and the
+     * host pins the asymmetry in `ResourceFilterGateTest` so it stays a decision.
+     *
      * Named `gateOnResource` and not `authorizeResource`: the latter is already taken by
      * `Illuminate\Foundation\Auth\Access\AuthorizesRequests` (a PUBLIC method that maps a controller
      * onto a model for implicit policy binding), and a private redeclaration is a fatal
