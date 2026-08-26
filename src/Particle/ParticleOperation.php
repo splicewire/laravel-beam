@@ -11,6 +11,9 @@ use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Particle\Subject\RecordSubject;
+use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
+use Splicewire\Beam\Particle\Subject\SubjectResolvers;
 
 /**
  * A named operation on a particle resource, mounted at `POST /{resource}/{id}/op/{name}` by
@@ -128,6 +131,27 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
  * OBSERVABLY wrong to be worth declaring right, and a fall-through that happens to agree is not the
  * same fact as a declaration that says so.
  *
+ * ## `subject:` — WHAT the operation resolves before host code runs, and why `$model` stayed
+ *
+ * particle-operation-surface ticket 02. Subject means the CONTEXT an operation runs in, not what it
+ * hands back, and it is a polymorphic slot rather than an enum — see
+ * {@see ResolvesOperationSubject}. Three implementations ship; `null` means {@see RecordSubject},
+ * which is what every declaration had implicitly, so the slot is a pure addition and no declaration
+ * site moved.
+ *
+ * What the default now does differently is the point: it resolves through the RESOURCE's backing and
+ * applies the resource's declared `scope` / `includes` / `routeKey`, rather than running a bare
+ * `$model::query()->findOrFail($id)`. So an operation inherits the resource's row-level gate
+ * (ADR-0156 §83) instead of the gate being CRUD-only — which it was, measurably: an operation on a
+ * `whereVisible()`-scoped resource, declaring no ability, reached rows the read path correctly hid.
+ *
+ * ⚠️ **`$model` therefore did NOT delete**, and this is a correction to the plan rather than a
+ * deferral. It has a real remaining job: it is the fallback subject class for an operation registered
+ * against a resource key that is not a registered particle resource — the shape `beam-accounts`'
+ * `Sharing::attachTo($resourceKey, $model)`, `beam-rank`'s `Resources::attachTo()` and
+ * `beam-market`'s `market-products.*` all use, 13+ live sites. For those there is no resource to
+ * resolve through, and the declaration's model is the only thing that knows what to load.
+ *
  * ## `signed:` — a validly-signed request is itself a credential
  *
  * api-surface-coherence ticket 95. Before this slot existed, beam had NO notion of a signed request,
@@ -215,7 +239,14 @@ class ParticleOperation implements HasRegistryKey
      * @param  string  $resource  the particle resource key this operation hangs off (for the route + auth)
      * @param  string  $name  the operation slug in the URL (`…/op/{name}`)
      * @param  OperationKind  $kind  read | write | task | stream — sync-call vs queueable-dispatch vs held-stream
-     * @param  class-string  $model  the model the `{id}` resolves to
+     * @param  class-string  $model  the FALLBACK subject class — the model the `{id}` resolves to when
+     *                               `$resource` names no REGISTERED particle resource. That case is
+     *                               live at 13+ sites (`beam-accounts`' `Sharing::attachTo()`,
+     *                               `beam-rank`'s `Resources::attachTo()`, `beam-market`'s four
+     *                               `market-products.*`), which register against arbitrary host
+     *                               resource keys. When the resource IS registered, the subject
+     *                               resolves through ITS backing and declared gate instead — see
+     *                               `$subject` and {@see RecordSubject}
      * @param  Closure  $handle  host code. Task ⇒ returns a `ShouldQueue` job built from
      *                           `($model, $request, $actor)`; Read/Write ⇒ returns a response envelope;
      *                           Stream ⇒ `($model, $request, $actor, Emitter $emit)`, pushes framed events.
@@ -238,6 +269,13 @@ class ParticleOperation implements HasRegistryKey
      * @param  bool  $signed  whether a validly-signed URL is an ADMITTING credential for this op — it
      *                        satisfies `ability:` and makes `expires`/`signature` framework parameters
      *                        rather than caller input (see the class docblock)
+     * @param  ResolvesOperationSubject|class-string<ResolvesOperationSubject>|null  $subject  WHAT this
+     *                                                                                         operation resolves before `handle` runs. `null` ⇒ {@see RecordSubject},
+     *                                                                                         which is what every declaration had implicitly. ⚠️ Spell it
+     *                                                                                         `RecordSubject::class` or `new ActorSubject` — a static factory call
+     *                                                                                         (`Subject::record()`) is not a constant expression and FATALS inside the
+     *                                                                                         `#[ParticleOp]` twin, so the two declaration sites would not be able to
+     *                                                                                         say the same thing. See {@see SubjectResolvers}
      */
     public function __construct(
         public string $resource,
@@ -251,6 +289,7 @@ class ParticleOperation implements HasRegistryKey
         public string|false|null $input = null,
         public string|array|null $output = null,
         public bool $signed = false,
+        public ResolvesOperationSubject|string|null $subject = null,
     ) {
         $this->assertOutputMatchesKind();
     }

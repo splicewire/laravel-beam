@@ -6,6 +6,8 @@ use Attribute;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
+use Splicewire\Beam\Particle\Subject\RecordSubject;
+use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
 
 /**
  * Marks a class as a **named particle operation** on a resource — the attribute twin of
@@ -31,6 +33,15 @@ use Splicewire\Beam\Particle\ParticleOperation;
  * the pairing of `output:` with `kind:`, and its docblock carries the three states of `input:` (a class-string,
  * `false` for "accepts nothing, deliberately", `null` for undeclared) — this attribute is only the twin
  * declaration site and adds no rules of its own.
+ *
+ * `subject:` is the op's SUBJECT slot — what the framework resolves before `handle` runs
+ * ({@see ResolvesOperationSubject}); omitted, it is {@see RecordSubject}, the `{id}` record read through
+ * the resource, which is what every declaration had implicitly.
+ *
+ * ⚠️ **Spell it `RecordSubject::class` or `new ActorSubject`.** An attribute argument must be a CONSTANT
+ * EXPRESSION: `new` is legal in one since PHP 8.1, a static factory call (`Subject::record()`) is not and
+ * fatals at parse. With 44 declaration sites across the estate that decides the spelling once, for this
+ * twin and the runtime one alike.
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 class ParticleOp
@@ -39,7 +50,11 @@ class ParticleOp
      * @param  string  $resource  the particle resource key this op hangs off (route + auth)
      * @param  string  $name  the operation slug in the URL (`…/op/{name}`)
      * @param  OperationKind  $kind  read | write | task | stream
-     * @param  class-string  $model  the model the `{id}` resolves to
+     * @param  class-string  $model  the FALLBACK subject class — what the `{id}` resolves to when
+     *                               `$resource` names no registered particle resource (the live
+     *                               `Sharing::attachTo()` / `Resources::attachTo()` /
+     *                               `market-products.*` shape). A registered resource resolves
+     *                               through its own backing and gate instead — {@see ParticleOperation}
      * @param  string|false|null  $ability  the authorization token checked before the op runs
      *                                      (deny-default); `false` declares the op ungated DELIBERATELY;
      *                                      `null` is undeclared — {@see ParticleOperation}'s docblock
@@ -53,6 +68,7 @@ class ParticleOp
      * @param  class-string|array<string, list<class-string>>|null  $output  the Data class the op RETURNS;
      *                                                                       on {@see OperationKind::Stream} an
      *                                                                       event-name → payload-list map instead
+     * @param  ResolvesOperationSubject|class-string<ResolvesOperationSubject>|null  $subject  see above
      */
     public function __construct(
         public string $resource,
@@ -63,5 +79,6 @@ class ParticleOp
         public string|false|null $abilityModel = null,
         public string|false|null $input = null,
         public string|array|null $output = null,
+        public ResolvesOperationSubject|string|null $subject = null,
     ) {}
 }

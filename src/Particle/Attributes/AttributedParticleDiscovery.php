@@ -199,6 +199,7 @@ class AttributedParticleDiscovery
             respond: $this->convention($class, 'respond'),
             input: $attribute->input,
             output: $attribute->output,
+            subject: $attribute->subject,
         ));
     }
 

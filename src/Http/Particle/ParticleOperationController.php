@@ -16,6 +16,8 @@ use Splicewire\Beam\Particle\Emitter;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
+use Splicewire\Beam\Particle\Subject\SubjectResolvers;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -23,7 +25,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * `POST /{resource}/{id}/op/{name}`. It supplies the cross-cutting plumbing so the host's `handle`
  * closure stays ordinary code:
  *
- *   1. resolve the operation (from the route defaults) + the `{id}` model;
+ *   1. resolve the operation (from the route defaults) + its SUBJECT, through the operation's declared
+ *      {@see ResolvesOperationSubject} — by default the `{id}` record
+ *      read THROUGH the resource, so it inherits the resource's row-level `scope` gate rather than the
+ *      gate being CRUD-only;
  *   2. authorize its declared ability (deny-default — the same gate a hand-rolled action used) through
  *      the cross-transport {@see AbilityResolver}, so this transport shares its DECISION with MCP while
  *      keeping its own denial SHAPE (a forbidden status; MCP instead omits the tool from its listing);
@@ -67,7 +72,27 @@ class ParticleOperationController extends Controller
         $name = $defaults[static::NAME] ?? throw new RuntimeException('Operation route missing its name default.');
 
         $operation = $this->operations->get($resource, $name);
-        $model = $operation->model::query()->findOrFail($id);
+
+        // The operation's SUBJECT, through its declared resolver (particle-operation-surface ticket 02).
+        //
+        // This line used to be `$operation->model::query()->findOrFail($id)` — the entire subject
+        // resolution for every operation, and a live authorization gap: {@see ParticleController} resolves
+        // the same kind of subject through the resource's BACKING and then applies the resource's `scope`
+        // closure (ADR-0156 §83's row-level gate), its `includes` and its `routeKey`, and the operation
+        // path applied none of them. So an op on a `whereVisible()`-scoped resource, declaring no ability,
+        // reached rows the read path correctly hid. The default resolver closes that by resolving through
+        // the resource — and falls back to the old line verbatim when the resource key is not registered,
+        // which is the live `Sharing::attachTo()` / `market-products.*` shape.
+        //
+        // ⚠️ The resolver is handed PARAMETERS and an ACTOR, never this `Request`. Same reason
+        // {@see AbilityResolver} refuses ambient auth: MCP over stdio has no HTTP request and no ambient
+        // user, so a port that took one would be resolvable on this transport alone. The actor comes from
+        // the {@see ActorPort} rather than `$request->user()` for exactly that reason.
+        $model = SubjectResolvers::for($operation)->resolve(
+            $operation,
+            $request->route()?->parameters() ?? ['id' => $id],
+            $this->actor->actor(),
+        );
 
         // A validly-signed request is itself a credential (api-surface-coherence ticket 95). Checked
         // HERE and not in {@see AbilityResolver} on purpose: the resolver takes an actor argument and

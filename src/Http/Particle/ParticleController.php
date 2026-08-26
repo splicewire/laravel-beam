@@ -24,6 +24,7 @@ use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Particle\Subject\ResourceRecordLookup;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Scribe\Strategies\ParticleListParameterStrategy;
@@ -403,29 +404,17 @@ class ParticleController extends Controller
         $query = ($request !== null ? $this->relativeBaseQuery($request) : null)
             ?? $this->queryableBacking($resource)->query([]);
 
-        // Row-level authorization for subject resolution (ADR-0156 §83): the resource's `scope` closure
-        // gates the show/update/destroy `findOrFail`, so a resolve-by-id can never reach a row the caller
-        // may not touch (e.g. another user's own-scoped record → 404, not 403-after-load). Mirrors
-        // ParticleFrameResourceHandler; null scope ⇒ the unscoped query (every existing resource unchanged).
-        if ($resource->scope !== null) {
-            $query = ($resource->scope)($query) ?? $query;
-        }
-
-        if ($resource->includes !== []) {
-            $query->with($resource->includes);
-        }
-
-        // A DECLARED route key (`ParticleResource(routeKey: 'slug')`) resolves the `{id}` segment against that
-        // column instead of the primary key — and the PK stops resolving entirely, which is the point: one
-        // public identifier per resource, never two. Note this branches BELOW the relative base query and the
-        // `scope` gate above, deliberately: the lookup inherits both, so a route key need only be unique per
-        // PARENT under a relative mount (a product slug unique per seller, the seller slug carrying the single
-        // global constraint). null routeKey ⇒ today's exact `findOrFail`, so every existing resource is unchanged.
-        if ($resource->routeKey !== null) {
-            return $query->where($resource->routeKey, $id)->firstOrFail();
-        }
-
-        return $query->findOrFail($id);
+        // Row-level authorization for subject resolution (ADR-0156 §83 — the `scope` closure), the declared
+        // `includes`, and the declared `routeKey`, through the collaborator that is now the ONE
+        // implementation of that tail. It was not, until particle-operation-surface ticket 02: this method
+        // applied all three while `ParticleOperationController` resolved an operation's subject with a bare
+        // `$operation->model::query()->findOrFail($id)`, so the row gate was CRUD-only and an operation on a
+        // scoped resource reached rows this path correctly hid. Shared rather than mirrored, because two
+        // copies of a gate are a gate that will diverge again.
+        //
+        // The BASE query stays here: only this path can have a bound relative, and reading one needs the
+        // Request the subject port deliberately refuses.
+        return (new ResourceRecordLookup)->within($resource, $query, $id);
     }
 
     /**
