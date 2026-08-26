@@ -8,6 +8,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Rushing\DataFilters\Contracts\ResourceModelResolver;
 use Rushing\Doctor\DoctorAudit;
@@ -76,6 +77,9 @@ use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Events\BeamEventRegistrar;
 use Splicewire\Beam\Events\EventTypeRegistry;
+use Splicewire\Beam\Events\HookEventRegistrar;
+use Splicewire\Beam\Models\Hook;
+use Splicewire\Beam\Webhooks\HookSubjectPruner;
 use Splicewire\Beam\Events\ParticlePersistedEventRegistrar;
 use Splicewire\Beam\Events\ResourceKeyOracle;
 use Splicewire\Beam\Facades\Beam;
@@ -256,6 +260,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 // beam-ux-specific concept), so it ships under the same convention as every other
                 // core table.
                 'shared/create_beam_git_repos_table',
+                // The hook subscription table (api-surface-coherence 38, decided by 12). SHARED because
+                // a hook is meaningful in both passes: the operator realm subscribes to platform events
+                // centrally, a tenant subscribes to its own. Same one-file-both-passes shape as every
+                // other core table, not a duplicated flat+tenant DDL pair.
+                'shared/create_beam_hooks_table',
             ]);
     }
 
@@ -277,7 +286,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // Splicewire\Beam\Facades\Particle facade proxies to, plus the single mount implementation both
         // it and the `Route::particle*()` macros drive.
         //
-        // `ParticleMounter` is a `singleton` because it is pure behaviour with no state; the manager is
+        // `ParticleMounter` is a `singleton` because it is behaviour plus ONE piece of state that has to
+        // be shared across every mount in the app — its `bindingClaims()` ledger of the app-global route
+        // bindings a relative mount registers (api-surface-coherence ticket 51 §1). The manager is
         // `scoped` on BeamManager's own reasoning, and additionally because it holds the Router — which
         // an Octane worker re-resolves per request.
         $this->app->singleton(ParticleMounter::class);
@@ -1281,6 +1292,16 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // and the null resolver, no abilities register that would ever pass.
         $this->registerEntitlementAbilities();
 
+        // A hook is deleted when its subject is (api-surface-coherence 38 / 12 §1) — nulling the morph
+        // would silently promote a one-record subscription into a firehose over the whole resource. A
+        // polymorphic reference cannot carry a database FK, so it is a wildcard Eloquent listener;
+        // {@see HookSubjectPruner} carries the memo that keeps it off the hot path of every delete in
+        // the host, and the `saved`/`deleted` hooks below are what keep that memo honest in a
+        // long-lived queue worker.
+        Event::listen('eloquent.deleted: *', [HookSubjectPruner::class, 'handle']);
+        Hook::saved(fn () => HookSubjectPruner::forget());
+        Hook::deleted(fn () => HookSubjectPruner::forget());
+
         // The tripwire against the one registration idiom that cannot work (particle-contribution-seam
         // ticket 07): `afterResolving()` on a particle registry beam has ALREADY resolved above. The guard
         // arms an `Application::booted()` callback rather than checking inline, because a package that
@@ -1374,6 +1395,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $events->attach(new ParticlePersistedEventRegistrar(
             $this->app->make(ParticleResourceRegistry::class),
         ));
+
+        // The `hooks` resource's own two lifecycle names (api-surface-coherence 38 / 12 §8). Attached
+        // AFTER the persisted fan-out for the same reason that one goes first: the fan-out is the only
+        // source that cannot name a duplicate, so a collision between it and anything else is reported
+        // against the other claimant.
+        $events->attach(new HookEventRegistrar);
 
         $classes = (array) config('beam.core.events.classes', []);
         $paths = (array) config('beam.core.events.discover_paths', []);

@@ -39,6 +39,11 @@ class SharedMigrationStubsConvergeTest extends TestCase
         'beam_schemas',
         'beam_git_repos',
         'activity_log',
+        // api-surface-coherence 38. `beam_hooks` under the default prefix — the RESOURCE key is `hooks`
+        // (that is what the route and the particle stamp say), but the TABLE routes through
+        // `Beam::table()` like every other core table, so a retrofit host's one prefix override follows
+        // here too. The two names are deliberately not the same string.
+        'beam_hooks',
     ];
 
     protected function tearDown(): void

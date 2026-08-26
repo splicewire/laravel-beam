@@ -21,8 +21,23 @@ use Illuminate\Support\Facades\Http;
  * call, and one that has not bound it logs nothing — which is the correct posture
  * for a beam-core edge that must carry no new dependency. The transport half of the
  * record lives in `request_logs`; the domain half (`event`, `idempotencyKey`,
- * `attempt`) has no home until the emission record exists (ticket 12) and is not
- * shoehorned into a transport table.
+ * `attempt`) rides the ENVELOPE, which a receiver and a request-log row can be
+ * joined on because the delivery uuid appears in both.
+ *
+ * ## The body is composed once, and signed over exactly what is sent
+ *
+ * `Http::post($url, $array)` re-encodes the array itself, so a signature computed over a separately
+ * encoded string would be signing bytes that never went on the wire — the classic HMAC-webhook bug,
+ * and unfalsifiable in a test that verifies with the same encoder. `withBody()` posts the string this
+ * method signed, verbatim (api-surface-coherence 38).
+ *
+ * ## The queue-flush trap this job sits squarely in
+ *
+ * `rushing/laravel-request-logs`' collector flushes on `app()->terminating()`, and a queue worker
+ * never terminates between jobs — measured on api-surface-coherence 37, which is why the outbound
+ * call this job makes is logged by the worker's own flush and not by anything here. Nothing in this
+ * class registers a terminating callback, and nothing should: doing so from inside a job is what
+ * produced 37's flush recursion.
  */
 class DispatchWebhookJob implements ShouldQueue
 {
@@ -33,7 +48,12 @@ class DispatchWebhookJob implements ShouldQueue
 
     public function __construct(
         public WebhookDelivery $delivery,
-    ) {}
+    ) {
+        // Mint the delivery uuid HERE, at construction, before the job is serialized onto the queue.
+        // Deferring it to handle() would mint a new one on every retry and silently break the
+        // receiver-side dedupe the Idempotency-Key exists for.
+        $this->delivery->deliveryId();
+    }
 
     public function tries(): int
     {
@@ -57,12 +77,11 @@ class DispatchWebhookJob implements ShouldQueue
 
     public function handle(): void
     {
+        $body = HookDeliveryEnvelope::forDelivery($this->delivery)->toJson();
+
         $request = Http::acceptJson()
-            ->asJson()
-            ->timeout((int) config('webhooks.outbound.timeout', 30))
-            ->withHeaders(array_filter([
-                'Idempotency-Key' => $this->delivery->idempotencyKey,
-            ]));
+            ->withHeaders($this->headers($body))
+            ->timeout((int) config('webhooks.outbound.timeout', 30));
 
         if (! $this->verifiesTls()) {
             $request = $request->withoutVerifying();
@@ -76,10 +95,7 @@ class DispatchWebhookJob implements ShouldQueue
         $error = null;
 
         try {
-            $response = $request->post($this->delivery->endpoint, [
-                'event' => $this->delivery->event,
-                ...$this->delivery->payload,
-            ]);
+            $response = $request->withBody($body, 'application/json')->post($this->delivery->endpoint);
         } catch (\Throwable $e) {
             $error = $e->getMessage();
         }
@@ -90,5 +106,34 @@ class DispatchWebhookJob implements ShouldQueue
         }
 
         $response->throw();
+    }
+
+    /**
+     * The delivery headers. `X-Beam-*` and NOT `X-Splicewire-*` — free-tier package, paid vendor name
+     * (ticket 12 §5) — and the prefix is host-overridable through `webhooks.outbound.header_prefix`.
+     *
+     * `Idempotency-Key` keeps its standard spelling rather than joining the prefixed set: it is a
+     * cross-vendor convention receivers already implement, and renaming it would make this edge
+     * gratuitously special.
+     *
+     * @return array<string, string>
+     */
+    protected function headers(string $body): array
+    {
+        $headers = [
+            'Idempotency-Key' => $this->delivery->deliveryId(),
+            HookSignature::header('delivery') => $this->delivery->deliveryId(),
+            HookSignature::header('event') => $this->delivery->event,
+        ];
+
+        if ($this->delivery->hookId !== null) {
+            $headers[HookSignature::header('hook')] = $this->delivery->hookId;
+        }
+
+        if ($this->delivery->signed()) {
+            $headers[HookSignature::header('signature')] = HookSignature::sign($body, $this->delivery->secret);
+        }
+
+        return $headers;
     }
 }
