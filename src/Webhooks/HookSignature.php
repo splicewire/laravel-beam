@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Webhooks;
 
+use Splicewire\Beam\Models\Hook;
+
 /**
  * The outbound delivery signature (api-surface-coherence ticket 38, decided by ticket 12 §5).
  *
@@ -28,8 +30,8 @@ namespace Splicewire\Beam\Webhooks;
  *
  * ## Where the secret lives
  *
- * On the {@see \Splicewire\Beam\Models\Hook} row, in the clear, minted at create by
- * {@see \Splicewire\Beam\Models\Hook::mintSecret()} (32 CSPRNG bytes, hex) and revealed to the
+ * On the {@see Hook} row, in the clear, minted at create by
+ * {@see Hook::mintSecret()} (32 CSPRNG bytes, hex) and revealed to the
  * caller exactly once — the `tokens` precedent. It is stored recoverable rather than hashed because
  * it is an HMAC KEY the platform must present on every delivery, not a credential the platform
  * verifies; there is nothing a hash could ever be compared against. Rotation is therefore a new
