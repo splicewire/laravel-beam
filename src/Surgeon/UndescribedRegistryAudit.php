@@ -17,11 +17,14 @@ use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Laddered;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Splicewire\Beam\Doctor;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
  * The **meta-audit** (particle-doctrine-convergence, ticket 13): every registry-shaped container singleton
@@ -111,6 +114,13 @@ use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
  *
  * Verbs match on a camelCase prefix, so `resolveGenerate()`/`hasGround()` count — `HandlerRegistry` names
  * its lookups after what they look up, which a whole-name match would miss.
+ *
+ * One shape is ejected BEFORE any of the three criteria run: a **position-3 ladder**, which reads over
+ * registries it does not own and whose plural state is per-rung metadata about somebody else's entries. It
+ * wears a perfect registry silhouette and no verb tuning will ever see through it, so it is excluded by
+ * TYPE — `implements Laddered` without `Registry` and without `#[IsRegistry]`, which is registry-kernel 44
+ * D0's own mechanical test. See {@see isPositionThreeLadder()}, including why ticket 57 refused to spend a
+ * `DEFAULT_WHITELIST` row on it.
  *
  * ## Criterion 2 is blind to a registry whose store is EXTERNAL — the fourth signal
  *
@@ -606,6 +616,10 @@ class UndescribedRegistryAudit implements DoctorAudit
             return false;
         }
 
+        if ($this->isPositionThreeLadder($abstractReflection, $shape)) {
+            return false;
+        }
+
         $arrayProperty = $this->hasArrayState($shape);
         $arrayConstructorParam = $this->hasArrayConstructorParam($shape);
         $methods = $this->publicMethodNames($abstractReflection, $concreteReflection);
@@ -624,6 +638,72 @@ class UndescribedRegistryAudit implements DoctorAudit
         $hasLookup = $this->matchesVerb($methods, self::READ_VERBS);
 
         return $hasEntry && $hasLookup;
+    }
+
+    /**
+     * The EJECTION, ahead of every criterion: a **position-3 ladder** is not a candidate at all.
+     *
+     * Registry-kernel ticket 33's taxonomy has two legal ladder positions, and 44 D0 fixed the mechanical
+     * test that tells them apart — read off the `implements` clause, not the class name:
+     *
+     *   - **position 2**, a registry that is itself a ladder: `implements Laddered, Registry`, carries
+     *     `#[IsRegistry]`, owns a root. {@see ParticleResourceRegistry}.
+     *   - **position 3**, a ladder over registries it does not own: `implements Laddered` and nothing
+     *     else. No root, no index membership, none of {@see Registry}'s seven methods; its plural state is
+     *     per-rung metadata ABOUT another registry's entries, and its rungs cross the boundary between the
+     *     registries it composes.
+     *
+     * Position 3 is what defeats the structural test above, and it defeats it permanently: five arrays and
+     * a `register*()` is a perfect registry silhouette, and no amount of verb tuning can see that the arrays
+     * are sidecars. This is the class docblock's *"suspicion generator, not a detector"* meeting a shape the
+     * taxonomy has formally ruled OUT of the population — so the answer is to eject it, the same act ticket
+     * 36 performed on `config('data-schemas.strategies')` (population 78 → 77), not to exempt it.
+     *
+     * ## Ticket 57: why this is a type read and NOT a whitelist row
+     *
+     * The obvious-looking fix was a row in {@see UndeclaredRegistryShapeAudit::DEFAULT_WHITELIST}. Two
+     * measurements killed it. First, **this audit never reads that list** — it is consumed only by the
+     * advisory audit, so a row would have tidied the report and left this GATE failing, the worst of both.
+     * Second, the list lives in beam and its subject lives in `splicewire/tower`, a CONSUMER one tier up:
+     * a default exemption here would name an upper-tier FQCN and ship it to every host that installs beam,
+     * including the ones that do not have the class. This map has twice ruled that a lower tier exempting a
+     * higher one is a dependency-direction problem rather than a config problem.
+     *
+     * Reading the type inverts that cleanly. {@see Laddered} and {@see Registry} live in
+     * `rushing/php-popcorn` — BELOW beam, below tower, below everything — and this file already reads three
+     * of their siblings ({@see IsRegistry}, {@see RegistryArity}, {@see RegistryIndex}). So the exclusion is
+     * a **downward** read, identical in direction to {@see isDescribed()}'s `IsRegistry::of()`, and the
+     * exempting act belongs to tower: it is tower's own `implements Laddered`, on tower's own class, in
+     * tower's own repo. Nothing below names anything above, and `DEFAULT_WHITELIST` stays empty — which its
+     * docblock asked for, since *"the first row added here will be news."*
+     *
+     * ## The dodge, priced
+     *
+     * A genuinely undeclared registry could add `implements Laddered` to disappear from this gate. That is
+     * not free — `rungs(): non-empty-list<string>` has to be written and has to name real tiers — and it is
+     * a deliberate false declaration rather than an oversight, which is outside what a structural suspicion
+     * generator can defend against anyway. The guard that matters is the other direction: a class carrying
+     * `#[IsRegistry]`, or implementing `Registry` on either side of the binding, is NEVER ejected, so the
+     * rule can only ever drop something that declares nothing.
+     */
+    protected function isPositionThreeLadder(?ReflectionClass $abstract, ReflectionClass $concrete): bool
+    {
+        $laddered = false;
+
+        foreach ([$abstract, $concrete] as $reflection) {
+            if ($reflection === null) {
+                continue;
+            }
+
+            if ($reflection->implementsInterface(Registry::class)
+                || IsRegistry::of($reflection->getName()) !== null) {
+                return false;
+            }
+
+            $laddered = $laddered || $reflection->implementsInterface(Laddered::class);
+        }
+
+        return $laddered;
     }
 
     /**

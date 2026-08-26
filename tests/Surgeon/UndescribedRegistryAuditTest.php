@@ -8,6 +8,7 @@ use Rushing\Doctor\DoctorRunner;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -449,5 +450,55 @@ class UndescribedRegistryAuditTest extends TestCase
 
         $this->assertNotEmpty($rows, 'the audit must actually see beam-core, or this assertion is vacuous');
         $this->assertSame([], array_column($audit->undescribed(), 'registry'));
+    }
+
+    /**
+     * Registry-kernel ticket 57 — a **position-3 ladder** is ejected before any criterion runs.
+     *
+     * The planted class is the exact silhouette the structural test is built to catch: singleton-bound,
+     * plural array state, a `register*()` entry path and a `get()` lookup path. All three criteria pass.
+     * The one thing that differs is its TYPE — it declares `Laddered` and neither `Registry` nor
+     * `#[IsRegistry]` — which is 44 D0's mechanical test for a ladder that reads over registries it does not
+     * own, and the reason its arrays are per-rung sidecars rather than a keyspace.
+     *
+     * The live specimen is `Splicewire\Tower\Circuit\Capabilities\CapabilityLadder`, which is one tier ABOVE
+     * beam and therefore cannot be named from in here — the whole point of ticket 57's decision. It is
+     * planted instead, which is stronger anyway: the fixture proves the rule, not the one class.
+     */
+    public function test_a_position_three_ladder_is_ejected_from_the_population_by_type(): void
+    {
+        [$audit, $registry] = $this->plant(
+            properties: 'private array $manifests = []; private array $overlayManifests = [];',
+            methods: 'public function register(string $k, string $v): void { $this->manifests[$k] = $v; }'
+                .' public function get(string $k): ?string { return $this->manifests[$k] ?? null; }'
+                .' public function rungs(): array { return [\'overlay\', \'base\']; }',
+            implements: 'implements \Rushing\Popcorn\Registries\Laddered ',
+        );
+
+        $this->assertFalse(
+            $audit->isRegistryShaped($registry),
+            'Laddered without Registry and without #[IsRegistry] is position 3, not a registry candidate',
+        );
+        // Ejected from the POPULATION, not merely from the findings: a whitelist would have left the row in
+        // `registries()` and silenced the report, which is the shape ticket 57 measured and refused.
+        $this->assertSame([], array_column($audit->registries(), 'registry'));
+        $this->assertSame([], array_column($audit->undescribed(), 'registry'));
+        $this->assertSame(DoctorStatus::Pass, $audit->run()[0]->status);
+    }
+
+    /**
+     * The other half of ticket 57's guard: the ejection is `Laddered` **without** `Registry`, so a
+     * position-2 ladder — a registry that is itself a ladder — stays firmly in the population.
+     *
+     * Beam owns the estate's position-2 specimen, so this is measured against the real class rather than a
+     * fixture. `ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupersession, Registry`,
+     * and if the ejection were reading `Laddered` alone it would drop out of the shape test here and take
+     * its `#[IsRegistry]` obligation with it.
+     */
+    public function test_a_position_two_ladder_is_still_registry_shaped(): void
+    {
+        $audit = new UndescribedRegistryAudit([dirname(__DIR__, 2).'/src'], new RegistryIndex);
+
+        $this->assertTrue($audit->isRegistryShaped(ParticleResourceRegistry::class));
     }
 }
