@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Particle\Mount;
 use Closure;
 use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use ReflectionClass;
@@ -47,6 +48,52 @@ use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
  */
 class ParticleMounter
 {
+    /**
+     * The app-global route-parameter claims this mounter has made, `binding => model class`.
+     *
+     * A ledger, not a registry: it exists so an app-global side effect of mounting is *inspectable*
+     * (api-surface-coherence ticket 51 §1 — "declared rather than incidental") and so a second,
+     * conflicting claim on one parameter name can be reported. {@see relative()} writes it.
+     *
+     * @var array<string, class-string>
+     */
+    protected array $bindingClaims = [];
+
+    /**
+     * Every app-global route-parameter claim made by a relative mount, `binding => model class`.
+     *
+     * Read it to answer "what does `{fragment}` resolve to, and who decided that" without grepping
+     * route files across a host and its packages.
+     *
+     * @return array<string, class-string>
+     */
+    public function bindingClaims(): array
+    {
+        return $this->bindingClaims;
+    }
+
+    /**
+     * Register the app-global route-model binding a relative mount needs, and ledger the claim.
+     *
+     * Re-claiming a binding for the SAME model is idempotent — one child mounted under two parents of
+     * the same class is a legitimate shape, and ticket 50's edge declarations make it the common one.
+     * Re-claiming it for a DIFFERENT model is a defect: the second claim wins the map and every
+     * `{$binding}` in the estate silently changes meaning. It is reported and NOT thrown — see
+     * {@see relative()} for why a boot-time fatal is the wrong instrument here.
+     */
+    protected function claimBinding(Router $router, string $binding, string $model): void
+    {
+        $claimed = $this->bindingClaims[$binding] ?? null;
+
+        if ($claimed !== null && $claimed !== $model) {
+            Log::warning('[beam] Particle relative mount re-claims the app-global route binding {'.$binding.'} for '.$model.', which is already claimed for '.$claimed.'. The later claim wins for EVERY {'.$binding.'} route in the app. Pass a distinct `binding` option to one of the two mounts.');
+        }
+
+        $this->bindingClaims[$binding] = $model;
+
+        $router->model($binding, $model);
+    }
+
     /**
      * The five CRUD verbs, stamped `_particle`, plus the automatic per-resource filter sub-surface.
      *
@@ -191,7 +238,51 @@ class ParticleMounter
      * The bound-relative mount. Route-model-binds a RELATIVE and pushes it + its `$via` into the route
      * defaults of everything the `$routes` callback mounts.
      *
-     * Moved verbatim from `Route::macro('particleRelative', …)`.
+     * Moved verbatim from `Route::macro('particleRelative', …)`; the binding line is the one thing that
+     * has since changed, and api-surface-coherence ticket 51 §1 is the ruling.
+     *
+     * ## The route-model binding is app-global, and that is now DECLARED rather than incidental
+     *
+     * `$binding` claims a route parameter name **app-wide**: mounting `fragments`/`media` with
+     * `binding: 'fragment'` means every `{fragment}` parameter in the estate — including the four
+     * hand-written `fragments/{fragment}/concept-anchors` routes in the tower host, which this mount
+     * never saw — resolves through the claim this line registers.
+     *
+     * **It stays global, because there is no scoped alternative to move it to.** Laravel's explicit
+     * binding is one `Router::$binders` map, written by `bind()`/`model()`; there is no group- or
+     * route-scoped spelling of it. `->scopeBindings()` is not the counterpart it sounds like — it
+     * constrains *implicit* binding of a nested parameter to its parent's relation and does nothing to
+     * an explicit binder. So the honest options were "global and declared" or "not explicit at all",
+     * and the first one keeps the 404-for-a-stranger-id behaviour the relative mount depends on.
+     *
+     * Two things make the global claim safe enough to keep:
+     *
+     * - **`model()`, not a hand-rolled `bind()` closure.** The original stamped
+     *   `fn ($value) => $model::query()->findOrFail($value)`, which resolves on the PRIMARY KEY and
+     *   ignores everything a model can say about its own addressing. `Router::model()` routes through
+     *   `RouteBinding::forModel()` → `resolveRouteBinding()`, so `getRouteKeyName()`, a model's own
+     *   `resolveRouteBinding()` override, and `withTrashed()` are all honoured. That is exactly the
+     *   divergence ticket 51 §1 measured between this claim and the implicit binding it displaced, and
+     *   it closes it: a route the mount never saw now behaves as though the claim were not there.
+     * - **A conflicting re-claim is reported.** {@see $bindingClaims} ledgers who claimed what. Two
+     *   mounts claiming one parameter for the SAME model is idempotent and silent; claiming it for a
+     *   different model is a real defect and gets a warning. **Advisory, never fatal** — this runs at
+     *   boot inside route registration, and a boot-time throw is the shape that took a host down on
+     *   2026-08-25 (AGENTS.md carries the rule).
+     *
+     * ## A Closure `$via` makes the route table uncacheable
+     *
+     * `$via` lands in the route DEFAULTS, and `route:cache` serializes defaults. A relation-name string
+     * survives that; a Closure does not — `route:cache` dies on it. The sibling
+     * {@see resourceRenderings()} disciplines against exactly this in its own docblock ("per-route
+     * config rides `->defaults()` as a plain serializable array with NO closures, so the table survives
+     * `route:cache`"), and this macro was the one place that broke the rule.
+     *
+     * Ticket 51 §2 settled it against a green `route:cache` rather than against reasoning: **the
+     * Closure form is a documented limitation, not a supported shape.** Prefer the relation-name
+     * string. Where the edge genuinely needs behaviour, ticket 50's `#[ParticleRelative]` gives it a
+     * home — a `public static` convention method on the edge class, whose route default is the edge
+     * CLASS NAME, a serializable reference. `Tests\Particle\RelativeBindingClaimTest` pins both halves.
      */
     public function relative(
         Router $router,
@@ -203,16 +294,7 @@ class ParticleMounter
     ): void {
         $binding = $options['binding'] ?? Str::kebab(class_basename($model));
 
-        // Route-model-bind the relative (findOrFail → 404 for a stranger id), then mount the child routes
-        // under the `{$uri}/{binding}` prefix, stamping each with the binding name + its via so
-        // ParticleController resolves the bound instance per-request off the route parameter.
-        //
-        // ⚠️ This binding is ROUTER-level, not route-scoped — see api-surface-coherence ticket 51 §1,
-        // which owns the ruling on whether it stays that way. Moving it was deliberately NOT folded
-        // into ticket 49: 49 moved the code, 51 decides the behaviour, and doing both at once would
-        // have hidden a behaviour change inside a refactor whose whole acceptance test is that the
-        // route table did not move.
-        $router->bind($binding, fn ($value) => $model::query()->findOrFail($value));
+        $this->claimBinding($router, $binding, $model);
 
         $before = $router->getRoutes()->getRoutes();
         $beforeIds = [];
