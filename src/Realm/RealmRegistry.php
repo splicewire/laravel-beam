@@ -5,9 +5,14 @@ namespace Splicewire\Beam\Realm;
 use InvalidArgumentException;
 use ReflectionAttribute;
 use ReflectionClass;
+use Rushing\Popcorn\Registries\Authorizer;
+use Rushing\Popcorn\Registries\BasicRegistry;
+use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Splicewire\Beam\Realm\Attributes\Realm;
 
@@ -53,10 +58,14 @@ use Splicewire\Beam\Realm\Attributes\Realm;
         .'this root; longest prefix routes them apart.',
     order: 14,
 )]
-class RealmRegistry
+class RealmRegistry implements Gated, Registry
 {
-    /** @var array<string, RealmDefinition> */
-    private array $realms = [];
+    /**
+     * The entries. Held as a FIELD rather than inherited, because this class already carries realm
+     * vocabulary (`operator()`/`tenant()`/`user()`/`site()`, `effective()`) that no kernel base class
+     * could supply — composition is the sanctioned shape (ticket 01 D1).
+     */
+    private BasicRegistry $entries;
 
     /**
      * Whether the config-driven `user` realm has been EXPLICITLY overridden since construction (by a
@@ -69,10 +78,15 @@ class RealmRegistry
 
     public function __construct()
     {
-        $this->register($this->operator());
-        $this->register($this->tenant());
-        $this->register($this->site());
-        $this->realms['user'] = $this->user();
+        $this->entries = BasicRegistry::for($this);
+
+        $this->register($this->operator(), by: static::class);
+        $this->register($this->tenant(), by: static::class);
+        $this->register($this->site(), by: static::class);
+
+        // Seeded BENEATH register(), deliberately: going through register() would set
+        // $userRealmOverridden and freeze the config-driven stack the constructor is establishing.
+        $this->entries->register('user', $this->user(), by: static::class);
     }
 
     /**
@@ -141,14 +155,28 @@ class RealmRegistry
         );
     }
 
-    /** Contribute (or, last-wins, replace) a realm by key — the seam a capability package registers through. */
-    public function register(RealmDefinition $realm): void
+    /**
+     * Contribute (or, last-wins, replace) a realm — the seam a capability package registers through.
+     *
+     * The parameter is WIDENED from {@see Registry::register()} rather than shadowing it
+     * (contravariance): the historical one-argument, self-keying call `register($definition)` keeps
+     * working, and so does every contract caller spelling the key out. A `RealmDefinition` carries its
+     * own key, so there is nothing to say twice.
+     */
+    public function register(RegistryKey|string|RealmDefinition $key, mixed $entry = null, ?string $by = null, ?string $ability = null): static
     {
-        if ($realm->key === 'user') {
+        if ($key instanceof RealmDefinition) {
+            $entry = $key;
+            $key = $key->key;
+        }
+
+        if ((string) $key === 'user' || ($entry instanceof RealmDefinition && $entry->key === 'user')) {
             $this->userRealmOverridden = true;
         }
 
-        $this->realms[$realm->key] = $realm;
+        $this->entries->register($key, $entry, $by, $ability);
+
+        return $this;
     }
 
     /**
@@ -178,37 +206,86 @@ class RealmRegistry
         $this->register($attrs[0]->newInstance()->toDefinition());
     }
 
+    /** The realm at `$key`, or null — this port's older spelling of {@see tryResolve()}. */
     public function get(string $key): ?RealmDefinition
     {
-        $this->syncUserRealm();
-
-        return $this->realms[$key] ?? null;
+        return $this->tryResolve($key);
     }
 
-    public function has(string $key): bool
+    public function has(RegistryKey|string $key): bool
     {
         $this->syncUserRealm();
 
-        return isset($this->realms[$key]);
+        return $this->entries->has($key);
     }
 
-    /** @return array<string, RealmDefinition> */
+    /**
+     * Every registered realm, keyed by its wire key in registration order.
+     *
+     * Rebuilt from {@see BasicRegistry::relativeKeys()} rather than kept beside the entries: keys go
+     * relative in and absolute out (ticket 20 D2), and this is the port's own vocabulary — realm keys
+     * as a caller spells them, not `beam.realm.*`.
+     *
+     * @return array<string, RealmDefinition>
+     */
     public function all(): array
     {
         $this->syncUserRealm();
 
-        return $this->realms;
+        $out = [];
+
+        foreach ($this->entries->relativeKeys() as $key) {
+            /** @var RealmDefinition $realm */
+            $realm = $this->entries->resolve($key);
+            $out[$key] = $realm;
+        }
+
+        return $out;
+    }
+
+    public function tryResolve(RegistryKey|string $key): ?RealmDefinition
+    {
+        $this->syncUserRealm();
+
+        /** @var RealmDefinition|null */
+        return $this->entries->tryResolve($key);
+    }
+
+    public function matches(RegistryKey|string $key): array
+    {
+        $this->syncUserRealm();
+
+        return $this->entries->matches($key);
+    }
+
+    public function keys(): array
+    {
+        $this->syncUserRealm();
+
+        return $this->entries->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        return $this->entries->unfiltered();
+    }
+
+    public function authorizeWith(?Authorizer $authorizer): static
+    {
+        $this->entries->authorizeWith($authorizer);
+
+        return $this;
     }
 
     /**
      * Resolve a realm by its wire key. An unknown key is a boot/routing bug — fail loud.
      */
-    public function resolve(string $key): RealmDefinition
+    public function resolve(RegistryKey|string $key): RealmDefinition
     {
         $this->syncUserRealm();
 
-        return $this->realms[$key]
-            ?? throw new InvalidArgumentException("Unknown realm [{$key}] — no RealmDefinition registered.");
+        /** @var RealmDefinition */
+        return $this->entries->resolve($key);
     }
 
     /**
@@ -256,9 +333,14 @@ class RealmRegistry
         }
 
         $expected = $this->user();
+        /** @var RealmDefinition|null $current */
+        $current = $this->entries->tryResolve('user');
 
-        if (! isset($this->realms['user']) || $this->realms['user']->stack !== $expected->stack) {
-            $this->realms['user'] = $expected;
+        if ($current === null || $current->stack !== $expected->stack) {
+            // Re-registration supersedes, which also moves `user` to the END of registration order.
+            // Harmless while it converges on the first read after a config flip, and the only ordering
+            // the manifest builder cares about is per-realm, not across realms.
+            $this->entries->register('user', $expected, by: static::class);
         }
     }
 }

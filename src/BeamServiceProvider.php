@@ -1131,6 +1131,18 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // ADDITIVE onto the three imperative base realms (last-wins by key). Vocabulary lives in beam.
         $this->registerRealms();
 
+        // DECLARING and INDEXING are two acts (registry-kernel 21 D1): the `#[IsRegistry]` on
+        // RealmRegistry names `beam.realm`, and this is where that root actually becomes reachable
+        // through `RegistryIndex::routeTo()`. Described from the OWNER's own boot — the index never
+        // reaches up — and AFTER registerRealms(), so `popcorn:registries` reports a populated registry
+        // rather than an empty one. The host's `App\Frame\RealmRegistry` subclass is what resolves
+        // here; it inherits the declaration through IsRegistry's parent walk (ticket 42), so there is
+        // one described root, not two.
+        $this->app->make(RegistryIndex::class)->describe(
+            $this->app->make(RealmRegistry::class),
+            by: self::class,
+        );
+
         // Resource DECLARATION discovery (ADR-0156). Reflect the configured #[ParticleResource] classes +
         // scan the configured discover-paths into beam's singleton ParticleResourceRegistry, which frame's
         // manifest machinery reads through the ResourceRegistry port (via ParticleResourceRegistryAdapter). This
