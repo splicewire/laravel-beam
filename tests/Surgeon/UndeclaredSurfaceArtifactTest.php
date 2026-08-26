@@ -115,6 +115,70 @@ class UndeclaredSurfaceArtifactTest extends TestCase
             ->assertSuccessful();
     }
 
+    /**
+     * beam-facade ticket 140 — the artifact records COMPOSITION, not a scalar.
+     *
+     * The scalar is what let two sessions independently misattribute a 356 → 433 move to
+     * `api/v1/beam/accounts/*`, when only 15 of the 433 rows mentioned `beam/accounts` and 226 came from
+     * `splicewire/tower`. Every one of those facts was derivable from the rows and none of them was
+     * recorded, so nobody derived them.
+     */
+    public function test_the_artifact_records_composition_and_a_stated_baseline_environment(): void
+    {
+        Route::get('api/v1/orphans', [UndeclaredFixtureController::class, 'plain']);
+
+        $this->artisan('splicewire:beam:undeclared-surface', ['--path' => $this->path])->assertSuccessful();
+
+        $artifact = $this->artifact();
+
+        $this->assertArrayHasKey('by_tier', $artifact['counts']);
+        $this->assertArrayHasKey('by_origin', $artifact['counts']);
+        $this->assertSame($artifact['count'], array_sum($artifact['counts']['by_tier']));
+        $this->assertSame($artifact['count'], array_sum($artifact['counts']['by_origin']));
+
+        // Which environment produced the number, so a disagreement between two machines is readable.
+        $this->assertArrayHasKey('environment', $artifact['baseline']);
+        $this->assertArrayHasKey('dev_dependencies_installed', $artifact['baseline']);
+
+        // Every row carries the field the buckets are built from.
+        foreach ($artifact['surfaces'] as $row) {
+            $this->assertArrayHasKey('origin', $row);
+        }
+    }
+
+    /**
+     * The exclusion is stated ON the artifact, with its reason — an exclusion nobody can see is
+     * indistinguishable from a check that quietly stopped looking, which is the class of defect this
+     * whole ticket is an instance of.
+     */
+    public function test_the_artifact_states_what_it_excluded_and_why(): void
+    {
+        $this->artisan('splicewire:beam:undeclared-surface', ['--path' => $this->path])->assertSuccessful();
+
+        $excluded = $this->artifact()['excluded'];
+
+        $this->assertArrayHasKey('count', $excluded['dev_only']);
+        $this->assertStringContainsString('require-dev', $excluded['dev_only']['reason']);
+        $this->assertSame('IN', $excluded['production_vendor']['policy']);
+        $this->assertStringContainsString('119', $excluded['production_vendor']['reason']);
+    }
+
+    /**
+     * A committed artifact may not carry the author's home directory. The estate makes this sharper than
+     * it sounds: the co-dev overlay symlinks family packages, so most locations resolved into
+     * `~/Workspaces/php/packages/...` and did not even mention `vendor/`.
+     */
+    public function test_no_row_carries_an_absolute_machine_path(): void
+    {
+        Route::get('api/v1/orphans', [UndeclaredFixtureController::class, 'plain']);
+
+        $this->artisan('splicewire:beam:undeclared-surface', ['--path' => $this->path])->assertSuccessful();
+
+        foreach ($this->artifact()['surfaces'] as $row) {
+            $this->assertStringStartsNotWith('/', $row['location'], $row['uri'].' carries an absolute path');
+        }
+    }
+
     public function test_check_fails_loudly_when_no_artifact_has_been_committed_yet(): void
     {
         $this->artisan('splicewire:beam:undeclared-surface', ['--check' => true, '--path' => $this->path])

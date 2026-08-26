@@ -144,4 +144,26 @@ return [
         'spec_exclusions' => [],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Undeclared-surface artifact
+    |--------------------------------------------------------------------------
+    |
+    | Where `splicewire:beam:undeclared-surface` writes and `--check` reads the COMMITTED negative-space
+    | ratchet. Defaults to `.beam/undeclared-surface.json` at the host root, beside the registry-conformance
+    | artifact that has always been tracked.
+    |
+    | This key existed in the command's `??` chain and NOWHERE ELSE (beam-facade ticket 140) — a fifth
+    | instance of the dead-config-key class `DeadConfigKeyAudit` was built for: a `config()` read whose root
+    | nothing loads resolves to null silently and forever, so the override was unreachable and nobody could
+    | have noticed. Declaring it is what makes the path overridable at all; the command's chain was also
+    | `??`, which treats an empty string as a valid path, and is now `?:`.
+    |
+    | Unlike `beam.core.registry_conformance.tracker_path`, this one is NOT a per-machine absolute path in
+    | practice — the artifact it points at is committed, and the rows inside it are relativized against the
+    | host root and the composer package that ships each action, precisely so two machines produce the same
+    | bytes. Point it elsewhere only if the artifact genuinely belongs elsewhere in this host.
+    */
+    'undeclared_surface_artifact' => env('BEAM_UNDECLARED_SURFACE_ARTIFACT'),
+
 ];

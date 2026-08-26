@@ -153,6 +153,7 @@ use Splicewire\Beam\Surgeon\SdkNameConventionAudit;
 use Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit;
 use Splicewire\Beam\Surgeon\SdkReturnsTypeScriptResolutionAudit;
 use Splicewire\Beam\Surgeon\StatusChannelLiteralDriftAudit;
+use Splicewire\Beam\Surgeon\Support\PackageOrigin;
 use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
 use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
 use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
@@ -793,11 +794,16 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bind(TypeScriptShortNameCollisionAudit::class, fn () => TypeScriptShortNameCollisionAudit::forApp());
         $this->app->bind(StatusChannelLiteralDriftAudit::class, fn () => StatusChannelLiteralDriftAudit::forApp());
         $this->app->bind(TypeScriptUnknownResolutionAudit::class, fn () => TypeScriptUnknownResolutionAudit::forApp());
-        // The negative-space detector reads the two particle registries and the LIVE route table — no
-        // host-scoped file paths, so it needs no `forApp()` seam of its own.
+        // The negative-space detector reads the two particle registries and the LIVE route table.
+        // ~~no host-scoped file paths, so it needs no `forApp()` seam of its own~~ — it takes one now
+        // (beam-facade ticket 140). Its ARTIFACT is committed, and a committed artifact cannot carry
+        // absolute per-machine paths, nor a count that moves with whether dev dependencies are installed.
+        // Both answers come from the host's own `vendor/composer/installed.json`, which is host-scoped by
+        // definition; see {@see PackageOrigin} for why composer's manifest and not the path shape.
         $this->app->bind(UndeclaredSurfaceAudit::class, fn ($app) => new UndeclaredSurfaceAudit(
             $app->make(ParticleResourceRegistry::class),
             $app->make(ParticleOperationRegistry::class),
+            origins: PackageOrigin::forBasePath($app->basePath()),
         ));
         // The surface-posture projector and the document/runtime composer (soc2-readiness-dogfood 03).
         // The projector CONSUMES the negative-space audit above rather than re-walking the route table:

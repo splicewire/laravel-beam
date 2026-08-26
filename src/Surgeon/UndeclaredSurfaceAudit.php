@@ -15,6 +15,7 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Source\RouteManifestSource;
 use Splicewire\Beam\Surface\RuntimeCorroborator;
+use Splicewire\Beam\Surgeon\Support\PackageOrigin;
 
 /**
  * The **negative-space detector**: the full live surface MINUS the declared set.
@@ -47,6 +48,23 @@ use Splicewire\Beam\Surface\RuntimeCorroborator;
  *     which is a real API-contract commitment, so it is not automatable.
  *   - {@see TIER_MANUAL} — a closure or an unresolvable action. There is no method to annotate; a controller
  *     has to exist first.
+ *
+ * ## The population is code, never environment (beam-facade ticket 140)
+ * Every row carries an `origin` — the composer package that ships its action, resolved through
+ * {@see PackageOrigin} off composer's own manifest rather than off the path, because the estate's co-dev
+ * overlay symlinks family packages and a path heuristic attributes 226 of the flagship's rows to nothing.
+ *
+ * **Dev-only packages are held OUT of the counted population, and named in the artifact.** They were the
+ * defect that made the number unusable: `barryvdh/laravel-debugbar` and `spatie/laravel-ignition` are
+ * `require-dev` at the flagship and mount routes, so the count moved with `--no-dev`, with `APP_ENV`, and
+ * with whether a developer had debugbar switched on. A ratchet exists to be compared across two machines
+ * and that is exactly what an environment-dependent number cannot be.
+ *
+ * **Production vendor routes stay IN, in their own origin bucket.** They ship, a caller can hit them, and
+ * mounting them was the host's composition decision — see the map's standing "enforcement is a function of
+ * host composition" question (ticket 119), of which this artifact is a measured specimen. Dropping them
+ * would hide real surface; bucketing them means a delta names its own cause, which is what a bare scalar
+ * could not do.
  *
  * Route closures are REPORTED rather than skipped. A closure has no resolvable action, so every static
  * analysis in the pipeline silently passes over it — which made closures the least visible surface in the
@@ -116,7 +134,19 @@ class UndeclaredSurfaceAudit implements DoctorAudit
         private readonly array $exemptUris = self::DEFAULT_EXEMPT_URIS,
         /** @var list<string> */
         private readonly array $exemptNamespaces = self::DEFAULT_EXEMPT_NAMESPACES,
+        protected ?PackageOrigin $origins = null,
     ) {}
+
+    /**
+     * Rows excluded from the counted population because the package that ships them is `require-dev`.
+     *
+     * Populated by {@see undeclared()}, so read it after. Kept as rows rather than a tally because the
+     * artifact records the excluded packages by name — an exclusion nobody can see is indistinguishable
+     * from a check that stopped looking.
+     *
+     * @var list<array<string, mixed>>
+     */
+    protected array $excludedDevOnly = [];
 
     /**
      * @return list<Finding>
@@ -153,25 +183,78 @@ class UndeclaredSurfaceAudit implements DoctorAudit
     public function undeclared(): array
     {
         $rows = [];
+        $this->excludedDevOnly = [];
 
         foreach (Route::getRoutes() as $route) {
             if ($this->isExempt($route) || $this->isDeclared($route)) {
                 continue;
             }
 
-            $rows[] = [
+            $origin = $this->originFor($route);
+
+            $row = [
                 'uri' => $route->uri(),
                 'methods' => $this->methods($route),
                 'name' => $route->getName(),
                 'action' => $this->actionLabel($route),
                 'tier' => $this->tierFor($route),
+                'origin' => $origin,
                 'location' => $this->locate($route),
             ];
+
+            if ($this->origins?->isDev($origin)) {
+                $this->excludedDevOnly[] = $row;
+
+                continue;
+            }
+
+            $rows[] = $row;
         }
 
         usort($rows, fn (array $a, array $b) => [$a['uri'], $a['methods']] <=> [$b['uri'], $b['methods']]);
+        usort($this->excludedDevOnly, fn (array $a, array $b) => [$a['uri'], $a['methods']] <=> [$b['uri'], $b['methods']]);
 
         return $rows;
+    }
+
+    /**
+     * The rows the last {@see undeclared()} call held out of the population as dev-only.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function excludedDevOnly(): array
+    {
+        return $this->excludedDevOnly;
+    }
+
+    /**
+     * Which package ships this route's action — the field that makes a delta name its own cause.
+     *
+     * A scalar count is what let two sessions misattribute a 356 → 433 move to
+     * `api/v1/beam/accounts/*`, when only 15 of the 433 route strings contained `beam/accounts` at all
+     * and 226 of them came from `splicewire/tower`. The composition was always derivable from the rows;
+     * nothing recorded it, so nobody derived it.
+     */
+    private function originFor(RouteInstance $route): string
+    {
+        if ($this->origins === null) {
+            return PackageOrigin::UNKNOWN;
+        }
+
+        $method = $this->method($route);
+
+        if ($method === null) {
+            // A closure has no file of its own worth attributing — it was written in a route file, which
+            // is the host's, or a package's `routes/`. Attributing it to the route file would be more
+            // precise and is deliberately not done: `Route::getRoutes()` does not carry it, and
+            // reflecting the closure to get one costs a `ReflectionFunction` per route for a field the
+            // burn-down never sorts on.
+            return PackageOrigin::APP;
+        }
+
+        $file = (new ReflectionClass($method->class))->getFileName();
+
+        return $file === false ? PackageOrigin::UNKNOWN : $this->origins->packageFor($file);
     }
 
     /** Whether any of the invariant's legal declaration sites answers for this route. */
@@ -304,9 +387,14 @@ class UndeclaredSurfaceAudit implements DoctorAudit
 
         $file = (new ReflectionClass($method->class))->getFileName();
 
-        return $file === false
-            ? $method->class.'::'.$method->name
-            : sprintf('%s:%d', $file, $method->getStartLine());
+        if ($file === false) {
+            return $method->class.'::'.$method->name;
+        }
+
+        // Relativized when an origin resolver is available: an absolute path is per-machine, and the
+        // estate's co-dev overlay makes most of them per-machine in a way that does not even mention
+        // `vendor/`. An artifact that names the author's home directory is not committable.
+        return sprintf('%s:%d', $this->origins?->relativize($file) ?? $file, $method->getStartLine());
     }
 
     private function actionLabel(RouteInstance $route): string
