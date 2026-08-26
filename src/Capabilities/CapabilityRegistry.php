@@ -22,9 +22,13 @@ use Rushing\Popcorn\Registries\RegistryArity;
     arity: RegistryArity::PickOne,
     entryType: GatedCapability::class,
     onDuplicate: OnDuplicate::Supersede,
-    note: 'THREE estate classes are named CapabilityRegistry — this one, tower\'s SUBCLASS of it, and the '
-        .'unrelated Tower\Circuit\Capabilities one. That collision is why the index keys on ROOT and not '
-        .'on short name. Tower\'s subclass declares NOTHING and inherits this declaration: since '
+    note: 'TWO estate classes are named CapabilityRegistry — this one and tower\'s SUBCLASS of it. There '
+        .'were three until registry-kernel ticket 44 (2026-08-26) renamed the unrelated '
+        .'Tower\Circuit\Capabilities one to CapabilityLadder: it declares no IsRegistry, owns no root and '
+        .'implements no Registry, so it was never a third claimant on this word, only a third reader of '
+        .'it. That collision is why the index keys on ROOT and not '
+        .'on short name — a reason the rename narrows but does not remove. Tower\'s subclass declares '
+        .'NOTHING and inherits this declaration: since '
         .'registry-kernel ticket 42, IsRegistry::of() walks the parent chain and the nearest declaration '
         .'wins, so a host binding the subclass has one live object on ONE root, seeded from two sites. '
         .'The earlier reading of this note claimed the subclass declared its own root and its own '

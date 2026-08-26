@@ -36,7 +36,8 @@ use Splicewire\Beam\Write\ParticleWriter;
  * the estate's migration (ticket 14 D10's dispositions exist for exactly that gap), so this file tests the
  * half that is true today and does not pretend to test the other.
  *
- * The name match is what made the old assertion weak: three estate classes are called `CapabilityRegistry`,
+ * The name match is what made the old assertion weak: three estate classes were called `CapabilityRegistry`
+ * (two still are; the third is `Tower\Circuit\Capabilities\CapabilityLadder` since registry-kernel ticket 44),
  * so one descriptor satisfied all three. Roots cannot collide silently — {@see test_no_two_beam_registries_declare_the_same_root}
  * is the check the old suite had no way to write.
  */
