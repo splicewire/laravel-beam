@@ -22,9 +22,23 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
  * back to committed code artifacts), exactly as the former ChainedSchemaRegistry did (that BC shim is
  * now deleted — beam-particle-rename ticket 02 deferred its removal to the contract phase; done here).
  *
- * WRITE (`register`) lands in the FIRST WRITABLE source — for `['db','file']` that is the DB tier
- * (runtime registrations are tenant-owned, write-once, and must never mutate the committed code
- * artifacts on disk). A `['file']`-only host writes to the filesystem tier.
+ * WRITE (`register`) lands in the DECLARED write source — `$writeSource`, defaulting to the first
+ * source. Runtime registrations are tenant-owned and must never mutate a shared or committed artifact
+ * store, so the write tier is named rather than inferred from read precedence.
+ *
+ * ⚠️ **These are two different orderings and conflating them was a real tenancy defect**
+ * (beam-facade ticket 150). `register()` used to target `$sources[0]` unconditionally, and the
+ * docblock here claimed that was "the first WRITABLE source" — a writability check that never existed.
+ * That was harmless while every host was `['db','file']`. When the `fleet` tier was prepended for READ
+ * precedence (JN-15 / ADR-0192 §4 — so a tenant registration can never shadow a fleet conformance
+ * artifact), every tenant's runtime registration silently began landing in `resources/schemas/fleet`:
+ * ONE directory per deployment, git-tracked and publicly served, which every other tenant then read
+ * FIRST. Tenant A's schema shadowed tenant B's own row of the same `$id`, and write-once let A block B
+ * from ever registering it.
+ *
+ * So read order stays exactly as ADR-0192 §4 set it, and the write target is declared separately. A
+ * host that names no write source, or names one it does not configure, keeps the old `$sources[0]`
+ * behaviour — which is correct for a `['file']`-only host, where the filesystem IS the only tier.
  *
  * VERSION ENUMERATION merges + de-duplicates across every source that can enumerate, so a stem frozen
  * partly in the DB tier and partly on disk reports a complete history.
@@ -38,12 +52,16 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 class BeamSchemaRegistry implements EnumeratesVersions, SchemaRegistry
 {
     /**
-     * @param  array<int, string>  $sources  the ordered source keys, e.g. `['db','file']`.
+     * @param  array<int, string>  $sources  the ordered source keys, e.g. `['db','file']`. READ order.
      * @param  array<string, Closure(): SchemaRegistry>  $factories  a lazy tier factory per source key.
+     * @param  string|null  $writeSource  the tier `register()` targets. Null, or a key absent from
+     *                                    `$sources`, falls back to `$sources[0]` — so a `['file']`-only
+     *                                    host still writes to the one tier it has.
      */
     public function __construct(
         protected array $sources,
         protected array $factories,
+        protected ?string $writeSource = null,
     ) {
         if ($this->sources === []) {
             throw new InvalidArgumentException('BeamSchemaRegistry needs at least one source.');
@@ -57,17 +75,47 @@ class BeamSchemaRegistry implements EnumeratesVersions, SchemaRegistry
     }
 
     /**
-     * Register a schema in the FIRST source (every configured tier is writable — a
-     * {@see SchemaRegistry} always exposes `register()`). For `['db','file']` that is the DB tier.
+     * Register a schema in the DECLARED write source — see the class docblock for why this is not
+     * `$sources[0]`.
      */
     public function register(array $schema): void
+    {
+        $this->registerIn($this->writeSource(), $schema);
+    }
+
+    /**
+     * Register into a NAMED tier, bypassing the declared write source.
+     *
+     * For the callers that genuinely target a specific store — a build-time command freezing fleet
+     * conformance artifacts, beam-ux writing theme schemas — so they can say so instead of
+     * hand-constructing a tier and losing the `$id` guard.
+     */
+    public function registerIn(string $source, array $schema): void
     {
         $id = $schema['$id'] ?? null;
         if (! is_string($id) || $id === '') {
             throw new InvalidArgumentException('Cannot register a schema without an $id.');
         }
 
-        $this->tierFor($this->sources[0])->register($schema);
+        $this->tierFor($source)->register($schema);
+    }
+
+    /**
+     * The tier `register()` writes to: the declared write source when it is one this registry actually
+     * configures, else the first read source.
+     *
+     * Deliberately NOT a throw on an unconfigured write source. Whether `db` exists here is a fact
+     * about the HOST, not about the declaration's author — the estate's rule is that such a check is
+     * advisory, not fatal. A `['file']`-only host inheriting a package default of `'db'` must keep
+     * booting and keep writing to its filesystem tier.
+     */
+    public function writeSource(): string
+    {
+        if ($this->writeSource !== null && in_array($this->writeSource, $this->sources, true)) {
+            return $this->writeSource;
+        }
+
+        return $this->sources[0];
     }
 
     /**

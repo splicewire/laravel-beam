@@ -132,6 +132,24 @@ return [
     'schema' => [
         'sources' => ['fleet', 'db', 'file'],
 
+        // The tier `register()` WRITES to. Declared separately from `sources` because that list is a
+        // READ precedence order and the two are not the same question (beam-facade ticket 150).
+        //
+        // ⚠️ This key exists because conflating them was a live multi-tenancy defect. `register()` used
+        // to target `sources[0]`; once `fleet` was prepended above for read precedence, every tenant's
+        // runtime registration began landing in the shared, git-tracked, publicly-served
+        // `resources/schemas/fleet` — one directory per DEPLOYMENT, since tenancy bootstraps the
+        // database, cache, queue, permissions and circuit but NOT the filesystem. Tenant A's schema then
+        // shadowed tenant B's own `beam_schemas` row of the same `$id` (fleet is read first), and
+        // write-once let A permanently 409 B out of registering it.
+        //
+        // `db` is the correct default: a runtime registration is tenant-owned and belongs in the
+        // tenant-scoped table. A host whose `sources` do not include this key falls back to
+        // `sources[0]` — so a `['file']`-only host keeps writing to its filesystem tier and needs no
+        // override. Build-time writers that genuinely target a specific store name it explicitly via
+        // `BeamSchemaRegistry::registerIn()`.
+        'write_source' => 'db',
+
         // The committed fleet-artifact directory the default `fleet` tier reads (host-overridable).
         // Relative to resource_path() unless absolute.
         'fleet_path' => 'schemas/fleet',

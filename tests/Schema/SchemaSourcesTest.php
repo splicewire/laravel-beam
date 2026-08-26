@@ -113,6 +113,67 @@ class SchemaSourcesTest extends TestCase
         );
     }
 
+    /**
+     * beam-facade ticket 150. The two orderings are separate: `sources` is READ precedence, and the
+     * write tier is declared. Before 150 `register()` targeted `$sources[0]`, so this exact
+     * configuration — the estate's real one — sent every tenant registration into the shared,
+     * git-tracked, publicly-served fleet directory.
+     */
+    public function test_a_write_lands_in_the_declared_write_source_not_the_first_read_source(): void
+    {
+        $this->createDbTier();
+
+        $id = 'https://beam.test/schemas/content/written/1';
+
+        $registry = new BeamSchemaRegistry(
+            ['fleet', 'db', 'file'],
+            [
+                'fleet' => fn () => new FilesystemSchemaRegistry($this->fleetDir),
+                'db' => fn () => new DatabaseSchemaRegistry,
+                'file' => fn () => new FilesystemSchemaRegistry($this->frozenDir),
+            ],
+            'db',
+        );
+
+        $registry->register($this->schema($id, 'written'));
+
+        $this->assertTrue(
+            (new DatabaseSchemaRegistry)->has($id),
+            'The declared write source (db) must receive the registration.',
+        );
+        $this->assertSame(
+            [],
+            glob($this->fleetDir.'/*') ?: [],
+            'sources[0] (fleet) must NOT receive it — that was the tenancy defect 150 closed.',
+        );
+    }
+
+    /**
+     * The fallback that keeps a single-tier host working: a `['file']`-only host inherits the package
+     * default write source of `db`, does not configure a `db` tier, and must keep writing to the one
+     * tier it has rather than throwing. Whether `db` exists is a fact about the HOST, so this is
+     * advisory-by-fallback, not fatal — the estate's rule for host-dependent checks.
+     */
+    public function test_an_unconfigured_write_source_falls_back_to_the_first_source(): void
+    {
+        $id = 'https://beam.test/schemas/content/fallback/1';
+
+        $registry = new BeamSchemaRegistry(
+            ['file'],
+            ['file' => fn () => new FilesystemSchemaRegistry($this->frozenDir)],
+            'db',
+        );
+
+        $this->assertSame('file', $registry->writeSource());
+
+        $registry->register($this->schema($id, 'fallback'));
+
+        $this->assertNotEmpty(
+            glob($this->frozenDir.'/*') ?: [],
+            'A file-only host must still write to its filesystem tier.',
+        );
+    }
+
     public function test_an_ordinary_content_schema_still_gets_tenant_db_override(): void
     {
         $this->createDbTier();
