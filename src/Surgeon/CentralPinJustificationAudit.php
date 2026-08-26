@@ -141,21 +141,47 @@ class CentralPinJustificationAudit implements DoctorAudit
      * (tower, beam-commerce, beam-tenancy, beam-accounts, beam-ux), so a scan confined to `app/` would
      * report a comfortable zero from inside every host while the backlog sat untouched one directory over.
      *
+     * ## Each vendor dir is expanded ONE LEVEL and resolved, and that is load-bearing
+     * Handing in `vendor/<vendor>` whole is what this method used to do, and it reported **zero pins at the
+     * flagship** — measured 2026-08-26 by beam-facade ticket 97, which found it while wiring
+     * {@see CentralPinResolvabilityAudit} on top of this census. `RecursiveDirectoryIterator` does not
+     * follow symlinks, and in a co-dev host every `vendor/<vendor>/<package>` IS a symlink to the working
+     * checkout — so the traversal reached the vendor directory, found nothing but links, and returned a
+     * clean empty result. An empty report and an unread one look identical, which is the estate's recurring
+     * defect class: *an instrument that reports success by not running.* Expanding one level with `glob()`
+     * and `realpath()`-ing each package hands the iterator real directories instead.
+     *
+     * `<pkg>/src` is preferred over `<pkg>` because each family package carries its own dev `vendor/` tree;
+     * {@see UndescribedRegistryAudit::forHost()} solved the identical problem the identical way, and this
+     * mirrors it deliberately rather than inventing a second shape.
+     *
      * @param  list<string>|null  $roots
      */
     public static function forApp(?array $roots = null): self
     {
-        if ($roots === null) {
-            $roots = array_values(array_filter([
-                base_path('app'),
-                base_path('src'),
-                base_path('vendor/splicewire'),
-                base_path('vendor/rushing'),
-                base_path('vendor/schemastud'),
-            ], 'is_dir'));
+        if ($roots !== null) {
+            return new self($roots);
         }
 
-        return new self($roots);
+        $found = [];
+
+        foreach (['app', 'src'] as $dir) {
+            if (is_dir($path = base_path($dir))) {
+                $found[(string) realpath($path)] = true;
+            }
+        }
+
+        foreach (['rushing', 'schemastud', 'splicewire'] as $vendor) {
+            foreach ((array) glob(base_path('vendor/'.$vendor.'/*'), GLOB_ONLYDIR) as $package) {
+                $resolved = realpath((string) $package.'/src') ?: realpath((string) $package);
+
+                if (is_string($resolved)) {
+                    $found[$resolved] = true;
+                }
+            }
+        }
+
+        return new self(array_keys($found));
     }
 
     /**

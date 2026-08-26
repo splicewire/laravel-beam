@@ -144,6 +144,7 @@ use Splicewire\Beam\Surface\RuntimeCorroborator;
 use Splicewire\Beam\Surgeon\AuditScanPaths;
 use Splicewire\Beam\Surgeon\BareParticleMountAudit;
 use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
+use Splicewire\Beam\Surgeon\CentralPinResolvabilityAudit;
 use Splicewire\Beam\Surgeon\ClientRuntimeContractAudit;
 use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
@@ -943,6 +944,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // every pin in the estate lives in a package, so an `app/`-only scan would report a comfortable zero
         // from inside every host while the backlog sat one directory over. See the audit's `forApp()`.
         $this->app->bind(CentralPinJustificationAudit::class, fn () => CentralPinJustificationAudit::forApp());
+        // The resolvability sibling shares that census exactly — same scope, same rows — so a pin can never
+        // appear in one audit's population and not the other's. See the audit on why it is a sibling.
+        $this->app->bind(CentralPinResolvabilityAudit::class, fn ($app) => CentralPinResolvabilityAudit::forApp(
+            $app->make(CentralPinJustificationAudit::class),
+        ));
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkEndpointDriftAudit::class);
@@ -969,6 +975,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // blocked build. Reporting a pin is also not a claim it is wrong — the Role/Permission contradiction
         // it surfaces is ADR-sized and deliberately unresolved here.
         $manifest->register('splicewire/laravel-beam', CentralPinJustificationAudit::class);
+        // Advisory, and NOT because the finding is soft — every finding it emits is a `fail`, because an
+        // unresolvable pin is a guaranteed runtime fatal with no judgement in it. It is advisory because
+        // "does connection [central] exist HERE" is a fact about the HOST, which
+        // `rushing/laravel-doctor/docs/agents/gate-or-advisory.convention.md` names as its textbook advisory
+        // case, and because ticket 88 ruled a foundation package may not decide what fails a root's build.
+        // A host that wants it to gate registers this class in its own manifest with `gate: true`.
+        $manifest->register('splicewire/laravel-beam', CentralPinResolvabilityAudit::class);
         // Advisory: every Eloquent model a family package ships should have its alias registered by that
         // package's OWN provider, not by the host composing it. Not a gate, and for the same reason the
         // others here are not — the scope is every model in every installed family package, which includes
