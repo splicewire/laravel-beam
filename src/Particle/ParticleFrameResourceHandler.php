@@ -132,8 +132,19 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
                     $resource->key,
                     ReadContext::list($resource->includes, auth()->user()),
                 );
-            } catch (\LogicException) {
-                // The degenerate beam-core reader does not compose queries — fall through to the plain query.
+            } catch (\BadMethodCallException) {
+                // This hydrator cannot compose a list query for this resource — the degenerate beam-core
+                // reader ({@see \Splicewire\Beam\Read\PayloadParticleReader::query()}) never can, and a
+                // query-composing one cannot for a key with no filter wiring behind it. Either way: fall
+                // through to the plain query.
+                //
+                // ⚠️ This was `catch (\LogicException)` — a net wide enough to swallow things it was never
+                // aimed at, and it did: a data-filters registry miss threw `InvalidArgumentException`,
+                // which IS a `LogicException`, so an unwired resource degraded here silently. When
+                // `data-filters.resources` conformed to the popcorn kernel that miss became a
+                // `RegistryMiss` (a `RuntimeException`) and seven frame reads 500ed at once. Narrowed to
+                // the exception the port actually declares, and the real condition is now stated at the
+                // hydrator rather than inferred from a base class (registry-kernel ticket 61).
             }
         }
 

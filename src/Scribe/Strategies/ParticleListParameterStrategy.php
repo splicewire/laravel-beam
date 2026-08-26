@@ -2,7 +2,6 @@
 
 namespace Splicewire\Beam\Scribe\Strategies;
 
-use InvalidArgumentException;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
 use ReflectionClass;
@@ -67,14 +66,24 @@ class ParticleListParameterStrategy extends Strategy
             return $this->pagination($resource);
         }
 
-        try {
-            $query = DataFilter::query($resource->key);
-            $facets = $this->facets(DataFilter::resource($resource->key)->data);
-        } catch (InvalidArgumentException) {
-            // Declared `filterable: true` but absent from the data-filters registry: a real inconsistency,
-            // but one the runtime index will raise on its own. Documenting pagination alone is honest here.
+        // Declared `filterable: true` but absent from the data-filters registry: a real inconsistency,
+        // but one the runtime index will raise on its own. Documenting pagination alone is honest here.
+        //
+        // The key comes from a `#[ParticleResource]` declaration and is checked against a DIFFERENT
+        // registry, so from here it is outside input and the lookup is the nullable half of the miss
+        // pair (registry-kernel ticket 61). This was a `catch (InvalidArgumentException)` until
+        // `data-filters.resources` conformed to the popcorn kernel (ticket 38) and its miss became a
+        // `RegistryMiss` — a `RuntimeException`, so the catch stopped catching and the degrade-to-
+        // pagination path became a fatal doc-generation error. Same cause as tower's
+        // `FilterSchemaController`, found by the same audit.
+        $definition = DataFilter::tryResource($resource->key);
+
+        if ($definition === null) {
             return $this->pagination($resource);
         }
+
+        $query = DataFilter::query($resource->key);
+        $facets = $this->facets($definition->data);
 
         return [
             ...$this->filters($query->filterNames(), $facets['filters']),
