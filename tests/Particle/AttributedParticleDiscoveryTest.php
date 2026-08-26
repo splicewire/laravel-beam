@@ -107,7 +107,7 @@ class AttributedParticleDiscoveryTest extends TestCase
 
         $op = $this->app->make(ParticleOperationRegistry::class)->get('library-lyrics', 'regenerate');
 
-        $this->assertSame('library-lyrics:regenerate', $op->key());
+        $this->assertSame('library-lyrics.regenerate', $op->key());
         $this->assertSame(OperationKind::Task, $op->kind);
         $this->assertSame('update', $op->ability);
         $this->assertNotNull($op->respond);

@@ -69,6 +69,7 @@ use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Doctor\Support\TrackerTicketStatus;
 use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
+use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Facades\Beam;
@@ -650,6 +651,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', ConfigFacadeReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', UnguardedCreateAudit::class);
+        // An operation whose `ability:` is `null` is UNDECLARED, not decided — the residue
+        // particle-operation-surface ticket 03 named and could not close in one act without 403ing
+        // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host
+        // mounted, and the count is the gate the `null` → derived-permission-name flip waits on.
+        $manifest->register('splicewire/laravel-beam', UngatedOperationAudit::class);
         // Joins the install manifest (package → order) against every package's migration stubs
         // (table → created/altered), so a cross-package ALTER declared ahead of its CREATE is caught
         // at boot rather than by a failed greenfield migrate.

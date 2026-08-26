@@ -41,7 +41,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *   3. is **not itself a standard CRUD verb** ({@see ParticleControllerRedundancyAudit::BASE_VERBS} —
  *      that overlap is the sibling audit's territory, never double-flagged here), AND
  *   4. has **no matching {@see ParticleOperation}** already registered for
- *      `{resourceKey}:{actionName}`.
+ *      `{resourceKey}.{actionName}`.
  *
  * ## Acknowledged bespoke sites ({@see BespokeByDesign})
  * A method (or its whole class) carrying `#[BespokeByDesign(reason: …)]` is a REVIEWED divergence — the

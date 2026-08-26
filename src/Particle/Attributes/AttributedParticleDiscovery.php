@@ -155,7 +155,7 @@ class AttributedParticleDiscovery
 
         if ($handle === null) {
             throw new InvalidArgumentException(
-                "Particle op [{$attribute->resource}:{$attribute->name}] ({$class}) must declare a "
+                "Particle op [{$attribute->resource}.{$attribute->name}] ({$class}) must declare a "
                 .'`public static function handle(...)` — the op has no host code otherwise.'
             );
         }

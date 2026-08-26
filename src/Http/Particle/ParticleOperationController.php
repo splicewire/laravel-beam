@@ -69,19 +69,34 @@ class ParticleOperationController extends Controller
         $operation = $this->operations->get($resource, $name);
         $model = $operation->model::query()->findOrFail($id);
 
-        if ($operation->ability !== null) {
-            // Deny-default: the ability is checked against its declared model (a cross-model op names its
-            // own — run authorizes `create` on Fragment), else the resolved instance.
+        if (is_string($operation->ability)) {
+            // Deny-default: the ability is checked against its declared subject.
+            //
+            // `abilityModel` chooses the PLANE, three-state (particle-operation-surface ticket 03):
+            // `null` ⇒ the resolved instance; a class-string ⇒ a cross-model subject (run authorizes
+            // `create` on Fragment); `false` ⇒ NO subject, which routes {@see AbilityResolver} to its
+            // subject-free entitlement plane. An entitlement key checked WITH a subject silently
+            // becomes a policy verb, which is why the third state exists.
             //
             // The DECISION goes through the shared {@see AbilityResolver} so HTTP and MCP cannot answer
             // "may this actor invoke this?" differently; the DENIAL SHAPE stays this transport's, which is
             // why the forbidden response is constructed here and not in the resolver. The actor comes from
             // the {@see ActorPort} rather than `$request->user()` for the same reason — the resolver must
             // be asked the identical question by a transport that has no ambient user.
-            if ($this->abilities->denies($this->actor->actor(), $operation->ability, $operation->abilityModel ?? $model)) {
+            $subject = $operation->abilityModel === false
+                ? null
+                : ($operation->abilityModel ?? $model);
+
+            if ($this->abilities->denies($this->actor->actor(), $operation->ability, $subject)) {
                 throw new AuthorizationException;
             }
         }
+
+        // `false` is DECLARED-ungated and `null` is UNDECLARED, and both fall through here today. They
+        // are not the same fact and must not stay spelled the same: `false` is a reviewed decision
+        // (`StopImpersonating` — an ability there locks the operator inside the impersonated session),
+        // `null` is the residue {@see ParticleOperation::permissionName()} is scheduled to close.
+        // {@see \Splicewire\Beam\Doctor\UngatedOperationAudit} is what keeps the residue counted.
 
         $this->validateInput($operation, $request);
 

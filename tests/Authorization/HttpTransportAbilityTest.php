@@ -162,12 +162,43 @@ class HttpTransportAbilityTest extends TestCase
         }
     }
 
+    // ── `ability:` is three-state, and `abilityModel:` chooses the plane (ticket 03) ────────────────
+
+    public function test_a_deliberately_ungated_operation_runs_for_anyone(): void
+    {
+        // `false` and `null` behave identically at the gate TODAY, and must: the difference between
+        // them is whether a human decided it, which is a declaration fact. What this pins is that
+        // introducing the third state did not accidentally close a surface — `StopImpersonating` is the
+        // live instance, and an ability there locks the operator inside the impersonated session.
+        $this->mount($this->op(name: 'stop', ability: false));
+
+        $this->postJson('/gadgets/1/op/stop')->assertOk()->assertJson(['ran' => true]);
+    }
+
+    public function test_ability_model_false_routes_the_check_to_the_subject_free_entitlement_plane(): void
+    {
+        // The declared override the derivation needs. `ux.author` is an ENTITLEMENT key; declared with
+        // `abilityModel: null` it is checked as a POLICY verb against the loaded subject, which is a
+        // different question with a different answer. Both halves are asserted, because only the
+        // contrast proves the flag did anything.
+        Gate::define('entitlement:workbench.enter', fn (?User $user) => $user instanceof PrivilegedUser);
+        Gate::define('workbench.enter', fn (?User $user, Gadget $gadget) => false);
+
+        $this->mount($this->op(name: 'subject-free', ability: 'workbench.enter', abilityModel: false));
+        $this->mount($this->op(name: 'subject-bound', ability: 'workbench.enter'));
+
+        $this->actingAs(new PrivilegedUser);
+
+        $this->postJson('/gadgets/1/op/subject-free')->assertOk();
+        $this->postJson('/gadgets/1/op/subject-bound')->assertForbidden();
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────
 
     private function op(
         string $name = 'tune',
-        ?string $ability = 'tune',
-        ?string $abilityModel = null,
+        string|false|null $ability = 'tune',
+        string|false|null $abilityModel = null,
         ?callable $handle = null,
     ): ParticleOperation {
         return new ParticleOperation(

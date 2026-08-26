@@ -40,8 +40,14 @@ class ParticleOp
      * @param  string  $name  the operation slug in the URL (`…/op/{name}`)
      * @param  OperationKind  $kind  read | write | task | stream
      * @param  class-string  $model  the model the `{id}` resolves to
-     * @param  string|null  $ability  an authorization ability checked before the op runs (deny-default)
-     * @param  class-string|null  $abilityModel  the model the ability is checked against; null ⇒ the resolved instance
+     * @param  string|false|null  $ability  the authorization token checked before the op runs
+     *                                      (deny-default); `false` declares the op ungated DELIBERATELY;
+     *                                      `null` is undeclared — {@see ParticleOperation}'s docblock
+     *                                      carries the three states and the flip's schedule
+     * @param  class-string|false|null  $abilityModel  the subject the ability is checked against; null ⇒
+     *                                                 the resolved instance; a class-string ⇒ a
+     *                                                 cross-model subject; `false` ⇒ no subject, the
+     *                                                 entitlement plane
      * @param  class-string|false|null  $input  the Data class the op ACCEPTS — its declared payload contract;
      *                                          `false` declares it accepts nothing; `null` is undeclared
      * @param  class-string|array<string, list<class-string>>|null  $output  the Data class the op RETURNS;
@@ -53,8 +59,8 @@ class ParticleOp
         public string $name,
         public OperationKind $kind,
         public string $model,
-        public ?string $ability = null,
-        public ?string $abilityModel = null,
+        public string|false|null $ability = null,
+        public string|false|null $abilityModel = null,
         public string|false|null $input = null,
         public string|array|null $output = null,
     ) {}

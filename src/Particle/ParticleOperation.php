@@ -4,6 +4,12 @@ namespace Splicewire\Beam\Particle;
 
 use Closure;
 use InvalidArgumentException;
+use Rushing\Popcorn\Registries\BasicRegistry;
+use Rushing\Popcorn\Registries\HasRegistryKey;
+use Rushing\Popcorn\Registries\Key;
+use Rushing\Popcorn\Registries\RegistryKey;
+use Splicewire\Beam\Authorization\AbilityResolver;
+use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 
 /**
@@ -54,8 +60,65 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
  * route macro already proved. One event name may cover several payload variants discriminated by a DTO field,
  * so the value is a LIST, not a single class. Collapsing a stream to one class would lose the event-name
  * dimension a client needs to narrow each listener.
+ *
+ * ## The key IS the registry key and the permission name — one string, three jobs
+ *
+ * An operation SELF-KEYS ({@see HasRegistryKey}) as `{$resource}.{$name}`, and
+ * {@see ParticleOperationRegistry} stamps its declared root (`beam.particle.operations`) onto it. The
+ * root is therefore never spelled here, which is what makes a rekey a one-line attribute change on the
+ * registry rather than an edit at every declaration site.
+ *
+ * The separator moved from `:` to `.` (particle-operation-surface ticket 03). ⚠️ Note precisely what
+ * that was and was not: `:` is LEGAL to {@see Key} since registry-kernel ticket 30 widened the segment
+ * charset, so `tenants:suspend` parses — as ONE segment. The colon was never the blocker the tracker
+ * recorded; it was a FLATTENING. `tenants.suspend` is TWO segments, so
+ * `matches('beam.particle.operations.tenants')` enumerates a resource's operations, a relation-scoped
+ * operation extends naturally to `compositions.cells.approve`, and the key is the same dot-segmented
+ * shape `Rushing\PermissionCascade\Support\PermissionNamer::assemble()` produces. The 1:1 alignment
+ * between the registry key and the permission name is arithmetic, not convention —
+ * see {@see permissionName()}.
+ *
+ * ## `ability:` is THREE-state, and the third state is what makes the second auditable
+ *
+ * Exactly the shape `input:` already ships, for exactly the same reason — an omission and a decision
+ * must not be spelled identically:
+ *
+ *   - a **string** — the declared authorization token, checked before `handle` runs;
+ *   - **`false`** — the operation is UNGATED, deliberately, and the declaration says so. The one live
+ *     instance is `Splicewire\Beam\Accounts\Ops\StopImpersonating`, where any ability at all locks the
+ *     operator inside the impersonated session: while impersonating, the acting principal IS the
+ *     customer and holds none of the staff entitlements that authorized the swap. That op is why
+ *     "every operation is gated" cannot be the rule and "every operation DECLARES" is;
+ *   - **`null`** — UNDECLARED. Today this is skipped, which means ungated apart from route middleware.
+ *     This is the residue, not a design.
+ *
+ * **`null` is scheduled to become the DERIVED permission name** ({@see permissionName()}) rather than a
+ * bypass. The flip is deliberately not made here, and the reason is measured rather than cautious: 14
+ * of the 21 operations registered in the flagship app declare nothing, none of their derived names
+ * exists in any host's ability universe, and an undefined ability is a DENIED one (registry-kernel
+ * ticket 27 D1 pinned that exact failure for the registry authorizer). Flipping in one act would 403
+ * fourteen shipped endpoints rather than gate them. The gate on the flip is the count of remaining
+ * `null`s reaching zero — which {@see UngatedOperationAudit} measures, so the
+ * count is a check rather than a memory. This is the identical schedule `input:`'s own `null` → `false`
+ * flip is under.
+ *
+ * ## Which authorization PLANE a declared ability is checked on
+ *
+ * {@see AbilityResolver} keeps two deliberately unequal planes, and `abilityModel:` is the discriminator
+ * — also three-state, for the same reason:
+ *
+ *   - **`null`** — the resolved `{id}` instance is the subject ⇒ the per-action (policy) plane;
+ *   - a **class-string** — that model is the subject ⇒ still the per-action plane, on a cross-model
+ *     subject (`fragment_url_batch.run` authorizes `create` on `Fragment`, not on the batch);
+ *   - **`false`** — NO subject ⇒ the subject-free ENTITLEMENT plane (`entitlement:{key}`).
+ *
+ * The third state is the declared override the derivation needs, and it names a live mismatch: the two
+ * `ux.author` operations in `splicewire/laravel-beam-ux` declare an ENTITLEMENT key and, with
+ * `abilityModel: null`, are checked as a POLICY verb against the entry model. They are left alone here
+ * — flipping them is a behaviour change owed to a host that defines the entitlement — but the state
+ * they need now exists and is pinned.
  */
-class ParticleOperation
+class ParticleOperation implements HasRegistryKey
 {
     /**
      * @param  string  $resource  the particle resource key this operation hangs off (for the route + auth)
@@ -65,10 +128,14 @@ class ParticleOperation
      * @param  Closure  $handle  host code. Task ⇒ returns a `ShouldQueue` job built from
      *                           `($model, $request, $actor)`; Read/Write ⇒ returns a response envelope;
      *                           Stream ⇒ `($model, $request, $actor, Emitter $emit)`, pushes framed events.
-     * @param  string|null  $ability  an authorization ability checked before the op runs (deny-default)
-     * @param  class-string|null  $abilityModel  the model the ability is checked against; null ⇒ the
-     *                                           resolved instance (a cross-model ability names its own,
-     *                                           e.g. run authorizes `create` on `Fragment`, not the batch)
+     * @param  string|false|null  $ability  the authorization token checked before the op runs
+     *                                      (deny-default); `false` declares the op UNGATED deliberately;
+     *                                      `null` is undeclared (see the class docblock)
+     * @param  class-string|false|null  $abilityModel  the subject the ability is checked against; null ⇒
+     *                                                 the resolved instance (a cross-model ability names
+     *                                                 its own, e.g. run authorizes `create` on
+     *                                                 `Fragment`, not the batch); `false` ⇒ no subject,
+     *                                                 the entitlement plane
      * @param  (Closure(mixed): mixed)|null  $respond  a Task's response projector
      *                                                 (given the refreshed model); null ⇒ a bare `{ queued: true|false }`
      * @param  class-string|false|null  $input  the Data class this op ACCEPTS — its declared payload
@@ -84,8 +151,8 @@ class ParticleOperation
         public OperationKind $kind,
         public string $model,
         public Closure $handle,
-        public ?string $ability = null,
-        public ?string $abilityModel = null,
+        public string|false|null $ability = null,
+        public string|false|null $abilityModel = null,
         public ?Closure $respond = null,
         public string|false|null $input = null,
         public string|array|null $output = null,
@@ -125,8 +192,61 @@ class ParticleOperation
         }
     }
 
+    /**
+     * The operation's own address, root-free — `{resource}.{name}`.
+     *
+     * Root-free on purpose: {@see ParticleOperationRegistry} stamps `beam.particle.operations` on the
+     * way in ({@see BasicRegistry::door()}), and an entry that spelled the
+     * root would be re-keyed at every declaration site the day the root moves. "You cannot register
+     * outside your own root because you never spell the root."
+     */
+    public function registryKey(): RegistryKey
+    {
+        return Key::parse($this->key());
+    }
+
+    /**
+     * The same address as a plain string — kept because it is what error messages interpolate and what
+     * the mount stamps onto the route.
+     */
     public function key(): string
     {
-        return "{$this->resource}:{$this->name}";
+        return "{$this->resource}.{$this->name}";
+    }
+
+    /**
+     * The permission name this operation would be gated on if it declared nothing.
+     *
+     * It is {@see Key()}, unchanged — that is the whole finding, not a coincidence to be papered over
+     * with a mapping table. `PermissionNamer::assemble('market-products', 'approve')` produces
+     * `market-products.approve`; the registry key minus the stamped root is `market-products.approve`.
+     * The two vocabularies already agreed; the `:` separator was the only thing that hid it.
+     *
+     * ⚠️ **Measured, and it is 20 of 21 rather than 21 of 21.** `PermissionNamer::assemble()` runs
+     * `Str::slug()` over each part, so a resource key spelled with underscores diverges: live in the
+     * flagship app, `fragment_url_batch` + `run` derives `fragment_url_batch.run` here and
+     * `fragment-url-batch.run` there. That is one resource key estate-wide, and it is the one that is
+     * not in the house spelling — {@see Key}'s own docblock states dotted-kebab is the spelling for
+     * anything newly written and that `_`/`:` exist only so a domain that ALREADY spells its identity
+     * that way is not forced through a rename. So the divergence is not repaired by slugging here (that
+     * would make the key and the permission name two different strings, which is the thing this method
+     * exists to deny); it is repaired by spelling the resource key in kebab. Recorded rather than
+     * papered over, because it will bite exactly once — the day someone gives that op a permission.
+     *
+     * ⚠️ Not yet consulted by {@see ParticleOperationController} — see the class docblock for the
+     * flip's schedule and why it is staged rather than landed.
+     */
+    public function permissionName(): string
+    {
+        return $this->key();
+    }
+
+    /**
+     * Whether this operation's authorization is UNDECLARED — the residue state, and the one the flip
+     * closes. `false` (deliberately ungated) is a declaration and answers `false` here.
+     */
+    public function gateUndeclared(): bool
+    {
+        return $this->ability === null;
     }
 }

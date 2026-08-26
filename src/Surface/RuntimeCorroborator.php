@@ -147,7 +147,13 @@ class RuntimeCorroborator
 
         if (is_string($operationResource) && is_string($operationName)) {
             $onPipeline = true;
-            $ability = $this->operations->find($operationResource, $operationName)?->ability;
+            // `ability` is three-state on the declaration and `?string` on the wire: `false`
+            // (deliberately ungated) reports as no ability, because the POSTURE it describes — this
+            // route carries no authorization token — is identical to `null`'s. The two differ in
+            // whether a human decided that, which is a declaration fact, not a posture one, and
+            // {@see \Splicewire\Beam\Doctor\UngatedOperationAudit} is where it is read.
+            $declared = $this->operations->find($operationResource, $operationName)?->ability;
+            $ability = is_string($declared) ? $declared : null;
         } elseif (is_string($resourceKey) && $this->resources->has($resourceKey)) {
             $onPipeline = true;
             $ability = $this->resources->get($resourceKey)->policy;

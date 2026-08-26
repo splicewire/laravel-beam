@@ -53,7 +53,7 @@ class ParticleSurfaceTest extends TestCase
         );
         $registry->register($op);
 
-        $this->assertSame('batch:run', $op->key());
+        $this->assertSame('batch.run', $op->key());
         $this->assertSame($op, $registry->get('batch', 'run'));
     }
 
