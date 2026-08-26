@@ -105,6 +105,8 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttr
 use Splicewire\Beam\Particle\Contribution\ContributionContextNodes;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\DeadResolvingHookGuard;
+use Splicewire\Beam\Particle\Mount\ParticleMounter;
+use Splicewire\Beam\Particle\Mount\ParticleMountManager;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceModelResolver;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -269,6 +271,20 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // promoting later would mean touching the binding at precisely the moment the Octane/queue leak
         // would otherwise be introduced.
         $this->app->scoped(BeamManager::class, fn ($app) => new BeamManager($app));
+
+        // The particle mount surface (api-surface-coherence ticket 49) — the object the
+        // Splicewire\Beam\Facades\Particle facade proxies to, plus the single mount implementation both
+        // it and the `Route::particle*()` macros drive.
+        //
+        // `ParticleMounter` is a `singleton` because it is pure behaviour with no state; the manager is
+        // `scoped` on BeamManager's own reasoning, and additionally because it holds the Router — which
+        // an Octane worker re-resolves per request.
+        $this->app->singleton(ParticleMounter::class);
+
+        $this->app->scoped(ParticleMountManager::class, fn ($app) => new ParticleMountManager(
+            $app['router'],
+            $app->make(ParticleMounter::class),
+        ));
 
         // Route beam's two BASE tables through the ONE table-prefix seam (beam-particle-rename T03):
         //

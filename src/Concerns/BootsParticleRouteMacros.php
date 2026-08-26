@@ -3,19 +3,12 @@
 namespace Splicewire\Beam\Concerns;
 
 use Closure;
-use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Str;
-use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\Popcorn\Concerns\Chained;
 use Splicewire\Beam\BeamServiceProvider;
-use Splicewire\Beam\Http\Particle\ParticleController;
-use Splicewire\Beam\Http\Particle\ParticleOperationController;
-use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
-use Splicewire\Beam\Particle\Attributes\ParticleOp;
-use Splicewire\Beam\Particle\ParticleOperation;
-use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Particle\Mount\ParticleMounter;
 
 /**
  * The `Route::particleResource()` / `particleOp()` / `particleOps()` / `particleRelative()` macros — the
@@ -24,10 +17,24 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
  *
  * A link in {@see BeamServiceProvider}'s `boot` chain rather than a line in its `packageBooted()`.
  *
+ * ⚠️ **These are no longer the implementation** (api-surface-coherence ticket 49). Every body moved
+ * verbatim into {@see ParticleMounter}, which the sanctioned front door
+ * {@see Particle}`::mount()` also drives — so there is one implementation and
+ * two spellings that cannot diverge. What survives here is the macro registration and the delegation.
+ *
+ * Ticket 49's charter said to DELETE these outright and sweep every call site in the same change, on
+ * ticket 15's finding that no other repo used them. **That finding was re-measured on 2026-08-26 and is
+ * false**: 11 repos hold roughly 140 real call sites, six of them independently-released sibling
+ * packages, and beam-facade ticket 26 established that the estate resolves family packages from git by
+ * default — so the blast radius includes sites and packages with no source on any one machine and is
+ * not enumerable, let alone atomically sweepable. The delete is a real piece of work with a measured
+ * cost, not a line in this ticket.
+ *
  * ⚠️ It declares `order: 10` — FIRST — rather than relying on where its `use` statement happens to sit.
  * `pint`'s Laravel preset includes the `ordered_traits` fixer, which sorts a class's `use` statements
  * alphabetically; a mount sequence resting on that would be resequenced by a formatter on an unrelated
- * commit with nothing failing. See {@see Chained} for the measurement behind that rule.
+ * commit with nothing failing. See {@see Chained} for the measurement behind
+ * that rule.
  */
 trait BootsParticleRouteMacros
 {
@@ -44,76 +51,7 @@ trait BootsParticleRouteMacros
             array $options = [],
         ): void {
             /** @var Router $this */
-            $only = $options['only'] ?? ['index', 'show', 'store', 'update', 'destroy'];
-            $name = $options['names'] ?? str_replace('-', '_', $resourceKey);
-            $idConstraint = $options['idConstraint'] ?? null;
-            // 'controller' — route THROUGH a dedicated ParticleController subclass (e.g. SiloController) so it
-            // gets the `_particle` default + auto-`@group` like the generic surface, instead of hand-rolled
-            // explicit routes. Defaults to the generic controller (fully backward-compatible).
-            $controller = $options['controller'] ?? ParticleController::class;
-
-            $withId = function (RouteInstance $route) use ($idConstraint): RouteInstance {
-                return $idConstraint === 'uuid' ? $route->whereUuid('id') : $route;
-            };
-
-            $stamp = function (RouteInstance $route, string $verb) use ($resourceKey, $name): RouteInstance {
-                return $route
-                    ->defaults(ParticleController::RESOURCE, $resourceKey)
-                    ->name("{$name}.{$verb}");
-            };
-
-            // The per-resource filter sub-surface, mounted AUTOMATICALLY at this exposure
-            // (api-surface-coherence ticket 10 §3, build 35). Not opt-in the way
-            // `Route::resourceRenderings()` is: a rendering is something a host chooses to offer, while
-            // a filter vocabulary is a fact about the resource — it either has a data-filters
-            // registration or it does not. Mounting it here is what makes ticket 10's *registration is
-            // one, exposure is many* true for filters: a resource exposed twice
-            // (`/guest-tokens` and `/circuits/{circuit}/guest-tokens`) gets the sub-surface at both, and
-            // a nested exposure gets it under its parent's binding, with no second declaration.
-            //
-            // ⚠️ FIRST, above the CRUD block, and that is load-bearing rather than tidy. Laravel matches
-            // in REGISTRATION order, and `{uri}/{id}` with no `idConstraint` swallows the literal
-            // `{uri}/filters`. Mounted after `show`, three of the estate's particle resources answered
-            // their filter index with `silos.show` / `agents.show` / `market_extensions.show` — measured,
-            // not theorised. This is the same rule the host route files already state by hand ("`order`
-            // precedes `{id}` so the literal wins"); here it is paid once, in the macro.
-            //
-            // Gated on the registry rather than mounted blind, so a particle resource with no filter
-            // declaration does not publish nine routes that all 404. `has()` is a read of an already-
-            // seeded registry, and `resourceRenderings` sets the precedent for reading one at mount time.
-            //
-            // `filters: false` opts out — for the one shape this cannot serve: an exposure whose route
-            // group is narrower than the resource (a public/unauthenticated mount, say), where the
-            // saved-filter half has no owner to scope to.
-            if (($options['filters'] ?? true) && DataFilter::registry()->has($resourceKey)) {
-                $this->resourceFilters(
-                    resource: $resourceKey,
-                    at: $uri,
-                    names: $name,
-                    idConstraint: $idConstraint ?? 'uuid',
-                );
-            }
-
-            if (in_array('index', $only, true)) {
-                $stamp($this->get($uri, [$controller, 'index']), 'index');
-            }
-
-            if (in_array('show', $only, true)) {
-                $stamp($withId($this->get("{$uri}/{id}", [$controller, 'show'])), 'show');
-            }
-
-            if (in_array('store', $only, true)) {
-                $stamp($this->post($uri, [$controller, 'store']), 'store');
-            }
-
-            if (in_array('update', $only, true)) {
-                $verbs = ($options['legacyPostUpdate'] ?? false) ? ['put', 'patch', 'post'] : ['put', 'patch'];
-                $stamp($withId($this->match($verbs, "{$uri}/{id}", [$controller, 'update'])), 'update');
-            }
-
-            if (in_array('destroy', $only, true)) {
-                $stamp($withId($this->delete("{$uri}/{id}", [$controller, 'destroy'])), 'destroy');
-            }
+            app(ParticleMounter::class)->resource($this, $uri, $resourceKey, $options);
         });
 
         Route::macro('particleOp', function (
@@ -123,32 +61,9 @@ trait BootsParticleRouteMacros
             array $options = [],
         ): void {
             /** @var Router $this */
-            $verb = strtolower($options['method'] ?? 'post');
-
-            $route = $this->{$verb}("{$uri}/{id}/op/{$op}", [ParticleOperationController::class, 'invoke'])
-                ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
-                ->defaults(ParticleOperationController::NAME, $op)
-                ->name($options['name'] ?? "{$resourceKey}.op.{$op}");
-
-            if (($options['idConstraint'] ?? null) === 'uuid') {
-                $route->whereUuid('id');
-            }
-
-            // A Stream-kind op (ADR-0160) has no single resolved response — it emits a sequence of
-            // typed SSE events instead. `particleOp` mounts through the generic controller, so there's
-            // no per-route call site to chain `->streams()` onto directly; an `'streams'` option lets
-            // the caller declare it here (surgeon-audit-viability ticket 28).
-            if ($options['streams'] ?? null) {
-                $route->streams($options['streams']);
-            }
+            app(ParticleMounter::class)->op($this, $uri, $resourceKey, $op, $options);
         });
 
-        // `Route::particleOps` (HTTP-02) — the plural loop-collapse sibling of `particleOp`. Takes a LIST of
-        // op declarations and mounts each; the `group()` (middleware/prefix) stays the CALLER's. Each entry is
-        // one of three forms, the op NAME derived from the declaration (you pass the list, not restated names):
-        //   'reorder'                          a bare name — already registered elsewhere, mount only.
-        //   DownloadMedia::class               a #[ParticleOp] class-string — discovered (register) + mounted.
-        //   new ParticleOperation(name: …, …)  an inline object — registered here + mounted (today's 3 sites).
         Route::macro('particleOps', function (
             string $uri,
             string $resourceKey,
@@ -156,42 +71,9 @@ trait BootsParticleRouteMacros
             array $options = [],
         ): void {
             /** @var Router $this */
-            $discovery = app(AttributedParticleDiscovery::class);
-            $operations = app(ParticleOperationRegistry::class);
-
-            foreach ($ops as $op) {
-                $name = match (true) {
-                    // An inline runtime object — register it, mount by its own name.
-                    $op instanceof ParticleOperation => tap($op->name, fn () => $operations->register($op)),
-                    // A #[ParticleOp] class-string — discover (registers) + read the attribute's name to mount.
-                    is_string($op) && class_exists($op) => tap(
-                        (new \ReflectionClass($op))->getAttributes(ParticleOp::class)[0]?->newInstance()->name
-                            ?? throw new \InvalidArgumentException("Class [{$op}] carries no #[ParticleOp] to mount as a particle op."),
-                        fn () => $discovery->registerClass($op),
-                    ),
-                    // A bare name — already registered elsewhere; mount only.
-                    default => $op,
-                };
-
-                Route::particleOp($uri, $resourceKey, $name, $options);
-            }
+            app(ParticleMounter::class)->ops($this, $uri, $resourceKey, $ops, $options);
         });
 
-        // `Route::particleRelative` (HTTP-02) — the bound-relative mount (the one genuinely new capability).
-        // Route-model-binds a RELATIVE (the related model an operation is scoped/associated THROUGH — parent
-        // is the common flavor, but hasManyThrough / pivot / an arbitrary scope are all relatives) and pushes
-        // it + its `$via` into the route defaults of everything the `$routes` callback mounts, so the generic
-        // ParticleController reads them (index/find base on the relative; create goes through the relation).
-        //
-        //   $via 'media'   (string relation) — controller scopes `$relative->media()` and AUTO-ASSOCIATES the
-        //                                        inverse on create (`->media()->make()`); covers hasMany /
-        //                                        hasManyThrough / belongsToMany (Eloquent handles "through").
-        //   $via fn($rel, $q) => …  (Closure)  — an arbitrary scope (computed joins, polymorphic, cross-tenant).
-        //                                        CANNOT auto-associate on create — pairs with the resource's
-        //                                        own `prepare` hook for the FK.
-        //
-        // `opts['binding']` overrides the `{param}` name (default: the model's kebab basename). Authorize the
-        // bound relative via a `can:` middleware on the caller's `group()` — resolved once, children inherit.
         Route::macro('particleRelative', function (
             string $uri,
             string $model,
@@ -200,28 +82,7 @@ trait BootsParticleRouteMacros
             array $options = [],
         ): void {
             /** @var Router $this */
-            $binding = $options['binding'] ?? Str::kebab(class_basename($model));
-
-            // Route-model-bind the relative (findOrFail → 404 for a stranger id), then mount the child routes
-            // under the `{$uri}/{binding}` prefix, stamping each with the binding name + its via so
-            // ParticleController resolves the bound instance per-request off the route parameter.
-            $this->bind($binding, fn ($value) => $model::query()->findOrFail($value));
-
-            $before = $this->getRoutes()->getRoutes();
-            $beforeIds = [];
-            foreach ($before as $existing) {
-                $beforeIds[spl_object_id($existing)] = true;
-            }
-
-            $this->group(['prefix' => "{$uri}/{{$binding}}"], $routes);
-
-            foreach ($this->getRoutes()->getRoutes() as $route) {
-                if (! isset($beforeIds[spl_object_id($route)])) {
-                    $route->defaults(ParticleController::RELATIVE, $binding);
-                    $route->defaults(ParticleController::RELATIVE_MODEL, $model);
-                    $route->defaults(ParticleController::VIA, $via);
-                }
-            }
+            app(ParticleMounter::class)->relative($this, $uri, $model, $via, $routes, $options);
         });
     }
 }

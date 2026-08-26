@@ -2,15 +2,11 @@
 
 namespace Splicewire\Beam\Concerns;
 
-use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
 use Rushing\Popcorn\Concerns\Chained;
-use Schemastud\DataSchemas\Overlay\Lens\Fidelity;
 use Splicewire\Beam\BeamServiceProvider;
-use Splicewire\Beam\Rendering\Data\ResourceRenderingCatalogData;
-use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
-use Splicewire\Beam\Rendering\Http\RenderingsController;
+use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Rendering\RenderingCertifier;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
 
@@ -69,80 +65,16 @@ trait BootsResourceRenderings
             string $idConstraint = 'uuid',
         ): void {
             /** @var Router $this */
-            $at = $at ?? $resource;
-            $abilities = $abilities ?? ['view' => 'view', 'mutate' => 'update'];
-
-            $registry = app(ResourceRenderingRegistry::class);
-            $certifier = app(RenderingCertifier::class);
-
-            $grants = [];
-
-            foreach ($registry->for($resource) as $rendering) {
-                $fidelity = $certifier->certify($rendering);
-                $writable = $fidelity === Fidelity::LosslessEligible;
-
-                $config = [
-                    'resource' => $resource,
-                    'rendering' => $rendering->name(),
-                    'subject' => $subject,
-                    'with' => array_values($with),
-                    'abilities' => $abilities,
-                    'fidelity' => $fidelity->value,
-                    'writable' => $writable,
-                ];
-
-                $uri = ($at === '' ? '' : $at.'/').'{id}/'.$rendering->name();
-                $name = ($at === '' ? '' : $at.'.').$rendering->name();
-
-                $mount = function (RouteInstance $route) use ($config, $middleware, $idConstraint): RouteInstance {
-                    $route->defaults(RenderingsController::CONFIG, $config);
-
-                    if ($idConstraint === 'uuid') {
-                        $route->whereUuid('id');
-                    }
-
-                    if ($middleware !== []) {
-                        $route->middleware($middleware);
-                    }
-
-                    return $route;
-                };
-
-                $mount($this->get($uri, [RenderingsController::class, 'show']))->name($name);
-
-                if ($writable) {
-                    $mount($this->post($uri, [RenderingsController::class, 'store']))->name($name.'.ingest');
-                }
-
-                $grants[$rendering->name()] = [
-                    'fidelity' => $fidelity->value,
-                    'writable' => $writable,
-                ];
-            }
-
-            // The discovery route (api-surface-coherence ticket 33). OUTSIDE the loop deliberately: a
-            // resource that mounts the macro and has declared no rendering still answers, with an empty
-            // set. Absence of renderings is not absence of resource.
-            //
-            // It carries the mount-time grant map — the same certified verdict the read/write routes
-            // freeze — while leaving the format enumeration to be re-read per request.
-            //
-            // It does NOT inherit `$middleware`. That parameter gates the RENDERING (compositions pass
-            // `consume.engine`, which meters the dogfood loopback); metering a metadata read as engine
-            // consumption would be a new cost on an endpoint that touches no engine. The route group's
-            // own middleware still applies, which is where `abilities: []` says the gate lives.
-            $catalogUri = ($at === '' ? '' : $at.'/').'renderings';
-            $catalogName = ($at === '' ? '' : $at.'.').'renderings';
-
-            $this->get($catalogUri, [RenderingCatalogController::class, 'index'])
-                ->defaults(RenderingCatalogController::CONFIG, [
-                    'resource' => $resource,
-                    'subject' => $subject,
-                    'abilities' => $abilities,
-                    'renderings' => $grants,
-                ])
-                ->name($catalogName)
-                ->beam()->returns(ResourceRenderingCatalogData::class);
+            app(ParticleMounter::class)->resourceRenderings(
+                router: $this,
+                resource: $resource,
+                subject: $subject,
+                at: $at,
+                abilities: $abilities,
+                middleware: $middleware,
+                with: $with,
+                idConstraint: $idConstraint,
+            );
         });
     }
 }
