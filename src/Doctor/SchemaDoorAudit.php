@@ -248,37 +248,76 @@ class SchemaDoorAudit implements DoctorAudit
             ))];
         }
 
-        $id = $own[0];
-        $request = Request::create($id);
-        $url = $request->url();
+        foreach ($this->probeIds($own) as $id) {
+            $request = Request::create($id);
+            $url = $request->url();
 
-        if ($url !== $id) {
-            return [Finding::warn(self::CHECK, sprintf(
-                'The frozen $id [%s] does not survive a round trip through a request URL — it comes back '.
-                'as [%s]. The door looks its artifact up by the URL as asked for, so the registry misses '.
-                'and the $id 404s even with the route mounted.',
-                $id,
-                $url,
-            ))];
-        }
+            if ($url !== $id) {
+                return [Finding::warn(self::CHECK, sprintf(
+                    'The frozen $id [%s] does not survive a round trip through a request URL — it comes back '.
+                    'as [%s]. The door looks its artifact up by the URL as asked for, so the registry misses '.
+                    'and the $id 404s even with the route mounted.',
+                    $id,
+                    $url,
+                ))];
+            }
 
-        $matched = $this->match($request);
+            $matched = $this->match($request);
 
-        if ($matched !== self::ROUTE) {
-            return [Finding::warn(self::CHECK, sprintf(
-                'GET %s does NOT reach the schema door: it matches [%s], not %s. The door was expected at '.
-                '[%s]. This is a live unreachable $id — the artifact is frozen and write-once, so the '.
-                'repair is the mount, never the identity. Route-table listings will not show this: a '.
-                'colliding registration replaces the door outright and the loser is gone from the '.
-                'collection (beam-facade ticket 111).',
-                $id,
-                $matched ?? 'nothing (404)',
-                self::ROUTE,
-                $expectedKey,
-            ))];
+            if ($matched !== self::ROUTE) {
+                return [Finding::warn(self::CHECK, sprintf(
+                    'GET %s does NOT reach the schema door: it matches [%s], not %s. The door was expected at '.
+                    '[%s]. This is a live unreachable $id — the artifact is frozen and write-once, so the '.
+                    'repair is the mount, never the identity. Route-table listings will not show this: a '.
+                    'colliding registration replaces the door outright and the loser is gone from the '.
+                    'collection (beam-facade ticket 111).',
+                    $id,
+                    $matched ?? 'nothing (404)',
+                    self::ROUTE,
+                    $expectedKey,
+                ))];
+            }
         }
 
         return [];
+    }
+
+    /**
+     * The ids to probe: the first, and the DEEPEST — the one with the most path segments.
+     *
+     * ## Why depth, and why this is not one probe made arbitrarily fussier (beam-facade 148)
+     *
+     * The failure this guards against is **depth-dependent**, and a single probe cannot see it. A
+     * Laravel route parameter matches one segment unless constrained, so `schemas/{path}` without
+     * `->where('path', '.*')` serves `/schemas/splice/1` and 404s
+     * `/schemas/content-schema/food-safety/food-code-compliance-intake/1` — and `ids()` is sorted, so
+     * which of those the old single probe happened to pick was alphabetical luck.
+     *
+     * 148 was filed believing exactly that constraint was missing, on 404s measured at the flagship.
+     * It has in fact been on the mount since ticket 82, and the 404s were an ORIGIN mismatch (the `$id`
+     * is the request URL, so a `.test` probe against a `.com` authority correctly serves nothing). The
+     * premise was wrong; the gap in the instrument was real, and this closes it — a constraint that
+     * narrowed to, say, two segments would have passed the old probe on every host in the estate.
+     *
+     * Deliberately two probes and not all of them: the population is up to 37 artifacts at the
+     * flagship, `match()` walks the route collection each time, and depth is the only axis on which
+     * the door's routing can differ between one artifact and another. Both probes are usually the same
+     * id, which costs nothing.
+     *
+     * @param  array<int, string>  $own
+     * @return list<string>
+     */
+    protected function probeIds(array $own): array
+    {
+        $deepest = $own[0];
+
+        foreach ($own as $id) {
+            if (substr_count($id, '/') > substr_count($deepest, '/')) {
+                $deepest = $id;
+            }
+        }
+
+        return $deepest === $own[0] ? [$own[0]] : [$own[0], $deepest];
     }
 
     /**

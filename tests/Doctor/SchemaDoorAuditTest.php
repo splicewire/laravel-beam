@@ -154,6 +154,41 @@ class SchemaDoorAuditTest extends TestCase
         $this->assertStringContainsString('site.show', $findings[0]->detail);
     }
 
+    /**
+     * beam-facade 148 — the depth-dependent failure a single probe cannot see.
+     *
+     * A Laravel route parameter matches ONE segment unless constrained, so a door whose constraint is
+     * anything narrower than `.*` serves a shallow `$id` and 404s a nested one. `ids()` is sorted, so
+     * the old single probe took whichever came first alphabetically: here `.../a/1` passes the
+     * two-segment constraint and `.../content/deep/nested/1` does not, and the shallow one sorts
+     * first — so the old probe read this host as clean.
+     *
+     * This is the exact shape 148 was filed about. The constraint turned out to have been on the
+     * mount since ticket 82 — the measured 404s were an origin mismatch — but the instrument could
+     * only have caught it by luck, and now catches it by construction.
+     */
+    public function test_a_door_that_matches_only_one_segment_is_caught_by_the_deepest_id(): void
+    {
+        $this->freeze('https://example.test/schemas/a/1');
+        $this->freeze('https://example.test/schemas/content/deep/nested/1');
+
+        $container = $this->container('https://example.test/schemas');
+        $router = $container->make('router');
+
+        // The door, mounted with a constraint that admits exactly two segments rather than any depth.
+        $router->get('schemas/{path}', fn () => null)
+            ->where('path', '[^/]+/[^/]+')
+            ->name(SchemaDoorAudit::ROUTE);
+        $router->getRoutes()->refreshNameLookups();
+
+        $findings = (new SchemaDoorAudit($container))->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
+        $this->assertStringContainsString('does NOT reach the schema door', $findings[0]->detail);
+        $this->assertStringContainsString('content/deep/nested/1', $findings[0]->detail);
+    }
+
     public function test_an_unmounted_door_is_caught_before_anything_is_frozen(): void
     {
         $findings = $this->audit('https://example.test/schemas')->run();
