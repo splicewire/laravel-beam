@@ -445,8 +445,15 @@ class UndescribedRegistryAudit implements DoctorAudit
         $undescribed = array_values(array_filter($rows, fn (array $row) => ! $row['described']));
 
         if ($undescribed === []) {
+            // The PASS names its own population in the same breath, on 35 D2's precedent and
+            // registry-kernel ticket 55's ruling: this scan finds a registry a provider WIRES, and a
+            // registry constructed at a call site (per request, per tenant, per command) is outside it
+            // by construction — legitimately, not as a defect. A green here is not "no unindexed
+            // registry exists", it is "every wired one declares itself".
             return [Finding::pass(self::CHECK, sprintf(
-                'All %d registry-shaped singleton(s) in the governed packages declare themselves with #[IsRegistry].',
+                'All %d registry-shaped SINGLETON(s) in the governed packages declare themselves with '
+                    .'#[IsRegistry]. Scope: bindings only — a registry constructed at a call site is '
+                    .'outside this population by construction (registry-kernel 55).',
                 count($rows),
             ))];
         }

@@ -46,6 +46,39 @@ class RegistryConformanceCommand extends Command
 {
     public const SIGNATURE = 'splicewire:beam:registry-conformance';
 
+    /**
+     * **The population this artifact's completeness claim is over — printed, not merely known**
+     * (registry-kernel ticket 55, on ticket 35 D2's precedent that *a green gate must print the thing
+     * it is not gating on*).
+     *
+     * Both audits behind this artifact find registries by their **wiring**: `RegistryConformanceAudit`
+     * walks the live binding table plus the index's members, and `UndeclaredRegistryShapeAudit` scans
+     * provider source for `singleton()`/`scoped()` calls. Both therefore see a registry that a provider
+     * WIRES and neither can see one that a call site CONSTRUCTS — and the estate has four of those, one
+     * of them deliberate:
+     *
+     *   - `Splicewire\Tower\Models\ContentBeamSchema::fromSyncPayload()` — `new DatabaseSchemaRegistry`
+     *     inside a model method;
+     *   - `Splicewire\Commerce\Billing\BillGenerator::registryFor()` — `new ComponentRegistry` **per
+     *     tenant**, each host component bound to that tenant so the engine's tenant-free
+     *     `BillingComponent::calculate()` stays domain-agnostic. Its docblock argues it and the argument
+     *     is good;
+     *   - `App\Docs\Regenerate\GuideRegistry::fromConfig()`, called inside a console command's `handle()`;
+     *   - `Schemastud\Blockdoc\Schema\NodeSchema`, `new`ed at three call sites in tower and
+     *     `laravel-composition-engine` **in addition to** its one binding.
+     *
+     * Ticket 55 ruled that a per-request or per-actor registry **is a registry with a lifetime**, not a
+     * defect, and that the honest response is to scope the claim rather than widen the population: an
+     * AST pass for `new <class implements Registry>` outside a provider prices false positives nobody
+     * has paid, and ticket 63 already refused a detector on exactly that argument. The consequence is
+     * visible in the flagship and is left visible: `commerce.billing.components` is described and
+     * EMPTY, while every bill the estate composes runs through a different, unindexed instance of that
+     * class. That empty root is the honest artefact of a registry whose population is per-actor.
+     */
+    public const SCOPE = 'registries a provider WIRES (container bindings + index members). A registry '
+        .'constructed at a call site — per request, per tenant, per command — is outside this population '
+        .'by construction and is not a defect (registry-kernel 55).';
+
     protected $signature = self::SIGNATURE.'
         {--write : Rewrite the committed artifact (the default when neither --check nor --json is given)}
         {--check : Recompute and fail if `outstanding` increased; writes nothing}
@@ -86,6 +119,7 @@ class RegistryConformanceCommand extends Command
 
         $this->info(sprintf('Wrote %d registry row(s) to %s', count($rows), $path));
         $this->table(['bucket', 'count'], array_map(null, array_keys($tally), array_values($tally)));
+        $this->line('Scope: '.self::SCOPE);
         $this->reportStaleness($shapes);
 
         return self::SUCCESS;
@@ -128,6 +162,7 @@ class RegistryConformanceCommand extends Command
 
         if ($now === 0 && $tally[UndeclaredRegistryShapeAudit::UNACCOUNTED] === 0) {
             $this->info('Every registry-shaped class in this composition is accounted for — the map\'s closing condition, in this host.');
+            $this->line('  Scope: '.self::SCOPE);
         }
 
         return self::SUCCESS;
@@ -250,6 +285,7 @@ class RegistryConformanceCommand extends Command
         return [
             'check' => UndeclaredRegistryShapeAudit::CHECK,
             'gate' => RegistryConformanceAudit::CHECK,
+            'scope' => self::SCOPE,
             'counts' => $tally,
             // Committed rather than merely reported, on the same argument the rest of this file makes: this
             // failure is silent in production (one absolute key answering two ways depending on the door),
