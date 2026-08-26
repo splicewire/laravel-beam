@@ -52,14 +52,18 @@ class SdkNamingTest extends TestCase
         );
     }
 
-    public function test_domain_is_the_studly_group_tag(): void
+    /**
+     * `domainFor()` is GONE (api-surface-coherence 88). The SDK domain was the studly `@group` tag until the
+     * group taxonomy moved out from under it; it is registry data now
+     * (`codegen.options.splicewire-client.domains`), and this helper names the CLASS only. The tag is not
+     * even a candidate: `Review & Status` studlies to `Review&Status`, not a legal namespace segment.
+     */
+    public function test_naming_is_tag_independent(): void
     {
-        $this->assertSame('Studio', (new SdkNaming)->domainFor($this->op('POST', '/api/v1/studio/ideas', 'Studio')));
-        $this->assertSame('ContextScopes', (new SdkNaming)->domainFor($this->op('GET', '/api/v1/context-scopes', 'Context Scopes')));
-    }
-
-    public function test_domain_is_null_when_untagged(): void
-    {
-        $this->assertNull((new SdkNaming)->domainFor($this->op('GET', '/api/v1/models')));
+        $this->assertFalse(method_exists(SdkNaming::class, 'domainFor'));
+        $this->assertSame(
+            'CreateIdea',
+            (new SdkNaming)->classNameFor($this->op('POST', '/api/v1/studio/ideas', 'Search & Retrieval')),
+        );
     }
 }

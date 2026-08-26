@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Codegen;
 
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Nette\PhpGenerator\Literal;
 use Nette\PhpGenerator\PhpFile;
 use Nette\PhpGenerator\PsrPrinter;
@@ -24,7 +25,8 @@ use Saloon\Traits\Body\HasMultipartBody;
  *
  * Naming is CONVENTION-ONLY, delegated to the shared {@see SdkNaming} helper (the client-sdk-regen pivot:
  * the convention IS the standard, so there is no name-override any more):
- *  - domain = the `@group` tag (`meta['tags'][0]`) → `Requests/<Domain>/…`, class `Resource\<Domain>`;
+ *  - domain = the SDK domain REGISTRY (`options['domains']`, see {@see domainRegistry()}) →
+ *    `Requests/<Domain>/…`, class `Resource\<Domain>`;
  *  - request class = derived from path+verb (`POST …/ideas` → `CreateIdea`, a trailing action segment
  *    like `generate-composition` → `GenerateComposition`);
  *  - constructor = path params then body fields as typed per-field `protected` params (`idea_id` → `$ideaId`),
@@ -75,34 +77,41 @@ class SplicewireClientGenerator implements Generator
         $namespace = (string) ($this->options['namespace'] ?? 'Splicewire\\Client');
         $hints = (array) ($this->options['requests'] ?? []);
 
-        $only = (array) ($this->options['domains'] ?? []);
-
-        // Per-domain inclusion list (client-sdk-regen #08). The OpenAPI spec carries EVERY route in a
-        // domain's `@group`, but the published SDK curates a SUBSET (e.g. Compositions tags ~31 ops, the
-        // SDK ships 7). `options['include']` maps a domain → the list of `"VERB /path"` op keys that
-        // domain emits; a domain ABSENT from the map emits its whole tag (the pre-#08 behavior, so Studio
-        // during its proof stays unrestricted). This is the "trim the superset" seam #07 deferred here.
-        $include = (array) ($this->options['include'] ?? []);
+        // The SDK domain REGISTRY (api-surface-coherence 88): `Domain => list<"VERB /path">`. The domain is
+        // the SDK's own namespace segment and the op list is the exact surface that domain ships.
+        $domainFor = $this->domainRegistry();
 
         // #06 spine-DTO mapping — OpenAPI response component (short-name) → the client DTO's spine-wire
         // base FQN. A component present here gets a generated `Data/<X>.php` thin adapter, and a resource
         // method whose op returns it gets a typed dual method alongside the raw one.
         $dataMap = (array) ($this->options['data'] ?? []);
 
-        // Group the client-relevant operations by domain (skip the untagged / out-of-scope).
+        // Group the registered operations by domain. Membership is the registry, never the spec tag.
         $byDomain = [];
+        $seen = [];
         foreach ($input['model']['operations'] ?? [] as $op) {
-            $domain = $this->domainOf($op);
-            if ($domain === null || ($only !== [] && ! in_array($domain, $only, true))) {
-                continue;
-            }
             $opKey = "{$op['method']} {$op['path']}";
-            if (isset($include[$domain]) && ! in_array($opKey, (array) $include[$domain], true)) {
+            $domain = $domainFor[$opKey] ?? null;
+            if ($domain === null) {
                 continue;
             }
+            $seen[$opKey] = true;
             $hint = $hints[$opKey] ?? [];
             $class = $this->classNameFor($op);
             $byDomain[$domain][$class] = ['op' => $op, 'hint' => $hint];
+        }
+
+        // FAIL LOUD on a registered op the spec does not carry (88's core defect: a stale entry that
+        // matches nothing was indistinguishable from a domain with no operations, so nine SDK domains
+        // regenerated nothing in silence for as long as it took someone to notice by hand).
+        $missing = array_values(array_diff(array_keys($domainFor), array_keys($seen)));
+        if ($missing !== []) {
+            sort($missing);
+            throw new InvalidArgumentException(
+                'splicewire-client: '.count($missing).' registered SDK operation(s) match no operation in the '
+                ."spec — the route moved, was renamed, or left the spec:\n  - ".implode("\n  - ", $missing)
+                ."\nReconcile `codegen.options.splicewire-client.domains` against the spec, or drop the entry."
+            );
         }
 
         $printer = new PsrPrinter;
@@ -134,6 +143,56 @@ class SplicewireClientGenerator implements Generator
         $files['GeneratedConnector.php'] = $printer->printFile($this->buildConnector($namespace, $byDomain));
 
         return ['files' => $this->applyDenyList($files)];
+    }
+
+    /**
+     * Flatten the SDK domain REGISTRY (`options['domains']`) into `"VERB /path" => Domain`.
+     *
+     * The registry is the ONE place that decides what the published SDK ships and what namespace it ships
+     * it under. It is keyed on the SDK's own namespace segment — deliberately NOT on the OpenAPI `@group`
+     * tag, which this generator used to key on until api-surface-coherence 88 measured what that costs:
+     *
+     *  - a tag is host-owned prose that moves (the group-taxonomy decision renamed nine of fifteen out
+     *    from under the SDK, and every domain under a renamed tag silently regenerated nothing);
+     *  - a tag is not an identifier — `Review & Status` and `Agents & Transforms` studly to
+     *    `Review&Status` / `Agents&Transforms`, which are not legal PHP namespace segments;
+     *  - a tag is coarser than an SDK domain — one `Taxonomy` tag backs three SDK domains (ContextScopes,
+     *    Tags, Silos), so tag → domain is not even a function.
+     *
+     * @return array<string, string> op key → domain
+     */
+    private function domainRegistry(): array
+    {
+        $domains = (array) ($this->options['domains'] ?? []);
+
+        if (isset($this->options['include'])) {
+            throw new InvalidArgumentException(
+                'splicewire-client: `options.include` was folded into `options.domains` (api-surface-coherence 88). '
+                .'Write `domains` as `Domain => ["VERB /path", …]`.'
+            );
+        }
+
+        $registry = [];
+        foreach ($domains as $domain => $ops) {
+            if (is_int($domain) || ! is_array($ops)) {
+                throw new InvalidArgumentException(
+                    'splicewire-client: `options.domains` is now a REGISTRY, not a tag allowlist — write it as '
+                    .'`Domain => ["VERB /path", …]` (api-surface-coherence 88).'
+                );
+            }
+            foreach ($ops as $opKey) {
+                $opKey = (string) $opKey;
+                if (isset($registry[$opKey])) {
+                    throw new InvalidArgumentException(
+                        "splicewire-client: operation `{$opKey}` is registered by two domains "
+                        ."({$registry[$opKey]} and {$domain}) — an operation belongs to exactly one SDK domain."
+                    );
+                }
+                $registry[$opKey] = (string) $domain;
+            }
+        }
+
+        return $registry;
     }
 
     /**
@@ -217,7 +276,7 @@ class SplicewireClientGenerator implements Generator
             ->setValue(new Literal("Method::{$verb}"));
 
         // Resolve the constructor parameters: path params (possibly renamed) then the body.
-        [$ctorParams, $bodyMap] = $this->constructorPlan($op, $hint);
+        [$ctorParams, $bodyMap, $queryPlan] = $this->constructorPlan($op, $hint);
 
         // A multipart op singles out its binary (file) part: that param is typed `mixed` (string/resource/
         // StreamInterface, per Saloon), and a synthetic `$fileName` param rides right after it to name the
@@ -247,6 +306,13 @@ class SplicewireClientGenerator implements Generator
                 ->setBody($isMultipart
                     ? $this->multipartBodyExpression($bodyMap, (string) $fileWire, $ctorParams)
                     : $this->defaultBodyExpression($bodyMap));
+        }
+
+        if ($queryPlan['scalars'] !== [] || $queryPlan['groups'] !== []) {
+            $classType->addMethod('defaultQuery')
+                ->setProtected()
+                ->setReturnType('array')
+                ->setBody($this->defaultQueryExpression($queryPlan));
         }
 
         return $file;
@@ -347,18 +413,33 @@ class SplicewireClientGenerator implements Generator
     }
 
     /**
-     * The ordered constructor params + the body-key → accessor map that `defaultBody()` emits.
+     * The ordered constructor params, the body-key → accessor map that `defaultBody()` emits, and the
+     * query plan that `defaultQuery()` emits.
+     *
+     * Path params come first (they are the addressed identity and stay required); body fields next; QUERY
+     * params trail, always defaulted, so a filterable index keeps its no-arg constructor.
      *
      * @param  array<string, mixed>  $op
      * @param  array<string, mixed>  $hint
-     * @return array{0: array<int, array<string, mixed>>, 1: array<string, string>|string|null}
+     * @return array{0: array<int, array<string, mixed>>, 1: array<string, string>|string|null, 2: array{scalars: array<string, string>, groups: array<int, array{prefix: string, accessor: string}>}}
      */
     private function constructorPlan(array $op, array $hint): array
     {
         $params = [];
         $renames = (array) ($hint['pathParams'] ?? []);
 
+        preg_match_all('/\{(\w+)\}/', (string) $op['path'], $matches);
+        $pathNames = $matches[1];
+
+        // A spec `parameters` entry is a PATH param when the path interpolates it, a QUERY param otherwise
+        // (the OpenAPI `in:` is not carried on the hydrated model, and the path is the stronger signal).
+        $queryParams = [];
         foreach ($op['params'] ?? [] as $param) {
+            if (! in_array($param['name'], $pathNames, true)) {
+                $queryParams[] = $param;
+
+                continue;
+            }
             $name = $renames[$param['name']] ?? Str::camel($param['name']);
             $params[] = [
                 'name' => $name,
@@ -373,8 +454,9 @@ class SplicewireClientGenerator implements Generator
         if (isset($hint['collapseBody']) && ($op['body'] ?? null) !== null) {
             $name = (string) $hint['collapseBody'];
             $params[] = ['name' => $name, 'php' => 'array', 'docType' => 'array<string, mixed>', 'default' => [], 'doc' => null];
+            [$queryPlan, $params] = $this->planQuery($queryParams, $params);
 
-            return [$params, $name];
+            return [$params, $name, $queryPlan];
         }
 
         $taken = array_column($params, 'name');
@@ -416,7 +498,113 @@ class SplicewireClientGenerator implements Generator
             $bodyMap[$field['name']] = $name;
         }
 
-        return [$params, $bodyMap === [] ? null : $bodyMap];
+        [$queryPlan, $params] = $this->planQuery($queryParams, $params);
+
+        return [$params, $bodyMap === [] ? null : $bodyMap, $queryPlan];
+    }
+
+    /**
+     * Plan the QUERY surface of a request: append one defaulted constructor param per query parameter and
+     * return the map `defaultQuery()` serializes back to wire keys.
+     *
+     * A BRACKETED family (`filter[silos]`, `filter[tags:all]`, …) collapses to ONE `array $filter = []`
+     * param whose keys are re-bracketed on the wire. Bracketed names are the whole reason this method
+     * exists: `filter[silos]` is not a PHP identifier, and feeding it to the printer threw
+     * `Value 'filter[silos]' is not valid name` — which took the entire stack down the moment the filter
+     * sub-surface reached the spec (api-surface-coherence 88 §1). Collapsing beats one-param-per-facet on
+     * three counts: the facet set is host data that moves without an SDK release, `tags:all` cannot be
+     * projected to a distinct identifier from `tags` without inventing a rule, and a single array is the
+     * shape spatie/laravel-query-builder already documents to callers.
+     *
+     * @param  array<int, array<string, mixed>>  $queryParams
+     * @param  array<int, array<string, mixed>>  $params
+     * @return array{0: array{scalars: array<string, string>, groups: array<int, array{prefix: string, accessor: string}>}, 1: array<int, array<string, mixed>>}
+     */
+    private function planQuery(array $queryParams, array $params): array
+    {
+        $scalars = [];
+        $groups = [];
+        $groupKeys = [];
+        $taken = array_column($params, 'name');
+
+        foreach ($queryParams as $param) {
+            $wire = (string) $param['name'];
+
+            if (preg_match('/^([A-Za-z_][A-Za-z0-9_]*)\[(.*)\]$/', $wire, $m) === 1) {
+                $accessor = Str::camel($m[1]);
+                $groupKeys[$accessor][] = $m[2];
+                if (! isset($groups[$accessor])) {
+                    $groups[$accessor] = ['prefix' => $m[1], 'accessor' => $accessor];
+                }
+
+                continue;
+            }
+
+            $name = Str::camel($wire);
+            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name) !== 1 || in_array($name, $taken, true)) {
+                // Neither an identifier nor a bracketed family — nothing to name it after. Dropped rather
+                // than guessed; `defaultQuery()` simply does not carry it.
+                continue;
+            }
+
+            $php = $this->phpType($param['type']);
+            $scalars[$wire] = $name;
+            $params[] = [
+                'name' => $name,
+                'wire' => $wire,
+                'php' => $php === 'array' ? 'array' : $this->nullable($php),
+                'docType' => $this->docType($param['type']),
+                'doc' => $param['doc'] ?? null,
+                'default' => $php === 'array' ? [] : null,
+            ];
+            $taken[] = $name;
+        }
+
+        foreach ($groups as $accessor => $group) {
+            $keys = array_unique($groupKeys[$accessor]);
+            sort($keys);
+            $params[] = [
+                'name' => $accessor,
+                'wire' => $group['prefix'].'[]',
+                'php' => 'array',
+                'docType' => 'array<string, mixed>',
+                'doc' => 'Keyed by facet: '.implode(', ', $keys).'.',
+                'default' => [],
+            ];
+        }
+
+        return [['scalars' => $scalars, 'groups' => array_values($groups)], $params];
+    }
+
+    /** A nullable spelling of a scalar php type (a defaulted query param is always optional). */
+    private function nullable(string $php): string
+    {
+        return str_starts_with($php, '?') || $php === 'mixed' ? $php : '?'.$php;
+    }
+
+    /**
+     * The `defaultQuery()` body — scalar params by wire key, then each bracketed family re-expanded to
+     * `prefix[key]`, with unset (null) entries filtered out so an unused facet never reaches the wire.
+     *
+     * @param  array{scalars: array<string, string>, groups: array<int, array{prefix: string, accessor: string}>}  $queryPlan
+     */
+    private function defaultQueryExpression(array $queryPlan): string
+    {
+        $lines = [];
+        foreach ($queryPlan['scalars'] as $wire => $accessor) {
+            $lines[] = "    '{$wire}' => \$this->{$accessor},";
+        }
+
+        $body = $lines === []
+            ? "\$query = [];\n"
+            : "\$query = [\n".implode("\n", $lines)."\n];\n";
+
+        foreach ($queryPlan['groups'] as $group) {
+            $body .= "\nforeach (\$this->{$group['accessor']} as \$facet => \$value) {\n"
+                ."    \$query[\"{$group['prefix']}[{\$facet}]\"] = \$value;\n}\n";
+        }
+
+        return $body."\nreturn array_filter(\$query, fn (\$value) => \$value !== null);";
     }
 
     /**
@@ -601,14 +789,6 @@ class SplicewireClientGenerator implements Generator
     }
 
     // ── naming + type helpers ──────────────────────────────────────────────────
-
-    /**
-     * @param  array<string, mixed>  $op
-     */
-    private function domainOf(array $op): ?string
-    {
-        return (new SdkNaming)->domainFor($op);
-    }
 
     /**
      * The response component short-name an op returns (a `ref` Type), or null when the op is untyped.

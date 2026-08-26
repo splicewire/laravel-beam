@@ -17,23 +17,14 @@ use Splicewire\Beam\Surgeon\SdkNameConventionAudit;
  * would emit" and "what the audit expects".
  *
  * The `op` shape is the serialized CodegenModel operation (or the audit's reconstruction of it): at least
- * `method` (the HTTP verb), `path` (the route uri), and `meta['tags'][0]` (the `@group` domain tag).
+ * `method` (the HTTP verb) and `path` (the route uri).
+ *
+ * It names the CLASS only. The DOMAIN (namespace segment) is registry data — the SDK domain registry at
+ * `codegen.options.splicewire-client.domains` — and was deliberately taken off the `@group` tag by
+ * api-surface-coherence 88; see {@see SplicewireClientGenerator::domainRegistry()} for the measurement.
  */
 class SdkNaming
 {
-    /**
-     * The domain (namespace segment) for an op — the studly-cased `@group` tag (`meta['tags'][0]`), or
-     * null when the op is untagged / out of scope.
-     *
-     * @param  array<string, mixed>  $op
-     */
-    public function domainFor(array $op): ?string
-    {
-        $tag = $op['meta']['tags'][0] ?? null;
-
-        return is_string($tag) && $tag !== '' ? Str::studly($tag) : null;
-    }
-
     /**
      * The convention request-class short-name derived from path + verb:
      *  - a trailing ACTION segment — a non-`{param}` segment that names an operation on an item

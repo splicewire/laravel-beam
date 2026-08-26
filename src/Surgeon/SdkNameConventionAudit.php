@@ -197,14 +197,15 @@ class SdkNameConventionAudit implements DoctorAudit, SuggestsOperations
                 'path' => $matchedRoute,
                 'meta' => ['tags' => [$tag]],
             ];
-            $conventionDomain = $naming->domainFor($op);
             $conventionClass = $naming->classNameFor($op);
 
-            if ($conventionDomain === null) {
-                continue;
-            }
-
-            $newFqn = $this->clientNamespace.'\\'.$conventionDomain.'\\'.$conventionClass;
+            // The DOMAIN is not audited — it is registry data (`codegen.options.splicewire-client.domains`),
+            // not a convention derivable from the spec. It used to be taken from the studly `@group` tag,
+            // which api-surface-coherence 88 measured as wrong three ways: the tag moves under host-owned
+            // taxonomy edits, one tag can back several SDK domains, and a tag like `Review & Status` studlies
+            // to `Review&Status` — an illegal namespace segment this audit would have nominated a rename TO.
+            // So the class keeps its own domain and only its SHORT NAME is reconciled to the convention.
+            $newFqn = $this->clientNamespace.'\\'.$sdk['domain'].'\\'.$conventionClass;
 
             // Already at its convention FQN — no finding.
             if ($sdk['fqn'] === $newFqn) {
