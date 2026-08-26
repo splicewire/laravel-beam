@@ -31,8 +31,17 @@ use Splicewire\Beam\BeamServiceProvider;
  */
 class BootChainTest extends TestCase
 {
-    /** The hand-written sequence the chain replaced, verbatim. Change this only with the reason written down. */
+    /**
+     * The hand-written sequence the chain replaced, verbatim. Change this only with the reason written down.
+     *
+     * One member has been added since, and its reason: api-surface-coherence ticket 35's per-resource
+     * filter sub-surface declares `#[Chained('boot', order: 5)]`, ahead of the original three. It has to
+     * be — `resourceFilters` is mounted AUTOMATICALLY from `particleResource`, so the macro must exist by
+     * the time `bootParticleRouteMacros` (order 10) registers the macro that calls it. Order 5 is the
+     * declaration of that dependency; this list is what stops a later edit from quietly reordering it.
+     */
     private const HISTORICAL_ORDER = [
+        'bootResourceFiltersMacro',
         'bootParticleRouteMacros',
         'bootBeamRouteNamespace',
         'bootResourceRenderingsMacro',
@@ -65,7 +74,7 @@ class BootChainTest extends TestCase
      */
     public function test_every_macro_the_chain_owns_is_registered(): void
     {
-        foreach (['particleResource', 'particleOp', 'particleOps', 'particleRelative', 'resourceRenderings'] as $macro) {
+        foreach (['particleResource', 'particleOp', 'particleOps', 'particleRelative', 'resourceRenderings', 'resourceFilters'] as $macro) {
             $this->assertTrue(Route::hasMacro($macro), "Route::{$macro}() was not registered by the boot chain.");
         }
 
@@ -76,6 +85,6 @@ class BootChainTest extends TestCase
     {
         // Guards the same dead-seam shape from the other side: a rename that unhooks every link would
         // leave the order assertion comparing two empty arrays.
-        $this->assertCount(3, TraitMethods::in(BeamServiceProvider::class, 'boot'));
+        $this->assertCount(count(self::HISTORICAL_ORDER), TraitMethods::in(BeamServiceProvider::class, 'boot'));
     }
 }
