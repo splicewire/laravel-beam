@@ -9,7 +9,6 @@ use Rushing\LaravelDataSchemasScribe\Support\ScribeBodyParameters;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
-use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 
@@ -29,8 +28,9 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
  *    it is not the host's — it is beam's, supplied by {@see ParticleOperationController::runTask()}. Before
  *    this strategy it existed only as PROSE in the endpoint description, which meant the reference described
  *    a real, enforced parameter that a generated client had no way to send. The names come from
- *    {@see OperationKind::frameworkParameters()} so the branch that reads them and the reference that
- *    publishes them cannot disagree.
+ *    {@see ParticleOperation::frameworkParameters()} — the operation's, not the kind's, so a `signed:` op's
+ *    `expires`/`signature` publish too (ticket 95) — and the branch that reads them and the reference
+ *    that publishes them cannot disagree.
  *
  * Returns `null` (defer) for any non-operation route, so it composes transparently alongside Scribe's stock
  * query-parameter strategies. It can never contend with {@see ParticleListParameterStrategy}: that one keys
@@ -82,8 +82,16 @@ class ParticleOperationParameterStrategy extends Strategy
     }
 
     /**
-     * Beam's own parameters for this kind. Today that is a Task's `?async`; the list is the enum's, so a new
-     * framework parameter is published by declaring it there rather than by editing this file.
+     * Beam's own parameters for this operation — a Task's `?async`, plus the URL signer's
+     * `expires`/`signature` on a `signed:` op. The list comes from
+     * {@see ParticleOperation::frameworkParameters()}, the same call {@see rejectInput()} enforces
+     * against, so a new framework parameter is published by declaring it there rather than by editing
+     * this file, and the reference can never describe a different set than the branch forgives.
+     *
+     * Every one of them carries a real description, not a placeholder: the parameter guard
+     * (api-surface-coherence ticket 29) forgives NOTHING on the query axis, so a framework parameter
+     * that reached the spec undescribed would fail the host's own coverage test — which is the
+     * intended coupling, not a hazard.
      *
      * @return array<string, array<string, mixed>>
      */
@@ -91,8 +99,24 @@ class ParticleOperationParameterStrategy extends Strategy
     {
         $parameters = [];
 
-        foreach ($operation->kind->frameworkParameters() as $parameter) {
+        foreach ($operation->frameworkParameters() as $parameter) {
             $parameters[$parameter] = match ($parameter) {
+                'expires' => [
+                    'type' => 'integer',
+                    'description' => 'Unix timestamp at which the signed link stops being accepted. Part of '
+                        .'the signature, so it cannot be extended without re-minting the URL — supplied by '
+                        .'`URL::temporarySignedRoute()`, never composed by hand.',
+                    'required' => false,
+                    'example' => null,
+                ],
+                'signature' => [
+                    'type' => 'string',
+                    'description' => 'The URL signature that admits this request without an authenticated '
+                        .'actor. Supplied by `URL::temporarySignedRoute()`; a request that carries a valid '
+                        .'one skips the operation\'s ability check.',
+                    'required' => false,
+                    'example' => null,
+                ],
                 ParticleOperationController::ASYNC => [
                     'type' => 'boolean',
                     'description' => 'Run the operation queued (the default) or inline. Pass `false` to '

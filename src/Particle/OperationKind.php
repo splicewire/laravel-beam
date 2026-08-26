@@ -47,6 +47,11 @@ enum OperationKind: string
      * A Stream's `text/event-stream` transport is deliberately absent: it is a RESPONSE fact, already
      * reaching the spec through the streams declaration, and there is no query parameter behind it.
      *
+     * ⚠️ This is the KIND's contribution, not the whole set. An operation's full framework-parameter
+     * list is {@see ParticleOperation::frameworkParameters()}, which unions this with the URL signer's
+     * `expires`/`signature` on a `signed:` op — a fact of the DECLARATION that an enum case cannot see.
+     * Call the operation's, never this one, anywhere the answer is "what may a caller send" (ticket 95).
+     *
      * @return list<string>
      */
     public function frameworkParameters(): array

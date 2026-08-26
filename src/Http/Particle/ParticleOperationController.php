@@ -69,7 +69,20 @@ class ParticleOperationController extends Controller
         $operation = $this->operations->get($resource, $name);
         $model = $operation->model::query()->findOrFail($id);
 
-        if (is_string($operation->ability)) {
+        // A validly-signed request is itself a credential (api-surface-coherence ticket 95). Checked
+        // HERE and not in {@see AbilityResolver} on purpose: the resolver takes an actor argument and
+        // deliberately never reads ambient authentication, because MCP over stdio has no request to
+        // read a signature from. So the signature plane is the TRANSPORT's, alongside the denial shape
+        // the transport already owns — and MCP, having no signature plane, falls through to `ability:`.
+        //
+        // Sufficient, not required: it satisfies the ability, and an op that must ONLY be reachable
+        // signed says so with Laravel's `signed` middleware on the mount, which refuses earlier than
+        // this. Ordered before the ability so an ANONYMOUS signed-link holder is admitted rather than
+        // measured against a policy that can only ever see an actor — the exact 403 that made
+        // `beam-accounts`' `LogInAsUser` hand-roll its gate.
+        $admittedBySignature = $operation->signed && $request->hasValidSignature();
+
+        if (! $admittedBySignature && is_string($operation->ability)) {
             // Deny-default: the ability is checked against its declared subject.
             //
             // `abilityModel` chooses the PLANE, three-state (particle-operation-surface ticket 03):
@@ -145,6 +158,11 @@ class ParticleOperationController extends Controller
      * declaration: `Route::particleOp()` chooses the HTTP method, so a GET op's input arrives as a query
      * string and every other op's as a body. Reading both would make `?async` — which is beam's parameter,
      * not the caller's payload — look like a violation on the very kind that defines it.
+     *
+     * What is forgiven comes from {@see ParticleOperation::frameworkParameters()} rather than from the
+     * KIND, because the kind cannot see the declaration: a `signed:` op receives `expires`/`signature`
+     * from Laravel's URL signer and no host `input:` could ever declare them, so asking the enum alone
+     * read them as unexpected caller input and 422'd every signed link (ticket 95).
      */
     protected function rejectInput(ParticleOperation $operation, Request $request): void
     {
@@ -156,7 +174,7 @@ class ParticleOperationController extends Controller
             default => $request->post(),
         };
 
-        $unexpected = array_diff(array_keys($source), $operation->kind->frameworkParameters());
+        $unexpected = array_diff(array_keys($source), $operation->frameworkParameters());
 
         if ($unexpected === []) {
             return;

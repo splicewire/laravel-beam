@@ -127,9 +127,90 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
  * the alias). That is the general lesson for this slot: a wrong-plane declaration does not have to be
  * OBSERVABLY wrong to be worth declaring right, and a fall-through that happens to agree is not the
  * same fact as a declaration that says so.
+ *
+ * ## `signed:` — a validly-signed request is itself a credential
+ *
+ * api-surface-coherence ticket 95. Before this slot existed, beam had NO notion of a signed request,
+ * and the gap bit the SAME operation twice through two different slots — which is the argument for a
+ * declaration rather than a patch at either site:
+ *
+ *   - through `ability:`, because `AbilityResolver` only ever asks about an ACTOR, and the holder of a
+ *     short-lived signed link is anonymous by construction. Declaring an ability would 403 the signed
+ *     link before the handler ever ran, so `beam-accounts`' `LogInAsUser` hand-rolled the whole gate;
+ *   - through `input:`, because `URL::temporarySignedRoute()` appends `?expires=…&signature=…` and
+ *     {@see ParticleOperationController::rejectInput()} could not tell those from caller payload, so
+ *     `input: false` would 422 every signed link.
+ *
+ * One declaration closes both. `signed: true` says *this operation accepts a validly-signed URL as an
+ * admitting credential*, and the framework then:
+ *
+ *   1. treats a valid signature as satisfying `ability:` — the ability is skipped, not re-checked
+ *      against a null actor (see {@see ParticleOperationController::invoke()}); and
+ *   2. adds {@see SIGNATURE_PARAMETERS} to {@see frameworkParameters()}, so the signing pair is
+ *      beam's parameter rather than the caller's on exactly the operations that can receive it.
+ *
+ * ### Why a slot, and not a fourth `ability:` state or a resolver plane
+ *
+ * Both alternatives were considered and both are wrong for the same underlying reason — *whose fact
+ * is this?*
+ *
+ *   - **A fourth state on `ability:`** cannot express the live case. `LogInAsUser` has TWO legitimate
+ *     callers holding DIFFERENT credentials: an anonymous signed-link holder and an authenticated Root
+ *     operator. A state on `ability:` is exclusive with the ability, so it can express one or the
+ *     other, never both. `signed:` is orthogonal precisely because the two credentials are.
+ *   - **A third plane inside {@see AbilityResolver}** would break the one thing that class refuses to
+ *     do: it never reads ambient authentication, because MCP over stdio has no ambient HTTP user — the
+ *     actor arrives as an argument. A signature is a fact about a REQUEST, and the resolver has no
+ *     request and must not acquire one. So the signature plane belongs to the TRANSPORT, next to the
+ *     denial shape the transport already owns. The consequence is stated rather than hidden: MCP has
+ *     no signature plane at all, and an op reached over MCP falls through to `ability:` unchanged.
+ *
+ * ### Deliberately two-state, where every neighbouring slot is three
+ *
+ * `ability:`, `abilityModel:` and `input:` are three-state because each is STAGING A FLIP — `null` is
+ * residue with a scheduled meaning, and `false` exists so a reviewed decision is not spelled like an
+ * omission. There is no flip scheduled here and there never will be: the safe default (no signature
+ * credential) is permanent, so a `null` would only ever mean the same thing `false` does. Adding the
+ * third state would be ceremony borrowed from a schedule this slot is not on.
+ *
+ * ### Sufficient, not required
+ *
+ * `signed: true` means a valid signature ADMITS; it does not mean an unsigned request is refused.
+ * That is the shape the one live consumer needs (either credential admits), and it is the safe half:
+ * an op that must ONLY be reachable signed is expressible today by mounting it behind Laravel's
+ * `signed` middleware, which refuses before the controller runs. If a declared "signature required"
+ * ever earns its place, it grows here as an enum on this slot rather than a second boolean.
+ *
+ * ### The scheme, and what it does NOT protect against
+ *
+ * There is no new signing scheme — this rides Laravel's, unchanged: `URL::temporarySignedRoute()`
+ * mints and `Request::hasValidSignature()` verifies, `hash_hmac('sha256', $url, config('app.key'))`
+ * compared with `hash_equals`. The secret is the host's `APP_KEY`; rotation is an `APP_KEY` rotation,
+ * which invalidates every outstanding link at once and has no per-link revocation. **Replay is bounded
+ * by expiry, not prevented**: anyone who obtains the URL before `expires` can use it, as many times as
+ * they like. Making it single-use would need a per-link consumption ledger, which is a store beam does
+ * not have and a different design; until then the mint-time TTL is the whole control, and it is stated
+ * here so nobody reads `signed:` as more than it is.
+ *
+ * (Distinct from `Splicewire\Beam\Webhooks\HookSignature`, which signs beam's OUTBOUND webhook
+ * deliveries with a per-hook HMAC secret. Same word, opposite direction, no shared machinery: that one
+ * proves *we sent this*, this one proves *we minted this URL*.)
  */
 class ParticleOperation implements HasRegistryKey
 {
+    /**
+     * The query parameters Laravel's URL signer appends to a signed route, and therefore the ones an
+     * operation that accepts a signed credential receives without any host having declared them.
+     *
+     * Spelled here rather than read from the framework because Laravel has no public constant for
+     * them: `Illuminate\Routing\UrlGenerator::signedRoute()` writes `expires` and
+     * `hasValidSignature()` strips `signature`/`expires` before rehashing, both as string literals.
+     * A pinned copy with this note is honest; a private-API read would not be.
+     *
+     * @var list<string>
+     */
+    public const SIGNATURE_PARAMETERS = ['expires', 'signature'];
+
     /**
      * @param  string  $resource  the particle resource key this operation hangs off (for the route + auth)
      * @param  string  $name  the operation slug in the URL (`…/op/{name}`)
@@ -154,6 +235,9 @@ class ParticleOperation implements HasRegistryKey
      * @param  class-string|array<string, list<class-string>>|null  $output  the Data class this op RETURNS; on
      *                                                                       a Stream, an event-name → payload-list
      *                                                                       map (see the class docblock)
+     * @param  bool  $signed  whether a validly-signed URL is an ADMITTING credential for this op — it
+     *                        satisfies `ability:` and makes `expires`/`signature` framework parameters
+     *                        rather than caller input (see the class docblock)
      */
     public function __construct(
         public string $resource,
@@ -166,6 +250,7 @@ class ParticleOperation implements HasRegistryKey
         public ?Closure $respond = null,
         public string|false|null $input = null,
         public string|array|null $output = null,
+        public bool $signed = false,
     ) {
         $this->assertOutputMatchesKind();
     }
@@ -258,5 +343,30 @@ class ParticleOperation implements HasRegistryKey
     public function gateUndeclared(): bool
     {
         return $this->ability === null;
+    }
+
+    /**
+     * The parameters the FRAMEWORK accepts on THIS operation, as opposed to the ones the host declares
+     * through `input:`.
+     *
+     * Two sources, and both are properties of the operation rather than of any one of them:
+     * {@see OperationKind::frameworkParameters()} contributes the kind's (a Task's `?async`), and
+     * `signed:` contributes {@see SIGNATURE_PARAMETERS}. The union lives here rather than on the enum
+     * because the enum cannot see a declaration — which is exactly how ticket 95's second bite
+     * happened: `rejectInput()` asked the KIND what the framework accepts, the kind had no way to know
+     * the mount was signed, and `expires`/`signature` came back as caller input.
+     *
+     * Read by {@see ParticleOperationController::rejectInput()} (what `input: false` forgives) and by
+     * `ParticleOperationParameterStrategy` (what the reference publishes), so the branch that enforces
+     * and the document that describes cannot disagree.
+     *
+     * @return list<string>
+     */
+    public function frameworkParameters(): array
+    {
+        return [
+            ...$this->kind->frameworkParameters(),
+            ...($this->signed ? self::SIGNATURE_PARAMETERS : []),
+        ];
     }
 }
