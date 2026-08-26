@@ -78,8 +78,6 @@ use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Events\BeamEventRegistrar;
 use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Events\HookEventRegistrar;
-use Splicewire\Beam\Models\Hook;
-use Splicewire\Beam\Webhooks\HookSubjectPruner;
 use Splicewire\Beam\Events\ParticlePersistedEventRegistrar;
 use Splicewire\Beam\Events\ResourceKeyOracle;
 use Splicewire\Beam\Facades\Beam;
@@ -98,6 +96,7 @@ use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Models\BeamSubmission;
+use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\OpenApi\ConfiguredArtifactSpecSource;
 use Splicewire\Beam\OpenApi\OpenApiSpecSource;
 use Splicewire\Beam\Ownership\Contracts\OwnershipEdgeStore;
@@ -112,6 +111,7 @@ use Splicewire\Beam\Particle\DeadResolvingHookGuard;
 use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Particle\Mount\ParticleMountManager;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleRelativeRegistry;
 use Splicewire\Beam\Particle\ParticleResourceModelResolver;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
@@ -163,6 +163,7 @@ use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
 use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
+use Splicewire\Beam\Webhooks\HookSubjectPruner;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -497,6 +498,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $app->make(ResourceContributionRegistry::class),
         ))->loadRealmMap((array) config('frame.realms', [])));
         $this->app->singleton(ParticleOperationRegistry::class);
+        // The relative-edge registry (api-surface-coherence ticket 50) — the op registry's twin in shape
+        // as well as in role, so the two migrate as one archetype when registry-kernel's
+        // per-resource-registry sweep reaches beam.
+        $this->app->singleton(ParticleRelativeRegistry::class);
 
         // The host's API taxonomy and the chain that resolves a route into it (api-surface-coherence 17).
         // Beam ships the registry EMPTY on purpose: a taxonomy belongs to the host, and seeding this
@@ -1265,6 +1270,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             by: self::class,
         );
 
+        // The relative-edge registry (api-surface-coherence ticket 50). Described from beam's own boot
+        // per the register-down rule, and AFTER discoverParticleAttributes() so `popcorn:registries`
+        // reports a populated root rather than an empty one — the same sequencing the two registries
+        // above take. Both axes the vocabulary note asks for ride on its `#[IsRegistry]`: the SEAM (what
+        // gets in — declared relative edges, contributed by the coupling owner) and the ARITY (PickOne
+        // over a flat `<parent>.<child>` keyspace).
+        $this->app->make(RegistryIndex::class)->describe(
+            $this->app->make(ParticleRelativeRegistry::class),
+            by: self::class,
+        );
+
         // The event catalog's own registrars, attached on `booted()` rather than here — measured, not
         // cautious. Every `register()` validates the event name's prefix against the LIVE resource keys,
         // and the flagship host declares its twenty-odd resources from an APP provider's boot(), which
@@ -1355,8 +1371,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
     }
 
     /**
-     * Boot-time #[ParticleResource] / #[ParticleOp] discovery into the two particle registries — the
-     * REST/op sibling of {@see self::discoverResources()} (which feeds the admin manifest). Reads
+     * Boot-time #[ParticleResource] / #[ParticleOp] / #[ParticleRelative] discovery into the three
+     * particle registries — the REST/op/edge sibling of {@see self::discoverResources()} (which feeds the
+     * admin manifest). Reads
      * `beam.core.particle.classes` / `.discover_paths`. Absent config ⇒ no-op (every existing host that
      * hand-registers its resources from a provider is unchanged; the two seams coexist).
      */
@@ -1372,6 +1389,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         (new AttributedParticleDiscovery(
             $this->app->make(ParticleResourceRegistry::class),
             $this->app->make(ParticleOperationRegistry::class),
+            $this->app->make(ParticleRelativeRegistry::class),
         ))->discover($classes, $paths);
     }
 

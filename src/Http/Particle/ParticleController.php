@@ -297,7 +297,35 @@ class ParticleController extends Controller
         $bound = $route->parameter($binding);
         $relative = $bound instanceof Model ? $bound : $model::query()->findOrFail($bound);
 
-        return [$relative, $via];
+        return [$relative, $this->resolveVia($via)];
+    }
+
+    /**
+     * Normalise the stamped `VIA` into the two forms the rest of this class already understands — a
+     * relation NAME or a Closure — resolving the third, newer form on the way through.
+     *
+     * That third form is a `#[ParticleRelative]` edge CLASS NAME (api-surface-coherence ticket 50). It
+     * exists because a behavioural `via` cannot ride the route defaults as a Closure: `route:cache`
+     * serializes defaults and dies on one (ticket 51 §2). A class name serializes fine, and the edge's
+     * `public static via()` is resolved back off it here, per request.
+     *
+     * Resolution happens ONCE, in {@see relativeContext()}, so every downstream reader
+     * ({@see relativeBaseQuery()}, {@see newRelativeModel()}) keeps its existing `is_string` /
+     * `instanceof Closure` test and is correct without knowing this form exists. In particular
+     * `newRelativeModel()` must NOT see a class name: it treats a string as a relation and would call
+     * `$parent->{Edge::class}()`.
+     *
+     * A class-string with no `via()` method falls through as itself. That is not a silent failure — it
+     * is the ordinary relation-name path, and a relation named after a class does not exist, so the
+     * error names the missing relation at the point of use rather than here.
+     */
+    protected function resolveVia(string|Closure $via): string|Closure
+    {
+        if ($via instanceof Closure || ! class_exists($via) || ! method_exists($via, 'via')) {
+            return $via;
+        }
+
+        return Closure::fromCallable([$via, 'via']);
     }
 
     /**

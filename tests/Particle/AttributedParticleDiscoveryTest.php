@@ -121,10 +121,13 @@ class AttributedParticleDiscoveryTest extends TestCase
         $this->discovery()->registerClass(FixtureHandlelessOp::class);
     }
 
-    public function test_a_class_with_neither_attribute_throws(): void
+    public function test_a_class_with_none_of_the_particle_attributes_throws(): void
     {
+        // The message enumerates the attributes rather than saying "neither", because the set is three
+        // now — `#[ParticleRelative]` joined it under api-surface-coherence ticket 50 — and a caller who
+        // mis-spelled one needs to be told what the legal set IS.
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('carries neither');
+        $this->expectExceptionMessage('carries none of #[ParticleResource], #[ParticleOp], #[ParticleRelative]');
 
         $this->discovery()->registerClass(FixtureModel::class);
     }

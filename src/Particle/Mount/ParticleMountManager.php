@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Routing\Router;
 use Splicewire\Beam\BeamManager;
 use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Particle\ParticleRelative;
 
 /**
  * The instance behind the {@see Particle} facade — the container-bound object
@@ -43,12 +44,10 @@ class ParticleMountManager
      * The bound-relative mount: route-model-bind `$model` at `{$uri}/{binding}` and push it + `$via`
      * into the route defaults of everything `$routes` mounts.
      *
-     * This is a separate front door rather than a `->relatives()` call on {@see PendingParticleMount},
-     * and that is a measured limit rather than a design preference: the ticket's charter sketched
-     * `->relatives(true)` as "mount the resource's declared relative edges", and **there is no
-     * declaration to read yet** — api-surface-coherence ticket 50 is the one that gives a relative edge
-     * a declaration site. Until 50 lands, a relative is stated at the mount, so it takes the mount's
-     * arguments.
+     * This is the IMPERATIVE spelling: the edge's facts are arguments, stated at the mount. Ticket 49
+     * shipped it alone because a relative edge had no declaration site; api-surface-coherence ticket 50
+     * has since given it one, so {@see relatives()} is now the declared spelling and this is the
+     * hand-placed one. Both are supported — this is not deprecated — but a new edge should be declared.
      */
     public function relative(
         string $uri,
@@ -58,6 +57,38 @@ class ParticleMountManager
         array $options = [],
     ): void {
         $this->mounter->relative($this->router, $uri, $model, $via, $routes, $options);
+    }
+
+    /**
+     * Mount the DECLARED relative edges of a parent — the front door for api-surface-coherence
+     * ticket 50's `#[ParticleRelative]`.
+     *
+     * ```php
+     * Particle::relatives('fragments');                                 // every edge the registry holds
+     * Particle::relatives('fragments', [FragmentMediaRelative::class]); // these, discovering as it goes
+     * ```
+     *
+     * A verb, not a noun, on this class's own rule: it mounts and returns nothing, because an edge's
+     * widening surface is on the DECLARATION rather than on the call.
+     *
+     * This is the general form. {@see PendingParticleMount::relatives()} is the same thing hanging off a
+     * particle mount of the parent, and exists only for parents that HAVE one — the flagship's
+     * `fragments` does not, its CRUD being hand-written. Both drive
+     * {@see ParticleMounter::relatives()}.
+     *
+     * `$relatives` takes the same three forms {@see ParticleMounter::ops()} documents — a bare child
+     * key, a `#[ParticleRelative]` class-string, or an inline runtime declaration — or `true` for
+     * everything declared against `$parent`.
+     *
+     * @param  array<int, string|ParticleRelative>|string|bool  $relatives
+     */
+    public function relatives(string $parent, array|string|bool $relatives = true): void
+    {
+        $this->mounter->relatives(
+            $this->router,
+            $parent,
+            is_string($relatives) ? [$relatives] : $relatives,
+        );
     }
 
     /**

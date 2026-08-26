@@ -18,8 +18,11 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
+use Splicewire\Beam\Particle\Attributes\ParticleRelative as ParticleRelativeAttribute;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleRelative;
+use Splicewire\Beam\Particle\ParticleRelativeRegistry;
 use Splicewire\Beam\Rendering\Data\ResourceRenderingCatalogData;
 use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
 use Splicewire\Beam\Rendering\Http\RenderingsController;
@@ -311,6 +314,133 @@ class ParticleMounter
                 $route->defaults(ParticleController::VIA, $via);
             }
         }
+    }
+
+    /**
+     * Mount the DECLARED relative edges of one parent — api-surface-coherence ticket 50's mount side.
+     *
+     * ```php
+     * Particle::relatives('fragments');                              // every declared edge
+     * Particle::relatives('fragments', [FragmentMediaRelative::class]); // these, discovering as it goes
+     * ```
+     *
+     * Each entry is one of the three forms {@see ops()} already established, and for the same reasons:
+     *
+     *   'media'                             a bare CHILD key — already registered elsewhere, mount only.
+     *   FragmentMediaRelative::class        a #[ParticleRelative] class-string — discovered + mounted.
+     *   new ParticleRelative(child: …, …)   an inline runtime object — registered here + mounted.
+     *
+     * `true` mounts everything {@see ParticleRelativeRegistry::forParent()} holds. That spelling needs
+     * boot-time discovery to have run (`beam.core.particle.discover_paths`); a host that registers its
+     * particle classes explicitly — which is most of the estate today — passes class-strings, exactly as
+     * it already does for ops.
+     *
+     * ## Why this is not `Particle::mount($parent)->relatives(true)` and nothing else
+     *
+     * The builder slot exists too ({@see PendingParticleMount::relatives()}), but it cannot be the only
+     * spelling, and the flagship's own edge is why: `fragments` is **not** a particle mount. Its CRUD is
+     * hand-written `Route::get()`/`Route::post()` in the host route file, so there is no
+     * `Particle::mount('fragments')` for a `->relatives(true)` to hang off. An edge is a fact about a
+     * PARENT RESOURCE KEY, not about a particular mount of it, so the standalone verb is the general
+     * form and the builder slot is the convenience for parents that happen to be particle-mounted.
+     *
+     * Both go through this one method, so the two spellings cannot produce different route tables.
+     *
+     * @param  array<int, string|ParticleRelative>|bool  $relatives
+     */
+    public function relatives(Router $router, string $parent, array|bool $relatives = true): void
+    {
+        $registry = app(ParticleRelativeRegistry::class);
+        $discovery = app(AttributedParticleDiscovery::class);
+
+        if ($relatives === true) {
+            $declarations = $registry->forParent($parent);
+        } else {
+            $declarations = [];
+
+            foreach ((array) $relatives as $entry) {
+                if ($entry instanceof ParticleRelative) {
+                    // An inline runtime object — register it, mount it.
+                    $registry->register($entry);
+                    $declarations[] = $entry;
+
+                    continue;
+                }
+
+                if (is_string($entry) && class_exists($entry)) {
+                    // A #[ParticleRelative] class-string — discover (which registers), then read the
+                    // runtime declaration back out by key. Deliberately NOT reflected again here: the
+                    // discovery class is the single reader of the attribute (the rule
+                    // `AttributedParticleDiscovery::resourceFromAttribute()` states as RDU-02), and two
+                    // readers of one attribute is how the two drift.
+                    $discovery->registerClass($entry);
+                    $declarations[] = $this->declaredEdge($registry, $entry);
+
+                    continue;
+                }
+
+                // A bare child key — already registered elsewhere; mount only.
+                $declarations[] = $registry->get($parent, $entry);
+            }
+        }
+
+        foreach ($declarations as $relative) {
+            $this->mountRelative($router, $relative);
+        }
+    }
+
+    /**
+     * Read a just-discovered edge back out of the registry, addressed by its own attribute.
+     *
+     * The attribute is read here for its ADDRESS only — the two resource keys — never for the
+     * declaration itself, which discovery has already built and registered.
+     */
+    protected function declaredEdge(ParticleRelativeRegistry $registry, string $class): ParticleRelative
+    {
+        $attribute = (new ReflectionClass($class))->getAttributes(ParticleRelativeAttribute::class)[0] ?? null;
+
+        if ($attribute === null) {
+            throw new InvalidArgumentException("Class [{$class}] carries no #[ParticleRelative] to mount as a relative edge.");
+        }
+
+        $attribute = $attribute->newInstance();
+
+        return $registry->get($attribute->of, $attribute->child);
+    }
+
+    /**
+     * One declared edge → the same {@see relative()} call the hand-written mount made, with the child
+     * mounted through the ordinary resource front door.
+     *
+     * The child goes through {@see PendingParticleMount} rather than straight to {@see resource()} so a
+     * declared edge and a hand-written one are the same mount in the same vocabulary — which is what
+     * makes "its routes are byte-identical to the hand-written form" a property rather than a
+     * coincidence to be re-diffed. The builder is `register()`ed explicitly instead of being left to
+     * `__destruct`, because inside a route-group callback the destruction point is the callback's, and
+     * an edge that mounts *after* the group closes would land its child routes outside the bound prefix.
+     */
+    protected function mountRelative(Router $router, ParticleRelative $relative): void
+    {
+        $this->relative(
+            router: $router,
+            uri: $relative->parentUri(),
+            model: $relative->model,
+            via: $relative->routeVia(),
+            routes: function () use ($router, $relative): void {
+                $mount = new PendingParticleMount($router, $this, $relative->childUri(), $relative->child);
+
+                if ($relative->only !== null) {
+                    $mount->only($relative->only);
+                }
+
+                if ($relative->names !== null) {
+                    $mount->names($relative->names);
+                }
+
+                $mount->idConstraint($relative->idConstraint)->register();
+            },
+            options: ['binding' => $relative->bindingName()],
+        );
     }
 
     /**

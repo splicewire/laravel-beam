@@ -7,6 +7,7 @@ use Illuminate\Routing\Router;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleRelative;
 
 /**
  * The fluent particle mount — the sanctioned front door behind `Particle::mount()`
@@ -64,6 +65,9 @@ class PendingParticleMount
 
     /** @var array<int, array> queued rendering mounts */
     protected array $renderings = [];
+
+    /** @var array<int, array<int, string|ParticleRelative>|bool> queued relative-edge mounts */
+    protected array $relatives = [];
 
     protected bool $registered = false;
 
@@ -178,6 +182,38 @@ class PendingParticleMount
     }
 
     /**
+     * Widen this mount with the DECLARED relative edges hanging off this resource. **Off unless asked.**
+     *
+     * ```php
+     * Particle::mount('fragments')->relatives(true);                              // every declared edge
+     * Particle::mount('fragments')->relatives([FragmentMediaRelative::class]);    // these
+     * ```
+     *
+     * api-surface-coherence ticket 50. Ticket 49 declined to build this slot for a stated reason — a
+     * relative edge had **no declaration site to read from** — so it shipped `Particle::relative(…)`, the
+     * imperative verb that takes the edge's facts as arguments. 50 gives the edge a class, and this is
+     * the slot 49 left.
+     *
+     * ⚠️ **This is the convenience spelling, not the general one.** An edge is a fact about a parent
+     * RESOURCE KEY, and a parent need not be particle-mounted at all: the flagship's own `fragments` CRUD
+     * is hand-written `Route::get()`/`Route::post()`, so there is no `Particle::mount('fragments')` for
+     * this call to hang off. {@see ParticleMountManager::relatives()} is the general form; both run the
+     * same {@see ParticleMounter::relatives()} body, so the two spellings cannot diverge.
+     *
+     * @param  array<int, string|ParticleRelative>|bool  $relatives
+     */
+    public function relatives(array|bool $relatives = true): static
+    {
+        if ($relatives === false) {
+            return $this;
+        }
+
+        $this->relatives[] = $relatives;
+
+        return $this;
+    }
+
+    /**
      * Mount now rather than at destruction. Returns nothing to chain onto on purpose — a builder that
      * has already fired is not a builder.
      */
@@ -200,6 +236,13 @@ class PendingParticleMount
                 : $declared;
 
             $this->mounter->ops($this->router, $this->uri, $this->resourceKey, $ops, $options);
+        }
+
+        // AFTER the resource's own CRUD and ops, which is the order the hand-written spelling produced:
+        // `Particle::relative(…)` sat below the flat mount in the route file. Registration order is
+        // route-matching order, so this is behaviour rather than tidiness.
+        foreach ($this->relatives as $relatives) {
+            $this->mounter->relatives($this->router, $this->resourceKey, $relatives);
         }
 
         foreach ($this->renderings as $rendering) {

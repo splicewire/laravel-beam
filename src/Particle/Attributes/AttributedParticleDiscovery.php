@@ -6,8 +6,11 @@ use Closure;
 use InvalidArgumentException;
 use ReflectionClass;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
+use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Particle\ParticleOperation as ParticleOperationRuntime;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleRelative as ParticleRelativeRuntime;
+use Splicewire\Beam\Particle\ParticleRelativeRegistry;
 use Splicewire\Beam\Particle\ParticleResource as ParticleResourceRuntime;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
@@ -28,11 +31,27 @@ class AttributedParticleDiscovery
     public function __construct(
         private ParticleResourceRegistry $resources,
         private ParticleOperationRegistry $operations,
+        private ?ParticleRelativeRegistry $relatives = null,
     ) {}
 
     /**
+     * The relative registry, resolved lazily from the container when the constructor was not handed one.
+     *
+     * Nullable-and-lazy rather than required, deliberately: this class is `new`ed directly in
+     * {@see BeamServiceProvider::discoverParticleAttributes()} AND in an unknown
+     * number of host/package providers and tests across eleven repos (the same population that made
+     * ticket 49's macro delete a flag day). Adding a third REQUIRED constructor argument would have been
+     * a silent fatal at every one of those call sites, for a parameter every one of them wants the
+     * singleton for anyway.
+     */
+    private function relatives(): ParticleRelativeRegistry
+    {
+        return $this->relatives ??= app(ParticleRelativeRegistry::class);
+    }
+
+    /**
      * Register the explicit class-strings and everything under the discover paths that carries a
-     * `#[ParticleResource]` or `#[ParticleOp]` attribute.
+     * `#[ParticleResource]`, `#[ParticleOp]` or `#[ParticleRelative]` attribute.
      *
      * @param  array<int, class-string>  $classes  explicit annotated class list (cheap — always honoured)
      * @param  array<int, string>  $paths  filesystem paths to scan for annotated classes
@@ -51,6 +70,10 @@ class AttributedParticleDiscovery
 
         foreach ($scanner->scan($paths, ParticleOp::class, instanceof: false) as $class) {
             $this->registerOpClass($class);
+        }
+
+        foreach ($scanner->scan($paths, ParticleRelative::class, instanceof: false) as $class) {
+            $this->registerRelativeClass($class);
         }
     }
 
@@ -79,9 +102,14 @@ class AttributedParticleDiscovery
             $registered = true;
         }
 
+        if (! empty($reflection->getAttributes(ParticleRelative::class))) {
+            $this->registerRelativeClass($class);
+            $registered = true;
+        }
+
         if (! $registered) {
             throw new InvalidArgumentException(
-                "Class [{$class}] carries neither #[ParticleResource] nor #[ParticleOp]."
+                "Class [{$class}] carries none of #[ParticleResource], #[ParticleOp], #[ParticleRelative]."
             );
         }
     }
@@ -171,6 +199,57 @@ class AttributedParticleDiscovery
             respond: $this->convention($class, 'respond'),
             input: $attribute->input,
             output: $attribute->output,
+        ));
+    }
+
+    /**
+     * Reflect a `#[ParticleRelative]`-annotated class into a runtime declaration and register it.
+     *
+     * The one thing the attribute cannot carry is a behavioural `via`, so it comes off the same
+     * `public static` convention seam every other particle attribute uses — and the runtime keeps the
+     * declaring CLASS NAME so the mount can stamp a serializable reference into the route defaults
+     * instead of a Closure (api-surface-coherence ticket 51 §2).
+     *
+     * A class that declares BOTH a `via:` string and a `public static via()` is a declaration bug: the
+     * two say different things about the same edge and silently preferring one is how a reader ends up
+     * trusting the wrong half. It fails at registration.
+     *
+     * @param  class-string  $class
+     */
+    private function registerRelativeClass(string $class): void
+    {
+        $attribute = (new ReflectionClass($class))->getAttributes(ParticleRelative::class)[0]->newInstance();
+
+        $convention = $this->convention($class, 'via');
+
+        if ($attribute->via !== null && $convention !== null) {
+            throw new InvalidArgumentException(
+                "Particle relative [{$attribute->of}.{$attribute->child}] ({$class}) declares both a "
+                .'`via:` relation name and a `public static via()` method. An edge has exactly one way '
+                .'through; declare one of the two.'
+            );
+        }
+
+        if ($attribute->via === null && $convention === null) {
+            throw new InvalidArgumentException(
+                "Particle relative [{$attribute->of}.{$attribute->child}] ({$class}) declares neither a "
+                .'`via:` relation name nor a `public static via(...)` method — the edge has no way '
+                .'through, so nothing could be mounted from it.'
+            );
+        }
+
+        $this->relatives()->register(new ParticleRelativeRuntime(
+            child: $attribute->child,
+            of: $attribute->of,
+            model: $attribute->model,
+            via: $attribute->via ?? $convention,
+            binding: $attribute->binding,
+            at: $attribute->at,
+            only: $attribute->only,
+            names: $attribute->names,
+            idConstraint: $attribute->idConstraint,
+            childAt: $attribute->childAt,
+            declaredBy: $class,
         ));
     }
 
