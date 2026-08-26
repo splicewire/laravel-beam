@@ -1305,6 +1305,23 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             by: self::class,
         );
 
+        // The operation registry (particle-operation-surface ticket 01). It was the one particle root
+        // that never described itself — five sibling registries have reported from this boot for months
+        // and `beam.particle.operations` was absent from `popcorn:registries` the whole time, which is
+        // exactly the negative space `UndescribedRegistryAudit` calls "vacuous until owners start
+        // describing". AFTER discoverParticleAttributes(), for the reason the relative registry above
+        // states: a described-but-empty root is a worse answer than a described-and-populated one.
+        //
+        // Its `registerHint` matters more here than for most: the whole point of ticket 01 is that a
+        // package registers an operation on a resource it does not own, and the index is where a
+        // contributor finds out that is legal. ⚠️ 08 found `UndescribedRegistryAudit` gates that a
+        // registry IS described, never that the description is TRUE — a lying hint passed for months —
+        // so the hint on the `#[IsRegistry]` is a claim to keep honest, not a formality.
+        $this->app->make(RegistryIndex::class)->describe(
+            $this->app->make(ParticleOperationRegistry::class),
+            by: self::class,
+        );
+
         // The event catalog's own registrars, attached on `booted()` rather than here — measured, not
         // cautious. Every `register()` validates the event name's prefix against the LIVE resource keys,
         // and the flagship host declares its twenty-odd resources from an APP provider's boot(), which

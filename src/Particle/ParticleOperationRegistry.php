@@ -134,8 +134,16 @@ class ParticleOperationRegistry implements Gated, RecordsSupersession, Registry
      *
      * This read is what the dotted key bought and the colon could not express: `<resource>.<name>` is a
      * branch address, so a resource's operations are a segment-wise `matches()` rather than a scan with
-     * a string prefix test. `Route::particleResource()` mounting what the registry HOLDS
-     * (particle-operation-surface tickets 01/04) reads through here.
+     * a string prefix test.
+     *
+     * ⚠️ **This docblock used to say `Route::particleResource()` reads through here. It does not**, and
+     * the claim was describing ticket 01's plan rather than the code (corrected on that ticket's
+     * resolution, 2026-08-26). `ParticleMounter::resource()` mounts the five CRUD verbs off an
+     * `in_array($only)` check and never touches this registry — its only registry read is
+     * `DataFilter::registry()`. The sole caller is
+     * `Splicewire\Beam\Particle\Mount\PendingParticleMount::register()`, i.e. `->ops(true)` on the
+     * fluent mount, whose opt-in is deliberate: a package that ships a `#[ParticleOp]` class must never
+     * be able to add a public route to a host that did not ask for one.
      *
      * @return list<ParticleOperation>
      */
