@@ -171,8 +171,30 @@ authoritative.
 **Detection is deterministic and the repair is not.** That seam is deliberate and it is surgeon's
 existing house pattern — `Rushing\Surgeon\Conformance\StaleDownstreamDuplicateAudit` draws the identical
 line for host-local DTOs that twin a downstream package's ("identical → fixable; drifted → advisory
-only, reconciling a divergence is judgment"). A surgeon sibling enumerates published-migration
-divergence the same way: it names the drift, nominates nothing, and gates nothing.
+only, reconciling a divergence is judgment"). `Rushing\Surgeon\Conformance\PublishedMigrationDriftAudit`
+is the sibling that enumerates published-migration divergence the same way: it names the drift, nominates
+nothing, and gates nothing.
+
+### Don't wait for a migration error to find out
+
+You do not have to already be looking at a failure. The audit runs host-side in every
+`surgeon:audit` sweep and reports **every** published copy under `database/migrations/**` whose content
+no longer matches the package file it came from — matched by basename with the timestamp prefix stripped,
+across publish-destination moves, no database and no git involved.
+
+```
+php artisan surgeon:audit
+```
+
+Two things to expect from it, both measured at 20 hosts on 2026-08-26 (**314 drifted copies estate-wide**,
+119 of them at `~/Herd/splicewire-app`):
+
+- **A large population is the normal reading, not an alarm.** Ticket 28 recorded the estate's steady state
+  as *a swept package beside an unswept host*, and this is the instrument that finally says so out loud.
+- **It cannot tell a fossil from a deliberate host edit**, and it does not try. `laravel/passport`'s
+  published `create_oauth_auth_codes_table` differs from its source by one line — `foreignId('user_id')`
+  became `foreignUuid('user_id')` — which is a host that chose uuid user keys, i.e. exactly what publishing
+  a migration is for. That is why every finding is advisory and none nominates a fix.
 
 ## The other half of the collision family
 
