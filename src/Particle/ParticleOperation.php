@@ -112,11 +112,21 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
  *     subject (`fragment_url_batch.run` authorizes `create` on `Fragment`, not on the batch);
  *   - **`false`** — NO subject ⇒ the subject-free ENTITLEMENT plane (`entitlement:{key}`).
  *
- * The third state is the declared override the derivation needs, and it names a live mismatch: the two
- * `ux.author` operations in `splicewire/laravel-beam-ux` declare an ENTITLEMENT key and, with
- * `abilityModel: null`, are checked as a POLICY verb against the entry model. They are left alone here
- * — flipping them is a behaviour change owed to a host that defines the entitlement — but the state
- * they need now exists and is pinned.
+ * The third state is the declared override the derivation needs. Its live instance — the two
+ * `ux.author` operations in `splicewire/laravel-beam-ux` — was flipped onto it by
+ * particle-operation-surface ticket 08, and what the enumeration found there is worth keeping next to
+ * the flag: the mismatched declaration had been answering CORRECTLY, by accident, in all seven hosts
+ * that mount it. `BeamUxEntry` carries no policy anywhere, so Laravel's Gate fell through the
+ * subject-bearing branch to the bare `ux.author` ability `beam-accounts` defines as
+ * `fn ($user) => $user->can('entitlement:ux.author')`, and the surplus subject argument was silently
+ * ignored by that closure. Both planes were measured identical, user for user, across 28 users in five
+ * hosts, guests included.
+ *
+ * So `abilityModel: false` there bought no behaviour change — it bought the removal of two accidents
+ * the right answer was resting on (no policy on the subject model; `beam-accounts` installed to define
+ * the alias). That is the general lesson for this slot: a wrong-plane declaration does not have to be
+ * OBSERVABLY wrong to be worth declaring right, and a fall-through that happens to agree is not the
+ * same fact as a declaration that says so.
  */
 class ParticleOperation implements HasRegistryKey
 {
