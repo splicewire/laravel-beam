@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Doctor;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
+use Splicewire\Beam\Tests\Doctor\Fixtures\BothHalvesFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\ConformingFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\DeclaredOnlyFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\FirstContestedRootFixtureRegistry;
@@ -13,6 +14,7 @@ use Splicewire\Beam\Tests\Doctor\Fixtures\InheritingFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\RuntimeRootedFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\SecondContestedRootFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\SilentDuplicateFixtureRegistry;
+use Splicewire\Beam\Tests\Doctor\Fixtures\ThrowingHalfOnlyFixtureRegistry;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -74,6 +76,43 @@ class RegistryConformanceAuditTest extends TestCase
             $this->failuresFor($audit, SilentDuplicateFixtureRegistry::class),
             'Inheriting Supersede silently must be a finding: the estate ships all three policies with '
             .'argued docblocks, so an unwritten one is a guess that reads as a decision.',
+        );
+    }
+
+    public function test_a_port_publishing_only_the_throwing_half_is_a_finding(): void
+    {
+        $audit = $this->audit([ThrowingHalfOnlyFixtureRegistry::class]);
+
+        $this->assertContains(
+            RegistryConformanceAudit::CHECK_MISS_PAIR,
+            $this->failuresFor($audit, ThrowingHalfOnlyFixtureRegistry::class),
+            'A port wrapping resolve() with no nullable twin is registry-kernel 63\'s decidable half: it is '
+            .'the exact shape that turned two asserted 404s in the flagship into 500s under ticket 38, with '
+            .'every other mechanism the sweep had reporting green.',
+        );
+    }
+
+    public function test_a_port_carrying_the_pair_across_is_not_a_finding(): void
+    {
+        $audit = $this->audit([BothHalvesFixtureRegistry::class]);
+
+        $this->assertNotContains(
+            RegistryConformanceAudit::CHECK_MISS_PAIR,
+            $this->failuresFor($audit, BothHalvesFixtureRegistry::class),
+            'Without this the check could be firing on every port rather than on the defect.',
+        );
+    }
+
+    public function test_a_conforming_forwarder_answers_both_halves_by_construction(): void
+    {
+        $audit = $this->audit([ConformingFixtureRegistry::class]);
+
+        $this->assertNotContains(
+            RegistryConformanceAudit::CHECK_MISS_PAIR,
+            $this->failuresFor($audit, ConformingFixtureRegistry::class),
+            'The estate\'s ports forward the contract through a shared TRAIT and write only their domain '
+            .'sugar in the class body. A class-span-only read would see the resolve() wrapper, never the '
+            .'tryResolve() one, and would fail every well-formed port there is.',
         );
     }
 

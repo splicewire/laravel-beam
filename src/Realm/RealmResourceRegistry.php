@@ -136,7 +136,12 @@ class RealmResourceRegistry
      */
     private function chain(string $realm): array
     {
-        $stack = $this->realms->has($realm) ? $this->realms->resolve($realm)->stack : [];
+        // `$realm` reaches here off a config key or a request-derived resource read, so it is an OUTSIDE
+        // key and the nullable half is the one that fits (registry-kernel 61: a key the code chose is a
+        // `resolve()`, a key that came from outside is a `tryResolve()`). This was written as
+        // `has()`-then-`resolve()`, the double lookup 61 D3 names as the cost of an unreachable nullable
+        // half — and it is the finding 63's `miss-pair` check raised here, its first live catch.
+        $stack = $this->realms->tryResolve($realm)?->stack ?? [];
 
         return [...$stack, $realm];
     }

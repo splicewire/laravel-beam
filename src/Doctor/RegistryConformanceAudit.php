@@ -42,10 +42,11 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *
  * ## The checks
  *
- * Six checks, ONE check key ({@see CHECK}), each finding naming which check failed (14 D9) — the estate's
+ * Seven checks, ONE check key ({@see CHECK}), each finding naming which check failed (14 D9) — the estate's
  * audits are single-purpose and this stays one purpose: *is this declaration complete, and does it hold?*
  * Five ask that of a declaration in isolation; {@see CHECK_SHADOW} asks it of the described set as a whole,
- * which is the one question no declaration can answer about itself.
+ * which is the one question no declaration can answer about itself; {@see CHECK_MISS_PAIR} asks it of the
+ * class body, which is the one question the attribute cannot answer at all.
  *
  *   - {@see CHECK_CONTRACT} — `implements Registry`. See the sequencing note below; this is the one check
  *     that reports rather than blocks today.
@@ -67,6 +68,14 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *     considered default, it is a guess that reads as a decision. Measured before landing: every one of the
  *     ~50 declarations in the estate already writes it, so this check ratchets a good state rather than
  *     opening a backlog.
+ *   - {@see CHECK_MISS_PAIR} — a class holding a kernel store must not read it through `resolve()` alone.
+ *     Registry-kernel 63's decidable half, from 61 D3. This is the check whose ABSENCE let ticket 38's
+ *     `data-filters.resources` migration turn two asserted 404s in the flagship into 500s with every
+ *     mechanism the sweep had reporting green — PHP has no checked exceptions, a package's own suite cannot
+ *     see a consumer in another repo, and every other check here walks the DECLARATION rather than the
+ *     body. Measured before landing: all 55 conforming rows in the flagship pass it, and its one live catch
+ *     (`RealmResourceRegistry`) was a `has()`-then-`resolve()` double lookup, so it too ratchets a good
+ *     state. See {@see publishesOnlyTheThrowingHalf()} for what it deliberately cannot see.
  *
  * ## The chartered fifth check dissolved, and this is why
  *
@@ -131,6 +140,8 @@ class RegistryConformanceAudit implements DoctorAudit
     public const CHECK_ON_DUPLICATE = 'on-duplicate';
 
     public const CHECK_SHADOW = 'shadowed-entry';
+
+    public const CHECK_MISS_PAIR = 'miss-pair';
 
     /**
      * Constructor positions of {@see IsRegistry}, so a POSITIONAL declaration is read the same as a named
@@ -356,7 +367,179 @@ class RegistryConformanceAudit implements DoctorAudit
             $failures[] = self::CHECK_ON_DUPLICATE;
         }
 
+        if ($this->publishesOnlyTheThrowingHalf($fqcn)) {
+            $failures[] = self::CHECK_MISS_PAIR;
+        }
+
         return $failures;
+    }
+
+    /**
+     * Whether this class wraps the kernel's `resolve()` in its own vocabulary and never wraps
+     * `tryResolve()` — registry-kernel ticket 63's decidable half, from 61 D3.
+     *
+     * ## What it is actually asking
+     *
+     * A port keeping domain words over the kernel (`get()`, `for()`, `definition()`) must publish BOTH
+     * halves of the miss pair, on Laravel's `findOrFail()`/`find()` split — the rule is written on
+     * {@see Registry::tryResolve()} and this is its enforcement. Publishing only the throwing half leaves
+     * a host either catching a kernel exception it never imported or paying a `has()`-then-`get()` double
+     * lookup, and it is how ticket 38's `data-filters.resources` migration turned two asserted 404s in the
+     * flagship into 500s. Nothing saw that land: PHP has no checked exceptions, the migrated package's own
+     * suite was green, and this gate walked declarations rather than bodies (63's gap analysis).
+     *
+     * ## The subject is the COMPOSED STORE, and the first cut proved why that matters
+     *
+     * Written first as *"the source mentions `->resolve(` and never `->tryResolve(`"*, this check produced
+     * two findings in the flagship and **both were wrong**, in opposite directions:
+     *
+     *   - `Surface\GroupRegistry` publishes its own `resolve(): ?ApiGroup` and calls it internally. The
+     *     token matched a method that is ALREADY the nullable half — the check fired on the remedy.
+     *   - `Realm\RealmResourceRegistry` calls `resolve()` on a DIFFERENT registry it consumes, behind a
+     *     `has()`. That is a consumer-side double lookup, which is real but is not this check's sentence:
+     *     the remedy "publish the nullable twin" belongs to the port being consumed, not to the caller.
+     *
+     * So the subject is narrowed to the kernel store this class HOLDS: properties typed as a
+     * {@see Registry}, found by reflection, and calls written `$this-><prop>->resolve(`. A port is a class
+     * with a kernel store and its own words over it, and that is exactly what the property type says.
+     *
+     * ## Why source text and not the AST
+     *
+     * With the property names in hand the question is a presence question about one token pair, not a
+     * shape question — so parsing buys nothing and costs the audit its `nikic/php-parser`-absent degraded
+     * mode. {@see locate()} already reserves the parser for the question that genuinely needs one.
+     *
+     * ## What it deliberately does not catch, and why that is the right size
+     *
+     * A class that implements the contract answers both halves by construction — `tryResolve()` is on
+     * {@see Registry}, so a conforming forwarder mentions it and passes. It cannot see a nullable twin
+     * implemented as `has()`-then-`resolve()` on its own store, and does not try: that is the double lookup
+     * 61 D3 named as the cost of the missing half, so a row wearing it is a row this check WANTS to fail.
+     *
+     * It answers `false` for anything it cannot read — an unreflectable class, an eval'd or internal class,
+     * an unreadable file. A conformance check whose answer depends on the host it booted in must degrade to
+     * a miss rather than throw; a gate that dies on one malformed class reports nothing about the other
+     * sixty.
+     */
+    protected function publishesOnlyTheThrowingHalf(string $fqcn): bool
+    {
+        $source = $this->sourceOf($fqcn);
+
+        if ($source === null) {
+            return false;
+        }
+
+        foreach ($this->storeProperties($fqcn) as $property) {
+            $throwing = sprintf('$this->%s->resolve(', $property);
+            $nullable = sprintf('$this->%s->tryResolve(', $property);
+
+            if (str_contains($source, $throwing) && ! str_contains($source, $nullable)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The names of this class's properties that hold a kernel {@see Registry} — the composed stores a port
+     * reads through. Inherited properties count: beam-core ships subclassing as its extension mechanism,
+     * so a port's store is often declared one class up.
+     *
+     * @return list<string>
+     */
+    protected function storeProperties(string $fqcn): array
+    {
+        try {
+            $reflection = new ReflectionClass($fqcn);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $names = [];
+
+        foreach ($reflection->getProperties() as $property) {
+            $type = $property->getType();
+
+            if (! $type instanceof \ReflectionNamedType || $type->isBuiltin()) {
+                continue;
+            }
+
+            if (is_a($type->getName(), Registry::class, true)) {
+                $names[] = $property->getName();
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * Everything whose body counts as "this class's code": its own span, every trait it uses (recursively),
+     * and every ancestor's span. `null` where this host cannot read any of it.
+     *
+     * The traits and parents are not thoroughness for its own sake — they are what keeps the miss-pair
+     * check honest. The estate's ports forward the seven contract methods through a shared trait and write
+     * only their domain sugar in the class body, so a class-span-only read would see the `resolve()` wrapper
+     * and never the `tryResolve()` one sitting in the trait, and would fail every well-formed port there is.
+     */
+    protected function sourceOf(string $fqcn): ?string
+    {
+        try {
+            $reflection = new ReflectionClass($fqcn);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $spans = [];
+
+        for ($class = $reflection; $class !== false; $class = $class->getParentClass()) {
+            $spans[] = $this->spanOf($class);
+
+            foreach ($this->traitsOf($class) as $trait) {
+                $spans[] = $this->spanOf($trait);
+            }
+        }
+
+        $source = implode('', array_filter($spans, fn (?string $span) => $span !== null));
+
+        return $source === '' ? null : $source;
+    }
+
+    /**
+     * @param  ReflectionClass<object>  $class
+     * @return list<ReflectionClass<object>>
+     */
+    protected function traitsOf(ReflectionClass $class): array
+    {
+        $found = [];
+
+        foreach ($class->getTraits() as $trait) {
+            $found[] = $trait;
+
+            foreach ($this->traitsOf($trait) as $nested) {
+                $found[] = $nested;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * @param  ReflectionClass<object>  $class
+     */
+    protected function spanOf(ReflectionClass $class): ?string
+    {
+        $file = $class->getFileName();
+        $start = $class->getStartLine();
+        $end = $class->getEndLine();
+
+        if ($file === false || $start === false || $end === false || ! is_readable($file)) {
+            return null;
+        }
+
+        $lines = file($file);
+
+        return $lines === false ? null : implode('', array_slice($lines, $start - 1, $end - $start + 1));
     }
 
     /**
@@ -609,6 +792,15 @@ class RegistryConformanceAudit implements DoctorAudit
             self::CHECK_ON_DUPLICATE => 'writes no `onDuplicate:`, so it inherits Supersede silently. The '.
                 'estate ships all three policies with argued docblocks, so an unwritten one is a guess that '.
                 'reads as a decision. Write the one you mean, even where it is Supersede.',
+            self::CHECK_MISS_PAIR => sprintf(
+                'reads a composed `%s` through `resolve()` and never through `tryResolve()`. A key the CODE '.
+                'chose is a resolve(); a key that came from OUTSIDE is a tryResolve(). If the store is this '.
+                "class's own, ADD the nullable accessor beside the throwing one and never re-point the ".
+                'throwing one; if the store belongs to someone else, reach for `tryResolve()` instead of '.
+                'has()-then-resolve(), which is the double lookup a missing nullable half costs '.
+                '(registry-kernel 61 D3, gated by 63).',
+                Registry::class,
+            ),
             default => 'fails an unnamed check.',
         };
     }
