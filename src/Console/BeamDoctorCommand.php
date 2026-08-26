@@ -16,6 +16,7 @@ use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
+use Splicewire\Beam\Doctor\SchemaDoorAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
 use Splicewire\Beam\Doctor\SitemapReadinessAudit;
 use Splicewire\Beam\Doctor\SurgeonWiringAudit;
@@ -124,9 +125,11 @@ class BeamDoctorCommand extends Command
             ),
         );
 
-        // Advisory, presence-conditional or report-only — never fail the exit code. The intake door is
-        // the one that returns a LIST: it reports per-slug, because a host declaring four intake slugs
-        // with two of them unresolvable wants both named, not the first one and a count.
+        // Advisory, presence-conditional or report-only — never fail the exit code. The two door audits
+        // are the ones that return a LIST: the intake door reports per-slug, because a host declaring
+        // four intake slugs with two of them unresolvable wants both named, not the first one and a
+        // count; the schema door reports the unreachable-authority findings separately from the
+        // door-does-not-answer one, because they are different repairs (ticket 102).
         $advisoryFindings = array_merge(
             $this->guarded(
                 SchemaRoundTripAudit::class,
@@ -142,6 +145,11 @@ class BeamDoctorCommand extends Command
                 IntakeDoorAudit::class,
                 false,
                 fn (IntakeDoorAudit $audit) => $audit->run(),
+            ),
+            $this->guarded(
+                SchemaDoorAudit::class,
+                false,
+                fn (SchemaDoorAudit $audit) => $audit->run(),
             ),
             $this->guarded(
                 SitemapReadinessAudit::class,

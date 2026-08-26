@@ -17,6 +17,7 @@ use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
+use Splicewire\Beam\Doctor\SchemaDoorAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
 use Splicewire\Beam\Doctor\SitemapReadinessAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
@@ -27,6 +28,7 @@ use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
 use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
 use Splicewire\Beam\Tests\Doctor\Fixtures\TailSentinelAudit;
 use Splicewire\Beam\Tests\Doctor\IntakeDoorAuditTest;
+use Splicewire\Beam\Tests\Doctor\SchemaDoorAuditTest;
 
 class BeamDoctorCommandTest extends TestCase
 {
@@ -280,6 +282,20 @@ class BeamDoctorCommandTest extends TestCase
     public function test_intake_door_audit_skips_when_no_door_is_mounted(): void
     {
         $findings = IntakeDoorAudit::forApp($this->app)->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
+    }
+
+    /**
+     * The schema-door check in the estate's other majority state — this testbench app declares no
+     * `data-schemas.base_uri`, and an undeclared authority owes no door (beam-facade ticket 102). Its
+     * real cases live in {@see SchemaDoorAuditTest}; what is asserted here is the command's own wiring,
+     * including that the audit resolves out of the container the command hands it.
+     */
+    public function test_schema_door_audit_is_conformant_when_no_authority_is_declared(): void
+    {
+        $findings = SchemaDoorAudit::forApp($this->app)->run();
 
         $this->assertCount(1, $findings);
         $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
