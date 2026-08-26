@@ -100,8 +100,9 @@ use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
  * registry is bound under the interface `Contracts\Schema` — a name-based test would miss it while
  * flagging every `SchemaTypeProjector` in the fleet. The test is instead the shape a registry actually has:
  *
- *   1. it is bound as a **container singleton** (`singleton()`/`scoped()`) from a service provider —
- *      shared, accumulating state rather than a per-resolution value object;
+ *   1. it is bound as a **container singleton** (`singleton()`/`scoped()`) from a service provider — or
+ *      from a provider TRAIT, which is the same act one construct over ({@see bindsIntoContainer()},
+ *      registry-kernel ticket 54) — shared, accumulating state rather than a per-resolution value object;
  *   2. it holds **plural state** — an array-typed/array-defaulted property, or an array-typed constructor
  *      parameter (the config-source and constructor-policy seams are seeded, not `register()`ed into);
  *   3. it exposes an **entry path** (a public write-verb method, or that array constructor parameter) AND a
@@ -512,11 +513,14 @@ class UndescribedRegistryAudit implements DoctorAudit
         $finder = new NodeFinder;
         $rows = [];
 
-        /** @var list<Node\Stmt\Class_> $classes */
-        $classes = $finder->findInstanceOf($ast, Node\Stmt\Class_::class);
+        /** @var list<Node\Stmt\Class_|Node\Stmt\Trait_> $binders */
+        $binders = array_merge(
+            $finder->findInstanceOf($ast, Node\Stmt\Class_::class),
+            $finder->findInstanceOf($ast, Node\Stmt\Trait_::class),
+        );
 
-        foreach ($classes as $class) {
-            if ($class->name === null || ! $this->isServiceProvider($class)) {
+        foreach ($binders as $class) {
+            if ($class->name === null || ! $this->bindsIntoContainer($class)) {
                 continue;
             }
 
@@ -764,6 +768,49 @@ class UndescribedRegistryAudit implements DoctorAudit
             && str_ends_with($this->shortName($class->extends->toString()), 'ServiceProvider');
     }
 
+    /**
+     * Whether this declaration is a place container bindings are written — a `*ServiceProvider` subclass,
+     * or a TRAIT that calls `$this->app->singleton(...)` in its own body.
+     *
+     * **The trait half is registry-kernel ticket 54's finding, and it is the closure defect one construct
+     * over.** A provider that splits its `register()` block into `Concerns\Wires*` traits — which
+     * `splicewire/laravel-beam-ux` does for its ENTIRE registration surface, 15 traits of it — has no
+     * binding call inside any `Node\Stmt\Class_`, so the whole package read as a host that binds nothing.
+     * Three ledger rows (`CodecRegistry`, `PlacementResolver`, `StorageDriverResolver`) were structurally
+     * unreachable for that reason alone, and, exactly as with the closure, the audit said so silently.
+     *
+     * A trait cannot be tested for a provider PARENT — it has none — so the test is what the trait does:
+     * `$this->app-><binding method>(...)` in its own body. `$this->app` is Laravel's provider property, and
+     * a trait reaching for it is written to be mixed into one. Measured across the flagship's whole
+     * composition before this was widened: **10 trait files estate-wide call a binding method on
+     * `$this->app`, and all 10 are provider concerns** (`Concerns/Wires*`, beam-ux ×9 plus
+     * beam-accounts ×1). Zero false candidates, so the signal is taken as-is rather than name-matched on
+     * `Wires*`/`Concerns\`, which would encode one package's house style as a detector rule.
+     */
+    protected function bindsIntoContainer(Node\Stmt\Class_|Node\Stmt\Trait_ $declaration): bool
+    {
+        if ($declaration instanceof Node\Stmt\Class_) {
+            return $this->isServiceProvider($declaration);
+        }
+
+        foreach ((new NodeFinder)->findInstanceOf($declaration->stmts, MethodCall::class) as $call) {
+            if (! $call->name instanceof Node\Identifier
+                || ! in_array($call->name->toString(), self::BINDING_METHODS, true)) {
+                continue;
+            }
+
+            if ($call->var instanceof Node\Expr\PropertyFetch
+                && $call->var->name instanceof Node\Identifier
+                && $call->var->name->toString() === 'app'
+                && $call->var->var instanceof Node\Expr\Variable
+                && $call->var->var->name === 'this') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** A `Foo::class` argument, resolved to an FQCN through the file's imports. */
     protected function classStringArg(?Node\Arg $arg, string $namespace, array $imports): ?string
     {
@@ -807,11 +854,18 @@ class UndescribedRegistryAudit implements DoctorAudit
      * The concrete a binding CLOSURE builds — `singleton(Contract::class, fn () => new Impl($dir))`.
      *
      * Deliberately shallow. Only the closure's returned expression is read, and only when it is a single
-     * `new X(...)` or a static call `X::make(...)` on a resolvable name. A closure that branches, that
-     * resolves out of the container, or that returns a variable names no concrete here and gets `null` —
-     * the same answer this method gave for every closure before it existed. Anything cleverer is
-     * dataflow analysis, and a shape test that guesses wrong produces a gate finding against a class the
-     * provider never built.
+     * `new X(...)` or a static call `X::make(...)` on a resolvable name. A closure that branches or that
+     * resolves out of the container names no concrete here and gets `null` — the same answer this method
+     * gave for every closure before it existed. Anything cleverer is dataflow analysis, and a shape test
+     * that guesses wrong produces a gate finding against a class the provider never built.
+     *
+     * **One exception, added by registry-kernel ticket 54 and no wider than the case that forced it:** a
+     * returned VARIABLE is followed when the closure assigns it exactly once, from a `new X(...)` or
+     * `X::make(...)`. `$registry = new OtioSchemaRegistry; $registry->register(...); return $registry;` is
+     * `new X` with seeding in between and nothing else — the seed-then-return spelling of the very shape
+     * this reader exists for. Exactly one assignment is the whole safety argument: a second assignment is a
+     * branch, and a branch has no single concrete to name, so it goes back to `null` rather than picking
+     * the first one it saw.
      *
      * The static-call form is not decoration: `ServedSchemaChain::overDirectories($dirs)` is one of the two
      * bindings this whole signal was written for. A static call's RETURN type is not consulted — the class
@@ -827,13 +881,19 @@ class UndescribedRegistryAudit implements DoctorAudit
         }
 
         $expr = null;
+        $body = [];
 
         if ($arg->value instanceof Node\Expr\ArrowFunction) {
             $expr = $arg->value->expr;
         } elseif ($arg->value instanceof Node\Expr\Closure) {
+            $body = $arg->value->stmts;
             /** @var Node\Stmt\Return_|null $return */
-            $return = (new NodeFinder)->findFirstInstanceOf($arg->value->stmts, Node\Stmt\Return_::class);
+            $return = (new NodeFinder)->findFirstInstanceOf($body, Node\Stmt\Return_::class);
             $expr = $return?->expr;
+        }
+
+        if ($expr instanceof Node\Expr\Variable && is_string($expr->name)) {
+            $expr = $this->soleAssignmentTo($expr->name, $body);
         }
 
         $class = match (true) {
@@ -847,6 +907,26 @@ class UndescribedRegistryAudit implements DoctorAudit
         }
 
         return $this->resolveName($class->toString(), $namespace, $imports);
+    }
+
+    /**
+     * The one expression a closure-local variable is ever assigned, or `null` when it is assigned zero
+     * times or more than once. See {@see concreteFromClosureArg()} for why "more than once" is a refusal
+     * rather than a first-wins guess.
+     *
+     * @param  array<int, Node\Stmt>  $body
+     */
+    protected function soleAssignmentTo(string $variable, array $body): ?Node\Expr
+    {
+        $assigned = [];
+
+        foreach ((new NodeFinder)->findInstanceOf($body, Node\Expr\Assign::class) as $assign) {
+            if ($assign->var instanceof Node\Expr\Variable && $assign->var->name === $variable) {
+                $assigned[] = $assign->expr;
+            }
+        }
+
+        return count($assigned) === 1 ? $assigned[0] : null;
     }
 
     /** An array-typed or array-defaulted instance property — the plural state a registry accumulates in. */

@@ -70,6 +70,7 @@ class UndescribedRegistryAuditTest extends TestCase
         string $declaration = '',
         string $contract = '',
         string $implements = '',
+        bool $binderIsTrait = false,
     ): array {
         $n = ++self::$plant;
         // "planted-scan" deliberately contains none of DEFAULT_EXCLUDED_PATHS' fragments.
@@ -91,18 +92,28 @@ class UndescribedRegistryAuditTest extends TestCase
         file_put_contents($registryFile = $this->root.'/PlantedRegistry.php', $registry);
         require $registryFile;
 
-        $provider = sprintf(
-            "<?php\nnamespace %s;\nuse Illuminate\\Support\\ServiceProvider;\nclass PlantedServiceProvider%d extends ServiceProvider {\npublic function register(): void {\n%s\n}\n}\n",
-            $namespace,
-            $n,
-            sprintf($binder, $n),
-        );
+        // A trait binder writes NO provider class at all — the point of the fixture is a file whose only
+        // declaration is a trait, which is exactly beam-ux's `Concerns/Wires*` shape.
+        $provider = $binderIsTrait
+            ? sprintf(
+                "<?php\nnamespace %s;\ntrait PlantedWires%d {\nprotected function register%d(): void {\n%s\n}\n}\n",
+                $namespace,
+                $n,
+                $n,
+                sprintf($binder, $n),
+            )
+            : sprintf(
+                "<?php\nnamespace %s;\nuse Illuminate\\Support\\ServiceProvider;\nclass PlantedServiceProvider%d extends ServiceProvider {\npublic function register(): void {\n%s\n}\n}\n",
+                $namespace,
+                $n,
+                sprintf($binder, $n),
+            );
         file_put_contents($this->root.'/PlantedServiceProvider.php', $provider);
 
         return [
             new UndescribedRegistryAudit([$this->root], $index ?? new RegistryIndex, excludedPaths: []),
             $namespace.'\\PlantedRegistry'.$n,
-            $namespace.'\\PlantedServiceProvider'.$n,
+            $namespace.'\\'.($binderIsTrait ? 'PlantedWires' : 'PlantedServiceProvider').$n,
         ];
     }
 
@@ -317,6 +328,75 @@ class UndescribedRegistryAuditTest extends TestCase
                 .'public function get(string $id): ?array { return null; }',
             binder: '$this->app->singleton(PlantedContract%1$d::class, fn ($app) => $app->make("planted"));',
             contract: 'interface PlantedContract%1$d { public function get(string $id): ?array; }',
+            implements: 'implements PlantedContract%1$d ',
+        );
+
+        $this->assertSame([], $audit->registries());
+    }
+
+    /**
+     * Registry-kernel ticket 54. A provider that splits `register()` across `Concerns\Wires*` TRAITS has no
+     * binding call inside any class node, and beam-ux does this for its whole registration surface — so
+     * three ledger rows were structurally unreachable and the audit reported a clean package.
+     */
+    public function test_a_binding_written_in_a_provider_trait_is_found(): void
+    {
+        [$audit, $registry, $trait] = $this->plant(binderIsTrait: true);
+
+        $rows = $audit->registries();
+
+        $this->assertSame([$registry], array_column($rows, 'registry'));
+        // The trait is what the finding names, because the trait is where the reader FINDS the binding.
+        $this->assertSame([$trait], array_column($rows, 'provider'));
+    }
+
+    public function test_a_trait_that_binds_nothing_is_not_read_as_a_provider(): void
+    {
+        // The signal is `$this->app-><binding method>()` in the trait's own body, not the file being a
+        // trait: a trait calling a same-named method on anything else contributes no rows.
+        [$audit] = $this->plant(
+            binder: '$this->registrar->singleton(PlantedRegistry%1$d::class);',
+            binderIsTrait: true,
+        );
+
+        $this->assertSame([], $audit->registries());
+    }
+
+    /**
+     * Registry-kernel ticket 54. `$registry = new X; $registry->register(...); return $registry;` — the
+     * seed-then-return spelling, live in `rushing/laravel-timeline-schema`'s provider.
+     */
+    public function test_a_closure_that_seeds_a_variable_and_returns_it_names_its_concrete(): void
+    {
+        [$audit, $registry] = $this->plant(
+            properties: '',
+            methods: 'public function __construct(protected string $directory = "/tmp") {} '
+                .'public function register(array $schema): void {} '
+                .'public function get(string $id): ?array { return null; }',
+            binder: '$this->app->singleton(PlantedContract%1$d::class, function ($app) { '
+                .'$registry = new PlantedRegistry%1$d("/tmp"); $registry->register([]); return $registry; });',
+            contract: 'interface PlantedContract%1$d { public function register(array $schema): void; '
+                .'public function get(string $id): ?array; }',
+            implements: 'implements PlantedContract%1$d ',
+        );
+
+        $this->assertSame([$registry], array_column($audit->registries(), 'concrete'));
+    }
+
+    public function test_a_closure_that_assigns_the_returned_variable_twice_names_no_concrete(): void
+    {
+        // Two assignments is a BRANCH, and a branch has no single concrete to name. Refusing beats picking
+        // the first one seen: a wrong concrete produces a gate finding against a class nobody built.
+        [$audit] = $this->plant(
+            properties: '',
+            methods: 'public function __construct(protected string $directory = "/tmp") {} '
+                .'public function register(array $schema): void {} '
+                .'public function get(string $id): ?array { return null; }',
+            binder: '$this->app->singleton(PlantedContract%1$d::class, function ($app) { '
+                .'$registry = new PlantedRegistry%1$d("/tmp"); '
+                .'if ($app) { $registry = $app->make("other"); } return $registry; });',
+            contract: 'interface PlantedContract%1$d { public function register(array $schema): void; '
+                .'public function get(string $id): ?array; }',
             implements: 'implements PlantedContract%1$d ',
         );
 
