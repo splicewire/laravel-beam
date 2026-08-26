@@ -359,6 +359,137 @@ class KeyTypeConformanceAuditTest extends TestCase
         $this->assertSame('uuid', SchemaKeyIndex::keyTypeOfClass(HostRole::class));
         $this->assertNull(SchemaKeyIndex::keyTypeOfClass('Vendor\Absent\Role'));
     }
+
+    // ---- Predicate 5: morph-key holder --------------------------------------------
+
+    /** Spatie's published `model_has_roles`, in the config-array spelling every host in the estate uses. */
+    private function morphPivot(string $morphKey): string
+    {
+        return "<?php\n\nreturn new class extends Migration {\n public function up(): void {\n"
+            ."  Schema::create(\$tableNames['model_has_roles'], function (Blueprint \$table) use (\$columnNames) {\n"
+            ."   \$table->unsignedBigInteger(\$pivotRole);\n"
+            ."   \$table->string('model_type');\n"
+            .'   '.$morphKey."\n  });\n }\n};\n";
+    }
+
+    /**
+     * The `~/Herd/fable` and `~/Herd/numero` defect, measured 2026-08-26: a bigint morph key against a
+     * uuid-keyed holder. Nothing declares the join, so `fk-target-disagreement` sees no foreign key to
+     * walk and every other predicate passes — the pivot has no primary key of its own to disagree about,
+     * and `users` agrees with its own model perfectly.
+     */
+    public function test_it_flags_a_bigint_morph_key_against_a_uuid_keyed_holder(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'database/migrations/2026_07_09_000000_create_permission_tables.php' => $this->morphPivot("\$table->unsignedBigInteger(\$columnNames['model_morph_key']);"),
+        ]);
+
+        $rows = $audit->disagreements();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('morph-key-holder-disagreement', $rows[0]['kind']);
+        $this->assertSame('model_has_roles', $rows[0]['table']);
+        $this->assertStringContainsString('model_has_roles.model_id', $rows[0]['detail']);
+    }
+
+    /** `~/Herd/audiostud`'s hand patch, which is the shape the other two were repaired to. */
+    public function test_a_uuid_morph_key_against_a_uuid_keyed_holder_is_clean(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'database/migrations/2026_07_09_000000_create_permission_tables.php' => $this->morphPivot("\$table->uuid(\$columnNames['model_morph_key']);"),
+        ]);
+
+        $this->assertSame([], $audit->disagreements());
+    }
+
+    /**
+     * Widening to `string` is the repair this predicate must refuse, and the reason is the whole point of
+     * the check: Postgres coerces a *bound* value happily but has no cast between two joined **columns**.
+     */
+    public function test_widening_the_morph_key_to_string_is_still_a_finding(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'database/migrations/2026_07_09_000000_create_permission_tables.php' => $this->morphPivot("\$table->string(\$columnNames['model_morph_key']);"),
+        ]);
+
+        $rows = $audit->disagreements();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('morph-key-holder-disagreement', $rows[0]['kind']);
+    }
+
+    /**
+     * The generalisation this predicate deliberately does not make. `activity_log.subject_id` is
+     * polymorphic on purpose — it holds the key of any model in the estate, so there is no holder to
+     * compare it against and a blanket rule would flag it on day one.
+     */
+    public function test_an_open_polymorphic_column_is_not_flagged(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'database/migrations/2020_01_01_000000_create_activity_log_table.php' => "<?php\n\nSchema::create('activity_log', function (Blueprint \$table) {\n \$table->id();\n \$table->string('subject_type');\n \$table->unsignedBigInteger('subject_id');\n});\n",
+        ]);
+
+        $this->assertSame([], $audit->disagreements());
+    }
+
+    /** No `_type` sibling means no polymorphic relation — an ordinary column that merely ends in `_id`. */
+    public function test_an_id_column_without_a_type_sibling_is_not_a_morph_key(): void
+    {
+        $this->root = sys_get_temp_dir().'/beam-keytype-'.uniqid();
+        @mkdir($this->root.'/database/migrations', 0777, true);
+        file_put_contents(
+            $this->root.'/database/migrations/2026_07_09_000000_create_permission_tables.php',
+            "<?php\n\nSchema::create(\$tableNames['model_has_roles'], function (Blueprint \$table) use (\$columnNames) {\n \$table->unsignedBigInteger('model_id');\n});\n",
+        );
+
+        $this->assertSame([], (new SchemaKeyIndex([$this->root]))->morphKeys());
+    }
+
+    /** A host that genuinely lets a differently-keyed model hold roles makes that a visible decision. */
+    public function test_the_morph_holder_registry_is_configurable(): void
+    {
+        $this->root = sys_get_temp_dir().'/beam-keytype-'.uniqid();
+        @mkdir($this->root.'/database/migrations', 0777, true);
+        @mkdir($this->root.'/app/Models', 0777, true);
+        file_put_contents(
+            $this->root.'/database/migrations/0001_01_01_000000_create_users_table.php',
+            $this->usersMigration("\$table->uuid('id')->primary();"),
+        );
+        file_put_contents($this->root.'/app/Models/User.php', $this->userModel('HasFactory, HasUuids'));
+        file_put_contents(
+            $this->root.'/database/migrations/2026_07_09_000000_create_permission_tables.php',
+            $this->morphPivot("\$table->unsignedBigInteger(\$columnNames['model_morph_key']);"),
+        );
+
+        $audit = new KeyTypeConformanceAudit(new SchemaKeyIndex([$this->root]), ['users'], [], []);
+
+        $this->assertSame([], $audit->disagreements());
+    }
+
+    /** Laravel's own helpers declare both halves at once, and their type is fixed by which one was called. */
+    public function test_the_index_reads_the_morphs_helpers(): void
+    {
+        $this->root = sys_get_temp_dir().'/beam-keytype-'.uniqid();
+        @mkdir($this->root.'/database/migrations', 0777, true);
+        file_put_contents(
+            $this->root.'/database/migrations/2026_07_09_000000_create_permission_tables.php',
+            "<?php\n\nSchema::create(\$tableNames['model_has_roles'], function (Blueprint \$table) {\n \$table->uuidMorphs('model');\n});\n",
+        );
+
+        $keys = (new SchemaKeyIndex([$this->root]))->morphKeys();
+
+        $this->assertCount(1, $keys);
+        $this->assertSame('model_id', $keys[0]['column']);
+        $this->assertSame('uuid', $keys[0]['type']);
+    }
 }
 
 /** Stands in for `Spatie\Permission\Models\Role`: a plain Eloquent model, auto-incrementing by default. */

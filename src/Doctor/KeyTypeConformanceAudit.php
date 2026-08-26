@@ -41,6 +41,9 @@ use Splicewire\Beam\Doctor\Support\SchemaKeyIndex;
  *    a table whose primary key is a uuid/ulid/string, or the reverse.
  *  - **`third-party-key-binding`** — an estate-published migration keys a table by uuid while the model
  *    that reads it lives in `vendor/` and keys it by integer. See {@see DEFAULT_THIRD_PARTY_BINDINGS}.
+ *  - **`morph-key-holder-disagreement`** — a polymorphic `<prefix>_id` is declared one type while the
+ *    table whose key it holds is keyed another. The one join in the estate the schema never declares, so
+ *    `fk-target-disagreement` cannot reach it by construction. See {@see DEFAULT_MORPH_KEY_HOLDERS}.
  *
  * `foreignIdFor(Model::class)` is deliberately **not** flagged directly: it derives its type from the
  * model, so it is correct exactly when the model is, and the model is what the first predicate already
@@ -134,17 +137,61 @@ class KeyTypeConformanceAudit implements DoctorAudit
         'permissions' => ['class' => 'Spatie\Permission\Models\Permission', 'config' => 'permission.models.permission'],
     ];
 
+    /**
+     * Morph pivots whose **holder** — the table whose primary key `<prefix>_id` stores — is fixed by
+     * convention: `pivot table => holder table`.
+     *
+     * ## Why a morph key needs its own predicate
+     * `fk-target-disagreement` walks declared foreign keys, and a morph key declares none: it points at
+     * nothing, by construction, because the thing it points at is named in a *sibling column at runtime*.
+     * So the one join in the estate that no schema states is the one no predicate could see, and it went
+     * unseen — measured 2026-08-26 at `~/Herd/fable` and `~/Herd/numero`, where
+     * `model_has_roles.model_id` is `unsignedBigInteger` while `users.id` is `uuid('id')->primary()`.
+     * `HasRoles::roles()` is a `morphToMany`, so `role()`, `permission()` and any `whereHas('roles')`
+     * emit a correlated subquery comparing the two **columns** directly:
+     *
+     *     select * from "users" where exists (
+     *         select * from "roles"
+     *         inner join "model_has_roles" on "roles"."id" = "model_has_roles"."role_id"
+     *         where "users"."id" = "model_has_roles"."model_id" ...)
+     *
+     * Postgres has no implicit `uuid ↔ bigint` cast, so every one of those dies with `operator does not
+     * exist: uuid = bigint`. Both hosts run SQLite locally, which stores the mismatch without complaint —
+     * the same "ships in dev, dies on the first real database" shape this whole audit exists for.
+     *
+     * ## Why a named registry, and not "every morph key must match `users`"
+     * A morph key is polymorphic *on purpose*: `activity_log.subject_id` legitimately holds the key of
+     * any model in the estate, and there is no single holder to compare it against. Generalising would
+     * flag every such column on day one and the check would be off within the week — the same failure the
+     * class docblock rejects a blanket uuid mandate for. These two entries are different because the
+     * holder is not open: a permission pivot holds the key of whatever model uses `HasRoles`, and the
+     * estate federates identity on `users` (the same premise {@see DEFAULT_UUID_TABLES} rests on). A host
+     * that genuinely lets a differently-keyed model hold roles sets `beam.core.schema.morph_key_holders`
+     * and makes that a visible decision.
+     *
+     * Reported only when **both** types are known and the holder's key type is actually indexed, so a
+     * host whose `users` no migration in scope creates gets no finding rather than a guess.
+     *
+     * @var array<string, string>
+     */
+    public const DEFAULT_MORPH_KEY_HOLDERS = [
+        'model_has_roles' => 'users',
+        'model_has_permissions' => 'users',
+    ];
+
     /** Registry entries that named a class this host cannot load — skipped, and reported as skipped. */
     protected int $unresolvedBindings = 0;
 
     /**
      * @param  list<string>|null  $uuidTables
      * @param  array<string, array{class: string, config?: string}>|null  $thirdPartyBindings
+     * @param  array<string, string>|null  $morphKeyHolders
      */
     public function __construct(
         protected SchemaKeyIndex $index,
         protected ?array $uuidTables = null,
         protected ?array $thirdPartyBindings = null,
+        protected ?array $morphKeyHolders = null,
     ) {}
 
     public static function forApp(?SchemaKeyIndex $index = null): self
@@ -153,6 +200,7 @@ class KeyTypeConformanceAudit implements DoctorAudit
             $index ?? SchemaKeyIndex::forApp(),
             (array) config('beam.core.schema.uuid_tables', self::DEFAULT_UUID_TABLES),
             (array) config('beam.core.schema.third_party_bindings', self::DEFAULT_THIRD_PARTY_BINDINGS),
+            (array) config('beam.core.schema.morph_key_holders', self::DEFAULT_MORPH_KEY_HOLDERS),
         );
     }
 
@@ -166,6 +214,12 @@ class KeyTypeConformanceAudit implements DoctorAudit
     protected function thirdPartyBindings(): array
     {
         return $this->thirdPartyBindings ?? self::DEFAULT_THIRD_PARTY_BINDINGS;
+    }
+
+    /** @return array<string, string> */
+    protected function morphKeyHolders(): array
+    {
+        return $this->morphKeyHolders ?? self::DEFAULT_MORPH_KEY_HOLDERS;
     }
 
     /**
@@ -338,6 +392,47 @@ class KeyTypeConformanceAudit implements DoctorAudit
                     $fk['source'],
                     $fk['references'],
                     $target,
+                ),
+            ];
+        }
+
+        $holders = $this->morphKeyHolders();
+
+        foreach ($this->index->morphKeys() as $morph) {
+            $holder = $holders[$morph['table']] ?? null;
+
+            if ($holder === null || $morph['type'] === null) {
+                continue;
+            }
+
+            $target = $this->index->keyTypeOf($holder);
+
+            if ($target === null || $target === $morph['type']) {
+                continue;
+            }
+
+            $rows[] = [
+                'kind' => 'morph-key-holder-disagreement',
+                'table' => $morph['table'],
+                'detail' => sprintf(
+                    '`%s.%s` is declared %s (%s) but holds the primary key of `%s`, which is %s. A morph '
+                    .'key declares no foreign key, so nothing in the schema states this join and no '
+                    .'foreign-key check can reach it — but Eloquent joins on it anyway: `morphToMany` '
+                    .'scopes emit `where "%s"."id" = "%s"."%s"` comparing the two columns directly, and '
+                    .'Postgres has no implicit %s cast, so every such query dies with `operator does not '
+                    .'exist`. SQLite stores it without complaint, which is why this ships in dev. Match '
+                    .'the column to the holder — widening it to `string` does not help, because a column '
+                    .'Eloquent joins on has none of the coercion a bound `where ... = ?` gets.',
+                    $morph['table'],
+                    $morph['column'],
+                    $morph['type'],
+                    $morph['source'],
+                    $holder,
+                    $target,
+                    $holder,
+                    $morph['table'],
+                    $morph['column'],
+                    $target.' ↔ '.$morph['type'],
                 ),
             ];
         }

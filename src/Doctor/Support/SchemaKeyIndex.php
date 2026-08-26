@@ -26,11 +26,42 @@ class SchemaKeyIndex
     /** Column-declaration forms that mean "integer primary key". */
     public const INT_PK_FORMS = ['id', 'bigIncrements', 'increments', 'mediumIncrements', 'smallIncrements', 'tinyIncrements'];
 
+    /**
+     * Column-declaration forms a morph key can take, mapped to the key type they compare as. An
+     * unlisted form indexes as `null` — unknown, therefore skipped, never guessed.
+     */
+    public const MORPH_KEY_TYPES = [
+        'uuid' => 'uuid',
+        'foreignUuid' => 'uuid',
+        'ulid' => 'ulid',
+        'foreignUlid' => 'ulid',
+        'unsignedBigInteger' => 'int',
+        'bigInteger' => 'int',
+        'unsignedInteger' => 'int',
+        'integer' => 'int',
+        'foreignId' => 'int',
+        'string' => 'string',
+        'char' => 'string',
+    ];
+
     /** @var array<string, array{key_type: string|null, source: string, inferred_name: bool, models: list<array{class: string, fqcn: string, key_type: string|null}>}> */
     private array $tables = [];
 
     /** @var list<array{table: string, column: string, type: string|null, source: string, references: string}> */
     private array $foreignKeys = [];
+
+    /**
+     * Morph-key columns — the `<name>_id` half of a polymorphic pair, indexed with the type the migration
+     * declares for it.
+     *
+     * Separate from {@see $foreignKeys} because a morph key **is not a foreign key**: it points at no
+     * table declaratively, so there is nothing for a foreign-key walk to follow. That is exactly why the
+     * mismatch it can carry is invisible — see `morph-key-holder-disagreement` in
+     * {@see KeyTypeConformanceAudit}, which supplies the holder this index cannot infer.
+     *
+     * @var list<array{table: string, column: string, type: string|null, source: string}>
+     */
+    private array $morphKeys = [];
 
     /** @var list<array{class: string, fqcn: string, key_type: string|null, table: string|null}> */
     private array $models = [];
@@ -72,6 +103,12 @@ class SchemaKeyIndex
     public function foreignKeys(): array
     {
         return $this->foreignKeys;
+    }
+
+    /** @return list<array{table: string, column: string, type: string|null, source: string}> */
+    public function morphKeys(): array
+    {
+        return $this->morphKeys;
     }
 
     public function keyTypeOf(string $table): ?string
@@ -342,6 +379,64 @@ class SchemaKeyIndex
                     ];
                 }
             }
+
+            $this->indexMorphKeys($block, $table, $file);
+        }
+    }
+
+    /**
+     * The morph-key columns one `Schema::create` block declares.
+     *
+     * A morph key is only recognised **in pairs** — the block must declare a `<prefix>_type` string
+     * column, and that is what names the prefix. Without the `_type` sibling there is no polymorphic
+     * relation, only an ordinary column that happens to end in `_id`, and reporting one of those would
+     * be a fabricated finding.
+     *
+     * Two spellings for the id half, because the estate uses both. The **literal** `<prefix>_id` is the
+     * ordinary case. The **config-array** `$columnNames['<prefix>_morph_key']` is spatie's published
+     * shape and the one `create_permission_tables` uses estate-wide — indexed under the conventional
+     * column name for the same reason {@see indexMigration()} indexes a config-array *table* name under
+     * its key: the lookup key is itself the conventional name, so the worst case is a renamed column
+     * carrying a slightly wrong label on a real finding, never a finding about a column that does not
+     * exist.
+     *
+     * Laravel's `morphs()`/`uuidMorphs()`/`ulidMorphs()` helpers declare both halves at once and are read
+     * directly, since their type is fixed by which helper was called.
+     */
+    private function indexMorphKeys(string $block, string $table, string $file): void
+    {
+        $record = function (string $column, ?string $type) use ($table, $file): void {
+            $this->morphKeys[] = [
+                'table' => $table,
+                'column' => $column,
+                'type' => $type,
+                'source' => basename($file),
+            ];
+        };
+
+        if (preg_match_all('/->(morphs|uuidMorphs|ulidMorphs)\(\s*[\'"](\w+)[\'"]\s*\)/', $block, $helpers, PREG_SET_ORDER)) {
+            foreach ($helpers as $helper) {
+                $record($helper[2].'_id', match ($helper[1]) {
+                    'uuidMorphs' => 'uuid',
+                    'ulidMorphs' => 'ulid',
+                    default => 'int',
+                });
+            }
+        }
+
+        if (! preg_match_all('/->string\(\s*[\'"](\w+)_type[\'"]\s*\)/', $block, $types, PREG_SET_ORDER)) {
+            return;
+        }
+
+        foreach ($types as $type) {
+            $prefix = preg_quote($type[1], '/');
+            $name = '(?:[\'"]'.$prefix.'_id[\'"]|\$\w+\[\s*[\'"]'.$prefix.'_morph_key[\'"]\s*\])';
+
+            if (! preg_match('/->(\w+)\(\s*'.$name.'\s*\)/', $block, $decl)) {
+                continue;
+            }
+
+            $record($type[1].'_id', self::MORPH_KEY_TYPES[$decl[1]] ?? null);
         }
     }
 
