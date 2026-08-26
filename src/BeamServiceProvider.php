@@ -98,6 +98,7 @@ use Splicewire\Beam\Install\MigrationFiles;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Models\BeamSubmission;
+use Splicewire\Beam\Models\CentralActivityLog;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\OpenApi\ConfiguredArtifactSpecSource;
 use Splicewire\Beam\OpenApi\OpenApiSpecSource;
@@ -274,6 +275,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
     public function packageRegistered(): void
     {
+        // Core pins a LITERAL connection name on {@see \Splicewire\Beam\Models\CentralActivityLog};
+        // make that name resolve everywhere before anything can resolve the model.
+        // {@see self::registerCentralConnectionAlias()}
+        $this->registerCentralConnectionAlias();
+
         // The Beam instance (beam-facade ticket 05) — the object the Splicewire\Beam\Facades\Beam facade
         // proxies to. FIRST, because this provider itself calls Beam::table(...) a few lines down and the
         // facade resolves through this binding.
@@ -637,6 +643,72 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->registerFacadeConformanceAudits();
         $this->registerRegistryConformanceAudits();
         $this->registerConformanceManifest();
+    }
+
+    /**
+     * Make `central` resolve at a host that never defined it, by registering it as a copy of the
+     * host's DEFAULT connection.
+     *
+     * HOMED IN CORE, moved here from beam-accounts by beam-facade ticket 96. The ruling is about
+     * package layering, not about `central`: **the tier that DECLARES a pin owns making that pin
+     * resolvable**, and core declares one — {@see CentralActivityLog} pins
+     * `protected $connection = 'central'` (`@central-floor auth`), for the same reason the model
+     * itself lives in core rather than in any one engine (its subjects span beam-accounts and
+     * beam-tenancy, its consumers span tower and beam-workflows; core is the only tier all of them
+     * already depend on). So this is not an auth-shaped default pushed into the layer below auth —
+     * it serves core's OWN pin, and every other pin in the family inherits it for free.
+     *
+     * That inheritance is total, and it is what made the accounts home look sufficient for three
+     * days. The estate's 20 live pins sit in six packages, and the four beyond core and accounts all
+     * reach beam-accounts TRANSITIVELY — beam-commerce → beam-tenancy → beam-accounts, beam-embed →
+     * beam-commerce/beam-tenancy → beam-accounts, tower directly. 96's census measured DIRECT
+     * requires only and therefore read 7 pins as uncovered; the true uncovered surface was exactly
+     * ONE, this package's, because core is the only tier that requires nothing.
+     *
+     * That one pin was live, not hypothetical (measured 2026-08-26): `CentralActivityLog::query()`
+     * threw `InvalidArgumentException: Database connection [central] not configured.` at FIVE Herd
+     * hosts installing beam-core without beam-accounts — beam-pilot-gcp-cloud-run, calcucrypt,
+     * entreport, stephenrushing, thingsontv. A sixth, standwell, resolved only because it hand-copies
+     * a `central` block, which is the drift-prone precedent this alias exists to retire. Leaving them
+     * unaliased would have meant ruling those hosts misconfigured, and beam-facade ticket 26 already
+     * ruled beamless / git-resolved site shapes SUPPORTED.
+     *
+     * Deliberately an ALIAS registered by the package, not a host-side duplicated connection block
+     * (the standwell / splicewire-app precedent): Laravel has no connection aliasing, so every
+     * hand-copied block drifts independently from the default it is supposed to mirror, and adopting
+     * it means a 10-root retrofit plus a permanent scaffold obligation in four starters. Also
+     * deliberately NOT a `getConnectionName()` override reading config — that converts the pin from a
+     * property into a method, and `CentralPinJustificationAudit`'s `FORM_PROPERTY` stops matching it,
+     * manufacturing the exact "a pin that does not look like a pin" failure the audit was built for.
+     *
+     * A multi-tenant broker that defines its own `central` block wins and is untouched. A
+     * single-tenant host changes nothing and `central === default` silently. Runs in `register()`
+     * (not boot) so the alias is in place before any provider's boot phase can resolve a model.
+     *
+     * Two no-op guards, both for hosts where a copy would be a lie rather than an alias: a host whose
+     * `database.default` IS `central` has nothing to copy FROM (the missing block is the default block
+     * — a real misconfiguration, and its own error message is more useful than ours), and a host whose
+     * default connection has no config block at all is broken independently of this package.
+     */
+    protected function registerCentralConnectionAlias(): void
+    {
+        if (config('database.connections.central') !== null) {
+            return;
+        }
+
+        $default = config('database.default');
+
+        if ($default === null || $default === 'central') {
+            return;
+        }
+
+        $block = config("database.connections.{$default}");
+
+        if (! is_array($block)) {
+            return;
+        }
+
+        config(['database.connections.central' => $block]);
     }
 
     /**
