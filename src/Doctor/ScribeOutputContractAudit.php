@@ -15,7 +15,9 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *  1. **Scribe stays an emitter.** `type` must be `laravel` and `laravel.add_routes` must be false.
  *     A host that flips either silently grows a second, unbranded docs UI at a URL beam does not own —
  *     which also collides with the entry renderer's catch-all (ADR-0209). The failure mode is invisible
- *     precisely because it *works*: a docs page appears, just not the one this estate renders.
+ *     precisely because it *works*: a docs page appears, just not the one this estate renders. Read as
+ *     **effective** values against Scribe's own defaults, so a host that published nothing is reported
+ *     as mounting `/docs` rather than as merely un-configured — see {@see emitterOnly()}.
  *  2. **The artifact exists.** With none, `beam/openapi.{yaml,json}` 404 — correct behaviour, and a
  *     broken OTB promise. Generation happens at install and deploy, never on request.
  *  3. **Deploy-time regeneration is wired.** A composer script invoking `scribe:generate`, so the spec
@@ -154,21 +156,32 @@ class ScribeOutputContractAudit implements DoctorAudit
     }
 
     /**
-     * Check 1. A host that has never published the stub has no `scribe.type` at all — which is not a
-     * violation, it is an un-configured host, and the artifact check below is the one that will speak up.
+     * Check 1, read as EFFECTIVE values rather than as written ones (beam-docs-satellite ticket 38).
+     *
+     * This check used to treat a missing `scribe` config as "an un-configured host, not a violation" and
+     * return early. That was exactly backwards, and it was measured to be: on a fresh
+     * `laravel-beam-starter` with no published stub, `GET /docs` **500s** on a missing `scribe.index`
+     * blade view, and the seeded docs entry underneath it is never reached. Scribe's own unpublished
+     * defaults are `type => 'laravel'`, `laravel.add_routes => TRUE`, `laravel.docs_url => '/docs'`
+     * (Knuckles\Scribe\ScribeServiceProvider::bootRoutes()), so "no config" is not the absence of a
+     * docs UI — it is the *worst* case of one, mounted at the exact URL beam seeds its docs subtree at.
+     *
+     * Hence both defaults below are **Scribe's**, not beam's. The old `config('scribe.laravel.add_routes',
+     * false)` fell back to `false` where the library falls back to `true`, so the audit answered a
+     * different question than the router did — the same shape as the dead-config-key sweep (a test
+     * seeding the key it read) and ticket 21's "an OTB promise is only proven on a bare host".
+     *
+     * Still advisory, for the reason in the class docblock: a host that genuinely wants Scribe's UI is
+     * making a defensible choice. The publish hint is folded into the finding rather than short-circuiting
+     * it, so the message names both the live mount and the one-line fix.
      */
     private function emitterOnly(): Finding
     {
-        $type = config('scribe.type');
+        $published = config('scribe.type') !== null;
 
-        if ($type === null) {
-            return Finding::warn(
-                self::EMITTER,
-                'No `scribe` config on this host — publish beam\'s stub with '.
-                '`php artisan vendor:publish --tag=beam-scribe`, which ships the emitter-only defaults '.
-                'and the `api/*` exposure boundary.',
-            );
-        }
+        $type = (string) config('scribe.type', 'laravel');
+        $addRoutes = (bool) config('scribe.laravel.add_routes', true);
+        $docsUrl = (string) config('scribe.laravel.docs_url', '/docs');
 
         $problems = [];
 
@@ -177,18 +190,26 @@ class ScribeOutputContractAudit implements DoctorAudit
                 'into public/docs, and the `external_*` types hand the spec to a third-party UI';
         }
 
-        if (config('scribe.laravel.add_routes', false)) {
-            $problems[] = '`scribe.laravel.add_routes` is true — Scribe mounts its own /docs route, a '.
-                'second unbranded docs UI at a URL beam does not own (and one that collides with the '.
-                'entry renderer\'s catch-all)';
+        if ($addRoutes && str_ends_with($type, 'laravel')) {
+            $problems[] = "Scribe mounts its own HTML docs route at `{$docsUrl}` (`scribe.laravel.".
+                'add_routes` is true) — a second unbranded docs UI at a URL beam does not own, which '.
+                "shadows any entry seeded at `{$docsUrl}` because the entry renderer's catch-all is ".
+                'mounted last by construction (ADR-0209 §2)';
         }
 
         if ($problems !== []) {
+            $fix = $published
+                ? 'Set `type` => `laravel` and `laravel.add_routes` => false in config/scribe.php.'
+                : 'This host has NO config/scribe.php, so these are Scribe\'s own unpublished defaults — '.
+                    'publish beam\'s stub with `php artisan vendor:publish --tag=beam-scribe` (or re-run '.
+                    '`splicewire:beam:install`, which does it for you), which ships the emitter-only pair '.
+                    'and the exposure boundary.';
+
             return Finding::warn(
                 self::EMITTER,
                 'Scribe is producing more than an artifact: '.implode('; ', $problems).
                 '. Beam serves the spec at beam/openapi.{yaml,json} and renders it with Scalar (ADR-0028). '.
-                'Advisory — a host that deliberately wants Scribe\'s own UI is free to keep this.',
+                $fix.' Advisory — a host that deliberately wants Scribe\'s own UI is free to keep this.',
             );
         }
 

@@ -73,6 +73,37 @@ class ScribeOutputContractAuditTest extends TestCase
         $this->assertStringContainsString('beam-scribe', $finding->detail);
     }
 
+    /**
+     * beam-docs-satellite ticket 38. An unpublished host is not "un-configured" — Scribe's own defaults
+     * put an HTML docs UI at `/docs`, which is where beam's install seeds the docs subtree, so the
+     * finding has to name the live mount and not just the missing file.
+     */
+    public function test_an_unpublished_host_is_reported_as_mounting_scribes_docs_route(): void
+    {
+        config(['scribe' => null]);
+
+        $detail = $this->finding(self::EMITTER)->detail;
+
+        $this->assertStringContainsString('add_routes', $detail);
+        $this->assertStringContainsString('/docs', $detail);
+        $this->assertStringContainsString('shadows', $detail);
+    }
+
+    /**
+     * The one-character version of the same bug: the check used to default `add_routes` to FALSE where
+     * `ScribeServiceProvider::bootRoutes()` defaults it to TRUE, so a published config that simply omits
+     * the key passed the audit while the router mounted the route.
+     */
+    public function test_a_published_config_omitting_add_routes_is_read_with_scribes_default(): void
+    {
+        config(['scribe' => ['type' => 'laravel', 'laravel' => ['docs_url' => '/docs']]]);
+
+        $finding = $this->finding(self::EMITTER);
+
+        $this->assertSame(DoctorStatus::Warn, $finding->status);
+        $this->assertStringContainsString('add_routes', $finding->detail);
+    }
+
     public function test_the_emitter_only_pair_passes(): void
     {
         $this->assertSame(DoctorStatus::Pass, $this->finding(self::EMITTER)->status);
