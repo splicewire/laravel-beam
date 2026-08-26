@@ -20,6 +20,7 @@ use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryIndex;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
 
 /**
@@ -41,8 +42,10 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *
  * ## The checks
  *
- * Five checks, ONE check key ({@see CHECK}), each finding naming which check failed (14 D9) — the estate's
- * audits are single-purpose and this stays one purpose: *is this declaration complete?*
+ * Six checks, ONE check key ({@see CHECK}), each finding naming which check failed (14 D9) — the estate's
+ * audits are single-purpose and this stays one purpose: *is this declaration complete, and does it hold?*
+ * Five ask that of a declaration in isolation; {@see CHECK_SHADOW} asks it of the described set as a whole,
+ * which is the one question no declaration can answer about itself.
  *
  *   - {@see CHECK_CONTRACT} — `implements Registry`. See the sequencing note below; this is the one check
  *     that reports rather than blocks today.
@@ -54,9 +57,13 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *     argued policies for those). The runtime half throws at `describe()` time under `OnDuplicate::Reject`;
  *     this is the static half ticket 20 D7 handed here, and it fires before a boot rather than during one.
  *   - {@see CHECK_ARITY} — `arity` written at the declaration site.
+ *   - {@see CHECK_SHADOW} — no described registry holds an entry at an address a NESTED described registry
+ *     owns. The kernel refuses this at `describe()` time, but a registry is filled by its registrars after
+ *     it is described, so the entry that collides usually does not exist yet at that moment. This is the
+ *     half of that check only a post-boot reader can hold. See {@see shadowedEntries()}.
  *   - {@see CHECK_ON_DUPLICATE} — `onDuplicate` written at the declaration site rather than silently
- *     inherited. The estate ships all three policies with argued docblocks (`LensRegistry` throws, tower's
- *     `CapabilityRegistry` admits, `ParticleResourceRegistry` overwrites), so an UNWRITTEN one is not a
+ *     inherited. The estate ships all three policies with argued docblocks (`LensRegistry` throws,
+ *     `ResourceRenderingRegistry` admits, `ParticleResourceRegistry` overwrites), so an UNWRITTEN one is not a
  *     considered default, it is a guess that reads as a decision. Measured before landing: every one of the
  *     ~50 declarations in the estate already writes it, so this check ratchets a good state rather than
  *     opening a backlog.
@@ -123,6 +130,8 @@ class RegistryConformanceAudit implements DoctorAudit
 
     public const CHECK_ON_DUPLICATE = 'on-duplicate';
 
+    public const CHECK_SHADOW = 'shadowed-entry';
+
     /**
      * Constructor positions of {@see IsRegistry}, so a POSITIONAL declaration is read the same as a named
      * one. `ReflectionAttribute::getArguments()` reports exactly what the author wrote — which is the whole
@@ -156,6 +165,23 @@ class RegistryConformanceAudit implements DoctorAudit
             }
         }
 
+        foreach ($this->shadowedEntries() as $shadow) {
+            $findings[] = Finding::fail(self::CHECK, sprintf(
+                '[%s] `%s` is registered in the registry rooted `%s`, but `%s` is described at `%s` — so a '.
+                'read through the index routes that key to `%s` and never sees the entry, while a read '.
+                'straight off `%s` still answers with it. One absolute key, two answers, depending on which '.
+                'door you entered. Move the entry into the registry that owns that branch, or move the '.
+                'branch.',
+                self::CHECK_SHADOW,
+                $shadow['key'],
+                $shadow['shallow_root'],
+                $this->shortName($shadow['deep']),
+                $shadow['deep_root'],
+                $this->shortName($shadow['deep']),
+                $this->shortName($shadow['shallow']),
+            ));
+        }
+
         if ($findings !== []) {
             return $findings;
         }
@@ -179,10 +205,25 @@ class RegistryConformanceAudit implements DoctorAudit
     }
 
     /**
-     * Every `#[IsRegistry]`-declaring class this host composes, with the checks it fails.
+     * Every registry this host composes — declared by attribute or described into the index — with the
+     * checks it fails.
      *
      * Sorted by FQCN so a re-run with no code change reports in a byte-identical order; neither container
      * binding order nor filesystem iteration order is stable enough to compare against.
+     *
+     * ## A registry that declared itself at RUNTIME still gets a row
+     *
+     * {@see population()} no longer filters described registries through a class-attribute read, so a
+     * member can arrive here with no attribute to reflect: its declaration was passed to
+     * `BasicRegistry::__construct()` as a value (registry-kernel 26 D2). {@see IsRegistry}'s constructor
+     * makes `root`, `of` and `arity` REQUIRED, so for such a registry those three are written by
+     * construction — the type system enforces exactly what {@see CHECK_ROOT} and {@see CHECK_ARITY} exist
+     * to check, and there is no weaker reading of "written" available.
+     *
+     * `onDuplicate` is the one argument that defaults, and an instance cannot say whether the author wrote
+     * `Supersede` or inherited it. That check is therefore SKIPPED for a runtime declaration rather than
+     * guessed — see {@see failuresFor()}. A miss is recoverable; a gate failing a registry that did write
+     * the argument is not, and this audit gates.
      *
      * @return list<array{registry: string, root: string, package: string|null, provider: string|null, file: string|null, line: int|null, failures: list<string>}>
      */
@@ -193,13 +234,16 @@ class RegistryConformanceAudit implements DoctorAudit
 
         foreach ($population as $fqcn) {
             $attribute = $this->attributeOf($fqcn);
+            $runtime = $attribute === null ? $this->describedDeclaration($fqcn) : null;
 
-            if ($attribute === null) {
+            if ($attribute === null && $runtime === null) {
                 continue;
             }
 
-            $written = $this->writtenArguments($attribute);
-            $declared = $this->instantiate($attribute);
+            $written = $attribute !== null
+                ? $this->writtenArguments($attribute)
+                : ['root' => $runtime?->root, 'of' => $runtime?->of, 'arity' => $runtime?->arity];
+            $declared = $attribute !== null ? $this->instantiate($attribute) : $runtime;
             $location = $this->locate($fqcn);
 
             $rows[$fqcn] = [
@@ -209,7 +253,7 @@ class RegistryConformanceAudit implements DoctorAudit
                 'provider' => $location['provider'],
                 'file' => $location['file'],
                 'line' => $location['line'],
-                'failures' => $this->failuresFor($fqcn, $written, $declared, $population),
+                'failures' => $this->failuresFor($fqcn, $written, $declared, $population, $attribute === null),
             ];
         }
 
@@ -230,11 +274,31 @@ class RegistryConformanceAudit implements DoctorAudit
 
     /**
      * The FQCNs this composition declares as registries: every class-string in the live binding table
-     * carrying the attribute, plus every owner already described into the index.
+     * carrying the attribute, plus **every** owner already described into the index.
      *
      * The index is read UNFILTERED — scope is a structural question, and an authorizer narrowing it would
      * silently shrink what the gate governs (the same argument {@see UndescribedRegistryAudit::governedRoots()}
      * makes).
+     *
+     * ## Described IS the population (registry-kernel 26 D5, landed by 49)
+     *
+     * The index branch used to filter its owners back out through {@see attributeOf()}, so a registry had
+     * to be described AND have a class carrying the attribute. That is this map's recurring defect class —
+     * *enforcement keyed to where a declaration physically sits rather than to what is live* — and a
+     * registry that reached the index is demonstrably a registry: `describe()` refuses a store that cannot
+     * say what root it owns, which is the same declaration this audit is checking. The filter could only
+     * ever subtract true members.
+     *
+     * The two populations it was dropping, both sanctioned:
+     *
+     *   - a boot-time **runtime-rooted** registry — a `BasicRegistry` constructed with an inline
+     *     {@see IsRegistry}, which is neither a container binding nor an attribute-carrying owner (26 D2);
+     *   - a **bound subclass** of a declared registry. That one is now caught from both ends: 42 taught
+     *     {@see attributeOf()} the parent walk, and dropping this filter means a described subclass is
+     *     population whether or not PHP inherited anything.
+     *
+     * The binding branch keeps its filter, and must: a container binding carries no index membership to
+     * lean on, so the attribute is the only thing distinguishing a registry from the other ~900 bindings.
      *
      * @return list<string>
      */
@@ -251,7 +315,7 @@ class RegistryConformanceAudit implements DoctorAudit
         foreach ($this->index->unfiltered()->keys() as $key) {
             $owner = $this->index->owner($key);
 
-            if ($owner !== null && $this->attributeOf($owner::class) !== null) {
+            if ($owner !== null) {
                 $found[$owner::class] = true;
             }
         }
@@ -265,9 +329,12 @@ class RegistryConformanceAudit implements DoctorAudit
     /**
      * @param  array<string, mixed>  $written  arguments actually written at the declaration site
      * @param  list<string>  $population
+     * @param  bool  $runtimeDeclared  the declaration is a live {@see IsRegistry} instance rather than a
+     *                                 class attribute, so `onDuplicate` is unreadable — see
+     *                                 {@see declarations()}
      * @return list<string>
      */
-    protected function failuresFor(string $fqcn, array $written, ?IsRegistry $declared, array $population): array
+    protected function failuresFor(string $fqcn, array $written, ?IsRegistry $declared, array $population, bool $runtimeDeclared = false): array
     {
         $failures = [];
 
@@ -285,11 +352,137 @@ class RegistryConformanceAudit implements DoctorAudit
             $failures[] = self::CHECK_ARITY;
         }
 
-        if (! array_key_exists('onDuplicate', $written)) {
+        if (! $runtimeDeclared && ! array_key_exists('onDuplicate', $written)) {
             $failures[] = self::CHECK_ON_DUPLICATE;
         }
 
         return $failures;
+    }
+
+    /**
+     * Every entry that one described registry holds at an address a *nested* described registry owns.
+     *
+     * ## The window this closes, and why it could only ever close here
+     *
+     * `RegistryIndex::assertUnshadowed()` (registry-kernel 26 D6) already refuses this at **describe**
+     * time. It cannot catch all of it, deliberately: a registry is usually described in a provider's
+     * `register()` and filled by registrars in `boot()`, so at the moment the index checks, the colliding
+     * entry does not exist yet. Closing that inside the kernel would mean `BasicRegistry::register()`
+     * consulting the index on every write, inverting a dependency the kernel keeps one-way — the store
+     * knows nothing about the index, and that is what lets a registry be used without one.
+     *
+     * This audit reads the LIVE index after boot, which is exactly the state the describe-time check
+     * cannot see. So the residual window is not a gap in the kernel; it is the half of one check that only
+     * a post-boot reader can hold, and this is that reader.
+     *
+     * ## Why it GATES (14 D2's bar)
+     *
+     * It is a determinate structural fact about live state with no judgement call in it, and the failure
+     * it catches is silent in production: `pop()` routes the key to the deeper registry and returns a
+     * miss, while `$shallow->has($key)` goes on answering true. Nothing announces the disagreement. That
+     * is the gating half's bar exactly.
+     *
+     * It can only gate a population it can see, which is why it lands behind {@see population()}'s
+     * widening rather than beside it.
+     *
+     * **The index's own zero-segment root is never a party to this**, on the same category error
+     * `assertUnshadowed()` names: it prefixes every key in the estate and its entries are *roots*, so
+     * including it would report every registry there is.
+     *
+     * @return list<array{key: string, shallow: string, shallow_root: string, deep: string, deep_root: string}>
+     */
+    public function shadowedEntries(): array
+    {
+        $roots = $this->index->unfiltered()->keys();
+        $found = [];
+
+        foreach ($roots as $shallow) {
+            $prefix = $shallow->segments();
+
+            if ($prefix === []) {
+                continue;
+            }
+
+            $store = $this->index->routeTo($shallow);
+
+            if ($store === null) {
+                continue;
+            }
+
+            $entries = $store->unfiltered()->keys();
+
+            foreach ($roots as $deep) {
+                $deepSegments = $deep->segments();
+
+                if (count($deepSegments) <= count($prefix) || array_slice($deepSegments, 0, count($prefix)) !== $prefix) {
+                    continue;
+                }
+
+                foreach ($entries as $entry) {
+                    if (! $this->isAtOrUnder($entry->segments(), $deepSegments)) {
+                        continue;
+                    }
+
+                    $found[] = [
+                        'key' => (string) $entry,
+                        'shallow' => $this->ownerNameAt($shallow),
+                        'shallow_root' => (string) $shallow,
+                        'deep' => $this->ownerNameAt($deep),
+                        'deep_root' => (string) $deep,
+                    ];
+                }
+            }
+        }
+
+        usort($found, fn (array $a, array $b) => [$a['key'], $a['deep_root']] <=> [$b['key'], $b['deep_root']]);
+
+        return $found;
+    }
+
+    /**
+     * Segment-wise at-or-below. The deeper ROOT itself counts: an entry sitting exactly on another
+     * registry's root is the worst case of the two, not an edge exempt from it.
+     *
+     * @param  list<string>  $segments
+     * @param  list<string>  $prefix
+     */
+    protected function isAtOrUnder(array $segments, array $prefix): bool
+    {
+        return count($segments) >= count($prefix) && array_slice($segments, 0, count($prefix)) === $prefix;
+    }
+
+    /**
+     * The class the estate calls "the registry at this root" — the owner where one was named, otherwise
+     * the store, which is what {@see RegistryIndex::owner()} already resolves.
+     */
+    protected function ownerNameAt(RegistryKey $root): string
+    {
+        $owner = $this->index->owner($root);
+
+        return $owner === null ? (string) $root : $owner::class;
+    }
+
+    /**
+     * The declaration of a class that is described into the index but carries no attribute — read off the
+     * LIVE registry, through the index's own {@see RegistryIndex::declarationAt()} rather than a second
+     * copy of that resolution.
+     *
+     * Returns the first root this class owns. A class owning two described roots is already impossible
+     * under the index's `Reject` policy for one root, and would be two registries wearing one FQCN — the
+     * shape {@see population()}'s class-keying could not express anyway, and nothing in the estate builds
+     * it.
+     */
+    protected function describedDeclaration(string $fqcn): ?IsRegistry
+    {
+        foreach ($this->index->unfiltered()->keys() as $key) {
+            $owner = $this->index->owner($key);
+
+            if ($owner !== null && $owner::class === $fqcn) {
+                return $this->index->declarationAt($key);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -341,7 +534,9 @@ class RegistryConformanceAudit implements DoctorAudit
                 continue;
             }
 
-            if ($this->instantiate($this->attributeOf($other))?->root === $declared->root) {
+            $otherDeclared = $this->instantiate($this->attributeOf($other)) ?? $this->describedDeclaration($other);
+
+            if ($otherDeclared?->root === $declared->root) {
                 return true;
             }
         }

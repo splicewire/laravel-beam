@@ -10,6 +10,7 @@ use Splicewire\Beam\Tests\Doctor\Fixtures\DeclaredOnlyFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\FirstContestedRootFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\IllegalRootFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\InheritingFixtureRegistry;
+use Splicewire\Beam\Tests\Doctor\Fixtures\RuntimeRootedFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\SecondContestedRootFixtureRegistry;
 use Splicewire\Beam\Tests\Doctor\Fixtures\SilentDuplicateFixtureRegistry;
 use Splicewire\Beam\Tests\TestCase;
@@ -234,6 +235,114 @@ class RegistryConformanceAuditTest extends TestCase
             RegistryConformanceAudit::CHECK_ROOT_COLLISION,
             $this->failuresFor($audit, FirstContestedRootFixtureRegistry::class),
         );
+    }
+
+    /**
+     * registry-kernel ticket 49 §1, landing 26 D5 — **described IS the population.** The index branch no
+     * longer filters its owners through a class-attribute read, so a registry that declared itself at
+     * runtime is governed like any other.
+     */
+    public function test_a_runtime_declared_registry_described_into_the_index_is_in_the_population(): void
+    {
+        $index = $this->app->make(RegistryIndex::class);
+        (new RuntimeRootedFixtureRegistry('fixture.runtime'))->describeInto($index);
+
+        $audit = $this->audit([]);
+
+        $this->assertContains(
+            RuntimeRootedFixtureRegistry::class,
+            $audit->population(),
+            'The class carries no attribute and is bound nowhere. Reaching the index is the ONLY evidence '
+            .'it is a registry, and it is sufficient evidence — `describe()` refuses a store that cannot '
+            .'say what root it owns.',
+        );
+    }
+
+    public function test_a_runtime_declaration_is_scored_on_the_live_declaration(): void
+    {
+        $index = $this->app->make(RegistryIndex::class);
+        (new RuntimeRootedFixtureRegistry('fixture.runtime'))->describeInto($index);
+
+        $audit = $this->audit([]);
+
+        $this->assertSame(
+            [],
+            $this->failuresFor($audit, RuntimeRootedFixtureRegistry::class),
+            'Widening the population without teaching `declarations()` to read a live declaration would be '
+            .'a no-op wearing a fix\'s clothes: the row would be dropped again one method later.',
+        );
+    }
+
+    public function test_an_unwritten_on_duplicate_is_unanswerable_on_a_runtime_declaration_not_a_finding(): void
+    {
+        $index = $this->app->make(RegistryIndex::class);
+        (new RuntimeRootedFixtureRegistry('fixture.runtime', writeOnDuplicate: false))->describeInto($index);
+
+        $audit = $this->audit([]);
+
+        $this->assertSame(
+            [],
+            $this->failuresFor($audit, RuntimeRootedFixtureRegistry::class),
+            'An instance cannot distinguish a written `Supersede` from an inherited one, so the check has '
+            .'no subject here. A miss is recoverable; this audit GATES, and a gate failing a registry that '
+            .'did write the argument is not.',
+        );
+    }
+
+    /**
+     * registry-kernel ticket 49 §2, carrying the window 26 D6 left open in the kernel on purpose.
+     */
+    public function test_an_entry_shadowed_by_a_nested_described_registry_is_a_finding(): void
+    {
+        $index = $this->app->make(RegistryIndex::class);
+        $shallow = (new RuntimeRootedFixtureRegistry('fixture.shadow'))->describeInto($index);
+        (new RuntimeRootedFixtureRegistry('fixture.shadow.nested'))->describeInto($index);
+
+        // AFTER both are described, which is the whole residual window: `assertUnshadowed()` ran when this
+        // registry was still empty, because a registry is described in `register()` and filled in `boot()`.
+        $shallow->register('nested.thing', 'entry');
+
+        $audit = $this->audit([]);
+        $shadowed = $audit->shadowedEntries();
+
+        $this->assertCount(1, $shadowed);
+        $this->assertSame('fixture.shadow.nested.thing', $shadowed[0]['key']);
+        $this->assertSame('fixture.shadow', $shadowed[0]['shallow_root']);
+        $this->assertSame('fixture.shadow.nested', $shadowed[0]['deep_root']);
+
+        $findings = $audit->run();
+        $shadowFindings = array_values(array_filter(
+            $findings,
+            fn ($finding) => str_contains($finding->detail, RegistryConformanceAudit::CHECK_SHADOW),
+        ));
+
+        $this->assertCount(1, $shadowFindings);
+        $this->assertSame(DoctorStatus::Fail, $shadowFindings[0]->status);
+        $this->assertStringContainsString('fixture.shadow.nested.thing', $shadowFindings[0]->detail);
+    }
+
+    public function test_an_entry_inside_its_own_registrys_branch_is_not_shadowed(): void
+    {
+        $index = $this->app->make(RegistryIndex::class);
+        $shallow = (new RuntimeRootedFixtureRegistry('fixture.shadow'))->describeInto($index);
+        (new RuntimeRootedFixtureRegistry('fixture.shadow.nested'))->describeInto($index);
+
+        // A sibling branch of the same registry. If the check keyed on "this key is deeper than my root"
+        // rather than on the nested registry's root, every entry in the estate becomes a finding.
+        $shallow->register('other.thing', 'entry');
+
+        $this->assertSame([], $this->audit([])->shadowedEntries());
+    }
+
+    public function test_the_self_hosting_zero_segment_root_is_never_a_shadow(): void
+    {
+        $index = $this->app->make(RegistryIndex::class);
+        (new RuntimeRootedFixtureRegistry('fixture.shadow'))->describeInto($index);
+
+        // The index describes ITSELF under the zero-segment root, which prefixes every key in the estate,
+        // and its entries are ROOTS. Treating it as a shallow party would report every registry there is —
+        // the same category error `assertUnshadowed()` carves out by hand.
+        $this->assertSame([], $this->audit([])->shadowedEntries());
     }
 
     public function test_an_undeclared_binding_is_not_in_the_population(): void

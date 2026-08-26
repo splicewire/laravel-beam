@@ -38,7 +38,9 @@ use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
  * So this audit now asks the DECLARATION question, which is the half that is answerable today, and it is
  * strictly better at it: matching moved off the descriptor's short `name` onto the attribute itself, which
  * kills the live defect where all three estate classes called `CapabilityRegistry` reported described by
- * colliding with each other.
+ * colliding with each other. (Two of the three still carry the name; the third was renamed to
+ * `Splicewire\Tower\Circuit\Capabilities\CapabilityLadder` by registry-kernel ticket 44. The defect was
+ * never fixed by the rename — it was fixed by matching on the attribute.)
  *
  * **The membership ratchet below is vacuous until owners start describing into `RegistryIndex`.** Roots are
  * derived from index membership, and the index fills as ticket 37/38's migrations land — so a PASS from this
@@ -274,6 +276,20 @@ class UndescribedRegistryAudit implements DoctorAudit
         /** @var list<string> */
         protected array $excludedPaths = self::DEFAULT_EXCLUDED_PATHS,
     ) {}
+
+    /**
+     * The live index this scan is measured against.
+     *
+     * Exposed because {@see UndeclaredRegistryShapeAudit} consumes this audit and
+     * must answer the same question about the same index — *is this class governed by the gate?* — and
+     * under registry-kernel 26 D5 being DESCRIBED is one of the two ways to be (ticket 49). Handing it a
+     * second `RegistryIndex` through its own constructor would let the two audits disagree about which
+     * index they mean, which is the defect this whole effort keeps finding.
+     */
+    public function index(): RegistryIndex
+    {
+        return $this->index;
+    }
 
     /**
      * The governed wiring: scan roots derived from the index's OWN membership (see the class docblock's
@@ -684,8 +700,9 @@ class UndescribedRegistryAudit implements DoctorAudit
      * Whether this registry declares itself — `#[IsRegistry]` on the abstract or on the concrete.
      *
      * **This replaces a name match, and that is the point.** The old test compared the descriptor's `name`
-     * against the registry's SHORT class name, so all three estate classes called `CapabilityRegistry`
-     * (beam's, tower's subclass of it, and the unrelated `Tower\Circuit\Capabilities` one) satisfied each
+     * against the registry's SHORT class name, so all three estate classes then called `CapabilityRegistry`
+     * (beam's, tower's subclass of it, and the unrelated `Tower\Circuit\Capabilities` one — now
+     * `CapabilityLadder`, registry-kernel ticket 44) satisfied each
      * other's obligation by collision — one descriptor answered for three registries. An attribute cannot
      * collide: it is either on this class or it is not.
      *
@@ -693,7 +710,7 @@ class UndescribedRegistryAudit implements DoctorAudit
      * whatever owns the keyspace, and `singleton(Schema::class, NodeSchema::class)` legitimately puts those
      * on different classes. Attributes are NOT inherited through `getAttributes()`, so a subclass that
      * genuinely owns a different root must declare its own — which is the behaviour we want and the reason
-     * tower's `CapabilityRegistry` is a real finding here rather than a false one.
+     * tower's `Tower\Capabilities\CapabilityRegistry` subclass is a real finding here rather than a false one.
      */
     public function isDescribed(string $abstract, ?string $concrete = null): bool
     {

@@ -269,10 +269,11 @@ class UndeclaredRegistryShapeAudit implements DoctorAudit
 
             if ($this->declares($fqcn)) {
                 $findings[] = sprintf(
-                    '[stale] %s is dispositioned `%s` but now declares #[IsRegistry]. Drop the row; the gate '.
-                    '(%s) governs it from here.',
+                    '[stale] %s is dispositioned `%s` but now %s. Drop the row; the gate (%s) governs it '.
+                    'from here.',
                     $this->shortName($fqcn),
                     $row['disposition'],
+                    $this->described($fqcn) ? 'describes itself into the registry index' : 'declares #[IsRegistry]',
                     RegistryConformanceAudit::CHECK,
                 );
 
@@ -435,13 +436,20 @@ class UndeclaredRegistryShapeAudit implements DoctorAudit
     }
 
     /**
-     * Whether a declaration GOVERNS this class — its own, or the nearest one above it.
+     * Whether the GATE governs this class — because a declaration reaches it, or because it is described
+     * into the live index.
      *
      * The parent walk is {@see IsRegistry::declaredOn()}'s (registry-kernel ticket 42, landing 41 D11).
      * Without it this audit rowed every subclass of a declared registry as undeclared shape, which is the
      * opposite of true: the subclass runs under a declaration, it just does not restate one. Beam-core
      * ships subclassing as its extension mechanism, so the rows would have been permanent and unfixable —
      * an advisory backlog whose only remedy was to stop extending.
+     *
+     * The index arm is registry-kernel 26 D5, landed by 49: **described IS the population**, so a class
+     * that describes itself with a declaration passed at runtime — no class attribute anywhere — is
+     * governed by {@see RegistryConformanceAudit} all the same. This must ask exactly the question that
+     * audit's `population()` answers; if it asks a narrower one, a row here sits `outstanding` forever
+     * while the gate is already governing its subject, and the staleness pass reports the wrong reason.
      */
     protected function declares(string $fqcn): bool
     {
@@ -450,10 +458,32 @@ class UndeclaredRegistryShapeAudit implements DoctorAudit
         }
 
         try {
-            return IsRegistry::declaredOn($fqcn) !== null;
+            if (IsRegistry::declaredOn($fqcn) !== null) {
+                return true;
+            }
         } catch (\Throwable) {
-            return false;
+            // A class that will not reflect is a miss, not a fatal — the index arm below may still answer.
         }
+
+        return $this->described($fqcn);
+    }
+
+    /**
+     * Whether this class owns a root in the live index.
+     */
+    protected function described(string $fqcn): bool
+    {
+        $index = $this->shape->index();
+
+        foreach ($index->unfiltered()->keys() as $key) {
+            $owner = $index->owner($key);
+
+            if ($owner !== null && $owner::class === $fqcn) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** True open, false closed, null unanswerable. */

@@ -251,6 +251,11 @@ class RegistryConformanceCommand extends Command
             'check' => UndeclaredRegistryShapeAudit::CHECK,
             'gate' => RegistryConformanceAudit::CHECK,
             'counts' => $tally,
+            // Committed rather than merely reported, on the same argument the rest of this file makes: this
+            // failure is silent in production (one absolute key answering two ways depending on the door),
+            // so the place it must be visible is a review diff. Empty is the expected state and an empty
+            // list is deterministic, so a no-op re-run stays byte-identical.
+            'shadowed' => $gate->shadowedEntries(),
             'non_conforming' => array_map(
                 fn (array $row) => ['registry' => $row['registry'], 'root' => $row['root'], 'failures' => $row['failures']],
                 $gate->nonConforming(),
