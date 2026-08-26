@@ -38,16 +38,38 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
  *
  * ## Registration is the only gate; emission never refuses
  *
- * Four checks, all at `register()`, all throwing (api-surface-coherence ticket 14):
+ * Three checks at `register()`, all throwing (api-surface-coherence ticket 14):
  *
  *  1. the name parses as a {@see Key} and carries at least two segments — a resource key and a verb
  *     phrase, the verb phrase possibly multi-segment;
- *  2. its **first segment** resolves to a live resource key, checked across the resource registries by
- *     {@see ResourceKeyOracle} — existence only, no model lookup. This is the check that makes a
- *     resource-key rename propagate into the event vocabulary instead of orphaning stored
- *     subscriptions;
- *  3. unless the entry declares {@see EventType::$subjectless}, it carries a subject;
- *  4. the name is not already taken ({@see OnDuplicate::Reject}).
+ *  2. unless the entry declares {@see EventType::$subjectless}, it carries a subject;
+ *  3. the name is not already taken ({@see OnDuplicate::Reject}).
+ *
+ * ## The fourth check is ADVISORY, and that is a correction (api-surface-coherence ticket 91)
+ *
+ * The prefix check — does the name's **first segment** resolve to a live resource key, per
+ * {@see ResourceKeyOracle} (existence only, no model lookup)? — was a fourth throw here. It is now
+ * {@see unresolvedPrefixes()}, read by `Splicewire\Beam\Doctor\EventCatalogPrefixAudit` and reported by
+ * `splicewire:beam:doctor`.
+ *
+ * It is the only one of the four whose answer is a fact about the HOST rather than about the
+ * declaration, and making a host-dependent fact fatal at boot took `~/Herd/tower` off the air the night
+ * the catalog shipped: tower declares `compositions.generate.*` from its own provider and registers no
+ * `compositions` particle resource, so a registry validation killed `artisan` outright — every command,
+ * not merely the event surface. `Application::booted()` does not save it: tower's declaration was
+ * ALREADY deferred to `booted()` and still threw, because the resource is absent at every point in that
+ * host's lifecycle rather than merely registered later. Deferral fixes an ordering bug; this was never
+ * one.
+ *
+ * The estate's posture is the tiebreaker — 62 of its 64 audits are advisory. A catalog entry whose
+ * prefix is dead is a real defect, a subscription pointed at nothing, but it is a defect a doctor run
+ * names with every other one beside it, not one that denies the operator a shell. The entry is
+ * REGISTERED either way: refusing it would silently amputate a host's own declared vocabulary, which is
+ * the worse failure of the two.
+ *
+ * The check is computed **on read, never stamped at registration**, which is what makes it honest across
+ * the estate. A resource registered after the event that names it is the ordinary case in a
+ * multi-package boot, and a flag taken at `register()` would record load order rather than truth.
  *
  * Nothing validates at *emission*. A producer that fires an unregistered name is a producer whose
  * delivery finds no subscribers — a catalog miss, not a 500 in the middle of somebody's job. The
@@ -78,8 +100,10 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
     note: 'Keys ARE event names (`{resourceKey}.{verbPhrase}`, plural-verbatim) under the stamped root, '
         .'off the self-keying entry. The resource key is segment ONE and the verb phrase may be '
         .'multi-segment, so `withPrefix(\'compositions\')` is a segment-wise branch read rather than a '
-        .'string prefix test. Registration validates the name grammar, the prefix against the LIVE '
-        .'resource registries, and subject-unless-subjectless; emission validates nothing. '
+        .'string prefix test. Registration validates the name grammar and subject-unless-subjectless '
+        .'and throws; the prefix-against-LIVE-resources check is ADVISORY (`unresolvedPrefixes()`, '
+        .'read by EventCatalogPrefixAudit) because it is host-dependent and it took a host off the air '
+        .'as a throw — api-surface-coherence 91. Emission validates nothing. '
         .'⚠️ The chartering ticket (api-surface-coherence 40 §4) specified a `describe(new '
         .'ManifestDescriptor(seam: ManifestSeam::SingletonAccumulator, registerHint: …, where: …))` — '
         .'that whole vocabulary was DELETED by registry-kernel ticket 21/07, and this attribute plus '
@@ -194,9 +218,12 @@ class EventTypeRegistry implements Filled, Gated, Registry
     }
 
     /**
-     * The four registration-time checks, in the order that produces the most useful message: grammar
-     * before prefix (an unparseable name has no prefix to look up), prefix before subject (a name
-     * pointing at nothing is the bigger defect).
+     * The registration-time checks that THROW: grammar, then subject. Both are facts about the
+     * declaration itself, so both are answerable at the declaration site by the person who wrote it and
+     * neither can change depending on which host loaded the provider. (Duplicate rejection is the
+     * store's, via {@see OnDuplicate::Reject}.)
+     *
+     * The prefix check is deliberately absent — see the class docblock and {@see unresolvedPrefixes()}.
      */
     private function assertValid(EventType $type): void
     {
@@ -212,21 +239,6 @@ class EventTypeRegistry implements Filled, Gated, Registry
             ));
         }
 
-        $resourceKey = $type->resourceKey();
-
-        if (! $this->oracle()->knows($resourceKey)) {
-            $known = $this->oracle()->keys();
-            sort($known);
-
-            throw new InvalidArgumentException(sprintf(
-                'Event name [%s] hangs off resource key [%s], which is not registered anywhere. An event '
-                    .'whose prefix is not a live resource is a subscription pointed at nothing. Known keys: %s.',
-                $type->name,
-                $resourceKey,
-                $known === [] ? '(none — no resource registry is populated yet)' : implode(', ', $known),
-            ));
-        }
-
         if (! $type->subjectless && ($type->subject === null || $type->subject === '')) {
             throw new InvalidArgumentException(sprintf(
                 'Event type [%s] declares no subject. Every event is about something; declare `subject:` '
@@ -235,6 +247,53 @@ class EventTypeRegistry implements Filled, Gated, Registry
                 $type->name,
             ));
         }
+    }
+
+    /**
+     * Every registered event name whose resource-key prefix is not a live resource on THIS host — the
+     * advisory that replaced the boot-fatal fourth check (api-surface-coherence ticket 91).
+     *
+     * Computed here and now, over {@see all()} against a FORGOTTEN oracle cache, so the answer is the
+     * estate as it stands at the moment somebody asks rather than the estate as it stood at whichever
+     * provider happened to register first. That is the whole reason this is a read and not a flag.
+     *
+     * @return array<string, string> event name => the resource key that resolves to nothing, sorted by name
+     */
+    public function unresolvedPrefixes(): array
+    {
+        $oracle = $this->oracle();
+        $oracle->forget();
+
+        $unresolved = [];
+
+        foreach ($this->all() as $type) {
+            $resourceKey = $type->resourceKey();
+
+            if (! $oracle->knows($resourceKey)) {
+                $unresolved[$type->name] = $resourceKey;
+            }
+        }
+
+        ksort($unresolved);
+
+        return $unresolved;
+    }
+
+    /**
+     * The live resource keys the prefix advisory is read against, sorted — what a diagnostic says WAS
+     * available. Same forgotten-cache reading as {@see unresolvedPrefixes()}.
+     *
+     * @return list<string>
+     */
+    public function knownResourceKeys(): array
+    {
+        $oracle = $this->oracle();
+        $oracle->forget();
+
+        $known = $oracle->keys();
+        sort($known);
+
+        return array_values($known);
     }
 
     private function oracle(): ResourceKeyOracle

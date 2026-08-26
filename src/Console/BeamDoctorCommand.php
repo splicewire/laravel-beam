@@ -12,6 +12,7 @@ use Rushing\Doctor\Finding;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BeamManifestAudit;
+use Splicewire\Beam\Doctor\EventCatalogPrefixAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
@@ -160,6 +161,15 @@ class BeamDoctorCommand extends Command
                 SurgeonWiringAudit::class,
                 false,
                 fn (SurgeonWiringAudit $audit) => $audit->run($composerJson),
+            ),
+            // Advisory by construction, not by triage (api-surface-coherence 91): this check was a throw
+            // inside EventTypeRegistry::register() and it took `~/Herd/tower` off the air, because
+            // "is this prefix a live resource?" is a fact about the HOST and every host serves a
+            // different resource set. Here it is a work-list; there it was an outage.
+            $this->guarded(
+                EventCatalogPrefixAudit::class,
+                false,
+                fn (EventCatalogPrefixAudit $audit) => $audit->run(),
             ),
         );
 

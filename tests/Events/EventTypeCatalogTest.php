@@ -128,12 +128,57 @@ class EventTypeCatalogTest extends TestCase
         $this->registry()->register(new EventType('widgets', subject: BeamParticle::class));
     }
 
-    public function test_a_prefix_that_is_not_a_live_resource_key_is_rejected(): void
+    /**
+     * The correction of api-surface-coherence ticket 91, and the reason it is a test rather than a note.
+     *
+     * This assertion was `expectException('which is not registered anywhere')`. As a throw the check took
+     * `~/Herd/tower` off the air — every `artisan` invocation, `--version` included — because tower
+     * declares `compositions.generate.*` and registers no `compositions` resource. "Is this prefix live?"
+     * is a fact about the HOST; the other three checks are facts about the declaration. Only the
+     * host-dependent one had to stop being fatal.
+     *
+     * Registering it rather than dropping it is the other half: refusing the entry would amputate a
+     * host's own declared vocabulary silently, which is worse than recording it and reporting it.
+     */
+    public function test_a_prefix_that_is_not_a_live_resource_key_is_recorded_and_reported_rather_than_rejected(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('which is not registered anywhere');
+        $registry = $this->registry();
 
-        $this->registry()->register(new EventType('sprockets.provisioned', subject: BeamParticle::class));
+        $registry->register(new EventType('sprockets.provisioned', subject: BeamParticle::class));
+
+        $this->assertSame(['sprockets.provisioned'], $registry->names());
+        $this->assertSame(['sprockets.provisioned' => 'sprockets'], $registry->unresolvedPrefixes());
+    }
+
+    public function test_a_live_prefix_produces_no_advisory(): void
+    {
+        $registry = $this->registry();
+
+        $registry->register(new EventType('widgets.provisioned', subject: BeamParticle::class));
+
+        $this->assertSame([], $registry->unresolvedPrefixes());
+        $this->assertContains('widgets', $registry->knownResourceKeys());
+    }
+
+    /**
+     * The reason the advisory is computed on READ and never stamped at `register()`: a resource declared
+     * after the event that names it is the ordinary multi-package boot order, and a flag taken at
+     * registration would report load order rather than truth.
+     */
+    public function test_a_resource_registered_after_the_event_clears_the_advisory(): void
+    {
+        $registry = $this->registry();
+
+        $registry->register(new EventType('sprockets.provisioned', subject: BeamParticle::class));
+        $this->assertSame(['sprockets.provisioned' => 'sprockets'], $registry->unresolvedPrefixes());
+
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'sprockets',
+            backing: BeamParticle::class,
+            frame: false,
+        ));
+
+        $this->assertSame([], $registry->unresolvedPrefixes());
     }
 
     public function test_an_entry_with_no_subject_and_no_subjectless_declaration_is_rejected(): void
@@ -185,12 +230,26 @@ class EventTypeCatalogTest extends TestCase
         $this->assertCount(1, $registry->registrars());
     }
 
+    /**
+     * The attribute is a feeder onto `register()`, so it inherits the throwing checks. Asserted against
+     * the missing-subject one: the prefix check stopped throwing in ticket 91, so it can no longer serve
+     * as the visible consequence here.
+     */
     public function test_the_attribute_gets_no_exemption_from_validation(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('which is not registered anywhere');
+        $this->expectExceptionMessage('declares no subject');
 
-        $this->registry()->attach(new BeamEventRegistrar([], [SprocketSwept::class]));
+        $this->registry()->attach(new BeamEventRegistrar([], [SubjectlessUndeclared::class]));
+    }
+
+    /** …and it inherits the ADVISORY one too — the attribute buys no exemption from being reported. */
+    public function test_the_attribute_carries_a_dead_prefix_into_the_advisory(): void
+    {
+        $registry = $this->registry();
+        $registry->attach(new BeamEventRegistrar([], [SprocketSwept::class]));
+
+        $this->assertSame(['sprockets.swept' => 'sprockets'], $registry->unresolvedPrefixes());
     }
 
     /**

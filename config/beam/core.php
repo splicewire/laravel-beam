@@ -210,8 +210,10 @@ return [
     | accumulator; `#[BeamEvent]` is a FEEDER onto it, never a second store. Both keys are empty by
     | default and the scan is skipped entirely when they are — a fresh beam host still gets the
     | `{resource}.persisted` fan-out over its own particle resources, which needs no config at all.
-    | Registration validates every event name's prefix against the LIVE resource keys, so a name whose
-    | resource does not exist is rejected loudly at boot rather than becoming an orphan subscription.
+    | Registration throws on the name grammar and on a missing subject — facts about the DECLARATION.
+    | Whether a name's prefix is a live resource key is a fact about the HOST, so it is advisory:
+    | `splicewire:beam:doctor` reports it (`events.catalog-prefix`) and boot never refuses over it.
+    | As a throw it took a host off the air; see api-surface-coherence ticket 91.
     */
     'events' => [
         // Explicit #[BeamEvent]-annotated event class-strings to reflect and register at boot.
