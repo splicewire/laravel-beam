@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Source;
 
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryIndex;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Source\RouteManifestSourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
@@ -22,6 +23,19 @@ class RouteManifestSourceRegistryTest extends TestCase
             app(RouteManifestSourceRegistry::class),
             app(RouteManifestSourceRegistry::class),
         );
+    }
+
+    /**
+     * DECLARING and INDEXING are two acts (registry-kernel 21 D1). Ticket 25 landed the declaration;
+     * ticket 37 lands the act that makes `beam.client.sources` reachable through the index.
+     */
+    public function test_it_is_described_into_the_shared_index(): void
+    {
+        $this->assertSame(app(RegistryIndex::class), app(RegistryIndex::class));
+
+        $keys = array_map(strval(...), app(RegistryIndex::class)->keys());
+
+        $this->assertContains('beam.client.sources', $keys);
     }
 
     public function test_it_declares_itself_so_the_gate_can_read_it(): void

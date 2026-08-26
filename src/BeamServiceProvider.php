@@ -1143,6 +1143,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             by: self::class,
         );
 
+        // The same second act for the config-fed adapter ticket 25 landed. Described here rather than
+        // beside its binding because a describe belongs in boot(), after the config merges every
+        // registrant writes through have run — the property ConfigRegistry's docblock argues for.
+        $this->app->make(RegistryIndex::class)->describe(
+            $this->app->make(RouteManifestSourceRegistry::class),
+            by: self::class,
+        );
+
         // Resource DECLARATION discovery (ADR-0156). Reflect the configured #[ParticleResource] classes +
         // scan the configured discover-paths into beam's singleton ParticleResourceRegistry, which frame's
         // manifest machinery reads through the ResourceRegistry port (via ParticleResourceRegistryAdapter). This
