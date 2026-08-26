@@ -53,10 +53,10 @@ class TsClientGenerator implements Generator
         $files = [];
         $files['routes.ts'] = $this->renderRoutes($tenantMap, $adminMap);
 
-        $typed = array_merge(
+        $typed = $this->disambiguateRealmDomains(array_merge(
             $this->typedEntries($tenantMap, 'tenant'),
             $this->typedEntries($adminMap, 'operator'),
-        );
+        ));
 
         $streamed = array_merge(
             $this->streamEntries($tenantMap, 'tenant'),
@@ -187,6 +187,63 @@ class TsClientGenerator implements Generator
      * @param  array<string, array{path: string, methods: list<string>, returns?: string, returnsMany?: bool}>  $map
      * @return list<array<string, mixed>>
      */
+    /**
+     * Realm-qualify a domain key ONLY where the two realms actually collide on it.
+     *
+     * `typedEntries()` strips the realm prefix — correct for the route NAME, which is realm-qualified
+     * already. But the domain key is what `byDomain()` groups by and what every emitted identifier is
+     * built from, so an `api.operator.<x>.index` and a tenant `<x>.index` reduce to ONE key, land in
+     * ONE file, and emit each state type, store and hook TWICE. That is a hard `tsc` failure
+     * (`Cannot redeclare block-scoped variable`), and it took down the whole SPA build.
+     *
+     * Measured on the live route table: 8 remainders collide — `hooks.{index,show,events,deliveries,
+     * op.reset}`, `bills.index`, `tenants.index`, `routes.manifest`. `hooks` broke first only because
+     * it is the first with a typed PARAMLESS read in both realms (only those become stores), so
+     * `bills` and `tenants` sat one such route from the same break.
+     *
+     * The duplicate identifiers were the loud half. The quiet half is worse: `emitStores()`/`emitHooks()`
+     * take their client binding from the FIRST entry's realm, so the operator entries in a merged file
+     * were wired to the TENANT api/route — a wrong endpoint that compiles cleanly. De-duplicating by
+     * name alone would have silenced the error and kept that.
+     *
+     * ⚠️ **Scoped to actual collisions on purpose.** Prefixing every non-tenant domain unconditionally
+     * also renames operator-only domains that nothing collides with — which breaks hand-written imports
+     * of the generated modules (measured: `@/generated/hooks/registry` at
+     * `ui/src/features/operator/OperatorRegistryPage.tsx`). A generated module path is a consumed
+     * contract; rename only what is ambiguous.
+     *
+     * ⚠️ Deliberately NOT keyed off `frame.collapse_operator_realm` (default OFF). That knob makes
+     * operator resolve THROUGH the tenant realm at runtime; it does not make two distinct realms one
+     * namespace in a generated client. If a collapsed host should emit one merged domain, that is a
+     * change to make against the knob, deliberately, with its own test.
+     *
+     * @param  list<array<string, mixed>>  $typed
+     * @return list<array<string, mixed>>
+     */
+    private function disambiguateRealmDomains(array $typed): array
+    {
+        $realmsPerDomain = [];
+        foreach ($typed as $entry) {
+            $realmsPerDomain[$entry['domainKey']][$entry['realm']] = true;
+        }
+
+        foreach ($typed as $i => $entry) {
+            $realm = (string) $entry['realm'];
+
+            if ($realm === 'tenant' || count($realmsPerDomain[$entry['domainKey']]) < 2) {
+                continue;
+            }
+
+            $domainSlug = $realm.'-'.$entry['domainKey'];
+            $action = Str::studly(substr((string) $entry['hookName'], strlen('use'.Str::studly((string) $entry['domainKey']))));
+
+            $typed[$i]['domainKey'] = $domainSlug;
+            $typed[$i]['hookName'] = 'use'.Str::studly($domainSlug).$action;
+        }
+
+        return $typed;
+    }
+
     private function typedEntries(array $map, string $realm): array
     {
         $out = [];
