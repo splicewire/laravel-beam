@@ -337,9 +337,10 @@ class RealmRegistry implements Gated, Registry
         $current = $this->entries->tryResolve('user');
 
         if ($current === null || $current->stack !== $expected->stack) {
-            // Re-registration supersedes, which also moves `user` to the END of registration order.
-            // Harmless while it converges on the first read after a config flip, and the only ordering
-            // the manifest builder cares about is per-realm, not across realms.
+            // Re-registration supersedes IN PLACE (registry-kernel 62), so `user` keeps its slot in
+            // registration order across a config flip. This comment used to say the opposite and
+            // called it harmless; it was not — the flagship's AttributedRealmTest caught the same
+            // append sending `operator` from first to last, which is the defect 62 closed.
             $this->entries->register('user', $expected, by: static::class);
         }
     }
