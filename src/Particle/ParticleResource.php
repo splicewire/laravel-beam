@@ -121,9 +121,28 @@ class ParticleResource implements HasRegistryKey
      * @param  class-string|null  $editData  rare escape-hatch edit DTO (input-shape divergence)
      * @param  string|null  $policy  ability/policy key the injected can() resolves against
      * @param  class-string|null  $query  data-filters query class the ListShell facets bar rides (manifest)
-     * @param  string|null  $group  nav group heading
+     * @param  string|null  $group  the API-taxonomy group this resource belongs to — a key into the host's
+     *                              `GroupRegistry` tree, or (for a package default the host has not adopted)
+     *                              a loosely-spelled name or `navLabel` that `GroupRegistry::resolve()`
+     *                              matches. ⚠️ **Despite projecting into `NavMetadata::$group`, this is NOT
+     *                              the nav heading and never was** — see `$section`.
      * @param  string|null  $icon  nav icon key
-     * @param  string|null  $section  host sitemap section this resource auto-attaches into; null = not in primary nav
+     * @param  string|null  $section  host sitemap section this resource auto-attaches into; null = not in primary nav.
+     *                                ⚠️ **NOT deprecated, and api-surface-coherence ticket 45 measured why.**
+     *                                Ticket 01 ruled that `$section` collapses into the group tree and that nav
+     *                                derives its heading from the group's ROOT ancestor, on the premise that
+     *                                *"nav grouping and doc grouping were never two taxonomies — nav just cut a
+     *                                level higher"*. Measured against the flagship host, they are two
+     *                                taxonomies: nav's sections are `studio · calendar · knowledge · compliance ·
+     *                                circuits · threads · system` (tenant) + `platform · market` (operator) —
+     *                                **nine**, carrying entitlement gates, icons and hrefs — against the group
+     *                                tree's **eight** roots `knowledge · composition · automation · governance ·
+     *                                access · commerce · platform · lineage`. They **overlap on two**
+     *                                (`knowledge`, `platform`). Deriving nav from `GroupRegistry::root()` would
+     *                                move Circuits, Threads, Compliance and Studio into root headings the SPA
+     *                                has no section for. `$group` was independently measured to have zero
+     *                                production readers on the nav path — the join is `NavMetadata::$section`,
+     *                                read by the host's `FrameResourcesInvocable` and nothing else.
      * @param  int|null  $navOrder  placement within the section
      * @param  string|null  $routeName  stable route identity a host binds the generated leaf under
      * @param  string|null  $layout  inner-layout grammar ('single'|'subnav'|'master-detail'); emitted on the ContextManifest

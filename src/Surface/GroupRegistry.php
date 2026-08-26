@@ -34,6 +34,15 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *      package may declare either a key, the canonical name, or a `navLabel`. A package declaration is a
  *      DEFAULT, never authoritative: shipping one host's taxonomy inside a package is the mistake that
  *      filed three commerce controllers under "Studio" long after their URIs moved.
+ *
+ *      **A HOST writes a key here; only a PACKAGE writes a loose name** (api-surface-coherence ticket 45).
+ *      `resolve()`'s looseness — and with it `ApiGroup::$navLabel`, whose only mechanical job is to feed it
+ *      — survives for exactly that reason: `UserData` → `Settings`, `TeamData` → `Platform`,
+ *      `BeamUxEntryData` → `Content` ship *inside* packages, and a miss there must fall through to rung 3
+ *      rather than become an error. What it stopped being is a host idiom: the flagship host's own
+ *      declarations were loose display words, which cost it **7 rung-1 assignments that existed only to
+ *      re-say what the resource could have said itself**. Tightening the host to keys removed all seven and
+ *      moved no group — every previously-assigned resource resolves to the identical key.
  *   3. **Host URI globs** ({@see matchUri()}) — the shrinking backlog for the routes that carry no
  *      resource stamp at all. This rung is a migration artifact with a ratchet test on its size, not a
  *      design; every route that gains a resource declaration leaves it.
