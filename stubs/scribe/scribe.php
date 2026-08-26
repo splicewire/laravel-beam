@@ -70,6 +70,7 @@ use Splicewire\Beam\Scribe\Strategies\ParticleResponseStrategy;
 use Splicewire\Beam\Scribe\Strategies\ParticleTitleStrategy;
 use Splicewire\Beam\Scribe\Strategies\ReturnsResponseStrategy;
 use Splicewire\Beam\Scribe\Strategies\RouteTitleStrategy;
+use Splicewire\Beam\Scribe\Strategies\UrlParametersWithoutRowReads;
 
 use function Knuckles\Scribe\Config\removeStrategies;
 
@@ -280,8 +281,18 @@ return [
             GroupStrategy::class,
         ],
 
+        // Spelled out rather than spread, because ONE member of the default list is replaced.
+        // `Defaults::URL_PARAMETERS_STRATEGIES` leads with Scribe's `GetFromLaravelAPI`, which ends
+        // its Eloquent inference with `$modelInstance::first()->{$routeKey}` — a live row read during
+        // generation, whose result is published as that parameter's example. The artifact is served
+        // unauthenticated at `GET beam/openapi.yaml`, so on any host that generates against a
+        // populated database that is a real row's key on the public internet. The replacement is the
+        // same strategy with that one line removed; type inference is unchanged.
+        // (api-surface-coherence ticket 62.)
         'urlParameters' => [
-            ...Defaults::URL_PARAMETERS_STRATEGIES,
+            UrlParametersWithoutRowReads::class,
+            Strategies\UrlParameters\GetFromUrlParamAttribute::class,
+            Strategies\UrlParameters\GetFromUrlParamTag::class,
         ],
 
         'queryParameters' => [
