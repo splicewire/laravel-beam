@@ -120,6 +120,45 @@ Declining an entry is a real answer, not a mistake: the competitor's migration w
 convergent guard then throws on the type conflict instead of reporting success. Loud, chosen, and
 recoverable — which is the whole trade this collision family is decided on.
 
+## `--travel=` — where the block this install publishes lands
+
+**Decided:** 2026-08-26, beam-facade ticket 117, the owner's idea.
+
+The lever above claims ONE stem against ONE competitor. The wider question — *the block I am about to
+publish has to sort before migrations this host already has* — had no answer but a hand re-date, which
+this page rejects. `--travel=` is that answer, put in the installer where a fresh clone inherits it:
+
+```
+php artisan splicewire:beam:install --travel="-1 year"
+php artisan splicewire:satellite:install --travel="-1 year"   # forwarded down to beam
+php artisan splicewire:tower:install --travel="-1 year"       # forwarded down to satellite → beam
+php artisan splicewire:beam:commerce:install --travel="-6 months"
+```
+
+`Splicewire\Beam\Install\MigrationTravel` is the mechanism. Five things about it are deliberate:
+
+- **It moves the RUN, never a file.** There is no single-file affordance at all, because "Re-stamping one
+  file to move it" above is a real incident and the documented repair is to regenerate the whole chain.
+  The moved set is exactly the files that did not exist before this run.
+- **The value is relative, and an absolute date is refused with its reason.** Pinning a run's files to a
+  chosen stamp is the `0001_01_01_*` publish band ticket 22 rejected, it collapses the ordering the
+  install manifest just produced, and it cannot cascade — three tiers anchored to one date stack on the
+  same second.
+- **The calendar expression resolves ONCE, against the run's earliest stamp.** PHP overflows month
+  arithmetic (`2026-03-31 -1 month` is `2026-03-03`), so evaluating per file can invert two files a
+  second apart that straddle a day boundary. One delta, applied to all, keeps spacing exact.
+- **It reports what the block crossed.** The already-published migrations it now sorts past are named —
+  the visibility the re-stamping incident lacked. A crossing only matters for a migration that has not
+  run.
+- **It cannot touch the ledger half, by construction.** A file that did not exist before this run cannot
+  have run, so no move it makes can orphan a `migrations` row. Making an *already-run* migration pending
+  again is a different lever with a different blast radius and is not here.
+
+**It governs FRESH and reset databases**, because filename order sorts pending files only. And it does
+not replace `$order`: `$order` decides the order *within* the block (per package, declared once, every
+host); travel decides where the block *sits* (per invocation, operator-declared). A cross-package
+ALTER-before-CREATE bug is always `$order`'s.
+
 ## A published copy is a snapshot, not the source of truth
 
 **Decided:** 2026-08-24, beam-facade ticket 86, after a column rename shipped correctly and reached

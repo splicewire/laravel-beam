@@ -11,6 +11,7 @@ use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\ConvergencePreflight;
 use Splicewire\Beam\Install\InstallStep;
 use Splicewire\Beam\Install\MigrationCollision;
+use Splicewire\Beam\Install\MigrationTravel;
 use Splicewire\Beam\Install\RehearsedMigration;
 use Splicewire\Beam\Install\TableOwnershipResolver;
 use Splicewire\Beam\OpenApi\ConfiguredArtifactSpecSource;
@@ -54,6 +55,12 @@ use function Laravel\Prompts\text;
  * can STOP the install — a shape conflict met from inside `migrate` is met three tables in, with the
  * rest of the queue unasked and the host half-written, so the answer moves to the last moment an abort
  * is free.
+ *
+ * Phase 5 (beam-facade ticket 117) adds a THIRD occupant of that same slot, and it is the only one that
+ * is purely operator-declared: `--travel=` ({@see MigrationTravel}) shifts the block this run publishes,
+ * so a stub can land somewhere other than the end of the host's set. It runs FIRST of the three —
+ * ownership spends one tick against a competitor's stamp, and a shift applied afterwards would move the
+ * claimed file straight back off it.
  */
 class BeamInstallCommand extends Command
 {
@@ -64,6 +71,7 @@ class BeamInstallCommand extends Command
         {--tenancy= : "single" (one database) or "multi" (tenant-scoped)}
         {--modules= : Comma list of optional beam modules to install (name substrings); empty ⇒ core only}
         {--own-tables= : Comma list of colliding migration stems beam should own (run first); empty ⇒ own none. Default: all}
+        {--travel= : Shift every migration THIS RUN publishes by a relative amount ("-1 year", "+2 days"), keeping their order. Governs fresh/reset databases only; absolute dates are refused}
         {--skip-preflight : Skip the convergence preflight and let migrate meet any shape conflict one table at a time}
         {--no-seed : Skip the package-registered seed pass (splicewire:beam:seed) at the end of the install}';
 
@@ -71,6 +79,16 @@ class BeamInstallCommand extends Command
 
     public function handle(BeamInstallManifest $manifest): int
     {
+        // Parse `--travel=` FIRST, before anything is published. A malformed value has to cost a re-read
+        // of the flag, not a half-published host waiting on a rerun.
+        try {
+            $travel = MigrationTravel::parse($this->option('travel'));
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        }
+
         $steps = $manifest->steps();
 
         if ($steps === []) {
@@ -133,7 +151,13 @@ class BeamInstallCommand extends Command
         //    survive the next boot. Publish and migrate are SEPARATE calls with the table-ownership
         //    answer between them: the question's options are the collisions on disk, so it cannot be
         //    asked until the files exist, and it has to be answered before anything runs them.
+        //    `--travel=` sits between publish and ownership, and that order is load-bearing: ownership
+        //    re-dates one file to ONE TICK below a third-party competitor, so a travel shift running
+        //    afterwards would move the claimed file straight back off its winning stamp. Travel places
+        //    the block; ownership then spends its tick against whatever the block now looks like.
+        $before = $travel === null ? [] : MigrationTravel::snapshot($this->laravel->databasePath('migrations'));
         $this->publishSteps($runSteps);
+        $this->applyTravel($travel, $before);
         $this->resolveTableOwnership($interactive);
 
         if ($this->stepsMigrate($runSteps)) {
@@ -286,6 +310,77 @@ class BeamInstallCommand extends Command
                 ));
             }
         }
+    }
+
+    /**
+     * `--travel=`: place the block this run just published (beam-facade ticket 117).
+     *
+     * The mechanics and the whole argument live in {@see MigrationTravel}; this method is the reporting
+     * half, and it reports three things because each answers an objection the ticket inherited:
+     *
+     * - **what moved, as a range** — never one filename, because the convention's re-stamping incident is
+     *   exactly a one-file move that nobody could see the blast radius of;
+     * - **what the block crossed** — the already-published migrations it now sorts past, which is the
+     *   visibility that incident lacked. A crossing is only a hazard if the crossed file has not run, and
+     *   this says so rather than querying a database a fresh host does not have;
+     * - **that this governs the NEXT fresh migrate**, in the same words `carryMigrationRecord()` uses,
+     *   because filename order sorts pending files and can never reorder what already ran.
+     *
+     * Never fatal. A blocked pass leaves every file exactly where publish put it, which is a working
+     * install with an unspent lever.
+     *
+     * @param  array<string, string>  $before
+     */
+    private function applyTravel(?MigrationTravel $travel, array $before): void
+    {
+        if ($travel === null) {
+            return;
+        }
+
+        $this->line('splicewire:beam:install → travel');
+
+        $result = $travel->shift($this->laravel->databasePath('migrations'), $before);
+
+        if ($result['blocked'] !== []) {
+            $this->warn('  ↳ nothing moved: '.implode(', ', $result['blocked']).' already exist(s) at the '.
+                'shifted stamp. The whole pass is refused rather than half-applied — pick a different '.
+                "shift than `{$travel->expression}`.");
+
+            return;
+        }
+
+        if ($result['moved'] === []) {
+            $this->line("  ↳ `{$travel->expression}`: nothing new was published, so nothing to place.");
+
+            return;
+        }
+
+        $names = array_map('basename', array_values($result['moved']));
+        sort($names);
+
+        $this->line(sprintf(
+            '  ↳ `%s`: %d newly published migration(s) shifted, order preserved — now %s … %s.',
+            $travel->expression,
+            count($names),
+            substr($names[0], 0, 17),
+            substr($names[count($names) - 1], 0, 17),
+        ));
+
+        $crossed = $travel->crossings($before, $result['moved']);
+
+        if ($crossed !== []) {
+            $this->warn(sprintf(
+                '     ! the block sorted past %d already-published migration(s): %s. That only matters '.
+                'for any of them that have NOT run — a migration already in the ledger keeps its place. '.
+                'If a dependency chain now interleaves, regenerate the whole chain rather than moving one '.
+                'more file (migration-publish-ordering.convention.md, "Re-stamping one file to move it").',
+                count($crossed),
+                implode(', ', array_slice($crossed, 0, 8)).(count($crossed) > 8 ? ', …' : ''),
+            ));
+        }
+
+        $this->line('     ↳ this governs the NEXT fresh migrate (a new environment, a new tenant schema, '.
+            '`migrate:fresh`). Filename order sorts PENDING files; nothing already applied is reordered.');
     }
 
     /**
