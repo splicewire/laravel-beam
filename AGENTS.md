@@ -73,6 +73,19 @@ off the instance you passed in. `reject` is an oracle by construction and is leg
 an authenticated door. The key recipe is write-once. See
 `docs/agents/dedupe-keyword.convention.md`.
 
+## Gate or advisory
+
+Beam reserves `gate: true` for *"an agent is building a thing wrong"* — two audits today, both in
+`registerRegistryConformanceAudits()`, both registered **unconditionally** because the estate's one
+gate used to sit behind `interface_exists()` on a `require-dev` interface and was therefore silently
+absent from every production host. Everything else beam registers is advisory, on purpose.
+
+**The rule and its home are not beam's** (same move as the convergent guard): the flag is
+`Rushing\Doctor\DoctorRegistration::$gate`, so the convention lives in
+`rushing/laravel-doctor/docs/agents/gate-or-advisory.convention.md`. Read it before reaching for
+`gate: true`, before making a check throw at boot, and before letting anything that moves with
+`APP_ENV` or `--no-dev` into a gate or a ratchet.
+
 ## Vendored family-package conventions
 
 Any repo that vendors another family repo's code (composer `vendor/<vendor>/<pkg>/`, npm
