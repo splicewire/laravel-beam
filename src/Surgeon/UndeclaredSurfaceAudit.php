@@ -118,6 +118,32 @@ class UndeclaredSurfaceAudit implements DoctorAudit
      * own pre-boot installer path — narrowly, because only code executing before registries exist can be
      * excused from registering into them.
      *
+     * ## DESCRIPTION DOCUMENTS (beam-facade ticket 114)
+     *
+     * The last entry is not a vendor carve-out and not a pre-boot excuse. It is the class the
+     * `beam/openapi.{yaml,json}` URI entries above already belong to, finally named: a surface whose
+     * response body IS a contract-description document — an OpenAPI document, a JSON Schema document —
+     * rather than a projection of application data crossing the boundary. Such a surface is **outside
+     * the invariant's extension**, the way `up` and `broadcasting/auth` are, not an exception to it.
+     *
+     * The test is narrow and mechanical, which is what ticket 25 requires of any rule's subject: the
+     * body is a **document in a schema/description media type** (`application/schema+json`,
+     * `application/openapi+json`, `application/vnd.oai.openapi`), served as the artifact itself, whose
+     * own vocabulary is defined by a specification this estate does not own. "Returns a document" is
+     * NOT the test — it is the phrasing a future surface would abuse. `text/markdown` source bytes are
+     * application data and stay in the population; so does a 204 with no body at all, which is
+     * undeclared for a different reason (there is no shape, rather than an opaque one) and is the
+     * `beam-mdx` `ContentAuthoringController` pair ticket 114 left open.
+     *
+     * Why exemption rather than a Data class: a JSON Schema document has no fixed properties, so the
+     * generated TypeScript and OpenAPI shape would say approximately nothing — and modelling JSON
+     * Schema (or OpenAPI) as a Data class means modelling someone else's specification, which is the
+     * same reason the two artifact URIs above were carved out before this rule had a name.
+     *
+     * Listed by exact controller FQCN, not by package prefix. `Schemastud\DataSchemas\` is family code
+     * and the family is exactly who should be declaring shapes — only THIS door is outside the
+     * extension, and a second surface in that namespace must argue its own way onto this list.
+     *
      * @var list<string>
      */
     public const DEFAULT_EXEMPT_NAMESPACES = [
@@ -125,6 +151,7 @@ class UndeclaredSurfaceAudit implements DoctorAudit
         'Stancl\\Tenancy\\',
         'Laravel\\Mcp\\',
         'Splicewire\\Beam\\Install\\',
+        'Schemastud\\DataSchemas\\Http\\SchemaDocumentController',
     ];
 
     public function __construct(

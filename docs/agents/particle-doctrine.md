@@ -117,6 +117,19 @@ document itself remains gate-less.
 
 Health endpoints and `/broadcasting/auth` are *outside* the doctrine's extension, not exceptions.
 
+**So are description documents** (beam-facade ticket 114). A surface whose response body IS a
+contract-description document in a schema/description media type — `beam/openapi.{yaml,json}`, and
+the public schema door `GET <$id>` serving `application/schema+json` — is not a boundary-crossing
+application data shape; it is the description *of* those shapes, and its vocabulary is defined by a
+specification this estate does not own. Declaring one means modelling OpenAPI or JSON Schema itself
+as a Data class, for a generated type that says nothing.
+
+The test is the **media type**, not "it returns a document" — that phrasing is what a future surface
+would abuse. `text/markdown` source bytes are application data and stay in the population; so does a
+`204` with no body, which is undeclared for a different reason. Enforced in
+`UndeclaredSurfaceAudit::DEFAULT_EXEMPT_URIS` / `DEFAULT_EXEMPT_NAMESPACES`, by exact URI or exact
+controller FQCN, so the population of exemptions stays countable.
+
 ## Three one-line rules
 
 - **List facets are declared on the Data class.** A resource's LIST surface is not a hand-rolled

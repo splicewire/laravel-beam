@@ -20,12 +20,13 @@ use Splicewire\Beam\Tests\TestCase;
  * `Splicewire\Beam\Schema\*` symbol, so its unit test belongs in beam-core.
  *
  * ITS `$id` LITERALS ARE DELIBERATELY NOT {@see TestCase::SCHEMA_AUTHORITY}. This class parses
- * strings; it mints nothing, so it is not asserting about the authority this suite serves under,
- * and its origin is a bare, path-less example on purpose — `name()` strips the scheme and host
- * only, so a PATH-shaped base (which is what 8 of 9 declaring hosts in the estate use) leaves the
- * base path glued to the front of the name. Ticket 85 sighted that and it is a defect in `name()`,
- * not in these fixtures; using the path-shaped fixture authority here would have written the bug
- * into the expectations.
+ * strings; it mints nothing, so it is not asserting about the authority this suite serves under.
+ *
+ * Its origin was ALSO a bare, path-less example on purpose, because `name()` used to strip the
+ * scheme and host only — so a PATH-shaped base (what 8 of the estate's 9 declaring roots use) left
+ * the base path glued to the front of the name. Ticket 85 sighted that and left the fixtures
+ * path-less rather than writing the bug into the expectations. **Ticket 113 fixed the method**:
+ * `name()` now takes the declared authority, so both shapes are asserted here directly.
  */
 class SchemaIdTest extends TestCase
 {
@@ -35,7 +36,7 @@ class SchemaIdTest extends TestCase
 
         $this->assertSame('https://schemas.example.test/content/article/3', (string) $id);
         $this->assertSame('https://schemas.example.test/content/article', $id->stem());
-        $this->assertSame('content/article', $id->name());
+        $this->assertSame('content/article', $id->name('https://schemas.example.test'));
         $this->assertSame(3, $id->version());
     }
 
@@ -44,9 +45,47 @@ class SchemaIdTest extends TestCase
         $id = SchemaId::from('https://schemas.example.test/compliance/merchant-declaration/1');
 
         $this->assertSame('https://schemas.example.test/compliance/merchant-declaration', $id->stem());
-        $this->assertSame('compliance/merchant-declaration', $id->name());
+        $this->assertSame('compliance/merchant-declaration', $id->name('https://schemas.example.test'));
         $this->assertSame(1, $id->version());
     }
+
+    /**
+     * The shape 8 of the estate's 9 declaring roots actually use (ticket 113). The old
+     * strip-to-first-slash implementation answered `schemas/content/cell` here.
+     */
+    public function test_extracts_the_name_under_a_PATH_shaped_authority(): void
+    {
+        $id = SchemaId::from('https://app.splicewire.com/schemas/content/cell/2');
+
+        $this->assertSame('content/cell', $id->name('https://app.splicewire.com/schemas'));
+        $this->assertSame('content/cell', $id->name('https://app.splicewire.com/schemas/'));
+    }
+
+    /**
+     * An `$id` minted under someone else's authority cannot have its path split known from here, so
+     * only `scheme://host` comes off. Honest, not correct — see the method docblock and ticket 107.
+     */
+    public function test_a_foreign_authority_falls_back_to_stripping_the_origin_only(): void
+    {
+        $id = SchemaId::from('https://audiostud.io/schemas/commerce/money/1');
+
+        $this->assertSame('schemas/commerce/money', $id->name('https://fable.pub/schemas'));
+    }
+
+    /**
+     * `base_uri` is tri-state and a host may legally have declared nothing. Taking the foreign
+     * branch is the only answer available, and it must not throw — a value object parsing a string
+     * is the wrong place for a host-composition verdict.
+     */
+    public function test_an_undeclared_or_opted_out_authority_takes_the_foreign_branch(): void
+    {
+        $id = SchemaId::from('https://schemas.example.test/content/article/3');
+
+        $this->assertSame('content/article', $id->name(null));
+        $this->assertSame('content/article', $id->name(false));
+        $this->assertSame('content/article', $id->name(''));
+    }
+
 
     public function test_derives_a_sibling_at_a_different_version_preserving_the_stem(): void
     {

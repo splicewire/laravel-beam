@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Surgeon;
 use Illuminate\Support\Facades\Route;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
+use Schemastud\DataSchemas\Http\SchemaDocumentController;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -196,6 +197,35 @@ class UndeclaredSurfaceAuditTest extends TestCase
 
         $this->assertNotContains('beam/openapi.yaml', $uris);
         $this->assertNotContains('beam/openapi.json', $uris);
+    }
+
+    /**
+     * The description-document rule (beam-facade ticket 114). The public schema door serves
+     * `application/schema+json` — the bare artifact at its own `$id` — so it is outside the
+     * invariant's extension for the same reason the OpenAPI artifact routes above are, and it is
+     * listed by exact controller FQCN rather than by its `Schemastud\DataSchemas\` package prefix.
+     *
+     * It mounts at any host declaring an absolute authority (8 today) and was measured live in
+     * `~/Herd/splicewire-app/.beam/undeclared-surface.json` as `schemas/{path}`. The URI is
+     * config-derived, so only the class name is stable enough to exempt on.
+     */
+    public function test_the_public_schema_door_is_exempt_as_a_description_document(): void
+    {
+        Route::get('schemas/{path}', SchemaDocumentController::class)->where('path', '.*');
+
+        $this->assertNotContains('schemas/{path}', $this->uris());
+    }
+
+    /**
+     * The other half of the rule, and the reason it is written on the media type rather than on
+     * "returns a document": markdown source bytes are application data. The `beam-mdx` authoring
+     * pair is the live specimen (ticket 114's inbound) and it stays in the population.
+     */
+    public function test_a_document_response_that_is_application_data_stays_in_the_population(): void
+    {
+        Route::get('api/v1/beam/content/{name}', fn () => response('# hi', 200, ['Content-Type' => 'text/markdown']));
+
+        $this->assertContains('api/v1/beam/content/{name}', $this->uris());
     }
 
     public function test_a_vendor_owned_action_is_exempt_because_we_did_not_declare_it(): void
