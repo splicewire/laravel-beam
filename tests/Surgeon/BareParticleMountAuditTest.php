@@ -138,8 +138,10 @@ class BareParticleMountAuditTest extends TestCase
     }
 
     /**
-     * The singular macro's front door is the PLURAL verb — there is no `Particle::op()`, and it is
-     * emphatically not `mount(…)->only([])->ops(…)`, which silently publishes the filter sub-surface.
+     * The singular macro's front door is the PLURAL verb — there is no `Particle::op()`. Nor is the
+     * target `mount(…)->only([])->ops(…)`, which still publishes the filter sub-surface: `only` gates
+     * the CRUD verbs, `filters` is a separate opt-out, and only `->only([])->filters(false)->ops(…)`
+     * emits the same table as the verb. A footgun, not an impossibility.
      */
     public function test_the_singular_op_macro_maps_to_the_plural_verb(): void
     {

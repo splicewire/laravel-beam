@@ -42,10 +42,14 @@ use Splicewire\Beam\Particle\Mount\ParticleMounter;
  *   Route::resourceFilters(…)      →  Particle::filters(…)
  *
  * Note `particleOp` (singular) is the macro hosts actually still call, and its front door is the
- * PLURAL `Particle::ops()` — there is no `Particle::op()`. It is also not
- * `Particle::mount(…)->only([])->ops(…)`: an empty `only` still runs the automatic filter sub-surface,
- * so the tidy-looking builder spelling silently publishes nine filter routes at a URI the host only
- * wanted an operation on. The verb is the correct target, not the builder.
+ * PLURAL `Particle::ops()` — there is no `Particle::op()`.
+ *
+ * The builder is the WRONG target for these sites, though not an impossible one:
+ * `mount(…)->only([])->ops(…)` still publishes the automatic filter sub-surface (nine routes at a URI
+ * the host only wanted an operation on), because `only` gates the CRUD verbs and `filters` is a
+ * separate opt-out. `mount(…)->only([])->filters(false)->ops(…)` DOES emit the same table as
+ * `Particle::ops(…)` — it is a footgun, not an impossibility, and naming the op-only shape is cheaper
+ * than remembering the second opt-out at every call site. Rewrite to the verb.
  *
  * ## Detection is AST, not grep
  * Findings key on real {@see StaticCall} nodes against a `Route` class name, so the macro
