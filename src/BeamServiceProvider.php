@@ -60,6 +60,7 @@ use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
+use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
@@ -1099,6 +1100,18 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             RetiredMigrationAudit::class,
+        );
+
+        // beam-facade #110: the OTHER direction of the same defect — a ledger row whose migration file
+        // the host cannot produce, because a publish was run and then never committed. RetiredMigration
+        // reports a file that should not exist; this reports the absence of one that should. Measured at
+        // rushing/audiostud: twelve orphan rows, two of which (`create_ranks_table`,
+        // `create_rank_trees_table`) meant twelve RanksTest cases passed on the dev database and failed
+        // on every fresh one. Advisory — the repair is re-publish-and-commit OR delete the row, and only
+        // the host knows which.
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            LedgerAheadOfRepositoryAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered
