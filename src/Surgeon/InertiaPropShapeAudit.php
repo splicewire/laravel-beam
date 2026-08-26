@@ -14,6 +14,7 @@ use PhpParser\NodeVisitor\ParentConnectingVisitor;
 use PhpParser\ParserFactory;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Splicewire\Beam\Surgeon\Support\HostScanRoots;
 
 /**
  * The **Inertia leg** of the negative-space detector (particle-doctrine-convergence ticket 06): every
@@ -158,24 +159,27 @@ class InertiaPropShapeAudit implements DoctorAudit
      * Host-scoped wiring: the host's own code plus the family packages it composes. The packages matter — the
      * beam-accounts controllers and beam-mdx's content routes render Inertia pages the host never sees, so an
      * `app/`-only scan would report a comfortable number from inside every host while those sat one directory
-     * over. Same argument, same shape as {@see CentralPinJustificationAudit::forApp()}.
+     * over.
+     *
+     * ## This used to hand `vendor/<vendor>` in WHOLE, and scanned none of it
+     *
+     * The list above once read `base_path('vendor/splicewire')` et al., and {@see phpFiles()}'s docblock said
+     * it *"mirrors"* {@see CentralPinJustificationAudit::phpFiles()} — which is exactly how the defect
+     * arrived: `RecursiveDirectoryIterator` does not follow symlinks, so in a co-dev host those three roots
+     * contributed **nothing**. Worse than the pin census's silent zero, because `app/` is real and kept
+     * contributing, so the audit looked like it was working. Measured at `~/Herd/splicewire-app` on
+     * 2026-08-26 (beam-facade 149): **3 findings as shipped, 9 with the roots expanded** — the six that were
+     * invisible are all in family packages (beam-accounts ×3, beam-mdx ×2, beam-ux ×1). An advisory burn-down growing by 5 here is the honest reading,
+     * not a regression.
+     *
+     * {@see HostScanRoots} is now the single home for that expansion; `routes` is passed because this leg's
+     * surface includes closure renders mounted in route files, which no other consumer of the helper scans.
      *
      * @param  list<string>|null  $roots
      */
     public static function forApp(?array $roots = null): self
     {
-        if ($roots === null) {
-            $roots = array_values(array_filter([
-                base_path('app'),
-                base_path('routes'),
-                base_path('src'),
-                base_path('vendor/splicewire'),
-                base_path('vendor/rushing'),
-                base_path('vendor/schemastud'),
-            ], 'is_dir'));
-        }
-
-        return new self($roots);
+        return new self($roots ?? HostScanRoots::resolve(['app', 'routes', 'src']));
     }
 
     /**
@@ -551,6 +555,12 @@ class InertiaPropShapeAudit implements DoctorAudit
     /**
      * Absolute paths of every `.php` file under a dir (recursive), or empty when the dir is absent. Mirrors
      * {@see CentralPinJustificationAudit::phpFiles()}, including both of its non-obvious guards.
+     *
+     * ⚠️ **"Mirrors" is what put a defect in this file.** The word was true of the walk and silently untrue of
+     * the ROOTS: this audit copied the pin census's whole-`vendor/<vendor>` roots along with its iterator and
+     * scanned no family package at all until beam-facade 149. The roots are {@see HostScanRoots}'s job now,
+     * and nothing here should re-derive them — a nested `vendor` guard below is safe to mirror because it is
+     * a property of the walk; a root list is not.
      *
      * @return list<string>
      */

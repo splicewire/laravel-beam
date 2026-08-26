@@ -25,6 +25,7 @@ use Splicewire\Beam\Doctor;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Surgeon\Support\HostScanRoots;
 
 /**
  * The **meta-audit** (particle-doctrine-convergence, ticket 13): every registry-shaped container singleton
@@ -327,43 +328,17 @@ class UndescribedRegistryAudit implements DoctorAudit
      * ownership rule — one implementation, so the two can never disagree about what a registry looks like.
      *
      * Roots are the host's own source plus every installed family package, **expanded one level and
-     * resolved**. Handing in `vendor/<vendor>` whole — which is what
-     * {@see CentralPinJustificationAudit::forApp()} does — reports almost nothing in a co-dev tree, and
-     * silently: `RecursiveDirectoryIterator` does not follow symlinks, and in a co-dev host every
-     * `vendor/<vendor>/<package>` IS a symlink to the working checkout. Measured before this expansion was
-     * added, a whole-host scan of `splicewire-app` produced ONE row. That is the failure mode this effort
-     * exists to end, reproduced inside its own audit: an empty report and an unread one look identical.
-     *
-     * `<pkg>/src` is preferred over `<pkg>` for {@see governedRoots()}'s reason — each family package
-     * carries its own dev `vendor/` tree, and descending into those re-scans the estate once per package.
+     * resolved** — see {@see HostScanRoots}, which is where that expansion lives since beam-facade 149.
+     * Handing in `vendor/<vendor>` whole reports almost nothing in a co-dev tree, and silently. This
+     * docblock used to name {@see CentralPinJustificationAudit::forApp()} as the live counter-example doing
+     * exactly that; it stayed broken for months, and then a third audit copied it. **A written warning
+     * naming a live instance is not a fix** — the shared call site is.
      *
      * @param  list<string>|null  $roots
      */
     public static function forHost(RegistryIndex $index, ?array $roots = null): self
     {
-        if ($roots !== null) {
-            return new self($roots, $index);
-        }
-
-        $found = [];
-
-        foreach (['app', 'src'] as $dir) {
-            if (is_dir($path = base_path($dir))) {
-                $found[(string) realpath($path)] = true;
-            }
-        }
-
-        foreach (['rushing', 'schemastud', 'splicewire'] as $vendor) {
-            foreach ((array) glob(base_path('vendor/'.$vendor.'/*'), GLOB_ONLYDIR) as $package) {
-                $resolved = realpath((string) $package.'/src') ?: realpath((string) $package);
-
-                if (is_string($resolved)) {
-                    $found[$resolved] = true;
-                }
-            }
-        }
-
-        return new self(array_keys($found), $index);
+        return new self($roots ?? HostScanRoots::resolve(), $index);
     }
 
     /**

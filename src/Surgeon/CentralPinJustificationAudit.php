@@ -13,6 +13,7 @@ use PhpParser\NodeFinder;
 use PhpParser\ParserFactory;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Splicewire\Beam\Surgeon\Support\HostScanRoots;
 
 /**
  * The **central-pin justification** audit (particle-doctrine-convergence, ticket 12): every pin of the
@@ -151,37 +152,17 @@ class CentralPinJustificationAudit implements DoctorAudit
      * defect class: *an instrument that reports success by not running.* Expanding one level with `glob()`
      * and `realpath()`-ing each package hands the iterator real directories instead.
      *
-     * `<pkg>/src` is preferred over `<pkg>` because each family package carries its own dev `vendor/` tree;
-     * {@see UndescribedRegistryAudit::forHost()} solved the identical problem the identical way, and this
-     * mirrors it deliberately rather than inventing a second shape.
+     * `<pkg>/src` is preferred over `<pkg>` because each family package carries its own dev `vendor/` tree.
+     * {@see UndescribedRegistryAudit::forHost()} solved the identical problem the identical way, and a THIRD
+     * audit then inherited the broken shape from a docblock — so beam-facade 149 moved the expansion into
+     * {@see HostScanRoots} and this method calls it. Mirroring deliberately is what propagated the defect;
+     * the copies are gone.
      *
      * @param  list<string>|null  $roots
      */
     public static function forApp(?array $roots = null): self
     {
-        if ($roots !== null) {
-            return new self($roots);
-        }
-
-        $found = [];
-
-        foreach (['app', 'src'] as $dir) {
-            if (is_dir($path = base_path($dir))) {
-                $found[(string) realpath($path)] = true;
-            }
-        }
-
-        foreach (['rushing', 'schemastud', 'splicewire'] as $vendor) {
-            foreach ((array) glob(base_path('vendor/'.$vendor.'/*'), GLOB_ONLYDIR) as $package) {
-                $resolved = realpath((string) $package.'/src') ?: realpath((string) $package);
-
-                if (is_string($resolved)) {
-                    $found[$resolved] = true;
-                }
-            }
-        }
-
-        return new self(array_keys($found));
+        return new self($roots ?? HostScanRoots::resolve());
     }
 
     /**
