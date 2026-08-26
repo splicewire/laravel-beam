@@ -14,6 +14,8 @@ use Rushing\Doctor\DoctorAudit;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Rushing\Popcorn\Concerns\ChainsTraitMethods;
 use Rushing\Popcorn\Contracts\ChainsTraitMethods as ChainsTraitMethodsContract;
+use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
+use Rushing\Popcorn\Registries\Registrars\ConfigRegistrar;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Rushing\Surgeon\Audit\PackageGraph;
 use Rushing\Surgeon\Operation\CallbackConformanceManifest;
@@ -92,6 +94,7 @@ use Splicewire\Beam\Ownership\EloquentOwnershipEdgeStore;
 use Splicewire\Beam\Ownership\OwnershipGraph;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
+use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
 use Splicewire\Beam\Particle\Contribution\ContributionContextNodes;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\DeadResolvingHookGuard;
@@ -477,9 +480,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // registries are: the route macro (defined in packageBooted below) must see the same instance a
         // package's own provider registered a rendering into. The default subject resolver is the
         // duck-typed `findOrFail`/`with` pair; a host on anything else binds its own.
-        $this->app->singleton(ResourceRenderingRegistry::class, fn () => new ResourceRenderingRegistry(
-            config('beam.core.renderings', []),
-        ));
+        // Constructed EMPTY: `beam.core.renderings` reaches it through a ConfigRegistrar attached in
+        // beam's own boot() (registry-kernel ticket 53), not through the constructor. Seeding here would
+        // put the fill at FIRST RESOLVE — the lazy-on-first-read shape ticket 07 D9 rejected, and the
+        // one ticket 19 D3 says re-opens 19 if an owner is caught doing it.
+        $this->app->singleton(ResourceRenderingRegistry::class, fn () => new ResourceRenderingRegistry);
         $this->app->bind(ResolvesRenderingSubject::class, FindOrFailSubjectResolver::class);
 
         // particle-doctrine-convergence ticket 09: the cross-transport ability resolver + its ACTOR port.
@@ -1165,6 +1170,27 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // from `public static` convention methods on the annotated class.
         $this->discoverParticleAttributes();
 
+        // The per-resource rendering registry's own registrar, attached in the OWNER's boot() for the
+        // reason its binding above states (registry-kernel ticket 53). `beam.core.renderings` is
+        // `resource => [class, class]`; the expansion of that list into one entry per rendering is the
+        // registry's own vocabulary, not the kernel's — see `ResourceRenderingRegistry::register()`.
+        $this->app->make(ResourceRenderingRegistry::class)->attach(new ConfigRegistrar(
+            (array) config('beam.core.renderings', []),
+            'beam.core.renderings',
+        ));
+
+        // The second act, per ticket 21 D1: declaring and indexing are two things, and these two
+        // registries are the first registrar-FED roots the index carries.
+        $this->app->make(RegistryIndex::class)->describe(
+            $this->app->make(ParticleResourceRegistry::class),
+            by: self::class,
+        );
+
+        $this->app->make(RegistryIndex::class)->describe(
+            $this->app->make(ResourceRenderingRegistry::class),
+            by: self::class,
+        );
+
         // Frame OS ticket 08 (ADR-0013 §2): beam is the authority that unifies the two authorization
         // planes. Register a Laravel Gate ability per KNOWN feature key (`entitlement:{key}`) delegating to
         // the entitlement gate (which consults the bound kernel EntitlementResolver) — so the feature plane
@@ -1318,12 +1344,29 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             return;
         }
 
-        // Dev fallback: no manifest — live-scan the discover-paths.
-        foreach ($registry->scanPaths(
-            config('beam.core.resources.discover_paths', config('frame.discover_paths', [])),
-        ) as $class) {
-            $registry->registerClass($class);
-        }
+        // Dev fallback: no manifest — live-scan the discover-paths, through the kernel's own reader.
+        //
+        // ⚠️ **The estate's FIRST live registrar attach** (registry-kernel ticket 53, paying ticket 19
+        // D3's clause and ticket 07's four-times-relayed criterion). Three properties are load-bearing
+        // and all three are asserted by `ParticleResourceRegistrarOrderingTest`:
+        //
+        //  - it is attached in the OWNER's own `boot()`, so it runs before any consumer provider boots
+        //    and hand-registers — explicit registration lands second and wins by `OnDuplicate::Supersede`
+        //    alone, with no tier, no branch and no precedence rule (07 D9);
+        //  - `attach()` FILLS IMMEDIATELY, so "when did you call attach" IS the ordering rule — there is
+        //    no second `fill()` for anyone to put in the wrong place (24 D2);
+        //  - the key comes off the projected entry through `HasRegistryKey` (`ParticleResource::$key`).
+        //    `AttributeRegistrar` THROWS rather than deriving one from a class name, so there is no
+        //    name-derived fallback to land in by accident.
+        //
+        // `registerClass()` stays for the explicit-list and cached-manifest paths above; what moves here
+        // is the SCAN, which is what the registrar reads.
+        $registry->attach(new AttributeRegistrar(
+            paths: (array) config('beam.core.resources.discover_paths', config('frame.discover_paths', [])),
+            attribute: ParticleResourceAttribute::class,
+            project: fn (string $class) => AttributedParticleDiscovery::resourceFromAttribute($class),
+            instanceof: false,
+        ));
     }
 
     /**

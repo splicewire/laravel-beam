@@ -6,10 +6,21 @@ use InvalidArgumentException;
 use ReflectionClass;
 use RuntimeException;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
+use Rushing\Popcorn\Registries\Authorizer;
+use Rushing\Popcorn\Registries\BasicRegistry;
+use Rushing\Popcorn\Registries\Filled;
+use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\Laddered;
 use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\RecordsSupersession;
+use Rushing\Popcorn\Registries\Registrar;
+use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryKey;
+use Rushing\Popcorn\Registries\Superseded;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
@@ -70,26 +81,32 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
     onDuplicate: OnDuplicate::Supersede,
     note: 'Declared, not inherited: overwrite is intentional here and the class docblock argues it. '
         .'This said `mixed` on the grounds that an entry is a ParticleResource OR a raw '
-        .'ResourceDefinition — ⚠️ STALE since the escape hatch was collapsed: `$resources` is '
-        .'`array<string, ParticleResource>` and `all()`\'s instanceof filter was deleted as the identity. '
+        .'ResourceDefinition — ⚠️ STALE since the escape hatch was collapsed: the keyspace holds only '
+        .'ParticleResource and `all()`\'s instanceof filter was deleted as the identity. '
         .'Registry-kernel ticket 47 caught it while measuring whether any registry in the estate holds '
         .'two entry types; none does, which is why `entryType` stayed a scalar. Whether the three '
         .'collections split into three registries '
-        .'is registry-kernel ticket 36\'s — ANSWERED: they do not split. `$resources` is the keyspace; '
-        .'`$realms`/`$realmMap` are a two-rung membership ladder beside the entry, now declared '
+        .'is registry-kernel ticket 36\'s — ANSWERED: they do not split. The composed BasicRegistry is '
+        .'the keyspace; `$realms`/`$realmMap` are a two-rung membership ladder beside the entry, declared '
         .'through {@see Laddered}. Realm membership is a TAG recorded '
         .'beside the entry, never a second key dimension: one entry, many realms, no duplicate.',
     order: 12,
 )]
-class ParticleResourceRegistry implements Laddered
+class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupersession, Registry
 {
     /**
      * The stored DECLARATIONS, keyed by resource key — always a {@see ParticleResource}, projected
      * per-realm at build.
      *
-     * @var array<string, ParticleResource>
+     * Held as a FIELD rather than inherited (registry-kernel ticket 01 D1): this class already carries
+     * REST vocabulary (`get()`/`has()`/`all()`) and Frame's manifest projection
+     * (`definition()`/`definitions()`) that no kernel base class could supply, and it composes the
+     * realm ladder beside the keyspace.
      */
-    private array $resources = [];
+    private BasicRegistry $entries;
+
+    /** @var list<Registrar> */
+    private array $registrars = [];
 
     /**
      * Explicit realm membership named AT REGISTRATION, keyed by resource key. Wins over {@see $realmMap}
@@ -119,7 +136,9 @@ class ParticleResourceRegistry implements Laddered
     public function __construct(
         private ?RealmResourceRegistry $overrides = null,
         private ?ResourceContributionRegistry $contributions = null,
-    ) {}
+    ) {
+        $this->entries = BasicRegistry::for($this);
+    }
 
     // ── REST tier (unchanged signatures — every existing caller of this registry is unaffected) ───────
 
@@ -151,7 +170,7 @@ class ParticleResourceRegistry implements Laddered
      */
     public function get(string $key): ParticleResource
     {
-        $resource = $this->resources[$key]
+        $resource = $this->lookup($key)
             ?? throw new RuntimeException("No particle resource registered for key [{$key}].");
 
         if ($this->contributions === null || ! $this->contributions->has($key)) {
@@ -170,9 +189,26 @@ class ParticleResourceRegistry implements Laddered
         return $folded;
     }
 
-    public function has(string $key): bool
+    public function has(RegistryKey|string $key): bool
     {
-        return isset($this->resources[$key]);
+        return $this->lookup($key) !== null;
+    }
+
+    /**
+     * A READ that answers "absent" for a key that is not even a legal address, rather than throwing.
+     *
+     * Registration still throws on a malformed key — a declaration that cannot be addressed is a defect
+     * and must be loud. A LOOKUP is the other way round: `get('Not A Key')` reaching this registry means
+     * a caller asked about something that is not here, and `InvalidRegistryKey` would turn every such
+     * miss into a 500 where the resource-not-registered path already exists.
+     */
+    private function lookup(RegistryKey|string $key): ?ParticleResource
+    {
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->entries->tryResolve($key);
     }
 
     /**
@@ -188,7 +224,90 @@ class ParticleResourceRegistry implements Laddered
      */
     public function all(): array
     {
-        return array_values($this->resources);
+        return $this->entries->matches($this->entries->root());
+    }
+
+    // ── The kernel contract (registry-kernel ticket 53) ─────────────────────────────────────────────
+
+    public function resolve(RegistryKey|string $key): mixed
+    {
+        return $this->entries->resolve($key);
+    }
+
+    public function tryResolve(RegistryKey|string $key): mixed
+    {
+        return $this->entries->tryResolve($key);
+    }
+
+    /** @return list<ParticleResource> */
+    public function matches(RegistryKey|string $key): array
+    {
+        return $this->entries->matches($key);
+    }
+
+    /** @return list<RegistryKey> */
+    public function keys(): array
+    {
+        return $this->entries->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        $unfiltered = clone $this;
+        $unfiltered->entries = $this->entries->unfiltered();
+
+        return $unfiltered;
+    }
+
+    public function authorizeWith(?Authorizer $authorizer): static
+    {
+        $this->entries->authorizeWith($authorizer);
+
+        return $this;
+    }
+
+    /**
+     * Attach a registrar and let it fill THIS registry — not the composed store — now.
+     *
+     * The one live subject of {@see Filled}'s eager-at-boot ordering claim in the estate
+     * (registry-kernel ticket 19 D3, paid on ticket 53): `BeamServiceProvider::discoverResources()`
+     * attaches an {@see AttributeRegistrar} in beam's own
+     * `boot()`, so a consumer provider that hand-registers the same key afterwards lands second and
+     * wins by {@see OnDuplicate::Supersede} alone — no tier, no branch, no precedence rule.
+     *
+     * ⚠️ The delegation trap, measured while landing that: `$this->entries->attach($r)` reads naturally
+     * and is wrong, because `BasicRegistry::attach()` hands the registrar the STORE, so every write
+     * bypasses this class's own `register()` — and with it the affordance-vs-capability assertion and
+     * the realm ladder. A composing owner attaches to ITSELF and keeps the registrar list; only the
+     * eagerness is inherited.
+     */
+    public function attach(Registrar $registrar): void
+    {
+        $this->registrars[] = $registrar;
+
+        $registrar->fill($this);
+    }
+
+    /** @return list<Registrar> */
+    public function registrars(): array
+    {
+        return $this->registrars;
+    }
+
+    /**
+     * The entries displaced at `$key`, oldest first.
+     *
+     * Declared here rather than left on the composed store because it is what makes this registry's
+     * `Supersede` ordering OBSERVABLE from outside — a registrar's entry losing to a consumer's
+     * hand-registration is a fact a reader can check, not an inference from boot order
+     * (registry-kernel ticket 19 D4's unmet acceptance item, which ticket 48 owns the reading surface
+     * for; this is the one registry that can now answer it).
+     *
+     * @return list<Superseded>
+     */
+    public function superseded(RegistryKey|string $key): array
+    {
+        return $this->entries->superseded($key);
     }
 
     // ── Registration — gains the realm axis ─────────────────────────────────────────────────────────
@@ -198,13 +317,40 @@ class ParticleResourceRegistry implements Laddered
      * ({@see get()}) and, when {@see ParticleResource::isFramed()}, Frame's manifest ({@see definitions()}).
      * Last-wins by key.
      *
-     * @param  list<string>  $realms  the realm(s) this resource belongs to for Frame-manifest purposes.
-     *                                Empty (default) ⇒ falls back to {@see loadRealmMap()}'s bulk map for
-     *                                this key (today's `config('frame.realms')` membership); irrelevant
-     *                                for a REST-only (non-framed) resource.
+     * ## Two spellings, one method (registry-kernel ticket 53)
+     *
+     * The parameter is WIDENED from {@see Registry::register()} rather than shadowing it
+     * (contravariance), exactly as `RealmRegistry` does: the historical self-keying call
+     * `register($resource, ['operator'])` keeps working — a `ParticleResource` carries its own key, so
+     * the second argument is its realm list — and the contract spelling
+     * `register('songs', $resource, by: …)` works too, which is what lets a
+     * {@see Registrar} fill this registry at all.
+     *
+     * @param  RegistryKey|string|ParticleResource  $key  the resource key, or the self-keying declaration
+     * @param  mixed  $entry  the declaration when `$key` is a key; the `list<string>` of realms when
+     *                        `$key` is the declaration itself (the historical two-argument call).
+     *                        Realms empty/absent ⇒ falls back to {@see loadRealmMap()}'s bulk map for
+     *                        this key (today's `config('frame.realms')` membership); irrelevant for a
+     *                        REST-only (non-framed) resource.
      */
-    public function register(ParticleResource $resource, array $realms = []): void
+    public function register(RegistryKey|string|ParticleResource $key, mixed $entry = null, ?string $by = null, ?string $ability = null): static
     {
+        if ($key instanceof ParticleResource) {
+            $resource = $key;
+            $realms = is_array($entry) ? $entry : [];
+        } else {
+            $resource = $entry;
+            $realms = [];
+
+            if (! $resource instanceof ParticleResource) {
+                throw new InvalidArgumentException(sprintf(
+                    'ParticleResourceRegistry stores ParticleResource declarations; `%s` was given for key [%s].',
+                    get_debug_type($entry),
+                    (string) $key,
+                ));
+            }
+        }
+
         // Capability is the CEILING; the affordance flags narrow it (ticket 11 §A5). A resource opening
         // an affordance its backing cannot honour is a DECLARATION error, caught here at registration
         // rather than as a runtime failure on the first write — the shape
@@ -216,8 +362,10 @@ class ParticleResourceRegistry implements Laddered
             'deletable' => $resource->deletable ?? ! $resource->readOnly,
         ]);
 
-        $this->resources[$resource->key] = $resource;
+        $this->entries->register($resource->key, $resource, $by, $ability);
         $this->registerRealms($resource->key, $realms);
+
+        return $this;
     }
 
     /**
@@ -314,7 +462,7 @@ class ParticleResourceRegistry implements Laddered
      */
     public function hasFramedResource(string $key): bool
     {
-        $resource = $this->resources[$key] ?? null;
+        $resource = $this->lookup($key);
 
         if ($resource === null) {
             return false;
@@ -329,7 +477,7 @@ class ParticleResourceRegistry implements Laddered
      */
     public function definition(string $key, ?string $realm = null): ResourceDefinition
     {
-        $resource = $this->resources[$key] ?? throw new InvalidArgumentException(
+        $resource = $this->lookup($key) ?? throw new InvalidArgumentException(
             "No frame resource registered for key [{$key}]."
         );
 
@@ -356,7 +504,9 @@ class ParticleResourceRegistry implements Laddered
     {
         $manifest = [];
 
-        foreach ($this->resources as $key => $resource) {
+        foreach ($this->all() as $resource) {
+            $key = $resource->key;
+
             if (! $resource->isFramed()) {
                 continue;
             }

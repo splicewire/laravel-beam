@@ -2,8 +2,10 @@
 
 namespace Splicewire\Beam\Tests\Feature;
 
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
+use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Schemastud\DataSchemas\Overlay\Lens\Fidelity;
 use Splicewire\Beam\Rendering\Http\RenderingsController;
 use Splicewire\Beam\Rendering\RenderingCertifier;
@@ -93,14 +95,30 @@ class ResourceRenderingsRouteTest extends TestCase
         $this->assertNotNull($this->routeNamed('papers.mirror'));
     }
 
+    /**
+     * The config has to be in place BEFORE beam boots, because the seeding is a `ConfigRegistrar`
+     * attached in beam's own `boot()` rather than a constructor read at first resolve (registry-kernel
+     * ticket 53). Setting `config()` mid-test and forgetting the singleton — what this test used to do —
+     * would now prove nothing about a host, since a host's config is always in place before boot.
+     */
+    protected function seedRenderingFromConfig(Application $app): void
+    {
+        $app['config']->set('beam.core.renderings', ['papers' => [TranscriptRendering::class]]);
+    }
+
+    #[DefineEnvironment('seedRenderingFromConfig')]
     public function test_seeds_the_registry_from_config_so_a_host_adds_a_rendering_without_touching_code(): void
     {
-        config(['beam.core.renderings' => ['papers' => [TranscriptRendering::class]]]);
-        app()->forgetInstance(ResourceRenderingRegistry::class);
-
         Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertNotNull($this->routeNamed('papers.transcript'));
+        $this->assertSame(
+            ['config beam.core.renderings'],
+            array_map(
+                fn ($registrar) => $registrar->source(),
+                app(ResourceRenderingRegistry::class)->registrars(),
+            ),
+        );
     }
 
     public function test_mounts_a_read_and_a_write_verb_for_a_rendering_whose_reversibility_is_certified(): void

@@ -6,6 +6,9 @@ use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
+use Rushing\Popcorn\Registries\HasRegistryKey;
+use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
@@ -54,8 +57,22 @@ use Splicewire\Beam\Particle\Backing\ResourceBacking;
  * boolean). A REST-only surface leaves `label` empty; it stays a plain particle resource. Beam depends
  * DOWN on frame (ADR-0156), so this class may reference `Schemastud\Frame\*` directly.
  */
-class ParticleResource
+class ParticleResource implements HasRegistryKey
 {
+    /**
+     * The key this declaration registers under — {@see $key}, verbatim.
+     *
+     * The seam registry-kernel ticket 01 D2 built for exactly this entry (its docblock names
+     * `$resource->key` as one of the three self-keying exemplars), and what lets
+     * {@see AttributeRegistrar} fill
+     * {@see ParticleResourceRegistry} from a `#[ParticleResource]` scan without the kernel deriving a
+     * key from a class name — which it refuses to do, loudly, rather than guessing (ticket 53).
+     */
+    public function registryKey(): RegistryKey|string
+    {
+        return $this->key;
+    }
+
     /**
      * @param  string  $key  the registry key AND the data-filters resource key the list query rides
      *                       (`DataFilter::query($key)`), e.g. `'silo'`
