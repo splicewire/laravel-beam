@@ -73,6 +73,10 @@ use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
+use Splicewire\Beam\Events\BeamEventRegistrar;
+use Splicewire\Beam\Events\EventTypeRegistry;
+use Splicewire\Beam\Events\ParticlePersistedEventRegistrar;
+use Splicewire\Beam\Events\ResourceKeyOracle;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Frame\FrameResourceManifest;
@@ -488,6 +492,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // one ticket 19 D3 says re-opens 19 if an owner is caught doing it.
         $this->app->singleton(ResourceRenderingRegistry::class, fn () => new ResourceRenderingRegistry);
         $this->app->bind(ResolvesRenderingSubject::class, FindOrFailSubjectResolver::class);
+
+        // The publishable-event catalog (api-surface-coherence ticket 40). A SINGLETON for the same
+        // reason the particle registries are: a package provider registering an event type must land in
+        // the instance `GET /hooks/events` reads. Constructed EMPTY — its registrars attach in beam's own
+        // boot(), after resource discovery, because every registration validates its prefix against the
+        // live resource keys and a fill at first-resolve would validate against whatever was registered
+        // by then (registry-kernel ticket 07 D9, ticket 19 D3).
+        $this->app->singleton(ResourceKeyOracle::class, fn ($app) => new ResourceKeyOracle($app));
+        $this->app->singleton(EventTypeRegistry::class, fn ($app) => new EventTypeRegistry(
+            $app->make(ResourceKeyOracle::class),
+        ));
 
         // particle-doctrine-convergence ticket 09: the cross-transport ability resolver + its ACTOR port.
         // `bindIf` on the port, because "who is acting" is the transport's answer to give: HTTP has the
@@ -1210,6 +1225,25 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             by: self::class,
         );
 
+        // The event catalog's own registrars, attached on `booted()` rather than here — measured, not
+        // cautious. Every `register()` validates the event name's prefix against the LIVE resource keys,
+        // and the flagship host declares its twenty-odd resources from an APP provider's boot(), which
+        // runs after every package provider's. Filling in beam's own boot() would therefore fan
+        // `{resource}.persisted` out over an estate of two, and a host package registering
+        // `compositions.render.completed` would be rejected for a resource that exists three providers
+        // later. `booted()` is the only point at which "the live resource keys" is a settled question.
+        //
+        // ⚠️ `attach()` is EventTypeRegistry's own, not the composed store's: `BasicRegistry::attach()`
+        // hands the registrar the store and every write would bypass that validation silently. See the
+        // registry's class docblock.
+        $this->app->booted(fn () => $this->registerEventTypes());
+
+        // The second act (registry-kernel ticket 21 D1) for the event catalog.
+        $this->app->make(RegistryIndex::class)->describe(
+            $this->app->make(EventTypeRegistry::class),
+            by: self::class,
+        );
+
         // Frame OS ticket 08 (ADR-0013 §2): beam is the authority that unifies the two authorization
         // planes. Register a Laravel Gate ability per KNOWN feature key (`entitlement:{key}`) delegating to
         // the entitlement gate (which consults the bound kernel EntitlementResolver) — so the feature plane
@@ -1289,6 +1323,37 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $this->app->make(ParticleResourceRegistry::class),
             $this->app->make(ParticleOperationRegistry::class),
         ))->discover($classes, $paths);
+    }
+
+    /**
+     * Fill the publishable-event catalog: the `BeamParticlePersisted` fan-out (one `{resource}.persisted`
+     * entry per particle resource that has a model), then any `#[BeamEvent]`-annotated event classes the
+     * host has opted into scanning.
+     *
+     * Both are {@see Registrar}s attached to the registry ITSELF rather than to its composed store, which
+     * is what keeps every write behind the registration-time validation. Order matters only in that the
+     * fan-out runs first: it is the one source that cannot name a duplicate, so a collision between it
+     * and a host declaration is reported against the host's own class.
+     *
+     * `beam.core.events.discover_paths` / `.classes` are empty by default and the scan is skipped
+     * entirely when they are — a fresh beam host gets the persisted fan-out and nothing else.
+     */
+    protected function registerEventTypes(): void
+    {
+        $events = $this->app->make(EventTypeRegistry::class);
+
+        $events->attach(new ParticlePersistedEventRegistrar(
+            $this->app->make(ParticleResourceRegistry::class),
+        ));
+
+        $classes = (array) config('beam.core.events.classes', []);
+        $paths = (array) config('beam.core.events.discover_paths', []);
+
+        if ($classes === [] && $paths === []) {
+            return;
+        }
+
+        $events->attach(new BeamEventRegistrar($paths, $classes));
     }
 
     /**

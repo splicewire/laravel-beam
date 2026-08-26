@@ -9,6 +9,7 @@ use Rushing\Popcorn\Registries\RegistryArity;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
+use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -68,6 +69,7 @@ class BeamRegistryDeclarationTest extends TestCase
             RealmResourceRegistry::class => 'beam.realm.resource-overrides',
             CapabilityRegistry::class => 'beam.capabilities',
             ResourceRenderingRegistry::class => 'beam.renderings',
+            EventTypeRegistry::class => 'beam.events.types',
         ];
     }
 

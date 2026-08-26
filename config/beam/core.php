@@ -206,6 +206,22 @@ return [
     ],
 
     /*
+    | The publishable-event catalog (api-surface-coherence ticket 40). `EventTypeRegistry` is the
+    | accumulator; `#[BeamEvent]` is a FEEDER onto it, never a second store. Both keys are empty by
+    | default and the scan is skipped entirely when they are — a fresh beam host still gets the
+    | `{resource}.persisted` fan-out over its own particle resources, which needs no config at all.
+    | Registration validates every event name's prefix against the LIVE resource keys, so a name whose
+    | resource does not exist is rejected loudly at boot rather than becoming an orphan subscription.
+    */
+    'events' => [
+        // Explicit #[BeamEvent]-annotated event class-strings to reflect and register at boot.
+        'classes' => [],
+
+        // Filesystem paths scanned for #[BeamEvent] classes (dev convenience; no boot cache yet).
+        'discover_paths' => [],
+    ],
+
+    /*
     | The per-resource rendering registry `Route::resourceRenderings()` enumerates (moved from
     | laravel-composition-engine into beam core). Resource token => list of ResourceRendering
     | class-strings, resolved from the container on demand. A package may also `register()` a rendering
