@@ -25,6 +25,17 @@ use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
  *  - and the same package's `WebhookPathOverrideTest` — a *regression test for this exact bug*, written
  *    the first time it happened — kept passing through the second occurrence, because it set the same
  *    wrong key the broken route read.
+ *  - `laravel-beam-taxonomy`'s suite seeded `beam-taxonomy.models.tag` while the provider read
+ *    `beam.taxonomy.models.tag` (api-surface-coherence 53). This one is the write half ALONE: the
+ *    production read was correct, so nothing here fired, and the seeding simply fell on the floor —
+ *    three tests claiming to exercise the HOST binding asserted the package's own shipped default,
+ *    and the no-host-model case could not be exercised at all.
+ *
+ * ## Writes count, and they are the more dangerous half
+ * That fifth specimen is why `config()->set` / `$app['config']->set` are scanned alongside the reads,
+ * having previously been excluded as "a test idiom". A dead read fails visibly at runtime; a dead
+ * write turns an absent assertion into a passing one, silently, and there is nothing downstream to
+ * notice.
  *
  * That last one is the argument for a mechanical check rather than a convention: **a test pinned to the
  * same key as the code under test validates nothing**, and no amount of review reliably notices two
@@ -70,7 +81,7 @@ class DeadConfigKeyAudit implements DoctorAudit
         }
 
         if ($dead === []) {
-            return [Finding::pass(self::CHECK, 'Every literal config() read resolves to a loaded root.')];
+            return [Finding::pass(self::CHECK, 'Every literal config() read and write resolves to a loaded root.')];
         }
 
         $findings = [];
@@ -102,9 +113,10 @@ class DeadConfigKeyAudit implements DoctorAudit
         // optimistic about an absent package — it is simply on the wrong side of a rename.
         if ($nested !== $root && Config::has($nested)) {
             return Finding::fail(self::CHECK, sprintf(
-                '`%s.*` is read in %d place(s) but no such config root is loaded — `%s` is. The reads '.
-                'resolve to null and fall through to whatever inline default sits beside them, so every '.
-                'env var and host override behind them is dead. Rename to `%s.*`: %s',
+                '`%s.*` is read or written in %d place(s) but no such config root is loaded — `%s` is. The '.
+                'reads resolve to null and fall through to whatever inline default sits beside them, and '.
+                'the writes land on a root nothing reads, so every env var, host override and test '.
+                'seeding behind them is dead. Rename to `%s.*`: %s',
                 $root,
                 count($sites),
                 $nested,
@@ -116,9 +128,9 @@ class DeadConfigKeyAudit implements DoctorAudit
         unset($loaded);
 
         return Finding::warn(self::CHECK, sprintf(
-            '`%s.*` is read in %d place(s) and no config root by that name is loaded here, so the reads '.
-            'resolve to null. Expected if the owning package is optional and uninstalled; a defect '.
-            'otherwise: %s',
+            '`%s.*` is read or written in %d place(s) and no config root by that name is loaded here, so '.
+            'the reads resolve to null and the writes land where nothing reads. Expected if the owning '.
+            'package is optional and uninstalled; a defect otherwise: %s',
             $root,
             count($sites),
             $where,

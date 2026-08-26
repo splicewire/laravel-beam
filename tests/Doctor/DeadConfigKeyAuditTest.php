@@ -51,6 +51,42 @@ class DeadConfigKeyAuditTest extends TestCase
         );
     }
 
+    /**
+     * The write half (api-surface-coherence 53). A seeding write to a root nothing loads is the same
+     * defect as a dead read, and worse: it turns an absent assertion into a passing one.
+     */
+    public function test_it_reads_config_writes_through_the_facade_and_the_repository(): void
+    {
+        $source = <<<'CODE'
+        <?php
+        Config::set('beam-workflows.status_log_name', 'x');
+        config()->set('beam-taxonomy.models.tag', Tag::class);
+        $app['config']->set('beam-taxonomy.data.tag', null);
+        $this->app['config']->set('beam-mdx.content_path', 'x');
+        $collection->set('not.a.config', 1);
+        $node->attributes['style']->set('also.not.config', 1);
+        CODE;
+
+        $this->assertSame(
+            ['beam-workflows', 'beam-taxonomy', 'beam-mdx'],
+            array_keys(ConfigKeyScanner::rootsInSource($source)),
+        );
+    }
+
+    public function test_a_repository_receiver_reads_as_well_as_writes(): void
+    {
+        $source = <<<'CODE'
+        <?php
+        $a = config()->get('beam-alpha.x');
+        $b = $app['config']->get('beam-beta.y');
+        CODE;
+
+        $this->assertSame(
+            ['beam-alpha', 'beam-beta'],
+            array_keys(ConfigKeyScanner::rootsInSource($source)),
+        );
+    }
+
     public function test_a_dynamic_or_interpolated_key_is_invisible_rather_than_guessed_at(): void
     {
         $source = <<<'CODE'

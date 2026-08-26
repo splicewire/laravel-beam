@@ -65,9 +65,17 @@ class ConfigKeyScanner
      * The roots read in one file's source, mapped to the lines reading them.
      *
      * Recognized call shapes, all requiring a literal string first argument:
-     *   `config('root.rest')` · `Config::get('root.rest')` · `Config::has('root.rest')` ·
-     *   `$app['config']->set('root.rest', …)` is NOT matched — an array-access write is a test idiom
-     *   for seeding, and the read it must agree with is what this audit compares against.
+     *   `config('root.rest')` · `Config::get|has|set('root.rest', …)` ·
+     *   `config()->get|has|set('root.rest', …)` · `$app['config']->set('root.rest', …)`
+     *
+     * The WRITE shapes used to be excluded, on the reasoning that a seeding write is a test idiom and
+     * the read it must agree with is what the audit compares against. api-surface-coherence 53 is the
+     * counter-specimen: beam-taxonomy's suite seeded `beam-taxonomy.models.tag` while the provider read
+     * `beam.taxonomy.models.tag`, so the READ half was correct and produced no finding, while the write
+     * fell on the floor and three tests asserted the package's own shipped default instead of the
+     * host binding they claimed to exercise. A dead write is dead the same way a dead read is, and it
+     * is the more dangerous half — a dead read fails visibly at runtime; a dead write turns an
+     * assertion green.
      *
      * A bare `config('root')` with no dot is skipped: reading a whole root back is a legitimate way to
      * ask whether a package is installed, and it is not the shape that goes silently null on a rename.
@@ -84,7 +92,7 @@ class ConfigKeyScanner
                 continue;
             }
 
-            if (! in_array($token[1], ['config', 'get', 'has'], true)) {
+            if (! in_array($token[1], ['config', 'get', 'has', 'set'], true)) {
                 continue;
             }
 
@@ -94,9 +102,12 @@ class ConfigKeyScanner
                 continue;
             }
 
-            // `get`/`has` are only a config read when reached through the Config facade — otherwise
-            // every `$collection->get('a.b')` in the estate would be a finding.
-            if ($token[1] !== 'config' && ! self::precededByConfigFacade($tokens, $i)) {
+            // `get`/`has`/`set` only touch config when reached through the Config facade or a config
+            // repository receiver — otherwise every `$collection->get('a.b')` and every
+            // `$model->set('a.b')` in the estate would be a finding.
+            if ($token[1] !== 'config'
+                && ! self::precededByConfigFacade($tokens, $i)
+                && ! self::precededByConfigRepository($tokens, $i)) {
                 continue;
             }
 
@@ -161,6 +172,55 @@ class ConfigKeyScanner
             return $class !== null
                 && is_array($tokens[$class])
                 && str_ends_with(ltrim($tokens[$class][1], '\\'), 'Config');
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether the call at `$i` is reached through a config REPOSITORY receiver rather than the facade —
+     * `config()->set('a.b', …)` or `$app['config']->set('a.b', …)` (equally `$this->app['config']`).
+     * Both are the estate's test-seeding idioms, and both go silently nowhere on a renamed root.
+     *
+     * Deliberately narrow: the receiver must be one of those two literal shapes. `$repo->set('a.b')`
+     * on some variable that HAPPENS to hold a repository is invisible here, which is the same
+     * false-negative bargain {@see rootsInSource} already takes on dynamic keys — never guess.
+     *
+     * @param  array<int, array{0: int, 1: string, 2: int}|string>  $tokens
+     */
+    private static function precededByConfigRepository(array $tokens, int $i): bool
+    {
+        $arrow = self::previousMeaningful($tokens, $i);
+
+        if ($arrow === null || ! is_array($tokens[$arrow]) || $tokens[$arrow][0] !== T_OBJECT_OPERATOR) {
+            return false;
+        }
+
+        $close = self::previousMeaningful($tokens, $arrow);
+
+        if ($close === null) {
+            return false;
+        }
+
+        // `config()->` — an empty argument list, so the `(` sits directly behind the `)`.
+        if ($tokens[$close] === ')') {
+            $open = self::previousMeaningful($tokens, $close);
+            $name = $open !== null && $tokens[$open] === '(' ? self::previousMeaningful($tokens, $open) : null;
+
+            return $name !== null
+                && is_array($tokens[$name])
+                && $tokens[$name][0] === T_STRING
+                && $tokens[$name][1] === 'config';
+        }
+
+        // `['config']->` — the array-access read of the container's config binding.
+        if ($tokens[$close] === ']') {
+            $key = self::previousMeaningful($tokens, $close);
+
+            return $key !== null
+                && is_array($tokens[$key])
+                && $tokens[$key][0] === T_CONSTANT_ENCAPSED_STRING
+                && trim($tokens[$key][1], "'\"") === 'config';
         }
 
         return false;
