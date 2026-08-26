@@ -33,8 +33,16 @@ use Splicewire\Beam\Doctor\Support\SchemaCreateScanner;
  * Ticket 28 measured the gap while sweeping: six converted stubs carry raw `DB::statement` DDL beside
  * the create (partial unique indexes, a tsvector GIN index and its trigger, a CHECK constraint) and
  * three add a self-referencing FK in a post-create `Schema::table()`. Convergence covers none of it and
- * each needed a hand-written idempotency guard. This check reads all nine as conformant, and says so
- * here rather than letting a green run be read as certifying more than it looked at.
+ * each needed a hand-written idempotency guard. This check reads every one of them as conformant, and
+ * says so here rather than letting a green run be read as certifying more than it looked at.
+ *
+ * **Ticket 109 gave that residue its own instrument.** 28's "nine files" was 16 under its own predicate
+ * and 21 under the preflight's wider one by 2026-08-26, out of 141 convergent stubs — a written-down
+ * count goes stale silently, and this one had. {@see UnrehearsableStubAudit} now DERIVES it, at the
+ * scope where it costs something (the copies published into this host, which the preflight will meet),
+ * and this Pass line names that check instead of quoting a number. The two audits deliberately scope
+ * oppositely: this one reads `.php.stub` templates because its subject is what a package *declares*;
+ * that one reads published migrations because its subject is what this host will *run*.
  *
  * **The risk it cannot reach at all is the host copy.** 19's exclude-dated-published-migrations rule
  * stands — flagging generated output nominates hand-editing it — but 28 measured the consequence: every
@@ -82,11 +90,13 @@ class UnguardedCreateAudit implements DoctorAudit
         if ($rows === []) {
             return [Finding::pass(self::CHECK, sprintf(
                 'Every migration template creates its tables convergently (%d template(s) scanned). '.
-                'Note the two things this does not cover: raw DDL beside a convergent create (28 found 9 '.
-                'such files, each carrying its own hand-written idempotency guard), and copies already '.
-                'published into a host — those are excluded as generated output, and a host still on the '.
-                'pre-guard shape is repaired by re-publishing, not by an edit.',
+                'Note the two things this does not cover: raw DDL beside a convergent create — which is '.
+                'legitimate and deliberate, and is COUNTED by %s rather than quoted here, because a '.
+                'number in prose goes stale silently (28 wrote down 9; it was 16 by 2026-08-26) — and '.
+                'copies already published into a host, excluded as generated output, where a host still '.
+                'on the pre-guard shape is repaired by re-publishing rather than by an edit.',
                 count($this->templates()),
+                UnrehearsableStubAudit::CHECK,
             ))];
         }
 

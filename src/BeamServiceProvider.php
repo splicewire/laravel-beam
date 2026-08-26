@@ -74,6 +74,7 @@ use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
+use Splicewire\Beam\Doctor\UnrehearsableStubAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Events\BeamEventRegistrar;
 use Splicewire\Beam\Events\EventTypeRegistry;
@@ -93,6 +94,7 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Install\BeamInstallManifest;
+use Splicewire\Beam\Install\MigrationFiles;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Models\BeamSubmission;
@@ -709,12 +711,26 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // so it needs no list to maintain and cannot go stale as packages are added.
         $this->app->bind(DeadConfigKeyAudit::class, fn () => new DeadConfigKeyAudit);
 
+        // The other half of the convergence story, and the one no instrument reported until now
+        // (beam-facade ticket 109). `ConvergencePreflight` refuses to rehearse a body it cannot prove is
+        // a pure convergent declaration — correctly, since a rehearsal neutralises convergent guards and
+        // NOTHING else — but that refusal was only visible to an operator mid-install, and there is no
+        // report-only entry point to the preflight. So "how much of this host is unmeasured" was a number
+        // each session rediscovered by installing. Both instruments now hold ONE predicate
+        // ({@see RehearsalSafety}); a second copy would drift, which is the mistake 28 already paid for.
+        // Advisory, permanently: whether a raw-DDL stub is published HERE is a fact about the host's
+        // composition, and the DDL itself is ruled legitimate.
+        $this->app->bind(UnrehearsableStubAudit::class, fn ($app) => new UnrehearsableStubAudit(
+            MigrationFiles::pathsFor($app),
+        ));
+
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', KeyTypeConformanceAudit::class);
         $manifest->register('splicewire/laravel-beam', DeadConfigKeyAudit::class);
         $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', ConfigFacadeReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', UnguardedCreateAudit::class);
+        $manifest->register('splicewire/laravel-beam', UnrehearsableStubAudit::class);
         // An operation whose `ability:` is `null` is UNDECLARED, not decided — the residue
         // particle-operation-surface ticket 03 named and could not close in one act without 403ing
         // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host

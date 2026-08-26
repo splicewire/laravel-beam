@@ -85,7 +85,7 @@ final class ConvergencePreflight
 
             $source = (string) @file_get_contents($file);
 
-            if (! str_contains($source, 'ConvergentTable')) {
+            if (! RehearsalSafety::isConvergent($source)) {
                 continue;
             }
 
@@ -134,66 +134,14 @@ final class ConvergencePreflight
     /**
      * Why this file must not be rehearsed, or null when it is a pure convergent declaration.
      *
-     * Scanned OUTSIDE `down()` rather than inside `up()`, which is the stricter of the two and the reason
-     * it is written this way: a stub's real work is routinely delegated to a private helper (beam's own
-     * `create_activity_log_table` resolves its presence question through one), so an `up()`-only scan
-     * would read a two-line body and miss everything it calls. `down()` is excised because
-     * `Schema::dropIfExists()` is exactly what belongs there and never runs from here.
-     *
-     * Source text, and therefore approximate — the same instrument beam-facade ticket 77 caught passing a
-     * check by DESCRIBING a call it did not make. It errs the safe way: the cost of a false positive is
-     * one migration reported as unrehearsable, and the cost of a false negative is a stray write during a
-     * pass that promises not to write.
+     * The predicate itself lives in {@see RehearsalSafety} — extracted at beam-facade ticket 109, when a
+     * second instrument (the standing doctor report) needed the identical question answered about the
+     * identical population. Its docblock carries the whole argument for why the scan is source text,
+     * why it errs safe, and why `down()` is excised.
      */
     private function unrehearsableBecause(string $source): ?string
     {
-        $body = $this->withoutDownMethod($source);
-
-        $writes = [
-            'a Schema write outside a convergent guard' => '/Schema::\s*(?:connection\([^)]*\)\s*->\s*)?(?:create|table|drop|dropIfExists|dropColumns|dropAllTables|rename)\s*\(/i',
-            'a raw database statement' => '/DB::\s*(?:connection\([^)]*\)\s*->\s*)?(?:statement|unprepared|insert|update|delete)\s*\(/i',
-            'a row write' => '/->\s*(?:insertOrIgnore|insertGetId|insert|updateOrInsert|upsert|update|delete|truncate)\s*\(/i',
-        ];
-
-        foreach ($writes as $reason => $pattern) {
-            if (preg_match($pattern, $body)) {
-                return "not rehearsed — it carries {$reason}, which a rehearsal would run for real";
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * The source with the `down()` method's body removed, by brace matching from its opening `{`.
-     *
-     * Brace-matched rather than regexed because `down()` bodies contain braces (closures, arrays) and a
-     * non-greedy match to the first `}` would leave the rest of the method in the scanned text — which
-     * fails OPEN, letting a real write through.
-     */
-    private function withoutDownMethod(string $source): string
-    {
-        if (! preg_match('/function\s+down\s*\([^)]*\)\s*(?::\s*\w+\s*)?\{/i', $source, $m, PREG_OFFSET_CAPTURE)) {
-            return $source;
-        }
-
-        $open = $m[0][1] + strlen($m[0][0]) - 1;
-        $depth = 0;
-
-        for ($i = $open, $len = strlen($source); $i < $len; $i++) {
-            if ($source[$i] === '{') {
-                $depth++;
-            } elseif ($source[$i] === '}') {
-                $depth--;
-
-                if ($depth === 0) {
-                    return substr($source, 0, $m[0][1]).substr($source, $i + 1);
-                }
-            }
-        }
-
-        // Unbalanced — fail closed by scanning the whole file, which at worst over-reports.
-        return $source;
+        return RehearsalSafety::explain($source);
     }
 
     /**
