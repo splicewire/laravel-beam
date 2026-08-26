@@ -326,10 +326,18 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // ReplayNotificationStatus) — silently misses a write-side-only alias. No `*_type` column
         // stores either token today, so registering them is additive and safe; it closes the gap
         // before something does.
+        // `hook` joins them (api-surface-coherence 38). It is not a nicety here: a hook carries TWO
+        // polymorphic columns of its own (`subject_*`, `owner_*`), `hooks.disabled` / `hooks.verified`
+        // declare `Hook::class` as their catalog subject, and `GET /hooks/events` publishes that subject
+        // to every subscriber. Without an alias all three of those write and publish
+        // `Splicewire\Beam\Models\Hook` — the package's internal namespace, on the wire, in a column,
+        // and in a permission-token prefix (ADR-0118), which makes the class un-renameable by anything
+        // short of a data migration. `splicewire:beam:doctor` reported exactly this.
         Relation::morphMap([
             'beam_particle' => BeamParticle::class,
             'beam_schema' => BeamSchema::class,
             'beam_submission' => BeamSubmission::class,
+            'hook' => Hook::class,
         ]);
 
         // beam-core's DEFAULT schema-migration wiring (ADR-0138): so a headless beam app
