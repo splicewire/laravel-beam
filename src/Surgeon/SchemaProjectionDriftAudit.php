@@ -76,8 +76,8 @@ class SchemaProjectionDriftAudit implements DoctorAudit
     /**
      * @param  ?FileSchemaCollection<array-key, WrittenSchema>  $schemas  the in-scope declared classes, generated
      *                                                                    through the host's configured generator chain.
-     *                                                                    null ⇒ the check is unavailable (generator not
-     *                                                                    installed / unsupported path structure) for $unavailableReason.
+     *                                                                    null ⇒ the check is unavailable (an unsupported
+     *                                                                    `path_structure`) for $unavailableReason.
      * @param  array<string, array<string, mixed>>  $onDisk  class name => the document read back off disk (absent ⇒ no file)
      * @param  array<string, string>  $declaredBy  class name => the particle declaration site that named it
      */
@@ -90,10 +90,11 @@ class SchemaProjectionDriftAudit implements DoctorAudit
 
     public static function forApp(): self
     {
-        if (! interface_exists(Generator::class) || ! class_exists(Data::class)) {
-            return new self(null, 'data-schemas not installed (base beam is schema-agnostic)');
-        }
-
+        // No `interface_exists(Generator::class)` / `class_exists(Data::class)` guard. Beam
+        // hard-requires `schemastud/laravel-data-schemas` and `spatie/laravel-data` in `require`, so
+        // that branch could not execute in any installation composer is able to build — and while it
+        // sat here it asserted, in the one place anyone would read it, that base beam is
+        // schema-agnostic. It is not (ADR-0213, superseding that clause of ADR-0082).
         $config = (array) config('data-schemas', []);
         $config['output_directory'] ??= resource_path('schemas');
 

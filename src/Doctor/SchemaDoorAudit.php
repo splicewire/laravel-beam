@@ -107,14 +107,14 @@ class SchemaDoorAudit implements DoctorAudit
      */
     public function run(): array
     {
-        if (! class_exists(SchemaDoorMount::class) || ! interface_exists(ServedSchemaRegistry::class)) {
-            return [Finding::pass(self::CHECK, sprintf(
-                'schemastud/laravel-data-schemas is not installed — no schema door, and no %s to declare '.
-                '(base beam is schema-agnostic, ADR-0082).',
-                'data-schemas.base_uri',
-            ))];
-        }
-
+        // No `class_exists(SchemaDoorMount::class)` / `interface_exists(ServedSchemaRegistry::class)`
+        // guard. Beam hard-requires `schemastud/laravel-data-schemas` in `require`, so the branch could
+        // not execute — and here it was dead in a stronger sense than at its sibling
+        // {@see \Splicewire\Beam\Surgeon\SchemaProjectionDriftAudit}: this file `use`s nine
+        // `Schemastud\DataSchemas\*` classes and type-hints them BELOW the guard, so a genuinely absent
+        // package would fatal on autoload whatever the branch returned. It was not a safety net, it was
+        // a note claiming one — and its PASS message was the only in-repo assertion left that base beam
+        // is schema-agnostic. It is not (ADR-0213, superseding that clause of ADR-0082).
         $base = $this->config('data-schemas.base_uri');
 
         if ($base === false || $base === null || $base === '') {
