@@ -80,6 +80,25 @@ use Schemastud\DataSchemas\Support\SchemaAuthority;
  * data-schemas', and its skip condition is a `base_uri` tri-state. Folding them would put two
  * unrelated skip conditions behind one check key.
  *
+ * ## The door has NO in-family client, and that is a ruling rather than a gap
+ * Beam-facade ticket 103 asked whether the family should ship the client half — a budgeted HTTP
+ * schema source filling the remote tier `Schemastud\JsonReference\ResolutionPolicy` reserves. It is
+ * ruled **deliberately empty** (2026-08-27), on ticket 25's precedent for its own question. Nothing
+ * inside the family fetches a schema over HTTP: beam's `fleet` tier is local disk despite the name,
+ * `db` is Eloquent, and this door exists for `$ref`-following tooling *outside* the family, which is
+ * why it serves `immutable` + a strong ETag — a third-party client needs nothing from us. So the
+ * check above is the whole of beam's stake in the door: that it answers, not that we call it.
+ *
+ * Two consequences worth not rediscovering. Ticket 82's refusal of a `?resolve=inline` bundling
+ * parameter **stands on 82's own reasoning** (a second way to say the same thing); 103 declined to
+ * reopen it and its extra argument — no in-family client means a bundle serves an audience of zero —
+ * is recorded there as *demand-shaped and dated*, deliberately kept out of the load-bearing case,
+ * because a refusal resting on "nobody asked" expires the day someone does. And this ruling is
+ * scoped to the **schema door**: `ResolutionPolicy`'s general reservation survives it untouched, and
+ * its budgeted tier is a live open question on the dereference seam — eight implementations across
+ * three engines, none of which read `$policy`. That question is owed a map of its own and is not
+ * closed here.
+ *
  * Advisory (ticket 88: the estate's checks are advisory by construction, 1 of ~30 gates). It ships in
  * beam rather than in `schemastud/laravel-data-schemas` because the audit vocabulary is
  * `rushing/laravel-doctor` and the aggregation point is {@see BeamDoctorManifest} — data-schemas is
