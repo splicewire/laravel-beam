@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
+use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Events\EventTypeRegistry;
@@ -108,8 +109,17 @@ class HookSubscriptionReach
         $currentType = $hook->subject_type;
         $currentId = $hook->subject_id === null ? null : (string) $hook->subject_id;
 
-        $type = $input->subject_type ?? $currentType;
-        $id = $input->subject_id !== null ? (string) $input->subject_id : $currentId;
+        // ⚠️ `Optional`-aware on purpose, and this is the load-bearing line of the method. These two
+        // fields are three-state: ABSENT (the `Optional` sentinel — leave the subject alone), an
+        // explicit NULL (clear it, widening the hook to the whole resource), or a value (re-point).
+        // A `??` here would collapse the first two, so an explicit null would read as "not supplied",
+        // fall back to the current subject, skip the re-vet — and `HookInputData::toModelAttributes()`
+        // would then write the null anyway. That is the ticket-04 gap in a new spelling, which is why
+        // particle-write-surface ticket 01 held the `Optional` conversion back until this line existed.
+        $type = $input->subject_type instanceof Optional ? $currentType : $input->subject_type;
+        $id = $input->subject_id instanceof Optional
+            ? $currentId
+            : ($input->subject_id === null ? null : (string) $input->subject_id);
 
         $currentEvents = array_values(array_map('strval', (array) ($hook->events ?? [])));
         $events = $input->events !== null

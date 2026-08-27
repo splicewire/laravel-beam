@@ -9,6 +9,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
 use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
+use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Data\ResponseBody;
@@ -210,7 +211,14 @@ class HookSubscriptionController extends Controller
      */
     protected function resolveSubject(HookInputData $input): ?Model
     {
-        return $this->reach()->resolveSubject($input->subject_type, $input->subject_id);
+        // `subject_*` are three-state since particle-write-surface ticket 01's follow-up. On CREATE
+        // there is nothing to leave alone, so absent and explicitly-null mean the same thing — a
+        // subjectless hook — and both flatten to null here. The distinction only earns its keep on the
+        // update path, where {@see HookSubscriptionReach::vetWrite()} reads it directly.
+        return $this->reach()->resolveSubject(
+            $input->subject_type instanceof Optional ? null : $input->subject_type,
+            $input->subject_id instanceof Optional ? null : $input->subject_id,
+        );
     }
 
     // ── The feature plane's snapshot (13 §6) ────────────────────────────────────────────────────

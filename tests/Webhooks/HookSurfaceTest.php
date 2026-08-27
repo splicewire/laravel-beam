@@ -203,16 +203,38 @@ class HookSurfaceTest extends TestCase
     public function test_the_not_null_columns_stay_on_the_drop_nulls_gate(): void
     {
         // Deliberate non-conversion. `endpoint` and `events` are NOT NULL in the table, so a "clear" on
-        // either is a constraint violation dressed up as an API affordance. `subject_type`/`subject_id`
-        // ARE nullable and are still held back — see the class docblock for the authorization reason.
+        // either is a constraint violation dressed up as an API affordance.
+        //
+        // ⚠️ `subject_type`/`subject_id` USED to be asserted here too, held back on an authorization
+        // ground rather than a schema one: clearing them widens a narrowed subscription to the whole
+        // resource, and until particle-write-surface ticket 04 the update path re-ran no reach check.
+        // 04 landed that check and made it `Optional`-aware, so the pair converted — the clear is now
+        // vetted on the subjectless (`viewAny`) plane. See HookSubjectRepointTest's three clear tests.
         $attributes = HookInputData::from([
             'endpoint' => null,
             'events' => null,
+        ])->toModelAttributes();
+
+        $this->assertSame([], $attributes);
+    }
+
+    public function test_a_subject_is_absent_when_unnamed_and_cleared_when_explicitly_null(): void
+    {
+        // The three-state pair, at the mapper. The HTTP half — that the clear is AUTHORIZED before it
+        // reaches here — is HookSubjectRepointTest's; this pins only that the mapper can express it.
+        $absent = HookInputData::from(['endpoint' => 'https://x.test/hooks'])->toModelAttributes();
+
+        $this->assertArrayNotHasKey('subject_type', $absent);
+        $this->assertArrayNotHasKey('subject_id', $absent);
+
+        $cleared = HookInputData::from([
             'subject_type' => null,
             'subject_id' => null,
         ])->toModelAttributes();
 
-        $this->assertSame([], $attributes);
+        $this->assertArrayHasKey('subject_type', $cleared);
+        $this->assertNull($cleared['subject_type']);
+        $this->assertNull($cleared['subject_id']);
     }
 
     public function test_pausing_is_a_boolean_on_the_wire_and_a_timestamp_in_the_column(): void

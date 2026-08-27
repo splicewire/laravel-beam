@@ -87,9 +87,22 @@ class HookInputData extends Data
          */
         public string|Optional|null $token = new Optional,
 
-        public ?string $subject_type = null,
+        /**
+         * The narrowing target — nullable in the column, and CLEARABLE, because widening a hook back to
+         * the whole resource is a real subscriber intent. `string|Optional|null` with no `= null`
+         * default, so an absent field is the `Optional` sentinel and an explicit null is a real null.
+         *
+         * ⚠️ **This pair is only safe to clear because {@see HookSubscriptionReach::vetWrite()} is
+         * `Optional`-aware.** It was held back by particle-write-surface ticket 01 precisely because
+         * clearing broadens a narrowed subscription into a firehose over the whole resource, and until
+         * ticket 04 the update path re-ran no reach check at all. Even after 04, `vetWrite()` computed
+         * the intended subject with `??`, which cannot distinguish absent from an explicit null — so
+         * converting these two without changing that computation would have written the clear while
+         * skipping the re-vet. The two changes are one change; do not split them.
+         */
+        public string|Optional|null $subject_type = new Optional,
 
-        public ?string $subject_id = null,
+        public string|Optional|null $subject_id = new Optional,
 
         public ?bool $paused = null,
     ) {}
@@ -112,16 +125,20 @@ class HookInputData extends Data
     {
         $attributes = [];
 
-        foreach (['endpoint', 'events', 'subject_type', 'subject_id'] as $field) {
+        foreach (['endpoint', 'events'] as $field) {
             if ($this->{$field} !== null) {
                 $attributes[$field] = $this->{$field};
             }
         }
 
-        // Absent ⇒ leave the column alone. Present ⇒ write it, INCLUDING a null, which revokes the
-        // bearer the receiver was checking for. See the property's note.
-        if (! $this->token instanceof Optional) {
-            $attributes['token'] = $this->token;
+        // Absent ⇒ leave the column alone. Present ⇒ write it, INCLUDING a null. For `token` a null
+        // revokes the bearer the receiver was checking for; for `subject_*` it widens the hook back to
+        // the whole resource, which `HookSubscriptionReach::vetWrite()` authorizes on the subjectless
+        // plane before this ever runs. See each property's note.
+        foreach (['token', 'subject_type', 'subject_id'] as $field) {
+            if (! $this->{$field} instanceof Optional) {
+                $attributes[$field] = $this->{$field};
+            }
         }
 
         if ($this->paused !== null) {

@@ -189,6 +189,61 @@ class HookSubjectRepointTest extends TestCase
             'events' => ['reaches.happened', 'unicorns.pranced'],
         ])->assertStatus(422)->assertJsonValidationErrors('events');
     }
+
+    // ── Clearing the subject (particle-write-surface 01's follow-up) ────────────────────────────
+    //
+    // `subject_*` became three-state so a hook can be widened back to the whole resource. Clearing is
+    // the MOST dangerous write on this surface — it turns a narrowed subscription into a firehose —
+    // so it is authorized on the subjectless plane (`viewAny`), the same bar a subjectless CREATE
+    // clears. These three pin that an explicit null is a real clear, that it is vetted, and that an
+    // ABSENT field is still not a clear.
+
+    public function test_a_patch_may_not_clear_a_hooks_subject_when_the_actor_lacks_viewany(): void
+    {
+        $mine = ReachRecord::create(['reachable' => true]);
+        $hook = $this->hook($mine);
+
+        // ReachRecordPolicy::viewAny() is false, so widening to the whole resource is refused.
+        $this->putJson("/hooks/{$hook->id}", [
+            'subject_type' => null,
+            'subject_id' => null,
+        ])->assertForbidden();
+
+        // Refused BEFORE the write — the hook is still narrowed to its subject.
+        $this->assertSame((string) $mine->getKey(), (string) $hook->refresh()->subject_id);
+        $this->assertNotNull($hook->refresh()->subject_type);
+    }
+
+    public function test_a_patch_may_clear_a_hooks_subject_when_the_actor_holds_viewany(): void
+    {
+        Gate::policy(ReachRecord::class, WideOpenReachRecordPolicy::class);
+
+        $hook = $this->hook(ReachRecord::create(['reachable' => true]));
+
+        $this->putJson("/hooks/{$hook->id}", [
+            'subject_type' => null,
+            'subject_id' => null,
+        ])->assertOk();
+
+        $this->assertNull($hook->refresh()->subject_type);
+        $this->assertNull($hook->refresh()->subject_id);
+    }
+
+    public function test_an_absent_subject_is_not_a_clear(): void
+    {
+        $mine = ReachRecord::create(['reachable' => true]);
+        $hook = $this->hook($mine);
+
+        // The control that makes the two above mean something: naming neither field leaves the
+        // subject exactly where it was. Before the `Optional` conversion this was the ONLY behaviour
+        // the DTO could express, and it is why a clear had no spelling at all.
+        $this->putJson("/hooks/{$hook->id}", [
+            'endpoint' => 'https://moved.test/hooks',
+        ])->assertOk();
+
+        $this->assertSame((string) $mine->getKey(), (string) $hook->refresh()->subject_id);
+        $this->assertSame('https://moved.test/hooks', $hook->refresh()->endpoint);
+    }
 }
 
 class ReachUser extends User
@@ -257,5 +312,23 @@ class ReachRecordPolicy
     public function viewAny($user): bool
     {
         return false;
+    }
+}
+
+/**
+ * The counterpart the clear tests need: an actor who genuinely holds the whole resource, and may
+ * therefore widen a hook back to it. Without this, "clearing is refused" would be indistinguishable
+ * from "clearing never works".
+ */
+class WideOpenReachRecordPolicy
+{
+    public function view($user, ReachRecord $record): bool
+    {
+        return true;
+    }
+
+    public function viewAny($user): bool
+    {
+        return true;
     }
 }
