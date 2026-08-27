@@ -52,6 +52,14 @@ use Splicewire\Beam\Install\RehearsalSafety;
  * never installed the arm shipping a raw-DDL stub has no gap. That is the opposite scoping from
  * {@see UnguardedCreateAudit}, which reads `.php.stub` templates because its subject is what a package
  * declares. The two audits are about different things and neither number is the other's.
+ *
+ * **There is now a third scoping, and it is the one this pair could not reach.**
+ * {@see PackageStubConflictAudit} (beam-facade ticket 182) rehearses PACKAGE STUBS against the LIVE
+ * DATABASE. Note what that means for the population here: a host that keeps its own published copy of a
+ * table takes the package stub out of `MigrationFiles::pathsFor()` **forever**, so this audit rehearses
+ * the override, finds it clean, and is silent about the declaration it displaced. That silence is
+ * correct — the subject here is what this host will run — and it is exactly why the third audit exists.
+ * Three scopings, three numbers, none of them each other's.
  */
 class UnrehearsableStubAudit implements DoctorAudit
 {

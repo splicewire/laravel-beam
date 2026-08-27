@@ -62,6 +62,7 @@ use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
+use Splicewire\Beam\Doctor\PackageStubConflictAudit;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
 use Splicewire\Beam\Doctor\ScribeOutputContractAudit;
@@ -807,6 +808,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             MigrationFiles::pathsFor($app),
         ));
 
+        // The THIRD scoping, and the one 108 found nothing in the estate had (beam-facade ticket 182).
+        // The two above read the published copies and the templates respectively; neither rehearses a
+        // PACKAGE STUB against the live database. A host that overrides a package's shape with its own
+        // published copy takes that stub out of `MigrationFiles` forever, so the preflight rehearses the
+        // override, passes, and says nothing about the package declaration sitting one republish away
+        // from a tier-three throw. Advisory permanently: the live shape is a fact about the host, and
+        // the overrides this reports at audiostud are the estate's shape-ownership mechanism working.
+        $this->app->bind(PackageStubConflictAudit::class, fn () => PackageStubConflictAudit::forApp());
+
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', KeyTypeConformanceAudit::class);
         $manifest->register('splicewire/laravel-beam', DeadConfigKeyAudit::class);
@@ -814,6 +824,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $manifest->register('splicewire/laravel-beam', ConfigFacadeReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', UnguardedCreateAudit::class);
         $manifest->register('splicewire/laravel-beam', UnrehearsableStubAudit::class);
+        $manifest->register('splicewire/laravel-beam', PackageStubConflictAudit::class);
         // An operation whose `ability:` is `null` is UNDECLARED, not decided — the residue
         // particle-operation-surface ticket 03 named and could not close in one act without 403ing
         // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host

@@ -3,10 +3,8 @@
 namespace Splicewire\Beam\Install;
 
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Rushing\SchemaConvergence\ConvergentTable;
 use Throwable;
 
 /**
@@ -31,7 +29,7 @@ use Throwable;
  *
  * A guard is constructed INSIDE the migration's own `up()`, so there is nothing for a caller to hold and
  * call `report()` on. `ConvergentTable::rehearse()` therefore puts every terminal into report mode and
- * the body is invoked for real — which makes the honesty of {@see rehearsable()} load-bearing, not
+ * the body is invoked for real — which makes the honesty of {@see RehearsalSafety} load-bearing, not
  * defensive: rehearsal neutralises convergent guards and NOTHING ELSE, so a `DB::statement()` sitting
  * beside one would execute. A migration this class cannot prove is a pure convergent declaration is
  * skipped and SAID, never quietly run and never quietly dropped.
@@ -95,53 +93,18 @@ class ConvergencePreflight
         return $found;
     }
 
+    /**
+     * The act itself lives in {@see MigrationRehearsal} — extracted at beam-facade ticket 182, when a
+     * second instrument (the package-stub audit) needed the identical rehearsal over the opposite
+     * population. Its docblock carries the temp-copy mechanics and the reason an UNPUBLISHED stub is
+     * rehearsable at all; {@see RehearsalSafety}'s carries why the safety scan is source text, why it
+     * errs safe, and why `down()` is excised. A body that cannot be rehearsed comes back as a finding
+     * rather than a crash, which is this pass's posture: it runs BEFORE the install commits to anything,
+     * and a fresh host that cannot reach its database must still install.
+     */
     private function rehearseOne(string $migration, string $file, string $source): RehearsedMigration
     {
-        $unsafe = $this->unrehearsableBecause($source);
-
-        if ($unsafe !== null) {
-            return RehearsedMigration::skip($migration, $file, $unsafe);
-        }
-
-        $copy = sys_get_temp_dir().DIRECTORY_SEPARATOR.'beam-preflight-'.bin2hex(random_bytes(8)).'.php';
-
-        if (! @copy($file, $copy)) {
-            return RehearsedMigration::skip($migration, $file, 'could not be copied to a temp path to be read');
-        }
-
-        try {
-            $instance = require $copy;
-
-            if (! $instance instanceof Migration) {
-                return RehearsedMigration::skip($migration, $file, 'does not return a Migration instance');
-            }
-
-            return new RehearsedMigration(
-                $migration,
-                $file,
-                ConvergentTable::rehearse(fn () => $instance->up()),
-            );
-        } catch (Throwable $e) {
-            // A body that cannot even be rehearsed is a finding, not a crash: this pass runs BEFORE the
-            // install commits to anything, and a fresh host that cannot reach its database must still
-            // install. Same posture the ownership pass takes one step earlier.
-            return RehearsedMigration::skip($migration, $file, 'could not be rehearsed: '.$e->getMessage());
-        } finally {
-            @unlink($copy);
-        }
-    }
-
-    /**
-     * Why this file must not be rehearsed, or null when it is a pure convergent declaration.
-     *
-     * The predicate itself lives in {@see RehearsalSafety} — extracted at beam-facade ticket 109, when a
-     * second instrument (the standing doctor report) needed the identical question answered about the
-     * identical population. Its docblock carries the whole argument for why the scan is source text,
-     * why it errs safe, and why `down()` is excised.
-     */
-    private function unrehearsableBecause(string $source): ?string
-    {
-        return RehearsalSafety::explain($source);
+        return MigrationRehearsal::of($migration, $file, $source);
     }
 
     /**

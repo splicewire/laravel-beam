@@ -44,6 +44,14 @@ use Splicewire\Beam\Doctor\Support\SchemaCreateScanner;
  * oppositely: this one reads `.php.stub` templates because its subject is what a package *declares*;
  * that one reads published migrations because its subject is what this host will *run*.
  *
+ * **Ticket 182 added the third.** {@see PackageStubConflictAudit} reads the same population this audit
+ * does — package `.php.stub` templates — and asks a different question of it: not *is there a guard*,
+ * but *would the guard THROW against the schema that is actually here*. A stub can be perfectly
+ * conformant to this check and still be one `vendor:publish --force` away from a tier-three conflict,
+ * because the host holds the table in another shape and its own published copy has been shielding the
+ * difference. Structural conformance and live convergence are separate facts; this audit only ever
+ * measured the first.
+ *
  * **The risk it cannot reach at all is the host copy.** 19's exclude-dated-published-migrations rule
  * stands — flagging generated output nominates hand-editing it — but 28 measured the consequence: every
  * published copy at `~/Herd/splicewire-app` was still the pre-sweep create-only shape until 28's gate
