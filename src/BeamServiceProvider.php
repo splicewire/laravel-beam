@@ -496,7 +496,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         ))->loadConfig((array) config('frame.realm_resource_overrides', [])));
 
         // The generic particle REST surface (promoted from splicewire-app, ADR-0116). The two declaration
-        // registries are container singletons so the `Route::particleResource()` / `Route::particleOp()`
+        // registries are container singletons so the `Particle::mount()` / `Particle::ops()`
         // route macros (defined in packageBooted below) survive across the request; the DEFAULT response
         // seam is the neutral {@see ArrayResponseEnvelope} (a plain `{ data: … }` JsonResponse). A richer
         // host BINDS its own envelope adapter over its response DTO — and, when it subclasses the registries
@@ -548,7 +548,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // that is itself the singleton.
         $this->app->bind(ResourceModelResolver::class, ParticleResourceModelResolver::class);
 
-        // The per-resource rendering registry `Route::resourceRenderings()` enumerates (moved from
+        // The per-resource rendering registry `Particle::renderings()` enumerates (moved from
         // laravel-composition-engine into beam core). A SINGLETON for the same reason the particle
         // registries are: the route macro (defined in packageBooted below) must see the same instance a
         // package's own provider registered a rendering into. The default subject resolver is the

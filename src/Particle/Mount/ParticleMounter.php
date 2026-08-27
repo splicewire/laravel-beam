@@ -124,7 +124,7 @@ class ParticleMounter
 
         // The per-resource filter sub-surface, mounted AUTOMATICALLY at this exposure
         // (api-surface-coherence ticket 10 §3, build 35). Not opt-in the way
-        // `Route::resourceRenderings()` is: a rendering is something a host chooses to offer, while
+        // `Particle::renderings()` is: a rendering is something a host chooses to offer, while
         // a filter vocabulary is a fact about the resource — it either has a data-filters
         // registration or it does not. Mounting it here is what makes ticket 10's *registration is
         // one, exposure is many* true for filters: a resource exposed twice

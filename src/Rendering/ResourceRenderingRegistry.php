@@ -31,7 +31,7 @@ use Rushing\Popcorn\Registries\RegistryKey;
  */
 #[IsRegistry(
     root: 'beam.renderings',
-    of: 'renderings per resource — the set Route::resourceRenderings() mounts one route each from',
+    of: 'renderings per resource — the set Particle::renderings() mounts one route each from',
     arity: [RegistryArity::PickOne, RegistryArity::RunAll],
     entryType: 'class-string<'.ResourceRendering::class.'>|'.ResourceRendering::class,
     onDuplicate: OnDuplicate::Admit,

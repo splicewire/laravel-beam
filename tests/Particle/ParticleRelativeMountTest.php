@@ -183,7 +183,7 @@ class ParticleRelativeMountTest extends TestCase
         $this->assertNull(Photo::find($created['id'])->album_id);
     }
 
-    // ---- Route::particleOps — the plural loop-collapse -----------------------------------------------
+    // ---- Particle::ops — the plural loop-collapse -----------------------------------------------
 
     public function test_particle_ops_registers_and_mounts_inline_class_string_and_bare_forms(): void
     {
