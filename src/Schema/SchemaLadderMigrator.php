@@ -8,7 +8,7 @@ use Rushing\Versioning\Contracts\Migrator;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\MigrationOutcome;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
-use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
+use Schemastud\DataSchemas\Generators\Generator;
 use Schemastud\DataSchemas\Keywords;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\DataSchemas\Migration\Contracts\LlmMigrator;
@@ -46,6 +46,12 @@ use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 class SchemaLadderMigrator implements Migrator, RecordReconciler
 {
     /**
+     * @param  Generator  $generator  the host's configured generator CHAIN, not a hardcoded
+     *                                `JsonSchemaGenerator`. `data-schemas.generators` is a LIST and the
+     *                                dispatch rule lives only inside `ChainedGenerator`, so a
+     *                                concrete-typed parameter here made the chain unpassable — which is
+     *                                why the provider was still hand-building one. Only `generate()` and
+     *                                `canGenerate()` are used; nothing concrete-only was depended on.
      * @param  TransformRegistry|null  $transforms  author-registered custom-transform invocables for the
      *                                              EAGER drain. NEVER consulted on the read path — the read
      *                                              ladder is built without it.
@@ -60,7 +66,7 @@ class SchemaLadderMigrator implements Migrator, RecordReconciler
      */
     public function __construct(
         protected SchemaRegistry $registry,
-        protected JsonSchemaGenerator $generator,
+        protected Generator $generator,
         protected ?TransformRegistry $transforms = null,
         protected ?SchemaTargetResolver $targetResolver = null,
         protected ?Closure $llmMigratorFactory = null,
@@ -138,8 +144,35 @@ class SchemaLadderMigrator implements Migrator, RecordReconciler
 
         // No target resolver (a bare adapter): only the live-class current is
         // projectable. A pinned version has no source here.
-        return $version === null
-            ? $this->generator->generate(new ReflectionClass($recordType))
+        if ($version !== null) {
+            return [];
+        }
+
+        $class = new ReflectionClass($recordType);
+
+        // GUARDED, because `$generator` is now the host's configured CHAIN (see the type note on the
+        // constructor) and `ChainedGenerator::generate()` throws when no member accepts a class.
+        //
+        // A refusal means "this host has no generator that can describe this record type", and the
+        // honest answer to that is NO TARGET — the same `[]` the pinned-version branch above already
+        // returns. That is deliberately not the same thing as a target that happens to be empty:
+        // `classifyRead()` reads `$new['$id']` as null, `isOlder($storedId, '')` is not comparable and
+        // so returns false, and the record is classified `current($storedId)` — payload preserved
+        // byte-for-byte, nothing written back, no rung run.
+        //
+        // NOT MIGRATING is the correct failure here and MIGRATING WRONGLY is not. This is migrate-on-read
+        // for BeamParticle: the alternative — letting the throw escape — would take down an ordinary
+        // read, and the alternative to THAT — generating with the wrong member — would diff a payload
+        // against a schema its own host does not consider authoritative and then WRITE THE RESULT BACK.
+        // A record left at its stored version is recoverable the moment the host's chain is corrected;
+        // a record migrated against the wrong target is not.
+        //
+        // The visible cost is that a refused type reads `current` rather than `pending`, so nothing
+        // reports the absence from this seam. That is the deliberate trade — this is a runtime read
+        // path, not an audit — and the absence is reportable from the doctor tier, where a check whose
+        // answer depends on the host belongs.
+        return $this->generator->canGenerate($class)
+            ? $this->generator->generate($class)
             : [];
     }
 

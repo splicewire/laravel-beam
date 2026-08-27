@@ -25,7 +25,7 @@ use Rushing\Surgeon\Operation\Operation;
 use Rushing\Surgeon\Operation\SuggestsOperations;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
-use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
+use Schemastud\DataSchemas\Generators\Generator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameFilterProvider;
@@ -367,9 +367,22 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // data-schemas registry + generator, bound to the default target resolver. No
         // TransformRegistry and no LLM factory — a headless beam app's read path is cheap
         // rungs only (a host arms the eager drain).
+        //
+        // The generator is the CONTAINER'S, not a hand-built `JsonSchemaGenerator`. That construction
+        // was correct on config and blind on dispatch: `data-schemas.generators` is a LIST and the rule
+        // "the first member whose canGenerate() accepts this class" lives only inside `ChainedGenerator`,
+        // so at a multi-generator host (~/Herd/thingsontv) this bound the WRONG member. That matters more
+        // here than anywhere else in this sweep, because this feeds SchemaLadderMigrator's migrate-on-read
+        // for BeamParticle — the wrong generator does not produce a missing doc, it produces a target
+        // schema the record is then diffed against and MIGRATED INTO. Silently wrong persisted data.
+        //
+        // Resolved lazily inside the closure, so the data-schemas provider's own binding is in place by
+        // the time anything makes a RecordReconciler — this is register(), and nothing is resolved here.
+        // The refusal path is guarded inside the adapter (per-class, which is the only place
+        // `canGenerate()` can be asked); see the long note on `SchemaLadderMigrator::targetSchema()`.
         $this->app->bind(RecordReconciler::class, fn ($app) => new SchemaLadderMigrator(
             $app->make(SchemaRegistry::class),
-            new JsonSchemaGenerator((array) config('data-schemas', [])),
+            $app->make(Generator::class),
             targetResolver: $app->make(SchemaTargetResolver::class),
         ));
 
