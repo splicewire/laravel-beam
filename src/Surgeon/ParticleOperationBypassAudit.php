@@ -305,20 +305,31 @@ class ParticleOperationBypassAudit implements DoctorAudit, SuggestsOperations
             return [];
         }
 
-        $ref = new \ReflectionClass($this->operationRegistry);
-        while ($ref !== false && ! $ref->hasProperty('operations')) {
-            $ref = $ref->getParentClass();
-        }
-        if ($ref === false) {
-            return [];
+        // ⚠️ This used to reflect a private `$operations` property and read its array KEYS. Both halves
+        // rotted when the registry migrated onto popcorn, and it failed SILENTLY in the worst direction:
+        //
+        //   1. `ParticleOperationRegistry` composes `BasicRegistry $entries` and has no `operations`
+        //      property, so the walk up the inheritance chain found nothing and returned `[]`.
+        //   2. Even had it found one, the keys are now root-stamped and dot-segmented
+        //      (`beam.particle.operations.<resource>.<name>`), while the comparison below builds
+        //      `"{$candidate}:{$action}"` — so no key could ever have matched.
+        //
+        // Measured 2026-08-27: **0 keys against 26 registered operations**, meaning the suppression leg
+        // never fired and every already-registered operation was still nominated as a bypass. An audit
+        // that reports findings it has already been told are covered is the estate's recurring shape —
+        // an instrument reporting by not running.
+        //
+        // The repair reads the DECLARATIONS, not the keyspace: `$operation->resource` and `->name` are
+        // public and are what the key is derived FROM, so a future rekey cannot break this again.
+        $keys = [];
+
+        foreach ($this->operationRegistry->all() as $operation) {
+            if ($operation instanceof ParticleOperation) {
+                $keys["{$operation->resource}:{$operation->name}"] = true;
+            }
         }
 
-        $prop = $ref->getProperty('operations');
-        $prop->setAccessible(true);
-        /** @var array<string, mixed> $operations */
-        $operations = $prop->getValue($this->operationRegistry);
-
-        return array_fill_keys(array_keys($operations), true);
+        return $keys;
     }
 
     /**
