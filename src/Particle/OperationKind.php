@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Particle;
 
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Write\ParticleWriter;
 
 /**
  * The kind of a {@see ParticleOperation} — the axis that decides how it executes AND how it delivers
@@ -10,7 +11,29 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
  * separate semantics×transport matrix).
  *
  *  - **Read**   — a synchronous query/response; the query scope is the gate; never a job. (Unary)
- *  - **Write**  — a synchronous mutation; rides the model policy + emits a domain event; never a job. (Unary)
+ *  - **Write**  — a synchronous mutation; never a job. (Unary)
+ *
+ *    ⚠️ **`Write` is DECLARATIVE ONLY. It changes nothing at runtime, and this line used to claim
+ *    otherwise.** It read *"rides the model policy + emits a domain event"* — both halves refuted by a
+ *    gate-closed probe on 2026-08-27 (particle-write-surface ticket 02). `ParticleOperationController`
+ *    branches on kind at `invoke()`, and `Read` and `Write` share the `default =>` arm: no HTTP-verb
+ *    constraint, no policy ride, no transaction, no event. `BeamParticlePersisted` appears in 39 files
+ *    estate-wide and **none of them is one of the 15 registered write operations**; nothing emits it by
+ *    hand either.
+ *
+ *    A `kind: Write` op also does NOT ride {@see ParticleWriter} — its `handle`
+ *    closure persists directly, so it skips `AuthorizeStage`'s deny-by-default gate, `ValidateStage`,
+ *    `DedupeStage` (so `x-beam-dedupe` can never be honoured on this transport) and `EmitStage`. That is
+ *    not an oversight to be swept away: of the 15 write ops at the flagship, **zero** are the "one model,
+ *    one payload" shape `ParticleWriter::write()` accepts — they are deletes, multi-row syncs, external
+ *    calls and workflow transitions. Requiring the pipeline would refuse all fifteen.
+ *
+ *    So what `Write` genuinely buys today is **codegen and spec signal**, and that is worth keeping. What
+ *    it must not do is read like an enforced invariant. Ticket 02 nominates emitting
+ *    `BeamParticlePersisted` as the one stage restorable without constraining `handle` — deliberately NOT
+ *    done here, because that event has live listeners (`NotifyOnSubmission`, and the flagship's
+ *    `UpdateContextScopeEmbeddingsOnPersist`), so turning it on is an outward-facing behaviour change for
+ *    fifteen endpoints, not a docblock fix.
  *  - **Task**   — a potentially long-running, side-effectful unit (generate / run / render / reassess).
  *                 ONLY this kind is queueable: the framework honours `?async` to `dispatch` vs
  *                 `dispatch_sync` its job. (Queued. Parallel fan-out is a per-task concern, deliberately

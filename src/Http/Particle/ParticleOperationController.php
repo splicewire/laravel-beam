@@ -281,7 +281,18 @@ class ParticleOperationController extends Controller
             $this->bus->dispatchSync($job);
         }
 
-        $model->refresh();
+        // Null-guarded because a subject is OPTIONAL by declaration, not by accident: an operation may
+        // declare `subject: NoSubject::class` (the `index`/`store`/`{resource}/schema` shape), whose
+        // `resolve()` returns null and whose `yieldsSubject()` says so. Unguarded, such a Task fatals here
+        // on a null dereference — after its job has already dispatched, so the work happens and the caller
+        // sees a 500.
+        //
+        // Latent rather than live: all 26 operations registered at the flagship take the `subject: null`
+        // default (⇒ `RecordSubject`), so `NoSubject` has zero live consumers today and this path has never
+        // been reached. Confirmed by the gate-closed probe on particle-write-surface ticket 02, which is
+        // also why this is a guard and not a redesign — the declaration already permits a subjectless
+        // operation, so the controller has to.
+        $model?->refresh();
 
         // A task's handler returns the JOB, not a payload, so the payload here is the dispatch OUTCOME. That
         // is what the default envelope has always reported, and a `respond` projector still gets the refreshed
