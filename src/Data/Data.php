@@ -21,13 +21,19 @@ use Schemastud\DataSchemas\StudData;
  */
 class Data extends StudData
 {
+    use RendersJsonSafely;
+
     public function toResponseArray(): array
     {
         return $this->toArray();
     }
 
+    /**
+     * Same defence as {@see ResponseBody::toResponse()} — see {@see RendersJsonSafely}. All 85
+     * estate-wide subclasses inherit it, which is the point of the seam living here.
+     */
     public function toResponse($request): JsonResponse
     {
-        return new JsonResponse($this->toResponseArray());
+        return $this->jsonResponseThatCannotThrow($this->toResponseArray(), 200);
     }
 }

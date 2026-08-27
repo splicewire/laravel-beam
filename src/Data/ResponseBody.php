@@ -12,6 +12,8 @@ use Splicewire\Beam\Write\Dedupe\DuplicateRejected;
 #[TypeScript]
 class ResponseBody extends Data
 {
+    use RendersJsonSafely;
+
     public const HTTP_SUCCESS = Response::HTTP_OK;
 
     public const HTTP_CREATED = Response::HTTP_CREATED;
@@ -59,9 +61,14 @@ class ResponseBody extends Data
         return $arr;
     }
 
+    /**
+     * The error envelope is the last thing standing between a failure and whoever has to read it,
+     * so its own serialization must never be able to replace the failure. See
+     * {@see RendersJsonSafely} for the measurement that forced this (api-surface-coherence 109).
+     */
     public function toResponse($request): JsonResponse
     {
-        return new JsonResponse(
+        return $this->jsonResponseThatCannotThrow(
             $this->toResponseArray(),
             $this->statusCode
         );
