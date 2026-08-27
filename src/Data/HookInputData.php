@@ -7,7 +7,7 @@ use Spatie\LaravelData\Attributes\Validation\Url;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Models\Hook;
-use Splicewire\Beam\Webhooks\Http\HookSubscriptionController;
+use Splicewire\Beam\Webhooks\HookSubscriptionReach;
 
 /**
  * The WRITE DTO for the `hooks` particle resource — the `input:` slot of {@see HookData}.
@@ -49,14 +49,20 @@ use Splicewire\Beam\Webhooks\Http\HookSubscriptionController;
  *     constraint violation, not an affordance; dropping the null is the correct no-op.
  *   - **`paused`** already has all three states without `Optional`: `true` stamps `paused_at`,
  *     `false` clears it, absent leaves it. The boolean IS the tri-state, so there is nothing to fix.
- *   - **`subject_type`/`subject_id`** are nullable in the table and are STILL held back, deliberately,
- *     on the authorization axis. Clearing the pair BROADENS a narrowed subscription into a firehose
- *     over the whole resource, and the check that vets that reach —
- *     {@see HookSubscriptionController::authorizeSubscription()} — runs only on `POST /hooks`, never on
- *     the particle update, which authorizes the Hook ROW instead. (That the same gap already lets a
- *     PATCH re-point a subject at another record is a separate pre-existing defect; this DTO is not
- *     the place to widen it further while it stands.) Converting these two is a one-line change the
- *     moment the update path re-runs `authorizeSubscription` — not before.
+ *   - **`subject_type`/`subject_id`** are nullable in the table and are still `?string = null` here, so
+ *     the pair can be SET and re-pointed but not CLEARED. The authorization objection that held them
+ *     back is GONE as of particle-write-surface ticket 04: the reach check now lives in
+ *     {@see HookSubscriptionReach} and {@see HookData::prepare()} asks it on the particle write path
+ *     as well as `POST /hooks`, so a re-point at an unreachable record 403s (measured with the gate
+ *     closed; before the repair it answered 200 and persisted). Clearing the pair — which BROADENS a
+ *     narrowed subscription into a firehose over the whole resource — is vetted by the same call: an
+ *     empty pair falls to the subjectless branch, which demands `viewAny` on every resource the event
+ *     set spans.
+ *
+ *     So converting these two to `string|Optional|null` (no `= null` default, per the `token` note
+ *     above) is now the one-line change the docblock has promised since ticket 01, and it is safe. It
+ *     is left to ticket 01's own follow-up rather than done here, so the security repair lands as a
+ *     security repair and the surface widening is a separate, separately-reviewed diff.
  */
 class HookInputData extends Data
 {

@@ -7,6 +7,7 @@ use Schemastud\Frame\Attributes\Column;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
+use Splicewire\Beam\Webhooks\HookSubscriptionReach;
 
 /**
  * The READ projection for the `hooks` particle resource, and its declaration site
@@ -84,6 +85,30 @@ class HookData extends Data
 
         public ?string $created_at,
     ) {}
+
+    /**
+     * Re-vet the subscription's REACH on every particle write (particle-write-surface ticket 04).
+     *
+     * `ParticleController` runs this convention hook on create AND update
+     * (`ParticleController:226` / `:241`), which is the whole point: the update path authorizes the
+     * Hook ROW — "may this actor update this hook?" — and until this existed, nothing re-asked the
+     * DIFFERENT question `POST /hooks` asks, "may this actor receive these events for that subject?"
+     *
+     * Measured 2026-08-27 with the gate CLOSED (explicit policies, no `Gate::before`): a
+     * `PUT /hooks/{id}` carrying `subject_type`/`subject_id` re-pointed a hook at a record the actor
+     * could not `view`, answered **200**, and persisted it. It now 403s.
+     *
+     * The hook is a no-op unless the write MOVES the subscription — see
+     * {@see HookSubscriptionReach::vetWrite()} for why the check is on the delta.
+     */
+    public static function prepare(Hook $hook, mixed $input, mixed $actor = null): void
+    {
+        if (! $input instanceof HookInputData) {
+            return;
+        }
+
+        app(HookSubscriptionReach::class)->vetWrite($hook, $input, $actor);
+    }
 
     public static function project(Hook $model): Data
     {

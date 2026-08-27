@@ -4,10 +4,8 @@ namespace Splicewire\Beam\Webhooks\Http;
 
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
@@ -19,6 +17,7 @@ use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Webhooks\Data\CreatedHookData;
 use Splicewire\Beam\Webhooks\HookEmitter;
+use Splicewire\Beam\Webhooks\HookSubscriptionReach;
 use Throwable;
 
 /**
@@ -33,13 +32,18 @@ use Throwable;
  * takes the identical exit — "the reveal-once create stays a host REST survivor". This follows that
  * precedent rather than widening the particle contract for one endpoint.
  *
- * ## The ACTION plane is asked exactly here, and nowhere else, ever
+ * ## The ACTION plane is asked here — and, since ticket 04, on the particle update path too
  *
- * Ticket 13 §1–§2 splits the gate across two planes and asks them in two places. This is the only
- * place a PRINCIPAL exists, so this is where the action plane is asked — `view` against the subject
+ * Ticket 13 §1–§2 splits the gate across two planes and asks them in two places. This is where the
+ * action plane is asked for a CREATE — `view` against the subject
  * when the hook carries one, `viewAny` against the subscribed resource's model class otherwise, with
  * the permission NAME re-derived from the particle stamp every time rather than stored (13 §6, so
  * `hooks` never becomes a fourth stored-name case for ticket 16 to rot).
+ *
+ * "and nowhere else, ever" is what this said until particle-write-surface ticket 04 measured what it
+ * cost: the particle update path authorizes the Hook ROW, so a PATCH re-pointed `subject_*` at an
+ * unreachable record and answered 200. The check now lives in {@see HookSubscriptionReach} and is
+ * asked from both doors — here for create, and from `HookData::prepare()` for the particle write.
  *
  * The feature plane is re-checked at EMISSION, off the `entitlement_keys` snapshot this method takes.
  * The snapshot is taken here because it is not re-derivable later: it is read off the `entitlement:*`
@@ -169,18 +173,13 @@ class HookSubscriptionController extends Controller
     // ── The action plane (13 §1–§2) ─────────────────────────────────────────────────────────────
 
     /**
-     * Ask the action plane ONCE, here, where a principal exists.
+     * Ask the action plane where a principal exists — the CREATE half.
      *
-     * With a subject: `view` on that record. Without: `viewAny` on the model class behind EVERY
-     * resource key the subscription spans — all of them, not the first, because an events array
-     * naming two resources is two claims and passing one of them is not passing.
-     *
-     * A resource key beam cannot resolve to a backing model is NOT silently allowed and NOT fatal: it
-     * cannot be in `$events` at all, because {@see requireEvents()} already refused any name the
-     * catalog does not hold, and the catalog's own prefix audit reports a registered name whose
-     * resource is absent. Reaching the `continue` below therefore means the host registered an event
-     * for a resource it has since dropped — an advisory finding elsewhere, and here an event nothing
-     * can produce.
+     * The rule itself moved to {@see HookSubscriptionReach} (particle-write-surface ticket 04) so the
+     * particle UPDATE path can ask it too: this used to be the check's only call site, and a
+     * `PUT /hooks/{id}` re-pointing `subject_*` therefore reached a record the actor could not
+     * `view`. Measured with the gate closed, 200 and persisted. This method is now a delegate, kept
+     * because extending controllers override it.
      *
      * @param  list<string>  $events
      *
@@ -188,88 +187,30 @@ class HookSubscriptionController extends Controller
      */
     protected function authorizeSubscription(array $events, ?Model $subject): void
     {
-        if ($subject !== null) {
-            Gate::authorize('view', $subject);
-
-            return;
-        }
-
-        foreach ($this->resourceKeysOf($events) as $key) {
-            $backing = $this->backingModel($key);
-
-            if ($backing === null) {
-                continue;
-            }
-
-            Gate::authorize('viewAny', $backing);
-        }
+        $this->reach()->authorize($events, $subject);
     }
 
     /**
-     * @param  list<string>  $events
-     * @return list<string>
+     * The shared reach check (particle-write-surface ticket 04).
+     *
+     * Resolved from the container rather than constructor-injected, so an extending controller that
+     * calls `parent::__construct(...)` with the original three arguments still boots.
      */
-    protected function resourceKeysOf(array $events): array
+    protected function reach(): HookSubscriptionReach
     {
-        $hook = new Hook;
-        $hook->events = $events;
-
-        return $hook->resourceKeys();
-    }
-
-    /** @return class-string|null */
-    protected function backingModel(string $resourceKey): ?string
-    {
-        if (! $this->resources->has($resourceKey)) {
-            return null;
-        }
-
-        try {
-            $backing = $this->resources->get($resourceKey)->backing;
-        } catch (Throwable) {
-            return null;
-        }
-
-        return class_exists($backing) ? $backing : null;
+        return app(HookSubscriptionReach::class);
     }
 
     /**
      * Resolve the optional subject morph, refusing a half-supplied pair.
      *
-     * `subject_type` without `subject_id` (or the reverse) is not "no subject" — it is a caller who
-     * believes they scoped their subscription and did not. Honouring it as a firehose over the whole
-     * resource is the failure the ticket's subject-deletion rule exists to prevent, arriving through
-     * the front door instead.
+     * Delegates to {@see HookSubscriptionReach::resolveSubject()}, which is where the rule now lives
+     * so the update path resolves the same way. Kept as a method because extending controllers
+     * override it.
      */
     protected function resolveSubject(HookInputData $input): ?Model
     {
-        if ($input->subject_type === null && $input->subject_id === null) {
-            return null;
-        }
-
-        if ($input->subject_type === null || $input->subject_id === null) {
-            throw ValidationException::withMessages([
-                'subject_type' => 'Supply both subject_type and subject_id, or neither.',
-            ]);
-        }
-
-        $class = Relation::getMorphedModel($input->subject_type) ?? $input->subject_type;
-
-        if (! is_string($class) || ! class_exists($class) || ! is_subclass_of($class, Model::class)) {
-            throw ValidationException::withMessages([
-                'subject_type' => "`{$input->subject_type}` is not a model this host knows.",
-            ]);
-        }
-
-        $subject = $class::query()->find($input->subject_id);
-
-        if ($subject === null) {
-            throw ValidationException::withMessages([
-                'subject_id' => 'No such record to subscribe against.',
-            ]);
-        }
-
-        return $subject;
+        return $this->reach()->resolveSubject($input->subject_type, $input->subject_id);
     }
 
     // ── The feature plane's snapshot (13 §6) ────────────────────────────────────────────────────
