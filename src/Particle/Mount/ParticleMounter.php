@@ -346,11 +346,32 @@ class ParticleMounter
         $router->group(['prefix' => "{$uri}/{{$binding}}"], $routes);
 
         foreach ($router->getRoutes()->getRoutes() as $route) {
-            if (! isset($beforeIds[spl_object_id($route)])) {
-                $route->defaults(ParticleController::RELATIVE, $binding);
-                $route->defaults(ParticleController::RELATIVE_MODEL, $model);
-                $route->defaults(ParticleController::VIA, $via);
+            if (isset($beforeIds[spl_object_id($route)])) {
+                continue;
             }
+
+            // ⚠️ THE INNERMOST EDGE WINS, and this guard is the only thing that makes nesting mean
+            // anything (particle-operation-surface 07 §A4).
+            //
+            // Edges compose: an edge declared `at: ''` mounts inside an enclosing `relative()` group,
+            // because Laravel's `RouteGroup::formatPrefix` is `trim($old,'/').'/'.trim($new,'/')` — so
+            // `compositions/{composition}/cells` + `''` yields `.../cells/{cell}/…` with no doubled
+            // segment. The INNER call stamps its routes first, while the outer group's callback is
+            // still running; the outer loop then sees those same routes as "new" and, without this
+            // guard, re-stamps them — `Route::defaults()` overwrites, so the child would resolve its
+            // parent as the OUTERMOST binding rather than its immediate one.
+            //
+            // The failure is silent and reads as a scoping bug three layers away: the route matches,
+            // the controller resolves a parent, and it is the wrong one. Checking RELATIVE alone is
+            // sufficient — the three defaults are written together and there is no path that sets one
+            // without the others.
+            if (isset($route->defaults[ParticleController::RELATIVE])) {
+                continue;
+            }
+
+            $route->defaults(ParticleController::RELATIVE, $binding);
+            $route->defaults(ParticleController::RELATIVE_MODEL, $model);
+            $route->defaults(ParticleController::VIA, $via);
         }
     }
 
