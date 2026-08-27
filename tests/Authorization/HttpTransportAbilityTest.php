@@ -7,11 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\GuardActorAdapter;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -216,7 +216,7 @@ class HttpTransportAbilityTest extends TestCase
     {
         $this->app->make(ParticleOperationRegistry::class)->register($operation);
 
-        Route::particleOp('gadgets', 'gadgets', $operation->name);
+        Particle::ops('gadgets', 'gadgets', $operation->name);
     }
 }
 

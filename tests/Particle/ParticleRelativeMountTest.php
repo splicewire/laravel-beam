@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -70,7 +71,7 @@ class ParticleRelativeMountTest extends TestCase
 
     public function test_the_same_particle_class_mounts_standalone(): void
     {
-        Route::particleResource('photos', 'photos', ['only' => ['index', 'show', 'store']]);
+        Particle::mount('photos', 'photos')->only(['index', 'show', 'store']);
 
         // The standalone index sees EVERY photo — no relative scoping.
         $data = $this->getJson('/photos')->assertOk()->json('data');
@@ -85,8 +86,8 @@ class ParticleRelativeMountTest extends TestCase
 
     public function test_a_relative_relation_via_scopes_the_index_to_the_bound_parent(): void
     {
-        Route::particleRelative('albums', Album::class, via: 'photos', routes: function () {
-            Route::particleResource('photos', 'photos', ['only' => ['index', 'store']]);
+        Particle::relative('albums', Album::class, via: 'photos', routes: function () {
+            Particle::mount('photos', 'photos')->only(['index', 'store']);
         });
 
         $album = Album::where('title', 'Vacation')->firstOrFail();
@@ -99,8 +100,8 @@ class ParticleRelativeMountTest extends TestCase
 
     public function test_a_relative_relation_via_auto_associates_the_fk_on_create(): void
     {
-        Route::particleRelative('albums', Album::class, via: 'photos', routes: function () {
-            Route::particleResource('photos', 'photos', ['only' => ['store']]);
+        Particle::relative('albums', Album::class, via: 'photos', routes: function () {
+            Particle::mount('photos', 'photos')->only(['store']);
         });
 
         $album = Album::where('title', 'Work')->firstOrFail();
@@ -114,8 +115,8 @@ class ParticleRelativeMountTest extends TestCase
 
     public function test_a_relative_mount_404s_a_stranger_parent_id(): void
     {
-        Route::particleRelative('albums', Album::class, via: 'photos', routes: function () {
-            Route::particleResource('photos', 'photos', ['only' => ['index']]);
+        Particle::relative('albums', Album::class, via: 'photos', routes: function () {
+            Particle::mount('photos', 'photos')->only(['index']);
         });
 
         $this->getJson('/albums/99999/photos')->assertNotFound();
@@ -130,8 +131,8 @@ class ParticleRelativeMountTest extends TestCase
      */
     public function test_a_relative_show_resolves_the_subject_not_the_bound_parent(): void
     {
-        Route::particleRelative('albums', Album::class, via: 'photos', routes: function () {
-            Route::particleResource('photos', 'photos', ['only' => ['show', 'destroy']]);
+        Particle::relative('albums', Album::class, via: 'photos', routes: function () {
+            Particle::mount('photos', 'photos')->only(['show', 'destroy']);
         });
 
         $album = Album::where('title', 'Vacation')->firstOrFail();
@@ -146,8 +147,8 @@ class ParticleRelativeMountTest extends TestCase
 
     public function test_a_relative_destroy_deletes_the_subject_not_the_bound_parents_first_child(): void
     {
-        Route::particleRelative('albums', Album::class, via: 'photos', routes: function () {
-            Route::particleResource('photos', 'photos', ['only' => ['destroy']]);
+        Particle::relative('albums', Album::class, via: 'photos', routes: function () {
+            Particle::mount('photos', 'photos')->only(['destroy']);
         });
 
         $album = Album::where('title', 'Vacation')->firstOrFail();
@@ -164,10 +165,10 @@ class ParticleRelativeMountTest extends TestCase
 
     public function test_a_relative_closure_via_scopes_but_does_not_auto_associate(): void
     {
-        Route::particleRelative('albums', Album::class,
+        Particle::relative('albums', Album::class,
             via: fn (Album $album, Builder $q) => $q->where('album_id', $album->id),
             routes: function () {
-                Route::particleResource('photos', 'photos', ['only' => ['index', 'store']]);
+                Particle::mount('photos', 'photos')->only(['index', 'store']);
             });
 
         $album = Album::where('title', 'Vacation')->firstOrFail();
@@ -192,7 +193,7 @@ class ParticleRelativeMountTest extends TestCase
             handle: fn (Photo $p) => ['data' => ['archived' => $p->getKey()]],
         ));
 
-        Route::particleOps('photos', 'photos', [
+        Particle::ops('photos', 'photos', [
             new ParticleOperation(
                 resource: 'photos', name: 'feature', kind: OperationKind::Write, model: Photo::class,
                 handle: fn (Photo $p) => ['data' => ['featured' => $p->getKey()]],

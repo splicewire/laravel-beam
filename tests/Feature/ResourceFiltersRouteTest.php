@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Feature;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -33,7 +34,7 @@ class ResourceFiltersRouteTest extends TestCase
 
     public function test_mounts_the_whole_sub_surface_under_the_exposure(): void
     {
-        Route::resourceFilters('papers', at: 'papers');
+        Particle::filters('papers', at: 'papers');
 
         $this->assertSame('papers.filters.index', $this->answering('papers/filters'));
         $this->assertSame('papers.filters.store', $this->answering('papers/filters', 'POST'));
@@ -53,7 +54,7 @@ class ResourceFiltersRouteTest extends TestCase
         // The failure this guards is not hypothetical: mounted after the CRUD block, three of the
         // estate's particle resources answered their filter index with `<resource>.show`, because
         // Laravel matches in REGISTRATION order and an unconstrained `{id}` swallows `filters`.
-        Route::resourceFilters('papers', at: 'papers', idConstraint: 'none');
+        Particle::filters('papers', at: 'papers', idConstraint: 'none');
         Route::get('papers/{id}', fn () => null)->name('papers.show');
 
         $this->assertSame('papers.filters.schema', $this->answering('papers/filters/schema'));
@@ -64,7 +65,7 @@ class ResourceFiltersRouteTest extends TestCase
 
     public function test_freezes_the_resource_key_and_only_the_resource_key(): void
     {
-        Route::resourceFilters('papers', at: 'papers');
+        Particle::filters('papers', at: 'papers');
 
         Route::getRoutes()->refreshNameLookups();
         $route = Route::getRoutes()->getByName('papers.filters.schema');
@@ -80,7 +81,7 @@ class ResourceFiltersRouteTest extends TestCase
         // The Frame-resource-root case, and the only one: that root is itself parameterised BY the
         // registration key, so `{resource}` there IS the key rather than a URL word that might
         // diverge from it.
-        Route::resourceFilters(null, at: 'resources/{resource}', names: 'resources');
+        Particle::filters(null, at: 'resources/{resource}', names: 'resources');
 
         Route::getRoutes()->refreshNameLookups();
         $route = Route::getRoutes()->getByName('resources.filters.schema');
@@ -96,7 +97,7 @@ class ResourceFiltersRouteTest extends TestCase
         // group to prefix. Passing the stem through instead produced
         // `splice.compositions.splice.compositions.filters.index`.
         Route::name('splice.compositions.')->prefix('splice/compositions')->group(function () {
-            Route::resourceFilters('compositions', at: '', names: '');
+            Particle::filters('compositions', at: '', names: '');
         });
 
         $this->assertSame(

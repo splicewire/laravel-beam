@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Camel\Output\OutputEndpointData;
 use Knuckles\Scribe\Tools\DocumentationConfig;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
 use Splicewire\Beam\Scribe\OpenApi\RenderingDeliveryGenerator;
 use Splicewire\Beam\Scribe\Strategies\ResourceRenderingParameterStrategy;
@@ -38,7 +39,7 @@ class ResourceRenderingStrategiesTest extends TestCase
     {
         app(ResourceRenderingRegistry::class)->register($resource, new TranscriptRendering);
 
-        Route::resourceRenderings($resource, RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings($resource, RenderingSubject::class, abilities: [], idConstraint: 'none');
         Route::getRoutes()->refreshNameLookups();
 
         return ExtractedEndpointData::fromRoute(Route::getRoutes()->getByName("{$resource}.transcript"));

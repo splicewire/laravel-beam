@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Surface;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -143,7 +144,7 @@ class RuntimeCorroboratorTest extends TestCase
             handle: fn () => null,
         ));
 
-        Route::particleOps('widgets', 'widgets', ['gated', 'ungated']);
+        Particle::ops('widgets', 'widgets', ['gated', 'ungated']);
 
         $gated = $this->postureFor('POST /widgets/{id}/op/gated');
         $ungated = $this->postureFor('POST /widgets/{id}/op/ungated');
@@ -187,7 +188,7 @@ class RuntimeCorroboratorTest extends TestCase
             policy: 'widget',
         ));
 
-        Route::particleResource('widgets', 'widgets', ['only' => ['index']]);
+        Particle::mount('widgets', 'widgets')->only(['index']);
 
         $posture = $this->postureFor('GET /widgets');
 

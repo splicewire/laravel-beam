@@ -7,6 +7,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -203,7 +204,7 @@ class ParticleGeneratorTest extends TestCase
         require_once $this->host.'/app/Data/LyricData.php';
 
         $this->app->make(AttributedParticleDiscovery::class)->discover(classes: ['App\Data\LyricData']);
-        Route::prefix('api')->group(fn () => Route::particleResource('lyrics', 'lyrics'));
+        Route::prefix('api')->group(fn () => Particle::mount('lyrics', 'lyrics'));
 
         $this->assertSame('lyrics', $this->app->make(ParticleResourceRegistry::class)->get('lyrics')->key);
         $this->assertNoFindingsFor('api/lyrics');
@@ -223,7 +224,7 @@ class ParticleGeneratorTest extends TestCase
             ])->assertSuccessful();
 
             $this->registerOp($class, $kind->value.'-it');
-            Route::prefix('api')->group(fn () => Route::particleOp('lyrics', 'lyrics', $kind->value.'-it'));
+            Route::prefix('api')->group(fn () => Particle::ops('lyrics', 'lyrics', $kind->value.'-it'));
 
             $this->assertNoFindingsFor('api/lyrics/{id}/op/'.$kind->value.'-it');
         }

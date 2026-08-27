@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
@@ -80,14 +81,14 @@ class ParticleRouteKeyTest extends TestCase
 
     public function test_a_route_keyed_resource_resolves_by_the_declared_column(): void
     {
-        Route::particleResource('items', 'rk-items', ['only' => ['show']]);
+        Particle::mount('items', 'rk-items')->only(['show']);
 
         $this->getJson('/items/pro')->assertOk()->assertJsonPath('data.title', 'Acme Pro');
     }
 
     public function test_a_route_keyed_resource_404s_on_its_own_primary_key(): void
     {
-        Route::particleResource('items', 'rk-items', ['only' => ['show']]);
+        Particle::mount('items', 'rk-items')->only(['show']);
 
         $pro = Listing::where('slug', 'pro')->firstOrFail();
 
@@ -97,7 +98,7 @@ class ParticleRouteKeyTest extends TestCase
 
     public function test_a_null_route_key_resource_still_resolves_by_primary_key(): void
     {
-        Route::particleResource('pk-items', 'rk-items-pk', ['only' => ['show']]);
+        Particle::mount('pk-items', 'rk-items-pk')->only(['show']);
 
         $pro = Listing::where('slug', 'pro')->firstOrFail();
 
@@ -111,8 +112,8 @@ class ParticleRouteKeyTest extends TestCase
 
     public function test_a_route_key_resolves_through_the_relative_base_query(): void
     {
-        Route::particleRelative('sellers', Vendor::class, via: 'items', routes: function () {
-            Route::particleResource('items', 'rk-items', ['only' => ['show']]);
+        Particle::relative('sellers', Vendor::class, via: 'items', routes: function () {
+            Particle::mount('items', 'rk-items')->only(['show']);
         });
 
         $acme = Vendor::where('slug', 'acme')->firstOrFail();
@@ -128,8 +129,8 @@ class ParticleRouteKeyTest extends TestCase
 
     public function test_a_route_keyed_child_of_another_parent_404s(): void
     {
-        Route::particleRelative('sellers', Vendor::class, via: 'items', routes: function () {
-            Route::particleResource('items', 'rk-items', ['only' => ['show']]);
+        Particle::relative('sellers', Vendor::class, via: 'items', routes: function () {
+            Particle::mount('items', 'rk-items')->only(['show']);
         });
 
         $globex = Vendor::where('slug', 'globex')->firstOrFail();

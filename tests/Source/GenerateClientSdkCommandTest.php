@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Source;
 
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Route;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -110,7 +111,7 @@ class GenerateClientSdkCommandTest extends TestCase
         ));
 
         Route::prefix('resources')->group(function () {
-            Route::particleResource('widgets', 'widgets', ['only' => ['index', 'update']]);
+            Particle::mount('widgets', 'widgets')->only(['index', 'update']);
         });
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
@@ -139,8 +140,8 @@ class GenerateClientSdkCommandTest extends TestCase
         ));
 
         Route::prefix('resources')->group(function () {
-            Route::particleResource('widgets', 'widgets', ['only' => ['index']]);
-            Route::particleOp('widgets', 'widgets', 'recalculate');
+            Particle::mount('widgets', 'widgets')->only(['index']);
+            Particle::ops('widgets', 'widgets', 'recalculate');
         });
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
@@ -166,7 +167,7 @@ class GenerateClientSdkCommandTest extends TestCase
             output: 'App\\Data\\WidgetTotalsData',
         ));
 
-        Route::prefix('resources')->group(fn () => Route::particleOp('widgets', 'widgets', 'recalculate'));
+        Route::prefix('resources')->group(fn () => Particle::ops('widgets', 'widgets', 'recalculate'));
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
         $entry = $manifest['widgets.op.recalculate'];
@@ -187,7 +188,7 @@ class GenerateClientSdkCommandTest extends TestCase
             handle: fn () => null,
         ));
 
-        Route::prefix('resources')->group(fn () => Route::particleOp('widgets', 'widgets', 'poke'));
+        Route::prefix('resources')->group(fn () => Particle::ops('widgets', 'widgets', 'poke'));
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
 
@@ -209,7 +210,7 @@ class GenerateClientSdkCommandTest extends TestCase
             ],
         ));
 
-        Route::prefix('resources')->group(fn () => Route::particleOp('widgets', 'widgets', 'watch'));
+        Route::prefix('resources')->group(fn () => Particle::ops('widgets', 'widgets', 'watch'));
 
         $entry = $this->app->make(ParticleRouteManifestSource::class)->toArray()['widgets.op.watch'];
 
@@ -228,8 +229,8 @@ class GenerateClientSdkCommandTest extends TestCase
         // A resource key that was never registered — the degradation is CORRECT (never fabricate a type)
         // but it must be reportable, else "we generated nothing" and "this returns nothing" look identical.
         Route::prefix('resources')->group(function () {
-            Route::particleResource('ghosts', 'ghosts', ['only' => ['index']]);
-            Route::particleOp('ghosts', 'ghosts', 'vanish');
+            Particle::mount('ghosts', 'ghosts')->only(['index']);
+            Particle::ops('ghosts', 'ghosts', 'vanish');
         });
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
@@ -248,7 +249,7 @@ class GenerateClientSdkCommandTest extends TestCase
             data: 'App\\Data\\WidgetData',
         ));
 
-        Route::prefix('resources')->group(fn () => Route::particleResource('widgets', 'widgets', ['only' => ['index']]));
+        Route::prefix('resources')->group(fn () => Particle::mount('widgets', 'widgets')->only(['index']));
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
 

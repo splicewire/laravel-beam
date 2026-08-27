@@ -3,13 +3,13 @@
 namespace Splicewire\Beam\Tests\Particle;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Foundation\Auth\User;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
@@ -65,8 +65,8 @@ class ParticleRelativeStructuralFkTest extends TestCase
         $mine = Journal::create(['title' => 'mine']);
         $theirs = Journal::create(['title' => 'theirs']);
 
-        Route::particleRelative('journals', Journal::class, via: 'notes', routes: function () {
-            Route::particleResource('memos', 'memos', ['only' => ['store']]);
+        Particle::relative('journals', Journal::class, via: 'notes', routes: function () {
+            Particle::mount('memos', 'memos')->only(['store']);
         });
 
         $created = $this->postJson("/journals/{$mine->id}/memos", [
@@ -88,8 +88,8 @@ class ParticleRelativeStructuralFkTest extends TestCase
         $theirs = Journal::create(['title' => 'theirs']);
         $note = $mine->notes()->create(['body' => 'original']);
 
-        Route::particleRelative('journals', Journal::class, via: 'notes', routes: function () {
-            Route::particleResource('memos', 'memos', ['only' => ['update']]);
+        Particle::relative('journals', Journal::class, via: 'notes', routes: function () {
+            Particle::mount('memos', 'memos')->only(['update']);
         });
 
         $this->putJson("/journals/{$mine->id}/memos/{$note->id}", [

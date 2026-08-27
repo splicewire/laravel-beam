@@ -8,6 +8,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -177,7 +178,7 @@ class OperationSubjectResolutionTest extends TestCase
     {
         $this->app->make(ParticleOperationRegistry::class)->register($operation);
 
-        Route::particleOp('subject-widgets', 'subject-widgets', $operation->name);
+        Particle::ops('subject-widgets', 'subject-widgets', $operation->name);
     }
 }
 

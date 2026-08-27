@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Feature;
 
 use Illuminate\Support\Facades\Route;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
 use Splicewire\Beam\Routing\BeamRouteAction;
@@ -52,7 +53,7 @@ class ResourceRenderingCatalogRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering, new MirrorRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertSame('papers/renderings', $this->routeNamed('papers.renderings')->uri());
 
@@ -73,7 +74,7 @@ class ResourceRenderingCatalogRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering, new MirrorRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->get('papers/renderings')
             ->assertOk()
@@ -95,7 +96,7 @@ class ResourceRenderingCatalogRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering, new MirrorRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertNull($this->routeNamed('papers.transcript.ingest'));
         $this->assertNotNull($this->routeNamed('papers.mirror.ingest'));
@@ -119,7 +120,7 @@ class ResourceRenderingCatalogRouteTest extends TestCase
 
         $this->renderings([new TranscriptRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->get('papers/renderings')
             ->assertOk()
@@ -132,7 +133,7 @@ class ResourceRenderingCatalogRouteTest extends TestCase
     /** Absence of renderings is not absence of resource. */
     public function test_answers_with_an_empty_set_for_a_resource_that_declares_no_renderings(): void
     {
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->get('papers/renderings')
             ->assertOk()
@@ -143,7 +144,7 @@ class ResourceRenderingCatalogRouteTest extends TestCase
     /** A resource with no rendering surface has no route here — the 404 is the absent route, not a branch. */
     public function test_a_resource_that_never_mounted_the_macro_has_no_catalog_route_at_all(): void
     {
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertNull($this->routeNamed('journals.renderings'));
 
@@ -155,7 +156,7 @@ class ResourceRenderingCatalogRouteTest extends TestCase
         $this->renderings([new TranscriptRendering], 'compositions');
 
         Route::prefix('splice/compositions')->name('splice.compositions.')->group(function () {
-            Route::resourceRenderings('compositions', RenderingSubject::class, at: '', abilities: [], idConstraint: 'none');
+            Particle::renderings('compositions', RenderingSubject::class, at: '', abilities: [], idConstraint: 'none');
         });
 
         $route = $this->routeNamed('splice.compositions.renderings');
@@ -176,7 +177,7 @@ class ResourceRenderingCatalogRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->get('papers/renderings')->assertJsonPath('data.renderings.0.formats', ['text', 'html']);
 
@@ -190,7 +191,7 @@ class ResourceRenderingCatalogRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertSame('papers', BeamRouteAction::resourceKey($this->routeNamed('papers.renderings')));
     }
@@ -199,7 +200,7 @@ class ResourceRenderingCatalogRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering, new MirrorRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, idConstraint: 'none');
 
         $route = $this->routeNamed('papers.renderings');
 

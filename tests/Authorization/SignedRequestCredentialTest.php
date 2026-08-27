@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -194,7 +195,7 @@ class SignedRequestCredentialTest extends TestCase
         // GET, because that is the mount the whole defect lives on: a browser follows a signed link,
         // so a Write-kind operation is mounted GET and `rejectInput()` therefore reads the QUERY
         // string. The kind/method mismatch is the affordance, not a bug — see the ticket.
-        Route::particleOp('sigils', 'sigils', $operation->name, ['method' => 'get']);
+        Particle::ops('sigils', 'sigils', $operation->name, ['method' => 'get']);
     }
 }
 

@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\Attributes\DefineEnvironment;
 use Schemastud\DataSchemas\Overlay\Lens\Fidelity;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Rendering\Http\RenderingsController;
 use Splicewire\Beam\Rendering\RenderingCertifier;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
@@ -64,7 +65,7 @@ class ResourceRenderingsRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering, new MirrorRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertNotNull($this->routeNamed('papers.transcript'));
         $this->assertSame('papers/{id}/transcript', $this->routeNamed('papers.transcript')->uri());
@@ -83,14 +84,14 @@ class ResourceRenderingsRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertNull($this->routeNamed('papers.mirror'));
 
         // The only change: a new registry entry. The macro call is untouched — same line, same arguments.
         $this->renderings([new MirrorRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertNotNull($this->routeNamed('papers.mirror'));
     }
@@ -109,7 +110,7 @@ class ResourceRenderingsRouteTest extends TestCase
     #[DefineEnvironment('seedRenderingFromConfig')]
     public function test_seeds_the_registry_from_config_so_a_host_adds_a_rendering_without_touching_code(): void
     {
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertNotNull($this->routeNamed('papers.transcript'));
         $this->assertSame(
@@ -127,7 +128,7 @@ class ResourceRenderingsRouteTest extends TestCase
 
         $this->assertSame(Fidelity::LosslessEligible, app(RenderingCertifier::class)->certify(new MirrorRendering));
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertContains('GET', $this->routeNamed('papers.mirror')->methods());
         $this->assertNotNull($this->routeNamed('papers.mirror.ingest'));
@@ -143,7 +144,7 @@ class ResourceRenderingsRouteTest extends TestCase
 
         $this->assertSame(Fidelity::Lossy, app(RenderingCertifier::class)->certify(new TranscriptRendering));
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertNotContains('POST', $this->routeNamed('papers.transcript')->methods());
         $this->assertNull($this->routeNamed('papers.transcript.ingest'));
@@ -170,7 +171,7 @@ class ResourceRenderingsRouteTest extends TestCase
 
         $this->renderings([$liar]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertNotNull($this->routeNamed('papers.boastful'));
         $this->assertNull($this->routeNamed('papers.boastful.ingest'));
@@ -190,7 +191,7 @@ class ResourceRenderingsRouteTest extends TestCase
 
         $this->renderings([$unproven]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertNull($this->routeNamed('papers.unexercised.ingest'));
     }
@@ -199,7 +200,7 @@ class ResourceRenderingsRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering, new MirrorRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, with: ['cells'], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, with: ['cells'], idConstraint: 'none');
 
         $route = $this->routeNamed('papers.transcript');
 
@@ -237,7 +238,7 @@ class ResourceRenderingsRouteTest extends TestCase
         // How an already-grouped endpoint migrates: the group owns the prefix and name, the macro adds
         // only the `{id}/{rendering}` tail — byte-identical to the hand-mounted route it replaces.
         Route::prefix('splice/compositions')->name('splice.compositions.')->group(function () {
-            Route::resourceRenderings('compositions', RenderingSubject::class, at: '', abilities: [], idConstraint: 'none');
+            Particle::renderings('compositions', RenderingSubject::class, at: '', abilities: [], idConstraint: 'none');
         });
 
         $route = $this->routeNamed('splice.compositions.transcript');
@@ -252,7 +253,7 @@ class ResourceRenderingsRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->get('papers/doc-1/transcript?format=html')
             ->assertOk()
@@ -267,7 +268,7 @@ class ResourceRenderingsRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         // Nothing about the enumeration rides the defaults, so widening it needs no remount.
         $this->assertArrayNotHasKey('formats', $this->routeNamed('papers.transcript')->defaults['_renderings']);
@@ -284,7 +285,7 @@ class ResourceRenderingsRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], with: ['cells'], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], with: ['cells'], idConstraint: 'none');
 
         $this->get('papers/doc-1/transcript')->assertOk();
 
@@ -296,12 +297,12 @@ class ResourceRenderingsRouteTest extends TestCase
         Gate::define('view', fn (?object $user, object $subject) => false);
 
         $this->renderings([new TranscriptRendering]);
-        Route::resourceRenderings('papers', RenderingSubject::class, idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, idConstraint: 'none');
 
         $this->get('papers/doc-1/transcript')->assertForbidden();
 
         $this->renderings([new TranscriptRendering], 'open-papers');
-        Route::resourceRenderings('open-papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('open-papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->get('open-papers/doc-1/transcript')->assertOk();
     }
@@ -310,12 +311,12 @@ class ResourceRenderingsRouteTest extends TestCase
     {
         $this->renderings([new TranscriptRendering]);
 
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: []);
+        Particle::renderings('papers', RenderingSubject::class, abilities: []);
 
         $this->assertArrayHasKey('id', $this->routeNamed('papers.transcript')->wheres);
 
         $this->renderings([new TranscriptRendering], 'loose');
-        Route::resourceRenderings('loose', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('loose', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->assertArrayNotHasKey('id', $this->routeNamed('loose.transcript')->wheres);
     }
@@ -325,7 +326,7 @@ class ResourceRenderingsRouteTest extends TestCase
     public function test_rejects_a_format_outside_the_renderings_enumeration_with_a_422_on_format(): void
     {
         $this->renderings([new TranscriptRendering]);
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         // Before this ticket the controller forwarded anything and each rendering rejected in its own
         // shape — which for the disclosure surface meant a bare InvalidArgumentException and a 500.
@@ -337,7 +338,7 @@ class ResourceRenderingsRouteTest extends TestCase
     public function test_does_not_echo_the_rejected_format_back_but_does_name_the_accepted_set(): void
     {
         $this->renderings([new TranscriptRendering]);
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $message = $this->getJson('papers/doc-1/transcript?format=<script>')
             ->assertStatus(422)
@@ -353,7 +354,7 @@ class ResourceRenderingsRouteTest extends TestCase
         TranscriptRendering::$formats = ['text'];
 
         $this->renderings([new TranscriptRendering]);
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         $this->getJson('papers/doc-1/transcript?format=html')->assertStatus(422);
 
@@ -369,7 +370,7 @@ class ResourceRenderingsRouteTest extends TestCase
         TranscriptRendering::$formats = [];
 
         $this->renderings([new TranscriptRendering]);
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         // One representation, no format axis. Rejecting a parameter it has never read would be a new
         // behaviour dressed as a fix — this is the circuits case, decided in ticket 09 §5.
@@ -381,7 +382,7 @@ class ResourceRenderingsRouteTest extends TestCase
     public function test_still_refuses_to_substitute_a_default_so_the_renderings_own_default_survives(): void
     {
         $this->renderings([new TranscriptRendering]);
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         // Validation lifted; defaulting did not. `null` still means "the rendering's own default".
         $this->get('papers/doc-1/transcript')->assertOk()->assertSee('text:Hello');
@@ -390,7 +391,7 @@ class ResourceRenderingsRouteTest extends TestCase
     public function test_a_rendering_route_reports_the_resource_it_belongs_to(): void
     {
         $this->renderings([new TranscriptRendering]);
-        Route::resourceRenderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
+        Particle::renderings('papers', RenderingSubject::class, abilities: [], idConstraint: 'none');
 
         // Ticket 32 §F: the third stamp `BeamRouteAction::resourceKey()` reads. It is what let the
         // hand-placed "Renderings & Export" group be DELETED rather than replaced — the route already

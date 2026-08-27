@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Schemastud\DataSchemas\Http\SchemaDocumentController;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -96,7 +97,7 @@ class UndeclaredSurfaceAuditTest extends TestCase
             backing: 'App\\Models\\Widget',
         ));
 
-        Route::prefix('resources')->group(fn () => Route::particleResource('shapeless', 'shapeless', ['only' => ['index']]));
+        Route::prefix('resources')->group(fn () => Particle::mount('shapeless', 'shapeless')->only(['index']));
 
         $this->assertSame(UndeclaredSurfaceAudit::TIER_MECHANICAL, $this->rowFor('resources/shapeless')['tier']);
     }
@@ -128,7 +129,7 @@ class UndeclaredSurfaceAuditTest extends TestCase
             data: WidgetGateData::class,
         ));
 
-        Route::prefix('resources')->group(fn () => Route::particleResource('widgets', 'widgets', ['only' => ['index']]));
+        Route::prefix('resources')->group(fn () => Particle::mount('widgets', 'widgets')->only(['index']));
 
         $this->assertNotContains('resources/widgets', $this->uris());
     }
@@ -144,7 +145,7 @@ class UndeclaredSurfaceAuditTest extends TestCase
             output: WidgetGateData::class,
         ));
 
-        Route::prefix('resources')->group(fn () => Route::particleOp('widgets', 'widgets', 'recalculate'));
+        Route::prefix('resources')->group(fn () => Particle::ops('widgets', 'widgets', 'recalculate'));
 
         $this->assertNotContains('resources/widgets/{id}/op/recalculate', $this->uris());
     }
