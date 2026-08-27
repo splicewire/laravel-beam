@@ -1,10 +1,12 @@
 <?php
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Rushing\SchemaConvergence\ConvergentTable;
+use Spatie\Activitylog\Models\Activity;
 
 /**
  * The spatie/laravel-activitylog table, as ONE shared/ stub — run in BOTH the central pass and every
@@ -21,18 +23,36 @@ use Rushing\SchemaConvergence\ConvergentTable;
  * causer; the tenant copy's `nullableUuidMorphs` could hold only the uuid case. Nothing depended on the
  * narrower shape, and {@see \Splicewire\Beam\Models\CentralActivityLog} records tenant slugs as subjects.
  *
- * `batch_uuid` is present because spatie/laravel-activitylog **4.x** is what the estate installs, and
- * `ActivityLogger` writes that column whenever a batch is open. The retired central-only migration
- * omitted it on the belief that "activitylog v5 dropped the batch system" — v5 is not what is installed,
- * and the omission surfaced as `column "batch_uuid" of relation "central_activity_log" does not exist`.
- * `attribute_changes` is beam's own addition and is carried over from both former copies.
+ * `batch_uuid` IS NOW CONDITIONAL ON THE INSTALLED MAJOR, and its history is worth keeping because it
+ * reverses twice.
+ * It was ADDED here deliberately (`a5df9e1`) when the estate resolved activitylog **4.x**, whose
+ * `ActivityLogger` writes the column whenever a batch is open — the retired central-only migration had
+ * omitted it on a then-premature reading of v5, and that omission surfaced as
+ * `column "batch_uuid" of relation "central_activity_log" does not exist`, failing 4 tests. Beam now
+ * resolves **5.0.0**, which deletes the batch system outright (`LogBatch`, the facade,
+ * `Activity::batch()`), and `grep -r batch_uuid vendor/spatie/laravel-activitylog/src` returns nothing.
  *
- * TABLE NAME comes from spatie's own config, not a literal: `activitylog.table_name` is the package's
- * documented lever (env `ACTIVITY_LOGGER_TABLE_NAME`), and {@see \Spatie\Activitylog\Models\Activity}
- * resolves its table through the same key, so one value moves the model and this migration together.
- * That is the estate rule for a third-party table: use the package's OWN config where it exposes one,
- * and fall back to subclass + `getTable()` only where it does not (which is why beam-media renames
- * medialibrary's table via the model — medialibrary ships no table-name config).
+ * The estate has NOT flipped with it, which is the whole reason this is a condition and not a deletion.
+ * Measured 2026-08-27: 43 roots resolve activitylog across **three** versions — 4.12.3, 5.0.0 and 5.1.0 —
+ * and the five still on 4.12.3 include `splicewire/splicewire-app`, the flagship. Beam declares
+ * `^4.0|^5.0` and publishes this one stub into all of them, so an unconditional column leaves every v5
+ * host with a column its library does not know about, and an unconditional deletion reproduces `a5df9e1`
+ * on the flagship. Neither is a shape a single literal can express. Narrowing beam to `^5.0` would
+ * collapse the condition — that is the real fix, and it is a migration of five roots, not a stub edit.
+ *
+ * `attribute_changes` is NOT beam's own addition any more, whatever the former comment here claimed:
+ * v5 ships it upstream, and it is now where tracked model changes live (`properties` in v5 holds only
+ * caller-supplied `withProperties()` data). Beam having carried the column early means the v5 shape and
+ * the beam shape happen to agree on it — a coincidence, not a deviation to defend.
+ *
+ * TABLE NAME comes from the CONFIGURED ACTIVITY MODEL, not a literal and no longer from
+ * `activitylog.table_name` — v5 DELETED that config key (and its env). v5's documented lever is instead
+ * "subclass `Activity`, set `$table`, point `activitylog.activity_model` at it", so asking that model
+ * for its own table is what keeps the model and this migration from disagreeing. It is also
+ * version-agnostic: under 4.x `Activity::__construct()` seeds `$table` from `activitylog.table_name`,
+ * so `getTable()` returns the configured name there too. Reading the retired key directly would be the
+ * silent-wrong-schema class — a host with a v4-era published `activitylog.php` still setting
+ * `table_name` would get the migration on the renamed table and the model on `activity_log`.
  *
  * THIS TABLE HAS A HOSTILE COMPETITOR. `lunarphp/core` ships its own `activity_log` migration at a
  * FIXED date (`2026_01_01_900001`) guarded with a bare `Schema::hasTable()`, and its shape is
@@ -81,9 +101,25 @@ return new class extends Migration
 
                 $table->json('attribute_changes')->nullable();
                 $table->json('properties')->nullable();
-                $table->uuid('batch_uuid')->nullable();
+
+                // `batch_uuid` follows the INSTALLED major, because beam declares `^4.0|^5.0` and this
+                // one stub is published into hosts on both. v4's ActivityLogger writes the column on
+                // every batched write; v5 deleted the batch system and never touches it. Emitting it
+                // unconditionally leaves a v5 host with a column its library does not know about;
+                // omitting it unconditionally reproduces `a5df9e1` — `column "batch_uuid" ... does not
+                // exist`, 4 failing tests — on the FLAGSHIP, which resolves 4.12.3 while beam resolves
+                // 5.0.0. `LogBatch` is the discriminator: present in 4.x, gone in 5.x.
+                if (class_exists(\Spatie\Activitylog\LogBatch::class)) {
+                    $table->uuid('batch_uuid')->nullable();
+                }
+
                 $table->timestamps();
 
+                // Upstream gets these from `nullableMorphs('subject', 'subject')` / `('causer', 'causer')`,
+                // which would name them plain `subject` and `causer`. Spelled out here because the morph
+                // ids are strings (above), and named explicitly because a Postgres index name is unique
+                // per SCHEMA, not per table — `subject` is too generic to hand to one table when this
+                // stub runs in the central schema and in every tenant schema.
                 $table->index(['subject_type', 'subject_id'], 'activity_log_subject_index');
                 $table->index(['causer_type', 'causer_id'], 'activity_log_causer_index');
             })
@@ -97,10 +133,19 @@ return new class extends Migration
         }
     }
 
-    /** Spatie's own table-name lever, so the model and this migration cannot disagree. */
+    /**
+     * Spatie's own table-name lever, so the model and this migration cannot disagree. v5 removed the
+     * `activitylog.table_name` config key; the model IS the lever now, and asking it works on 4.x too.
+     */
     private function table(): string
     {
-        return (string) config('activitylog.table_name', 'activity_log');
+        $model = config('activitylog.activity_model', Activity::class);
+
+        if (! is_string($model) || ! is_subclass_of($model, Model::class)) {
+            return 'activity_log';
+        }
+
+        return (new $model)->getTable();
     }
 
     /**
