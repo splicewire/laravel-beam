@@ -82,7 +82,13 @@ class ParticleMountFacadeTest extends TestCase
     {
         Particle::mount('widgets')->only(['index', 'show', 'store']);
 
+        // The hook-event catalog leads the table for the same reason the filter sub-surface would:
+        // literal segments are mounted before `{id}` so registration order settles the overlap
+        // (api-surface-coherence 106). It is UNGATED where filters are registry-gated — an eventless
+        // resource answers with an empty catalog, which is a legal read, where an unfiltered one would
+        // publish nine routes that 404.
         $this->assertSame([
+            ['GET|HEAD', 'widgets/hooks/events', 'widgets.hooks.events'],
             ['GET|HEAD', 'widgets', 'widgets.index'],
             ['GET|HEAD', 'widgets/{id}', 'widgets.show'],
             ['POST', 'widgets', 'widgets.store'],
@@ -169,7 +175,12 @@ class ParticleMountFacadeTest extends TestCase
     {
         Particle::mount('sprockets')->only([])->ops(['spin'], ['method' => 'get']);
 
+        // `->only([])` is the shape `Particle::ops()` exists to replace: it still mounts the resource's
+        // automatic sub-surfaces, and 106 added a second one. The warning on `ParticleMountManager::ops()`
+        // is about exactly this, and the catalog row here is that warning made visible rather than a
+        // regression.
         $this->assertSame([
+            ['GET|HEAD', 'sprockets/hooks/events', 'sprockets.hooks.events'],
             ['GET|HEAD', 'sprockets/{id}/op/spin', 'sprockets.op.spin'],
         ], $this->tableAt('sprockets'));
     }

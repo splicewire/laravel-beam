@@ -55,8 +55,19 @@ class HookHttpSurfaceTest extends TestCase
         $catalog->register(new EventType(name: 'tenants.provisioned', subjectless: true, description: 'A tenant finished provisioning.'));
         $catalog->register(new EventType(name: 'compositions.render.completed', subjectless: true, description: 'A render finished.'));
 
-        Route::get('hooks/events', [HookEventCatalogController::class, 'index'])->name('hooks.events');
-        Route::get('{resource}/hooks/events', [HookEventCatalogController::class, 'index'])->name('resources.hooks.events');
+        // The unscoped root catalog DECLARES its resource-lessness (api-surface-coherence 106) rather
+        // than being recognised by the absence of a stamp.
+        Route::get('hooks/events', [HookEventCatalogController::class, 'index'])
+            ->defaults(HookEventCatalogController::CONFIG, ['resource' => null])
+            ->name('hooks.events');
+
+        // The scoped exposure was ONE wildcard `{resource}/hooks/events` reading its resource from a
+        // path parameter until 106 (41 D7) replaced it with concrete per-resource mounts off the
+        // `_particle` stamp — mounted here through the real driver, not hand-written, so this test
+        // exercises what the estate actually ships. `unicorns` is mounted with NO registered events on
+        // purpose: it is what proves an eventless resource answers with an empty catalog, not an error.
+        Particle::hookEvents(resource: 'compositions', at: 'compositions');
+        Particle::hookEvents(resource: 'unicorns', at: 'unicorns');
         Route::post('hooks', [HookSubscriptionController::class, 'store'])->name('hooks.subscribe');
         Route::post('{resource}/hooks', [HookSubscriptionController::class, 'store'])->name('resources.hooks.subscribe');
         Route::get('hooks/{hook}/deliveries', [HookDeliveriesController::class, 'index'])->name('hooks.deliveries');
@@ -103,7 +114,13 @@ class HookHttpSurfaceTest extends TestCase
         $this->assertSame('render.completed', $entry['verbPhrase']);
     }
 
-    public function test_a_resource_this_host_never_heard_of_is_an_empty_catalog_not_a_404(): void
+    /**
+     * A MOUNTED resource with nothing in the catalog answers empty, not with an error (ticket 91: a
+     * check whose answer depends on the host must not be fatal). Post-106 an entirely unknown key has
+     * no route at all and is an ordinary 404 — the honest answer for a URL that does not exist, and a
+     * different question from this one.
+     */
+    public function test_a_resource_with_no_registered_events_is_an_empty_catalog_not_an_error(): void
     {
         $body = $this->getJson('/unicorns/hooks/events')->assertOk()->json('data');
 

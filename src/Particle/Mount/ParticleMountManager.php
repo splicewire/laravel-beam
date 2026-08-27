@@ -138,6 +138,34 @@ class ParticleMountManager
     }
 
     /**
+     * The per-resource hook-event catalog, mounted on its own (api-surface-coherence 106).
+     *
+     * Almost every caller gets this for free from {@see PendingParticleMount} — it rides the resource
+     * mount, exactly as the filter sub-surface does. The standalone spelling is for a hand-rolled
+     * exposure whose CRUD is not a particle mount, and it is what
+     * `->beam()->inResource($key, hookEvents: true)` calls.
+     *
+     * Unlike {@see filters()} there is no null-resource spelling: the whole ticket was the removal of
+     * the one route whose resource was a path parameter, and re-introducing that shape here would put
+     * it straight back.
+     *
+     * ⚠️ `$at` is REQUIRED here where {@see filters()} defaults it to `''`, and that asymmetry was paid
+     * for. This surface's mount point is `{$at}/hooks/events`, so an empty `$at` outside an enclosing
+     * prefix resolves to the bare `hooks/events` — the UNSCOPED root catalog — and Laravel's last-wins
+     * name table then hands the root's URL a resource stamp with no error anywhere. Caught by this
+     * package's own suite while writing 106; a default that silently shadows another endpoint is not a
+     * convenience. Pass `''` deliberately when the enclosing group already names the resource.
+     */
+    public function hookEvents(
+        string $resource,
+        string $at,
+        ?string $names = null,
+        array $middleware = [],
+    ): void {
+        $this->mounter->resourceHookEvents($this->router, $resource, $at, $names, $middleware);
+    }
+
+    /**
      * The per-resource filter sub-surface, mounted on its own.
      *
      * Almost every caller gets this for free from {@see PendingParticleMount} — it rides the resource

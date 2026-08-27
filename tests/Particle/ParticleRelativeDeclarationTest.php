@@ -193,7 +193,7 @@ class ParticleRelativeDeclarationTest extends TestCase
         });
 
         $viaBuilder = $this->routesAddedBy(function (): void {
-            Particle::mount('vessels')->only([])->filters(false)->relatives([VesselCrateRelative::class])->register();
+            Particle::mount('vessels')->only([])->filters(false)->hookEvents(false)->relatives([VesselCrateRelative::class])->register();
         });
 
         $this->assertSame($viaVerb, $viaBuilder);

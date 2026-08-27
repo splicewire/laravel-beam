@@ -28,6 +28,9 @@ use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
 use Splicewire\Beam\Rendering\Http\RenderingsController;
 use Splicewire\Beam\Rendering\RenderingCertifier;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
+use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Webhooks\Data\EventCatalogData;
+use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
 
 /**
  * **The one implementation of every particle mount shape** (api-surface-coherence ticket 49).
@@ -162,6 +165,32 @@ class ParticleMounter
                 names: $name,
                 idConstraint: $idConstraint ?? 'uuid',
             );
+        }
+
+        // The per-resource hook-event catalog, mounted AUTOMATICALLY at this exposure
+        // (api-surface-coherence 106, decided by 41 D7). Same driver as the filter sub-surface above,
+        // and that is the whole point of the ticket: `GET /{resource}/hooks/events` used to be ONE
+        // wildcard route whose resource arrived as a request-time path parameter, so
+        // `BeamRouteAction::resourceKey()` — a route-LEVEL reader consumed by grouping and doc
+        // extraction — returned null for it and could not be fixed by stamping. A wildcard route has
+        // no single key by construction; it has 39. Concrete mounts give each one a resource, the
+        // stamp works, and the null disappears without a fifth arm in `resourceKey()`'s `??` chain.
+        //
+        // ⚠️ UNGATED, unlike the filter block above, and the asymmetry is deliberate.
+        //
+        //  1. An eventless resource here answers with an EMPTY catalog, which is already the declared
+        //     legal read (ticket 91: `withPrefix()` on an unknown key is not an error). An unfiltered
+        //     resource, by contrast, would publish nine routes that all 404 — hence that gate.
+        //  2. `EventTypeRegistry` is filled by providers that may not have run yet. Its own docblock
+        //     records the case: tower defers its `compositions.*` declarations to
+        //     `Application::booted()`, which is AFTER route registration. Gating the mount on a
+        //     boot-order-dependent read would silently drop a host's own scoped catalog, and the
+        //     symptom — a missing route — is far quieter than an empty response body.
+        //
+        // Mounted with the literal segments FIRST for the same reason the filter block is, though the
+        // two-segment `hooks/events` tail is not swallowable by `{uri}/{id}` in any case.
+        if ($options['hookEvents'] ?? true) {
+            $this->resourceHookEvents($router, $resourceKey, $uri, $name);
         }
 
         if (in_array('index', $only, true)) {
@@ -543,6 +572,43 @@ class ParticleMounter
             ])
             ->name($catalogName)
             ->beam()->returns(ResourceRenderingCatalogData::class);
+    }
+
+    /**
+     * The per-resource hook-event catalog: `GET {at}/hooks/events` (api-surface-coherence 106).
+     *
+     * The body behind `Particle::hookEvents(…)` and behind the automatic mount in {@see resource()}.
+     * It replaces the single wildcard `{resource}/hooks/events` route: the resource is frozen HERE, in
+     * the route defaults, rather than read off a path parameter at request time, which is what makes
+     * the route answerable by {@see BeamRouteAction::resourceKey()}.
+     *
+     * The stamp is the ordinary `_particle` default — no new one. Ticket 33 flagged "a fifth sub-surface
+     * means a fifth arm" in `resourceKey()`'s `??` chain as a real cost of non-convergence; writing an
+     * existing default is how this refuses to pay it (41 D2).
+     */
+    public function resourceHookEvents(
+        Router $router,
+        string $resource,
+        string $at = '',
+        ?string $names = null,
+        array $middleware = [],
+    ): void {
+        $prefix = $at === '' ? 'hooks/events' : rtrim($at, '/').'/hooks/events';
+
+        // An EMPTY `$names` says the enclosing route group already names this surface; `null` (nothing
+        // passed) falls back to the resource key. Same rule as `resourceFilters()`, stated the same way.
+        $stem = $names ?? $resource;
+        $name = $stem === '' ? 'hooks.events' : $stem.'.hooks.events';
+
+        $route = $router->get($prefix, [HookEventCatalogController::class, 'index'])
+            ->defaults(ParticleController::RESOURCE, $resource)
+            ->name($name);
+
+        if ($middleware !== []) {
+            $route->middleware($middleware);
+        }
+
+        $route->beam()->returns(EventCatalogData::class);
     }
 
     /**

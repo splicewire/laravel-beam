@@ -95,6 +95,22 @@ class BeamRouteProxy
     }
 
     /**
+     * Declares this route's OpenAPI `operationId` — the name every generated client types against
+     * (api-surface-coherence 36/78).
+     *
+     * It exists for a MOUNT that puts one controller method on N routes, which is the only construct that
+     * can produce a duplicate id. A hand-mounted route rarely needs it: undeclared routes take the
+     * generator's wire shape (`GET api/v1/embeds/{id}/versions` → `getApiV1EmbedsIdVersions`), which is
+     * unique by construction and merely ugly.
+     */
+    public function operationId(string $id): static
+    {
+        $this->set('operationId', $id);
+
+        return $this;
+    }
+
+    /**
      * Declares which registered resource this route is a sub-operation OF (ticket 01) — the stamp the
      * group-resolution chain reads so a route's documentation group is a property of its RESOURCE and
      * never a guess parsed from its URI.
@@ -108,12 +124,16 @@ class BeamRouteProxy
      * `set()`. Defaults are visible to route-parameter binding; the leading underscore is the framework's
      * convention for "not a parameter" and is why the particle stamp was spelled that way to begin with.
      */
-    public function inResource(string $resourceKey, bool $filters = false): static
+    public function inResource(string $resourceKey, bool $filters = false, bool $hookEvents = false): static
     {
         $this->route->defaults(ParticleController::RESOURCE, $resourceKey);
 
         if ($filters) {
             $this->mountFilterSubSurface($resourceKey);
+        }
+
+        if ($hookEvents) {
+            $this->mountHookEventCatalog($resourceKey);
         }
 
         return $this;
@@ -150,6 +170,26 @@ class BeamRouteProxy
         // the Router with the group stack intact and handing it the ORIGINAL uri keeps one source of
         // truth for the mount point.
         Particle::filters(
+            resource: $resourceKey,
+            at: $this->uriWithinCurrentGroup(),
+            names: $this->nameWithinCurrentGroup($resourceKey),
+        );
+    }
+
+    /**
+     * `hookEvents: true` says this route is the resource's INDEX at this exposure, and mounts the
+     * per-resource hook-event catalog beside it (api-surface-coherence 106).
+     *
+     * The twin of {@see mountFilterSubSurface()}, and a SEPARATE word from `filters:` on purpose. The
+     * two sub-surfaces are automatic together on a particle mount, but they are not the same fact — a
+     * resource can have a filter vocabulary and no events, or events and no filters — and widening the
+     * meaning of a parameter named `filters` to cover a second surface is the class of silent
+     * divergence this map keeps paying for. A flag, not an inference, for the same reason ticket 01
+     * gave: telling an index from a sub-operation by inspecting its URI is guessing.
+     */
+    private function mountHookEventCatalog(string $resourceKey): void
+    {
+        Particle::hookEvents(
             resource: $resourceKey,
             at: $this->uriWithinCurrentGroup(),
             names: $this->nameWithinCurrentGroup($resourceKey),

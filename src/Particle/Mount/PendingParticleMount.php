@@ -130,6 +130,21 @@ class PendingParticleMount
     }
 
     /**
+     * Opt OUT of the automatic per-resource hook-event catalog (api-surface-coherence 106).
+     *
+     * Mounted by default and UNGATED — see {@see ParticleMounter::resource()} for why this one does not
+     * consult its registry the way `filters()` does. Opt out where the exposure genuinely has no
+     * subscription story: a public or unauthenticated mount, say, where advertising an event vocabulary
+     * to an anonymous caller is not wanted.
+     */
+    public function hookEvents(bool $hookEvents = true): static
+    {
+        $this->options['hookEvents'] = $hookEvents;
+
+        return $this;
+    }
+
+    /**
      * Widen this mount with particle operations. **Off unless asked.**
      *
      * - `ops(true)` mounts every operation the {@see ParticleOperationRegistry} already holds for this
