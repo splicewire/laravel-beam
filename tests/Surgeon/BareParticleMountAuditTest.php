@@ -98,6 +98,39 @@ class BareParticleMountAuditTest extends TestCase
         $this->assertSame([], $this->audit()->sitesIn($source));
     }
 
+    /**
+     * The regression for the one call site every `Route::`-keyed search in the estate missed —
+     * `BeamRouteProxy::mountFilterSubSurface()` imports the facade as `RouteFacade`, and deleting the
+     * macros without seeing it would have fataled the `->beam()` filter sub-surface at runtime.
+     */
+    public function test_an_aliased_route_facade_import_is_a_site(): void
+    {
+        $source = <<<'PHP'
+        <?php
+        use Illuminate\Support\Facades\Route as RouteFacade;
+
+        RouteFacade::resourceFilters(resource: $resourceKey, at: 'widgets', names: 'widgets');
+        PHP;
+
+        $sites = $this->audit()->sitesIn($source);
+
+        $this->assertCount(1, $sites);
+        $this->assertSame('resourceFilters', $sites[0]['macro']);
+    }
+
+    public function test_an_unrelated_alias_is_not_a_site(): void
+    {
+        // Only an alias OF the Route facade counts — a same-named alias of something else does not.
+        $source = <<<'PHP'
+        <?php
+        use App\Support\NotTheRouter as RouteFacade;
+
+        RouteFacade::resourceFilters(resource: 'widgets');
+        PHP;
+
+        $this->assertSame([], $this->audit()->sitesIn($source));
+    }
+
     public function test_a_macro_name_on_another_class_is_not_a_site(): void
     {
         $source = <<<'PHP'

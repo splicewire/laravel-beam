@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Surgeon;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\UseItem;
 use PhpParser\NodeFinder;
 use PhpParser\ParserFactory;
 use Rushing\Doctor\DoctorAudit;
@@ -61,10 +62,15 @@ use Splicewire\Beam\Particle\Mount\ParticleMounter;
  * ## Honesty about reach
  * Two limits, both structural:
  *
- * 1. **A macro call reached through a variable or an alias is invisible.** Detection matches
- *    `Route::` (short name or the fully-qualified facade) — `$router->particleOp(…)` on an injected
- *    Router, or a facade aliased to another name, is not seen. Every call site measured in the estate
- *    uses the `Route::` spelling, so this is a known gap rather than an observed one.
+ * 1. **A macro call reached through a VARIABLE is invisible** — `$router->particleOp(…)` on an
+ *    injected Router is a method call, not a static one, and this pass does not see it.
+ *
+ *    An ALIASED facade import IS seen, and that leg is not hypothetical: the first version of this
+ *    audit reported a clean `src/` for beam core while `BeamRouteProxy::mountFilterSubSurface()` was
+ *    calling `RouteFacade::resourceFilters(…)` — the facade imported under another name. Every
+ *    `Route::`-keyed grep in the estate missed it too, and it was the one call site whose deletion
+ *    would have fataled the `->beam()` filter sub-surface at runtime. Detection now resolves each
+ *    file's `use` statements first, so any alias of `Illuminate\Support\Facades\Route` counts.
  * 2. **The sweep sees what the host composes.** Scan paths are the host's own `routes/` and `app/`
  *    plus whatever packages contributed to {@see AuditScanPaths} from their own providers — a
  *    boot-time seam, so a package not installed in the host under audit contributes nothing there.
@@ -203,17 +209,29 @@ class BareParticleMountAudit implements DoctorAudit
             return [];
         }
 
+        $finder = new NodeFinder;
         $sites = [];
 
+        // Resolve the file's imports FIRST: `use Illuminate\Support\Facades\Route as RouteFacade`
+        // makes `RouteFacade::` a Route call, and nothing about the call node itself says so.
+        $names = self::ROUTE_CLASS_NAMES;
+        /** @var list<UseItem> $imports */
+        $imports = $finder->findInstanceOf($ast, UseItem::class);
+        foreach ($imports as $import) {
+            if (ltrim($import->name->toString(), '\\') === 'Illuminate\Support\Facades\Route' && $import->alias !== null) {
+                $names[] = $import->alias->toString();
+            }
+        }
+
         /** @var list<StaticCall> $calls */
-        $calls = (new NodeFinder)->findInstanceOf($ast, StaticCall::class);
+        $calls = $finder->findInstanceOf($ast, StaticCall::class);
 
         foreach ($calls as $call) {
             if (! $call->class instanceof Name || ! $call->name instanceof Identifier) {
                 continue;
             }
 
-            if (! in_array(ltrim($call->class->toString(), '\\'), self::ROUTE_CLASS_NAMES, true)) {
+            if (! in_array(ltrim($call->class->toString(), '\\'), $names, true)) {
                 continue;
             }
 
