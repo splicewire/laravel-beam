@@ -41,9 +41,9 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 class ParticleRouteManifestSource implements RouteManifestSource
 {
     public function __construct(
-        private readonly Router $router,
-        private readonly ParticleResourceRegistry $registry,
-        private readonly ParticleOperationRegistry $operations,
+        private Router $router,
+        private ParticleResourceRegistry $registry,
+        private ParticleOperationRegistry $operations,
     ) {}
 
     public function toArray(): array

@@ -34,7 +34,7 @@ use Splicewire\Beam\Doctor\MigrationOrderingAudit;
  * to arbitrate between two of an app's migrations
  * (`rushing/laravel-schema-convergence/docs/agents/convergent-migration-guards.convention.md`, "Scope").
  */
-final class TableOwnershipResolver
+class TableOwnershipResolver
 {
     /**
      * @param  list<string>  $paths  every registered migration path (ours and theirs, unfiltered)

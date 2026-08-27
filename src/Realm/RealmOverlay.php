@@ -40,10 +40,10 @@ class RealmOverlay
      *                                     manifest — the frame must learn no satellite identity.
      */
     public function __construct(
-        public readonly string $realmKey,
-        public readonly OverlayDocument $document,
-        public readonly array $capabilities = [],
-        public readonly ?string $satelliteKey = null,
+        public string $realmKey,
+        public OverlayDocument $document,
+        public array $capabilities = [],
+        public ?string $satelliteKey = null,
     ) {}
 
     /**

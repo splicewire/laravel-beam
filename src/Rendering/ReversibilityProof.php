@@ -15,15 +15,15 @@ namespace Splicewire\Beam\Rendering;
  * declined to be tested — the exact self-description the certifier exists to refuse. {@see empty()} is
  * therefore a hard fail upstream in {@see RenderingCertifier}.
  */
-final class ReversibilityProof
+class ReversibilityProof
 {
     /**
      * @param  list<mixed>  $canonicalSamples
      * @param  list<array{0: mixed, 1: mixed}>  $renderingSamples
      */
     public function __construct(
-        public readonly array $canonicalSamples = [],
-        public readonly array $renderingSamples = [],
+        public array $canonicalSamples = [],
+        public array $renderingSamples = [],
     ) {}
 
     /** No samples at all — nothing was exercised, so nothing is certified. */

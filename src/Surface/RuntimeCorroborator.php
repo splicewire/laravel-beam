@@ -85,12 +85,12 @@ class RuntimeCorroborator
     ];
 
     public function __construct(
-        private readonly Router $router,
-        private readonly ParticleResourceRegistry $resources,
-        private readonly ParticleOperationRegistry $operations,
-        private readonly UndeclaredSurfaceAudit $undeclaredSurface,
+        private Router $router,
+        private ParticleResourceRegistry $resources,
+        private ParticleOperationRegistry $operations,
+        private UndeclaredSurfaceAudit $undeclaredSurface,
         /** @var array<string, list<string>> */
-        private readonly array $middlewareSignals = [],
+        private array $middlewareSignals = [],
     ) {}
 
     /**

@@ -14,7 +14,7 @@ use Rushing\SchemaConvergence\SchemaConflict;
  * risky migration is the one it silently skipped — the same false-green shape the convergent guard
  * exists to end, reappearing in the tool that reports on it. So a skip is displayed, counted, and named.
  */
-final class RehearsedMigration
+class RehearsedMigration
 {
     /**
      * @param  string  $migration  the name the migrator records — filename without `.php`
@@ -22,10 +22,10 @@ final class RehearsedMigration
      * @param  string|null  $skipped  why it was not rehearsed; null when it was
      */
     public function __construct(
-        public readonly string $migration,
-        public readonly string $file,
-        public readonly array $reports = [],
-        public readonly ?string $skipped = null,
+        public string $migration,
+        public string $file,
+        public array $reports = [],
+        public ?string $skipped = null,
     ) {}
 
     public static function skip(string $migration, string $file, string $reason): self

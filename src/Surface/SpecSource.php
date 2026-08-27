@@ -30,7 +30,7 @@ class SpecSource
     public const METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
 
     /** @param array<string, mixed> $document */
-    public function __construct(private readonly array $document) {}
+    public function __construct(private array $document) {}
 
     /** @param array<string, mixed> $document */
     public static function fromArray(array $document): self

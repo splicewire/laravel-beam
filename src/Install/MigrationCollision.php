@@ -21,7 +21,7 @@ use Rushing\SchemaConvergence\ConvergentTable;
  *
  * @see TableOwnershipResolver
  */
-final class MigrationCollision
+class MigrationCollision
 {
     /**
      * @param  string  $stem  the filename with its date prefix stripped, e.g. `create_activity_log_table`
@@ -31,11 +31,11 @@ final class MigrationCollision
      * @param  string  $theirPrefix  the EARLIEST competing prefix — the one that has to be beaten
      */
     public function __construct(
-        public readonly string $stem,
-        public readonly string $ourFile,
-        public readonly string $ourPrefix,
-        public readonly array $theirFiles,
-        public readonly string $theirPrefix,
+        public string $stem,
+        public string $ourFile,
+        public string $ourPrefix,
+        public array $theirFiles,
+        public string $theirPrefix,
     ) {}
 
     /**

@@ -30,7 +30,7 @@ class GenerateClientSdkCommand extends Command
 
     protected $description = 'Generate the committed client SDK (route map + typed access layer) from the route manifest';
 
-    public function __construct(private readonly Container $container)
+    public function __construct(private Container $container)
     {
         parent::__construct();
     }

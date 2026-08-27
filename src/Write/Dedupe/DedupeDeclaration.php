@@ -26,8 +26,8 @@ class DedupeDeclaration
      *                            nothing)
      */
     public function __construct(
-        public readonly array $by,
-        public readonly DedupeMode $mode,
+        public array $by,
+        public DedupeMode $mode,
     ) {}
 
     /**

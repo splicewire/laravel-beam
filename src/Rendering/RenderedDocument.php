@@ -15,18 +15,18 @@ namespace Splicewire\Beam\Rendering;
  * Transport lives in the controller; this type carries no framework response object so a rendering can
  * be unit-tested without HTTP.
  */
-final class RenderedDocument
+class RenderedDocument
 {
     /**
      * @param  array<string, string>  $headers
      */
     private function __construct(
-        public readonly bool $raw,
-        public readonly string $body,
-        public readonly ?string $contentType,
-        public readonly array $headers,
-        public readonly int $status,
-        public readonly mixed $value,
+        public bool $raw,
+        public string $body,
+        public ?string $contentType,
+        public array $headers,
+        public int $status,
+        public mixed $value,
     ) {}
 
     /**

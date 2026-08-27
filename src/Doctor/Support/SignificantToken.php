@@ -11,7 +11,7 @@ namespace Splicewire\Beam\Doctor\Support;
  * `Schema :: connection ( … ) -> create` chain built from both. Normalising once at the read is what
  * lets the chain-walking read as a chain.
  */
-final class SignificantToken
+class SignificantToken
 {
     public function __construct(
         /** Index in the `token_get_all()` stream — the resume point for the next hop. */

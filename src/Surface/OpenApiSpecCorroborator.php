@@ -28,7 +28,7 @@ use Splicewire\Beam\Surface\Data\SurfaceFindingData;
  */
 class OpenApiSpecCorroborator
 {
-    public function __construct(private readonly RuntimeCorroborator $runtime) {}
+    public function __construct(private RuntimeCorroborator $runtime) {}
 
     /**
      * The strong path: what the document claims, checked against what the router does.

@@ -22,11 +22,11 @@ class RealmOverlayCapability
      * @param  array<string, mixed>  $meta  extra descriptor fields folded into the projected capability.
      */
     public function __construct(
-        public readonly string $key,
-        public readonly ?string $title = null,
-        public readonly ?string $entitlement = null,
-        public readonly ?array $upsell = null,
-        public readonly array $meta = [],
+        public string $key,
+        public ?string $title = null,
+        public ?string $entitlement = null,
+        public ?array $upsell = null,
+        public array $meta = [],
     ) {}
 
     /**

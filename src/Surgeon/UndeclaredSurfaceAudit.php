@@ -155,12 +155,12 @@ class UndeclaredSurfaceAudit implements DoctorAudit
     ];
 
     public function __construct(
-        private readonly ParticleResourceRegistry $resources,
-        private readonly ParticleOperationRegistry $operations,
+        private ParticleResourceRegistry $resources,
+        private ParticleOperationRegistry $operations,
         /** @var list<string> */
-        private readonly array $exemptUris = self::DEFAULT_EXEMPT_URIS,
+        private array $exemptUris = self::DEFAULT_EXEMPT_URIS,
         /** @var list<string> */
-        private readonly array $exemptNamespaces = self::DEFAULT_EXEMPT_NAMESPACES,
+        private array $exemptNamespaces = self::DEFAULT_EXEMPT_NAMESPACES,
         protected ?PackageOrigin $origins = null,
     ) {}
 

@@ -54,7 +54,7 @@ use Throwable;
  * command does not make would be worse than silence. And already-run migrations are excluded: a guard
  * that will not speak again cannot conflict again.
  */
-final class ConvergencePreflight
+class ConvergencePreflight
 {
     /**
      * @param  list<string>  $paths  every migration path the next `migrate` will read

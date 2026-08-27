@@ -18,7 +18,7 @@ use Illuminate\Contracts\Foundation\Application;
  * all and why a `tenant/` directory that only stancl knows about is correctly NOT — a preflight that
  * rehearsed tenant stubs against the central connection would report on a pass this migrate never makes.
  */
-final class MigrationFiles
+class MigrationFiles
 {
     /** The paths the next `migrate` will read: the app's own, plus everything a provider registered. */
     public static function pathsFor(Application $app): array
