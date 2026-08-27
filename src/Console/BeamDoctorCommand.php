@@ -18,6 +18,7 @@ use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
 use Splicewire\Beam\Doctor\ParticleRouteResourceAudit;
+use Splicewire\Beam\Doctor\ParticleSlotCollisionAudit;
 use Splicewire\Beam\Doctor\SchemaDoorAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
 use Splicewire\Beam\Doctor\SitemapReadinessAudit;
@@ -179,6 +180,15 @@ class BeamDoctorCommand extends Command
                 ParticleRouteResourceAudit::class,
                 false,
                 fn (ParticleRouteResourceAudit $audit) => $audit->run(),
+            ),
+            // The gate particle-operation-surface 05 has to pass before it may drop the `/op/` segment.
+            // Advisory for the third time in a row and for the same reason: whether a rendering and an
+            // operation are exposed at the same `at` is a decision the HOST makes, and the two live in
+            // different popcorn roots, so no registry can refuse the pair.
+            $this->guarded(
+                ParticleSlotCollisionAudit::class,
+                false,
+                fn (ParticleSlotCollisionAudit $audit) => $audit->run(),
             ),
         );
 
