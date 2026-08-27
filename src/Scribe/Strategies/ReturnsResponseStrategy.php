@@ -41,7 +41,7 @@ class ReturnsResponseStrategy extends Strategy
         }
 
         $class = new ReflectionClass($returns);
-        $itemSchema = (new JsonSchemaGenerator)->forResponse()->generate($class);
+        $itemSchema = (new JsonSchemaGenerator((array) config('data-schemas', [])))->forResponse()->generate($class);
 
         $envelope = $endpointData->route->getAction('returnsMany')
             ? $this->listEnvelope($itemSchema, $class)

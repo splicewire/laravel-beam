@@ -75,7 +75,7 @@ class ParticleResponseStrategy extends Strategy
             return $data === null ? null : [];
         }
 
-        $itemSchema = (new JsonSchemaGenerator)->forResponse()->generate(new ReflectionClass($data));
+        $itemSchema = (new JsonSchemaGenerator((array) config('data-schemas', [])))->forResponse()->generate(new ReflectionClass($data));
 
         $method = $endpointData->method?->getName();
         $envelope = in_array($method, self::ITEM_METHODS, true)
@@ -108,7 +108,7 @@ class ParticleResponseStrategy extends Strategy
         $class = new ReflectionClass($output);
 
         return $this->itemEnvelope(
-            (new JsonSchemaGenerator)->forResponse()->generate($class),
+            (new JsonSchemaGenerator((array) config('data-schemas', [])))->forResponse()->generate($class),
             $class,
         );
     }

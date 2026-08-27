@@ -115,7 +115,7 @@ class ParticleRequestStrategy extends Strategy
             return [];
         }
 
-        $schema = (new JsonSchemaGenerator)->forRequest()->generate(new ReflectionClass($input));
+        $schema = (new JsonSchemaGenerator((array) config('data-schemas', [])))->forRequest()->generate(new ReflectionClass($input));
 
         $endpointData->custom['dataRequestSchema'] = $schema;
 

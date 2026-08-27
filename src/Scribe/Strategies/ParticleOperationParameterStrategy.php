@@ -77,7 +77,7 @@ class ParticleOperationParameterStrategy extends Strategy
         }
 
         return ScribeBodyParameters::fromSchema(
-            (new JsonSchemaGenerator)->forRequest()->generate(new ReflectionClass($input)),
+            (new JsonSchemaGenerator((array) config('data-schemas', [])))->forRequest()->generate(new ReflectionClass($input)),
         );
     }
 
