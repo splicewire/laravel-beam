@@ -93,7 +93,8 @@ class ParticleMountFacadeTest extends TestCase
     {
         Particle::mount('extensions', 'market-extensions')->only(['index']);
 
-        $route = $this->named('market_extensions.index');
+        // api-surface-coherence 104: the name stem is the key VERBATIM — kebab, not transliterated.
+        $route = $this->named('market-extensions.index');
 
         $this->assertNotNull($route);
         $this->assertSame('extensions', $route->uri());

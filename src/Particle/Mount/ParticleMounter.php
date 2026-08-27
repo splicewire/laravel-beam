@@ -105,7 +105,16 @@ class ParticleMounter
     public function resource(Router $router, string $uri, string $resourceKey, array $options = []): void
     {
         $only = $options['only'] ?? ['index', 'show', 'store', 'update', 'destroy'];
-        $name = $options['names'] ?? str_replace('-', '_', $resourceKey);
+        // The route-name stem IS the resource key, verbatim — kebab, no transliteration.
+        // api-surface-coherence 104: this was `str_replace('-', '_', $resourceKey)`, and that one
+        // substitution was the whole CASE axis of the estate's route-name inconsistency — it minted
+        // `context_scopes.index` / `fragment_url_batches.filters.show` beside kebab siblings, and the
+        // convention then told authors to pass `'names'` explicitly to defeat it, so half the mounts
+        // carried a redundant `->names('<the key again>')`. Dropping it makes the default correct and
+        // those calls redundant (deleted in the same change). `'names'` survives for the case it is
+        // actually for: a stem that is genuinely NOT the key — a nested exposure that needs its
+        // parent's scope in the name (`circuits.guest-tokens`).
+        $name = $options['names'] ?? $resourceKey;
         $idConstraint = $options['idConstraint'] ?? null;
         // 'controller' — route THROUGH a dedicated ParticleController subclass (e.g. SiloController) so it
         // gets the `_particle` default + auto-`@group` like the generic surface, instead of hand-rolled
