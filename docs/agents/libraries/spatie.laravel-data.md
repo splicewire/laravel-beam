@@ -107,7 +107,7 @@ beam's `src/` and two have not, as of this reading:
 
 | affordance | state in beam `src/` |
 | --- | --- |
-| `AppendableData` | **adopted** — `Particle/Contribution/ContributionProjector.php`, via `additional()` |
+| `AppendableData` | **adopted** — `src/Particle/Contribution/ContributionProjector.php`, via `additional()` |
 | `fromModel` | **adopted** — 3 files |
 | `InjectsPropertyValue` | still unused — a public interface, rides the default pipeline, needs no host wiring |
 | `Data::factory()` | still unused |
