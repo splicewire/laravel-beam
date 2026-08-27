@@ -164,6 +164,97 @@ class ParticleResourceRegistryTest extends TestCase
         $this->expectExceptionMessage('not annotated with #[ParticleResource]');
         $registry->registerClass(FixtureUnannotated::class);
     }
+
+    /**
+     * realm-and-floor-reconciliation ticket 04 — `keysForRealm()` is the inverse of the membership ladder,
+     * and the seam three host consumers now delegate to instead of each re-deriving membership from
+     * `config('frame.realms')` themselves.
+     *
+     * The explicit rung wins over the bulk map, exactly as `realmsFor()` reads it in the other direction.
+     */
+    public function test_keys_for_realm_prefers_explicit_membership_over_the_bulk_map(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->loadRealmMap(['operator' => ['widgets'], 'tenant' => ['gadgets']]);
+
+        $registry->register($this->declaration('widgets'), ['tenant']);
+        $registry->register($this->declaration('gadgets'));
+
+        // `widgets` named its own realms at registration, so the map's `operator` entry does not apply.
+        $this->assertSame(['gadgets', 'widgets'], $this->sorted($registry->keysForRealm('tenant')));
+        $this->assertSame([], $registry->keysForRealm('operator'));
+    }
+
+    /**
+     * ⚠️ Membership is NOT the manifest. `definitions()` skips non-framed resources because a manifest is a
+     * nav/editor surface; the host's CRUD gate confines keys that need not be framed at all. Filtering here
+     * the way `definitions()` does would silently 404 every REST-only member of a realm.
+     */
+    public function test_keys_for_realm_includes_rest_only_resources_that_no_manifest_would_carry(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->loadRealmMap(['tenant' => ['widgets']]);
+
+        // No label ⇒ not framed ⇒ absent from definitions(), but still a member of the realm.
+        $registry->register($this->declaration('widgets', framed: false));
+
+        $this->assertSame([], array_map(fn ($d) => $d->key, $registry->definitions('tenant')));
+        $this->assertSame(['widgets'], $registry->keysForRealm('tenant'));
+    }
+
+    /**
+     * The map is raw host config and can name a key nothing ever registered. Returning the intersection is
+     * what stops a typo in that config being a resource the gate admits and the registry cannot serve.
+     */
+    public function test_keys_for_realm_omits_a_config_named_key_that_was_never_registered(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->loadRealmMap(['tenant' => ['widgets', 'ghosts']]);
+
+        $registry->register($this->declaration('widgets'));
+
+        $this->assertSame(['widgets'], $registry->keysForRealm('tenant'));
+    }
+
+    /** Computed on read: a resource registered after the first call must appear, not be frozen out of it. */
+    public function test_keys_for_realm_is_computed_on_read(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->loadRealmMap(['tenant' => ['widgets', 'gadgets']]);
+
+        $registry->register($this->declaration('widgets'));
+        $this->assertSame(['widgets'], $registry->keysForRealm('tenant'));
+
+        $registry->register($this->declaration('gadgets'));
+        $this->assertSame(['gadgets', 'widgets'], $this->sorted($registry->keysForRealm('tenant')));
+    }
+
+    public function test_keys_for_realm_is_empty_for_an_unknown_realm(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->loadRealmMap(['tenant' => ['widgets']]);
+        $registry->register($this->declaration('widgets'));
+
+        $this->assertSame([], $registry->keysForRealm('nowhere'));
+    }
+
+    private function declaration(string $key, bool $framed = true): ParticleResourceRuntime
+    {
+        return new ParticleResourceRuntime(
+            key: $key,
+            backing: 'App\\Models\\Widget',
+            data: WidgetGateData::class,
+            label: $framed ? ucfirst($key) : '',
+        );
+    }
+
+    /** @param list<string> $keys @return list<string> */
+    private function sorted(array $keys): array
+    {
+        sort($keys);
+
+        return $keys;
+    }
 }
 
 #[ParticleResource(
@@ -189,4 +280,5 @@ class FixtureStreamOnlyBacking implements StreamsRecords
     {
         return new CursorPaginator([], $perPage);
     }
+
 }

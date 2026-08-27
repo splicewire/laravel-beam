@@ -538,7 +538,20 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
         return ['explicit', 'realm-map'];
     }
 
-    private function realmsFor(string $key): array
+    /**
+     * PUBLIC because it is the declared authority, and a declared authority nothing can call is not one.
+     *
+     * Membership had three readers reaching it three different ways: the manifest through
+     * {@see definitions()} (i.e. through here, the ladder), and the host's Frame CRUD gate and route-context
+     * builder through a SECOND registry seeded straight from `config('frame.realms')` — plus a nav
+     * capability reading that config raw, through neither. Nothing had diverged, because all three bottomed
+     * out in the same config key and the `explicit` rung has never been used by any call site in the estate.
+     * The divergence was gated entirely on that emptiness: the first resource to name its realms at
+     * registration would have been manifest-visible, nav-invisible, and 404 on every read and write.
+     *
+     * @return list<string>
+     */
+    public function realmsFor(string $key): array
     {
         if (isset($this->realms[$key])) {
             return $this->realms[$key];
@@ -552,6 +565,35 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
         }
 
         return $realms;
+    }
+
+    /**
+     * The inverse of {@see realmsFor()}: every REGISTERED resource key whose membership includes `$realm`.
+     *
+     * Three properties, each load-bearing rather than incidental:
+     *
+     * - **No `isFramed()` filter.** {@see definitions()} skips non-framed resources because a manifest is a
+     *   nav/editor surface; membership is not. The host's CRUD gate confines keys that need not be framed
+     *   at all, and conflating the two would silently 404 every REST-only member of a realm.
+     * - **Iterates {@see all()}, not the realm map.** The map is raw config and can name a key nothing ever
+     *   registered; this returns the intersection, so a typo in host config stops being a resource the gate
+     *   admits and the registry cannot serve.
+     * - **Computed on read, never cached.** A resource registered after the first call must appear. Same
+     *   rule the event catalog learned the hard way: stamping at registration records load order as truth.
+     *
+     * @return list<string>
+     */
+    public function keysForRealm(string $realm): array
+    {
+        $keys = [];
+
+        foreach ($this->all() as $resource) {
+            if (in_array($realm, $this->realmsFor($resource->key), true)) {
+                $keys[] = $resource->key;
+            }
+        }
+
+        return $keys;
     }
 
     /**
