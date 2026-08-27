@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Particle;
 
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Particle\Backing\WritesRecords;
 use Splicewire\Beam\Write\ParticleWriter;
 
 /**
@@ -21,19 +22,36 @@ use Splicewire\Beam\Write\ParticleWriter;
  *    estate-wide and **none of them is one of the 15 registered write operations**; nothing emits it by
  *    hand either.
  *
- *    A `kind: Write` op also does NOT ride {@see ParticleWriter} — its `handle`
- *    closure persists directly, so it skips `AuthorizeStage`'s deny-by-default gate, `ValidateStage`,
- *    `DedupeStage` (so `x-beam-dedupe` can never be honoured on this transport) and `EmitStage`. That is
- *    not an oversight to be swept away: of the 15 write ops at the flagship, **zero** are the "one model,
- *    one payload" shape `ParticleWriter::write()` accepts — they are deletes, multi-row syncs, external
- *    calls and workflow transitions. Requiring the pipeline would refuse all fifteen.
+ *    A `kind: Write` op also does NOT ride {@see ParticleWriter} — its `handle` closure persists
+ *    directly, so it skips `AuthorizeStage`'s deny-by-default gate, `ValidateStage`, `DedupeStage` (so
+ *    `x-beam-dedupe` can never be honoured on this transport) and `EmitStage`.
  *
- *    So what `Write` genuinely buys today is **codegen and spec signal**, and that is worth keeping. What
- *    it must not do is read like an enforced invariant. Ticket 02 nominates emitting
- *    `BeamParticlePersisted` as the one stage restorable without constraining `handle` — deliberately NOT
- *    done here, because that event has live listeners (`NotifyOnSubmission`, and the flagship's
- *    `UpdateContextScopeEmbeddingsOnPersist`), so turning it on is an outward-facing behaviour change for
- *    fifteen endpoints, not a docblock fix.
+ *    ⚠️ **This entry briefly argued that requiring the pipeline was impossible, and that was wrong.** It
+ *    cited "zero of the 15 write ops are the one-model-one-payload shape `ParticleWriter::write()`
+ *    accepts". True, and irrelevant, because it conflates two separable things:
+ *
+ *      - **the payload-persist pipeline** (validate → dedupe → persist → emit), which genuinely only fits
+ *        an attribute write — a delete or a workflow transition has nothing to persist;
+ *      - **the deny-by-default write GATE**, which needs no payload at all, only a subject. And there is
+ *        almost always a primary model: `ParticleWriter::write()` already takes `Model|string $target`,
+ *        and every one of the 15 resolves a subject before `handle` runs.
+ *
+ *    Measuring the first and concluding the second is impossible is how a signature became mistaken for a
+ *    constraint. The gate is the half that matters and the half that is missing: a gate-closed probe found
+ *    **four** write ops reachable by any authenticated, role-less tenant member (install/uninstall/refresh
+ *    extensions, spend embedding budget). So `Write` SHOULD mean "gated", and today does not.
+ *
+ *    What it buys meanwhile is codegen and spec signal. The two known routes to making it mean something
+ *    are recorded rather than chosen here: an `ability:` on each op (see particle-write-surface ticket 02
+ *    — measured, costed, and blocked on a dataset that can discriminate), and deriving the mounted verb
+ *    set from the backing's CAPABILITY so a resource can declare write-only and the operations fall out
+ *    ({@see WritesRecords}; the seam exists, `hasCapability()` is
+ *    consulted nowhere at runtime, and particle-operation-surface ticket 04 designed exactly this and
+ *    deferred the build).
+ *
+ *    Emitting `BeamParticlePersisted` is deliberately NOT done here either: that event has live listeners
+ *    (`NotifyOnSubmission`, and the flagship's `UpdateContextScopeEmbeddingsOnPersist`), so turning it on
+ *    is an outward-facing behaviour change for fifteen endpoints, not a docblock fix.
  *  - **Task**   — a potentially long-running, side-effectful unit (generate / run / render / reassess).
  *                 ONLY this kind is queueable: the framework honours `?async` to `dispatch` vs
  *                 `dispatch_sync` its job. (Queued. Parallel fan-out is a per-task concern, deliberately
