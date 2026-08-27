@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Routing;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as RouteFacade;
 use Rushing\DataFilters\Facades\DataFilter;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Http\Particle\ParticleController;
 
 /**
@@ -148,7 +149,7 @@ class BeamRouteProxy
         // prefix-resolved, so mounting from inside the same group would double it. Registering through
         // the Router with the group stack intact and handing it the ORIGINAL uri keeps one source of
         // truth for the mount point.
-        RouteFacade::resourceFilters(
+        Particle::filters(
             resource: $resourceKey,
             at: $this->uriWithinCurrentGroup(),
             names: $this->nameWithinCurrentGroup($resourceKey),
