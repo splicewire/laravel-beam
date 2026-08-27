@@ -14,7 +14,10 @@ date: 2026-08-25
 ## What it is here
 
 The substrate the particle doctrine is built on. Beam does not merely *use* laravel-data — it
-**extends** it: `Splicewire\Beam\Data\Data` subclasses `Spatie\LaravelData\Data`, beam owns the
+**extends** it, through one deliberate intermediary: `Splicewire\Beam\Data\Data` →
+`Schemastud\DataSchemas\StudData` → `Spatie\LaravelData\Data`. The middle link is not incidental —
+parenting on `StudData` is what makes all 85 DTOs below it answer `::jsonSchema()` through the
+host's *configured* generator instead of a bare `new JsonSchemaGenerator`. Beam owns the
 `#[ParticleResource]` / `#[ParticleOp]` attributes, and the registries, backing layer, Scribe
 strategies and TypeScript codegen all read Data classes as their input. When beam adds a mechanism,
 the first question is whether laravel-data already has it. **Three times it did, and beam shipped a
