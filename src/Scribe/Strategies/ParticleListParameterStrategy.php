@@ -8,7 +8,7 @@ use ReflectionClass;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Keywords;
 use Rushing\DataFilters\Query\ResourceQuery;
-use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
+use Schemastud\DataSchemas\Generators\Generator;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -145,11 +145,40 @@ class ParticleListParameterStrategy extends Strategy
      */
     protected function facets(string $dataClass): array
     {
-        $generator = new JsonSchemaGenerator([
-            'strategies' => config('data-schemas.strategies'),
-        ]);
+        // Container-resolved, and this site changed in TWO ways rather than one.
+        //
+        // Dispatch: `data-schemas.generators` is a LIST and the rule "the first member whose
+        // `canGenerate()` accepts this class" lives only inside `ChainedGenerator`, so hand-building
+        // the default member ran the PLAIN generator over a class a narrow member owns at
+        // `~/Herd/thingsontv` — a downgraded facet set behind a successful extraction.
+        //
+        // Config: the hand-build passed `strategies` and NOTHING ELSE, which withheld `base_uri`
+        // from every class reaching it. That is the exact `a6989da` shape — a `data:` class
+        // implementing `SchemaIdentity` threw `MissingSchemaBaseUri` here, Scribe caught it
+        // per-route and printed only under `-v`, and the index endpoint left the spec. This file
+        // already carries one 30-endpoint scar from that mechanism (see `__invoke`); the narrowed
+        // config was a second one waiting.
+        //
+        // Widening the config is safe for what this method reads. Backed enums — the only facet type
+        // whose `$defs` entry `dereference()` needs — always hoist as `#/$defs/<Short>`
+        // (`ensureEnumDef()` never consults `base_uri`), so enum accepted-value lists are unchanged.
+        // A nested SchemaIdentity OBJECT now hoists under its absolute `$id` instead, which
+        // `dereference()` declines to follow — and that degrades correctly, because the property's
+        // own keywords win there anyway and `x-filter`/`x-sort` live on the property, not the `$defs`
+        // entry.
+        //
+        // GUARDED: the chain throws where the hand-built generator generated regardless, and a throw
+        // here is silent amputation, not a loud failure. A refused class yields no facets, so the
+        // filter/sort names still publish from the data-filters query — untyped and undescribed,
+        // which is what this method's own `$facets[$name] ?? null` fallback already handles.
+        $reflection = new ReflectionClass($dataClass);
+        $generator = app(Generator::class);
 
-        $schema = $generator->generate(new ReflectionClass($dataClass));
+        if (! $generator->canGenerate($reflection)) {
+            return ['filters' => [], 'sorts' => []];
+        }
+
+        $schema = $generator->generate($reflection);
 
         $filters = [];
         $sorts = [];

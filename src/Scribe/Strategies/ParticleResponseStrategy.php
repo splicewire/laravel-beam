@@ -6,7 +6,7 @@ use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
 use ReflectionClass;
 use Rushing\LaravelDataSchemasScribe\Support\StreamSchemas;
-use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
+use Schemastud\DataSchemas\Generators\Generator;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
@@ -22,7 +22,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *   - index → the paginated `ResponseBody` list envelope wrapping `data: [ …$resource->data ]`;
  *   - show/store/update → the single-item envelope `data: $resource->data`.
  *
- * Schema generation is delegated to the SAME {@see JsonSchemaGenerator}; the result is stashed under the
+ * Schema generation is delegated to the SAME host-configured {@see Generator} chain; the result is stashed under the
  * SAME `custom['dataResponseSchemas']` key the package uses, so `DataSchemaGenerator` needs zero changes.
  *
  * Returns `null` (defer) for any non-particle route so it composes with the existing attribute strategies.
@@ -86,12 +86,27 @@ class ParticleResponseStrategy extends Strategy
             return $data === null ? null : [];
         }
 
-        $itemSchema = (new JsonSchemaGenerator((array) config('data-schemas', [])))->forResponse()->generate(new ReflectionClass($data));
+        // Container-resolved so the host's `data-schemas.generators` LIST dispatches instead of this
+        // site hand-picking the default member — the full reasoning is on the sibling
+        // {@see ParticleRequestStrategy::fromDataClass()}, including why a chain refusal must never
+        // be allowed to throw out of a Scribe strategy.
+        //
+        // Refusal takes the SAME `[]` the line above takes for a declared-but-unusable `data:` slot:
+        // the resource keeps its endpoint in the spec, undescribed on the response axis, which is
+        // strictly more than the amputation a swallowed throw would produce.
+        $dataClass = new ReflectionClass($data);
+        $generator = app(Generator::class)->forResponse();
+
+        if (! $generator->canGenerate($dataClass)) {
+            return [];
+        }
+
+        $itemSchema = $generator->generate($dataClass);
 
         $method = $endpointData->method?->getName();
         $envelope = in_array($method, self::ITEM_METHODS, true)
-            ? $this->itemEnvelope($itemSchema, new ReflectionClass($data))
-            : $this->listEnvelope($itemSchema, new ReflectionClass($data));
+            ? $this->itemEnvelope($itemSchema, $dataClass)
+            : $this->listEnvelope($itemSchema, $dataClass);
 
         return $this->stash($endpointData, $envelope);
     }
@@ -117,10 +132,16 @@ class ParticleResponseStrategy extends Strategy
         }
 
         $class = new ReflectionClass($output);
+        $generator = app(Generator::class)->forResponse();
 
-        return $this->itemEnvelope(
-            (new JsonSchemaGenerator((array) config('data-schemas', [])))->forResponse()->generate($class),
-            $class,
-        );
+        // A chain that will not build the declared `output:` degrades to the SAME generic object
+        // envelope the two documented cases above take — an undeclared slot, and an op that was
+        // never registered. Same reasoning as the resource arm: the honest answer to "no generator
+        // will describe this" is an undescribed 200, not a route missing from the spec.
+        if (! $generator->canGenerate($class)) {
+            return ['type' => 'object'];
+        }
+
+        return $this->itemEnvelope($generator->generate($class), $class);
     }
 }

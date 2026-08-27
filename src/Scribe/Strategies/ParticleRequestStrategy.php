@@ -7,7 +7,7 @@ use Knuckles\Scribe\Extracting\Strategies\Strategy;
 use ReflectionClass;
 use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
 use Rushing\LaravelDataSchemasScribe\Support\ScribeBodyParameters;
-use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
+use Schemastud\DataSchemas\Generators\Generator;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
@@ -23,7 +23,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * the ROUTE (its `_particle` default names a {@see ParticleResource} in the registry), not a method
  * attribute. So this mirrors the package's `UseDataRequest` but keys off the route: it resolves the
  * resource, picks its `->input` DTO for the write verbs (store/update), generates the schema with the SAME
- * {@see JsonSchemaGenerator} and stashes it under the SAME `custom['dataRequestSchema']` key — so the
+ * host-configured {@see Generator} chain and stashes it under the SAME `custom['dataRequestSchema']` key — so the
  * package's `DataSchemaGenerator` assembly hook needs zero changes.
  *
  * Both legal declaration sites are read, not just the resource's: an OPERATION route (`…/op/{name}`) carries
@@ -125,7 +125,29 @@ class ParticleRequestStrategy extends Strategy
             return [];
         }
 
-        $schema = (new JsonSchemaGenerator((array) config('data-schemas', [])))->forRequest()->generate(new ReflectionClass($input));
+        // Container-resolved, not `new JsonSchemaGenerator(config('data-schemas', []))`. That
+        // construction was already correct on CONFIG; what it could not do is DISPATCH.
+        // `data-schemas.generators` is a LIST, and the rule "the first member whose `canGenerate()`
+        // accepts this class" lives only inside `ChainedGenerator` — so at a multi-generator host
+        // (`~/Herd/thingsontv`: `[BlockJsonSchemaGenerator, JsonSchemaGenerator]`) hand-building the
+        // default member runs the PLAIN generator over a class the narrow one owns and silently
+        // emits a downgraded body behind a successful extraction.
+        //
+        // GUARDED, and the guard is load-bearing rather than defensive: the chain THROWS where the
+        // hand-built generator generated regardless, and a throw inside a Scribe strategy is not
+        // loud — Scribe catches per-route, prints only under `-v`, and carries on, so the endpoint
+        // VANISHES from the spec (measured twice: `a6989da` in data-schemas-scribe, and this
+        // package's own 30-endpoint amputation recorded in `ParticleListParameterStrategy`).
+        // Refusal therefore takes the same "no declared body" branch above, which leaves the
+        // endpoint documented without a body instead of deleting it.
+        $reflection = new ReflectionClass($input);
+        $generator = app(Generator::class)->forRequest();
+
+        if (! $generator->canGenerate($reflection)) {
+            return [];
+        }
+
+        $schema = $generator->generate($reflection);
 
         $endpointData->custom['dataRequestSchema'] = $schema;
 

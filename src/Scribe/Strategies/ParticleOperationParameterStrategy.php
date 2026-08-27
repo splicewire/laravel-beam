@@ -6,7 +6,7 @@ use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
 use ReflectionClass;
 use Rushing\LaravelDataSchemasScribe\Support\ScribeBodyParameters;
-use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
+use Schemastud\DataSchemas\Generators\Generator;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -82,9 +82,18 @@ class ParticleOperationParameterStrategy extends Strategy
             return [];
         }
 
-        return ScribeBodyParameters::fromSchema(
-            (new JsonSchemaGenerator((array) config('data-schemas', [])))->forRequest()->generate(new ReflectionClass($input)),
-        );
+        // Container-resolved for chain dispatch, guarded because the chain throws and Scribe
+        // swallows — see {@see ParticleRequestStrategy::fromDataClass()}. Refusal takes the same
+        // empty return the two branches above take, so the op keeps its framework parameters
+        // (`?async`, the signer's `expires`/`signature`) and loses only the declared axis.
+        $reflection = new ReflectionClass($input);
+        $generator = app(Generator::class)->forRequest();
+
+        if (! $generator->canGenerate($reflection)) {
+            return [];
+        }
+
+        return ScribeBodyParameters::fromSchema($generator->generate($reflection));
     }
 
     /**

@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Scribe\Strategies;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
 use ReflectionClass;
-use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
+use Schemastud\DataSchemas\Generators\Generator;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Routing\RouteReturnType;
 
@@ -41,7 +41,24 @@ class ReturnsResponseStrategy extends Strategy
         }
 
         $class = new ReflectionClass($returns);
-        $itemSchema = (new JsonSchemaGenerator((array) config('data-schemas', [])))->forResponse()->generate($class);
+
+        // Container-resolved for chain dispatch — see {@see ParticleRequestStrategy::fromDataClass()}
+        // for why, and for why the refusal below must not be a throw.
+        //
+        // Refusal returns `null` (defer) rather than an empty answer, and that is deliberate HERE and
+        // nowhere else in this sweep: this strategy is registered AHEAD of the particle strategy
+        // precisely so an explicit `->returns()` wins. If the chain will not build the annotated
+        // class, this strategy has produced nothing, so it must step out of the way and let
+        // `ParticleResponseStrategy` / `UseDataResponse` answer — swallowing the route into an empty
+        // response list would let a generator refusal silently outrank a declaration that still had
+        // another way to be documented.
+        $generator = app(Generator::class)->forResponse();
+
+        if (! $generator->canGenerate($class)) {
+            return null;
+        }
+
+        $itemSchema = $generator->generate($class);
 
         $envelope = $endpointData->route->getAction('returnsMany')
             ? $this->listEnvelope($itemSchema, $class)
