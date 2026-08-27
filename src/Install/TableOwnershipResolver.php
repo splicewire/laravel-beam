@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Install;
 use Illuminate\Contracts\Foundation\Application;
 use Rushing\SchemaConvergence\ConvergentTable;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
+use Splicewire\Beam\Doctor\Support\MigrationTableScanner;
 
 /**
  * Finds the published beam migrations that lose a filename race to a third-party migration of the same
@@ -140,10 +141,15 @@ class TableOwnershipResolver
     {
         $source = (string) @file_get_contents($collision->ourFile);
 
-        preg_match_all("/->constrained\(\s*'([a-z0-9_]+)'/i", $source, $constrained);
-        preg_match_all("/->on\(\s*'([a-z0-9_]+)'/i", $source, $on);
+        $targets = [];
 
-        $targets = array_unique(array_merge($constrained[1], $on[1]));
+        foreach (MigrationTableScanner::references($source) as $ref) {
+            if ($ref->name !== null && ! $ref->prefixed) {
+                $targets[$ref->name] = true;
+            }
+        }
+
+        $targets = array_keys($targets);
 
         if ($targets === []) {
             return [];
@@ -173,7 +179,14 @@ class TableOwnershipResolver
     }
 
     /**
-     * table ⇒ [prefix, migration name] for every LITERAL `Schema::create('x')` across all paths.
+     * table ⇒ [prefix, migration name] for every literally-named create across all paths.
+     *
+     * This read used to be the same dead `Schema::create('x')` regex `MigrationOrderingAudit` carried,
+     * which matches **0 sites** estate-wide since the 2026-08-18 convergence sweep — so
+     * `dependencyRisks()` had no creators to compare against and returned an empty list for every
+     * collision, silently. It now goes through {@see MigrationTableScanner}, which reads both dialects.
+     * Prefixed names are still excluded here rather than resolved: this class runs mid-install, where
+     * the prefix seam is exactly what the operator may be in the middle of answering.
      *
      * @return array<string, array{0: string, 1: string}>
      */
@@ -182,13 +195,15 @@ class TableOwnershipResolver
         $creators = [];
 
         foreach ($this->files() as [$prefix, $stem, $file]) {
-            preg_match_all(
-                "/Schema::(?:connection\([^)]*\)->)?create\(\s*'([a-z0-9_]+)'/i",
-                (string) @file_get_contents($file),
-                $matches,
-            );
+            $tables = [];
 
-            foreach ($matches[1] as $table) {
+            foreach (MigrationTableScanner::creates((string) @file_get_contents($file)) as $ref) {
+                if ($ref->name !== null && ! $ref->prefixed) {
+                    $tables[] = $ref->name;
+                }
+            }
+
+            foreach ($tables as $table) {
                 // First claim wins, matching MigrationOrderingAudit — a later duplicate is the
                 // collision this class is about, not an additional creator.
                 $creators[$table] ??= [$prefix, $prefix.'_'.$stem];

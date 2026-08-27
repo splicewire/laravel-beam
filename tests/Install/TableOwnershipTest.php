@@ -164,9 +164,20 @@ class TableOwnershipTest extends TestCase
      */
     public function test_it_warns_when_the_claimed_create_references_a_table_created_later(): void
     {
-        $this->write($this->ours(), '2026_08_14_023918_create_media_table.php',
-            "Schema::create('media', fn (\$t) => \$t->foreignId('team_id')->constrained('teams'));");
-        $this->write($this->ours(), '2026_09_01_000000_create_teams_table.php', "Schema::create('teams', fn () => null);");
+        // The estate's real dialect, imports included. Both matter to `MigrationTableScanner`: it reads
+        // `ConvergentTable::named` as well as `Schema::create`, and it resolves a short class name
+        // through the file's own import map — so a fixture written without the `use` line is not a
+        // migration this codebase has ever shipped, and tests nothing that runs.
+        $this->write($this->ours(), '2026_08_14_023918_create_media_table.php', <<<'PHP'
+        use Rushing\SchemaConvergence\ConvergentTable;
+
+        ConvergentTable::named('media')->define(fn ($t) => $t->foreignId('team_id')->constrained('teams'))->assert();
+        PHP);
+        $this->write($this->ours(), '2026_09_01_000000_create_teams_table.php', <<<'PHP'
+        use Rushing\SchemaConvergence\ConvergentTable;
+
+        ConvergentTable::named('teams')->assert();
+        PHP);
         $this->write($this->theirs(), '2026_01_01_000011_create_media_table.php');
 
         $resolver = $this->resolver();
@@ -186,10 +197,18 @@ class TableOwnershipTest extends TestCase
      */
     public function test_a_dynamically_named_dependency_is_skipped_not_guessed_at(): void
     {
-        $this->write($this->ours(), '2026_08_14_023918_create_media_table.php',
-            "Schema::create('media', fn (\$t) => \$t->foreignId('p')->constrained(Beam::table('particles')));");
-        $this->write($this->ours(), '2026_09_01_000000_create_beam_particles_table.php',
-            "Schema::create(Beam::table('particles'), fn () => null);");
+        $this->write($this->ours(), '2026_08_14_023918_create_media_table.php', <<<'PHP'
+        use Rushing\SchemaConvergence\ConvergentTable;
+        use Splicewire\Beam\Facades\Beam;
+
+        ConvergentTable::named('media')->define(fn ($t) => $t->foreignId('p')->constrained(Beam::table('particles')))->assert();
+        PHP);
+        $this->write($this->ours(), '2026_09_01_000000_create_beam_particles_table.php', <<<'PHP'
+        use Rushing\SchemaConvergence\ConvergentTable;
+        use Splicewire\Beam\Facades\Beam;
+
+        ConvergentTable::named(Beam::table('particles'))->assert();
+        PHP);
         $this->write($this->theirs(), '2026_01_01_000011_create_media_table.php');
 
         $resolver = $this->resolver();

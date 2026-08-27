@@ -819,9 +819,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host
         // mounted, and the count is the gate the `null` → derived-permission-name flip waits on.
         $manifest->register('splicewire/laravel-beam', UngatedOperationAudit::class);
-        // Joins the install manifest (package → order) against every package's migration stubs
-        // (table → created/altered), so a cross-package ALTER declared ahead of its CREATE is caught
-        // at boot rather than by a failed greenfield migrate.
+        // Joins the PUBLISHED migration files this host will actually run (stamped filename → tables
+        // created / pointed at) against each other, so a migration whose foreign key targets a table
+        // created later is caught at boot rather than by a failed greenfield migrate. Reads published
+        // files rather than package stubs because both facts it needs — the stamp and the resolved
+        // table name — only exist after publish; see the class docblock for what that trade cost.
         $manifest->register('splicewire/laravel-beam', MigrationOrderingAudit::class);
 
         // Surgeon side — the three position-sensitive shapes, which need the AST. A host that composes beam
