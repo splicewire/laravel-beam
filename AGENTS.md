@@ -73,6 +73,18 @@ off the instance you passed in. `reject` is an oracle by construction and is leg
 an authenticated door. The key recipe is write-once. See
 `docs/agents/dedupe-keyword.convention.md`.
 
+## What `beam:install` persists
+
+The wizard's answers reach the running process through `config([...])` and reach **disk** only through
+`persistConfig()`, behind three conditions: the config is published, it is writable, and `--force` was
+passed. All three answers — prefix, schema sources, tenancy — are written; **`tenancy` was accepted and
+silently dropped until 2026-08-27** (beam-facade 158), and nothing caught it because
+`beam.core.tenancy` has exactly one consumer estate-wide and it is inside the command that sets it.
+
+⚠️ Adding a key here means adding it to the **test fixture** too: `replaceScalar()` no-ops on an absent
+key and returns the contents unchanged, so a fixture missing the key turns the assertion into a
+tautology. See `docs/agents/install-answer-persistence.convention.md`.
+
 ## Gate or advisory
 
 Beam reserves `gate: true` for *"an agent is building a thing wrong"* — two audits today, both in

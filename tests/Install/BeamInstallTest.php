@@ -275,7 +275,7 @@ class BeamInstallTest extends TestCase
     {
         $path = base_path('config/beam/core.php');
         File::ensureDirectoryExists(dirname($path));
-        File::put($path, "<?php\n\nreturn [\n    'table_prefix' => 'hand_edited_',\n    'schema' => ['sources' => ['db']],\n];\n");
+        File::put($path, self::publishedConfig('hand_edited_', 'single'));
 
         $this->artisan('splicewire:beam:install', [
             '--prefix' => 'new_',
@@ -285,23 +285,94 @@ class BeamInstallTest extends TestCase
         ])->assertExitCode(0);
 
         $this->assertStringContainsString("'table_prefix' => 'hand_edited_'", File::get($path));
+        $this->assertStringContainsString("'tenancy' => 'single'", File::get($path));
     }
 
     public function test_persist_config_overwrites_an_already_published_file_with_force(): void
     {
         $path = base_path('config/beam/core.php');
         File::ensureDirectoryExists(dirname($path));
-        File::put($path, "<?php\n\nreturn [\n    'table_prefix' => 'hand_edited_',\n    'schema' => ['sources' => ['db']],\n];\n");
+        File::put($path, self::publishedConfig('hand_edited_', 'single'));
 
         $this->artisan('splicewire:beam:install', [
             '--prefix' => 'new_',
             '--schema-sources' => 'file',
-            '--tenancy' => 'single',
+            '--tenancy' => 'multi',
             '--force' => true,
             '--no-interaction' => true,
         ])->assertExitCode(0);
 
         $this->assertStringContainsString("'table_prefix' => 'new_'", File::get($path));
+        // Answered 'multi' deliberately: the shipped config's own default is 'single', so asserting
+        // 'single' here would pass against a writer that never ran (ticket 158).
+        $this->assertStringContainsString("'tenancy' => 'multi'", File::get($path));
+    }
+
+    /**
+     * beam-facade ticket 158. `persistConfig()` took `$tenancy` and wrote it on NO branch — `--force`
+     * included — so an operator who answered the tenancy question on an already-installed host had the
+     * answer govern the run and die with the process. `beam.core.tenancy` is read in exactly one place
+     * estate-wide (this command's own `verifySharedMigrations()`), which is why nothing ever reported it.
+     *
+     * ⚠️ **The fixture is half of this test.** `replaceScalar()` is a `preg_replace` that no-ops on a key
+     * absent from the file and returns the contents unchanged, and both fixtures above used to omit
+     * `'tenancy'` entirely — so a naive version of this assertion passes against a writer that wrote
+     * nothing. {@see self::publishedConfig()} exists to make the key present, which is what gives the
+     * assertion something to be wrong about.
+     */
+    public function test_persist_config_writes_the_answered_tenancy_mode_with_force(): void
+    {
+        $path = base_path('config/beam/core.php');
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, self::publishedConfig('hand_edited_', 'single'));
+
+        $this->artisan('splicewire:beam:install', [
+            '--tenancy' => 'multi',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertExitCode(0);
+
+        $this->assertStringContainsString("'tenancy' => 'multi'", File::get($path));
+        $this->assertStringNotContainsString("'tenancy' => 'single'", File::get($path));
+    }
+
+    /**
+     * The tenancy answer follows the same safe-unless-force rule as the other two, rather than acquiring
+     * its own posture: without `--force` an already-published file is left alone, and the answer governs
+     * the run via runtime config only.
+     */
+    public function test_persist_config_leaves_tenancy_alone_without_force(): void
+    {
+        $path = base_path('config/beam/core.php');
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, self::publishedConfig('hand_edited_', 'single'));
+
+        $this->artisan('splicewire:beam:install', [
+            '--tenancy' => 'multi',
+            '--no-interaction' => true,
+        ])->assertExitCode(0);
+
+        $this->assertStringContainsString("'tenancy' => 'single'", File::get($path));
+        $this->assertSame('multi', config('beam.core.tenancy'));
+    }
+
+    /**
+     * A published config carrying the keys `persistConfig()` actually targets. The shipped
+     * `config/beam/core.php` has all three (`table_prefix`, `schema.sources`, `tenancy`); a fixture that
+     * drops one silently converts a write assertion into a no-op assertion.
+     */
+    private static function publishedConfig(string $prefix, string $tenancy): string
+    {
+        return <<<PHP
+        <?php
+
+        return [
+            'table_prefix' => '{$prefix}',
+            'schema' => ['sources' => ['db']],
+            'tenancy' => '{$tenancy}',
+        ];
+
+        PHP;
     }
 
     /**

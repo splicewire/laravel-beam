@@ -868,6 +868,18 @@ class BeamInstallCommand extends Command
      * Best-effort + non-fatal: if the host hasn't published the config (or it isn't writable), the runtime
      * config still governs this run — we just warn. Only the keys the operator actually answered are written.
      *
+     * ⚠️ **All THREE answers are written; `tenancy` used to be accepted and dropped** (beam-facade ticket
+     * 158). It reached this method, participated in the early-return guard below, and appeared nowhere
+     * else — so an operator who answered the tenancy question on an already-installed host had the answer
+     * govern the run and die with the process. Nothing reported it, because `beam.core.tenancy` is read in
+     * exactly one place in the whole estate: this command's own {@see self::verifySharedMigrations()}.
+     *
+     * ⚠️ **The regression test's FIXTURE is half of the guard.** {@see self::replaceScalar()} is a
+     * `preg_replace` that no-ops on a key absent from the file and returns the contents unchanged, so a
+     * test whose fixture omits `'tenancy'` passes against a writer that wrote nothing — which is exactly
+     * how this survived two existing `persistConfig` tests. Any new key added here needs its key present
+     * in the fixture, or the assertion is vacuous.
+     *
      * Safe-unless-force, matching `vendor:publish`: `config/beam/core.php` already existing means it was
      * already published (and may carry hand edits), so — like re-publishing an existing file — persisting
      * over it requires `--force`. Without it, the answered values still govern this run via runtime config;
@@ -901,6 +913,9 @@ class BeamInstallCommand extends Command
         if ($sources !== null) {
             $list = implode(', ', array_map(static fn (string $s): string => "'{$s}'", $this->parseList($sources)));
             $contents = preg_replace("/'sources'\s*=>\s*\[[^\]]*\]/", "'sources' => [{$list}]", $contents) ?? $contents;
+        }
+        if ($tenancy !== null) {
+            $contents = $this->replaceScalar($contents, 'tenancy', $tenancy);
         }
 
         file_put_contents($path, $contents);
