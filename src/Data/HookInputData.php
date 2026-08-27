@@ -8,6 +8,7 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Webhooks\HookSubscriptionReach;
+use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
 
 /**
  * The WRITE DTO for the `hooks` particle resource — the `input:` slot of {@see HookData}.
@@ -64,7 +65,7 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
  *     is left to ticket 01's own follow-up rather than done here, so the security repair lands as a
  *     security repair and the surface widening is a separate, separately-reviewed diff.
  */
-class HookInputData extends Data
+class HookInputData extends Data implements MapsToModelAttributes
 {
     /**
      * @param  list<string>|null  $events  catalog event names; validated against the live catalog at

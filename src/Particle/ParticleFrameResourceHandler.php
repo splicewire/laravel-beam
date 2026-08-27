@@ -8,7 +8,6 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use RuntimeException;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
@@ -23,6 +22,7 @@ use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
+use Splicewire\Beam\Write\ModelAttributeMapper;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\PolicyWriteGate;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -437,31 +437,15 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     }
 
     /**
-     * Map the parsed input to model columns: a DTO's own `toModelAttributes()` (the app convention), else
-     * its array form, else the input array snake-cased (minus the PK — a create mints its own, an update
-     * is keyed by the route id).
+     * Map the parsed input to model columns — delegated to {@see ModelAttributeMapper}, the ONE mapper
+     * this transport shares with {@see ParticleController} and the hosts' Frame handlers. This method was
+     * one of four near-identical copies of that map; this one's spelling is the one they collapsed onto.
      *
      * @return array<string, mixed>
      */
     protected function toAttributes(mixed $input): array
     {
-        if (is_object($input) && method_exists($input, 'toModelAttributes')) {
-            return $input->toModelAttributes();
-        }
-
-        if ($input instanceof Data) {
-            $input = $input->toArray();
-        }
-
-        $attributes = [];
-        foreach ((array) $input as $key => $value) {
-            if ($key === 'id') {
-                continue;
-            }
-            $attributes[Str::snake($key)] = $value;
-        }
-
-        return $attributes;
+        return ModelAttributeMapper::map($input);
     }
 
     /**

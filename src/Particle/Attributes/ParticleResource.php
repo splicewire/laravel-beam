@@ -47,7 +47,9 @@ class ParticleResource
      * @param  class-string|null  $data  read/output Data class; null ⇒ the annotated class itself is the
      *                                   projection (the single-class default), unless a static `project()`
      *                                   convention method takes precedence
-     * @param  class-string|null  $input  input Data DTO (`toModelAttributes()` write map); null ⇒ snake-map
+     * @param  class-string|null  $input  input Data DTO — declares `Splicewire\Beam\Write\Contracts\MapsToModelAttributes`
+     *                                    for its write map (`toModelAttributes()` is still honoured undeclared,
+     *                                    as a migration fallback); null ⇒ snake-map
      * @param  list<string>  $includes  default includes (eager-load + serialization axis)
      * @param  bool  $filterable  index rides the data-filters builder when true; plain `latest()` otherwise
      * @param  int  $perPage  default page size

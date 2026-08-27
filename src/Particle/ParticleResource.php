@@ -16,6 +16,7 @@ use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\EloquentBacking;
 use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
 use Splicewire\Beam\Particle\Backing\ResourceBacking;
+use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
 
 /**
  * The declarative description of a REST resource served by {@see \Splicewire\Beam\Http\Particle\ParticleController}.
@@ -86,8 +87,11 @@ class ParticleResource implements HasRegistryKey
      *                                                 are not one plain model names a backing class.
      * @param  class-string|null  $data  the read/output spatie Data class; null ⇒ the hydrator resolves it
      *                                   off beam's `#[ParticleResource]` registry (record → its projection class)
-     * @param  class-string|null  $input  the input spatie Data DTO (its `toModelAttributes()` maps the
-     *                                    request to columns); null ⇒ snake-map the request body
+     * @param  class-string|null  $input  the input spatie Data DTO — it declares
+     *                                    {@see MapsToModelAttributes} and its
+     *                                    `toModelAttributes()` maps the request to columns (an undeclared
+     *                                    `toModelAttributes()` is still honoured while the duck type is migrated
+     *                                    out); null ⇒ snake-map the request body
      * @param  list<string>  $includes  default includes — compiled to BOTH the eager-load and the
      *                                  serialization axis by the hydrator (one list, no double-declaration)
      * @param  bool  $filterable  index rides the data-filters builder (`DataFilter::query($key)`) when

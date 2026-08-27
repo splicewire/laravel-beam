@@ -3,10 +3,12 @@
 namespace Splicewire\Beam\Data;
 
 use InvalidArgumentException;
+use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
+use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 use Splicewire\Beam\Schema\SchemaId;
-use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
+use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
 
 /**
  * The WRITE DTO for the `schemas` particle resource — the `input:` slot of {@see BeamSchemaData}.
@@ -19,7 +21,7 @@ use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
  * ⚠️ **Write-once is a property of the `$id`, not of the resource.** Registering a NEW `$id` is an
  * ordinary create (that is what the registry's `store`/`freeze` surface has always done). What cannot
  * happen is an in-place change of shape under an EXISTING `$id`: the registry no-ops an identical
- * re-publish and throws {@see \Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict} on a changed
+ * re-publish and throws {@see SchemaRegistryConflict} on a changed
  * one, because a changed shape needs a new version. A Frame-tier "edit" therefore means *mint the next
  * version*, not *mutate this row* — which is why {@see BeamSchemaData} declares no update affordance.
  *
@@ -27,7 +29,7 @@ use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
  * record is the DB row, the same way a beam-ux entry's canonical record is its row rather than the
  * scaffold it was seeded from.
  */
-class BeamSchemaInputData extends Data
+class BeamSchemaInputData extends Data implements MapsToModelAttributes
 {
     /**
      * @param  array<string, mixed>  $artifact  The complete authored schema document, `$id` included.

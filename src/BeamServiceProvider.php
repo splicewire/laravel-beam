@@ -56,6 +56,7 @@ use Splicewire\Beam\Console\MakeParticleOpCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
+use Splicewire\Beam\Data\BeamSchemaData;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
@@ -105,7 +106,6 @@ use Splicewire\Beam\OpenApi\OpenApiSpecSource;
 use Splicewire\Beam\Ownership\Contracts\OwnershipEdgeStore;
 use Splicewire\Beam\Ownership\EloquentOwnershipEdgeStore;
 use Splicewire\Beam\Ownership\OwnershipGraph;
-use Splicewire\Beam\Data\BeamSchemaData;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
@@ -168,6 +168,7 @@ use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
 use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
 use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
+use Splicewire\Beam\Surgeon\UndeclaredWriteMapAudit;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
 use Splicewire\Beam\Webhooks\HookSubjectPruner;
 use Splicewire\Beam\Write\Contracts\WriteGate;
@@ -895,6 +896,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // The bare-mount census scans `routes/` AND `app/` — half the estate's `Route::particle*()` call
         // sites are in a service provider, not a route file (api-surface-coherence 93).
         $this->app->bind(BareParticleMountAudit::class, fn () => BareParticleMountAudit::forRoutes());
+        // The write-map burn-down reads the two DECLARATION registries rather than scanning source — the
+        // slot it audits is a registered value, not a syntactic one, so there is nothing for a parser to do.
+        $this->app->bind(UndeclaredWriteMapAudit::class, fn ($app) => new UndeclaredWriteMapAudit(
+            $app->make(ParticleResourceRegistry::class),
+            $app->make(ParticleOperationRegistry::class),
+        ));
         $this->app->bind(DocblockTierAudit::class, function ($app) {
             $root = $app->basePath();
             $graph = PackageGraph::fromRoots([$root]);
@@ -957,6 +964,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $manifest->register('splicewire/laravel-beam', ParticleControllerRedundancyAudit::class);
         $manifest->register('splicewire/laravel-beam', ParticleOperationBypassAudit::class);
         $manifest->register('splicewire/laravel-beam', BareParticleMountAudit::class);
+        // Advisory, and it is the burn-down meter that decides when the duck-typed `toModelAttributes()`
+        // branch and the snake-case fallback may be deleted (particle-write-surface 03). Not a gate: the
+        // fallback it reports is still a supported path, so failing a build over it would be beam gating
+        // beam's own documented behaviour — and the POPULATION is a host fact (which resources are
+        // registered here) even though each row's verdict is a fact about the declaration.
+        $manifest->register('splicewire/laravel-beam', UndeclaredWriteMapAudit::class);
         $manifest->register('splicewire/laravel-beam', DocblockTierAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkHookMigrationAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkReturnsCoverageAudit::class);

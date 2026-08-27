@@ -30,6 +30,7 @@ use Splicewire\Beam\Particle\Subject\ResourceRecordLookup;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Scribe\Strategies\ParticleListParameterStrategy;
+use Splicewire\Beam\Write\ModelAttributeMapper;
 use Splicewire\Beam\Write\ParticleWriter;
 
 /**
@@ -515,28 +516,19 @@ class ParticleController extends Controller
     }
 
     /**
-     * Map the parsed input to model columns: a DTO's own `toModelAttributes()` (the app convention), else
-     * its array form, else the request body snake-cased (minus the PK, which the model/route owns).
+     * Map the parsed input to model columns — delegated to {@see ModelAttributeMapper}, the ONE mapper
+     * this transport shares with {@see ParticleFrameResourceHandler} and the hosts' Frame handlers.
+     *
+     * This method was one of four near-identical copies of that map. Two behaviours changed when they
+     * collapsed, both toward the majority spelling: a `Data` input that declares no write map is now
+     * snake-cased like any other body instead of being returned raw from `toArray()`, and its `id` is
+     * dropped like any other body's. Both were controller-local divergences, not decisions.
      *
      * @return array<string, mixed>
      */
     protected function toAttributes(mixed $input): array
     {
-        if (is_object($input) && method_exists($input, 'toModelAttributes')) {
-            return $input->toModelAttributes();
-        }
-
-        if ($input instanceof Data) {
-            return $input->toArray();
-        }
-
-        /** @var Request $input */
-        $attributes = [];
-        foreach ($input->except('id') as $key => $value) {
-            $attributes[Str::snake($key)] = $value;
-        }
-
-        return $attributes;
+        return ModelAttributeMapper::map($input);
     }
 
     /** The after-persist relation-sync hook bound to this write's input, or null when none is declared. */

@@ -182,6 +182,18 @@ controller FQCN, so the population of exemptions stays countable.
   `splicewire/tower` `src/Data/Compliance/OpenApiSpecInputData.php` (mixed gates, one clearable field)
   and `splicewire/laravel-beam` `src/Data/HookInputData.php` (mixed gates, with the non-conversions
   argued).
+
+  ⚠️ **And the conversion is not done until every READER of the field is three-state aware.** A `??`,
+  `?:`, `!== null` or `(string)` on a now-`Optional` field silently collapses the third state — which,
+  on a re-validation keyed to "did the caller change this?", is a *skipped authorization check*, and on
+  a cast is a runtime TypeError. Grep every reader before converting.
+- **The write map is a declared contract, not a duck type.** A class named in an `input:`/`editData:`
+  slot declares `Splicewire\Beam\Write\Contracts\MapsToModelAttributes`; its docblock is where the
+  three-state rule above is written down. Every transport maps through the one
+  `Splicewire\Beam\Write\ModelAttributeMapper` — never a hand-rolled snake-case loop, of which there
+  were four. `method_exists('toModelAttributes')` is still honoured as a migration fallback, and
+  `surgeon:audit`'s `beam.particle.undeclared-write-map` (advisory) is the burn-down meter that decides
+  when both it and the snake-case fallback get deleted.
 - **Tenancy floor.** [multitenancy.md](multitenancy.md) says the model doesn't know it's tenanted; the
   connection does. The floor test: **does this record index the churn, or participate in it?** Floor
   indexes; profile participates. Every central pin carries `@central-floor <category>` naming one of
