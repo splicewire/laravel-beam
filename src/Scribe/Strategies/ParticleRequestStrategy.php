@@ -46,10 +46,17 @@ class ParticleRequestStrategy extends Strategy
         // Operation routes (…/op/{name}) declare their payload the same way a resource does — the second
         // legal declaration site — so they document the same way (api-surface-coherence ticket 30).
         if (isset($defaults[ParticleOperationController::RESOURCE], $defaults[ParticleOperationController::NAME])) {
-            $operation = app(ParticleOperationRegistry::class)->get(
+            // ASK, don't demand (api-surface-coherence 102): a route mounted for an operation that is not
+            // registered on THIS host is a reportable absence — `ParticleRouteResourceAudit` names it —
+            // not a reason to drop the endpoint from the whole spec.
+            $operation = app(ParticleOperationRegistry::class)->find(
                 $defaults[ParticleOperationController::RESOURCE],
                 $defaults[ParticleOperationController::NAME],
             );
+
+            if ($operation === null) {
+                return null;
+            }
 
             // A GET op's declared input is a QUERY contract, not a body: the mount picks the method, so the
             // same declaration lands on a different axis. {@see ParticleOperationParameterStrategy} owns it.
@@ -81,7 +88,10 @@ class ParticleRequestStrategy extends Strategy
             return [];
         }
 
-        return $this->fromDataClass(app(ParticleResourceRegistry::class)->get($key)->input, $endpointData);
+        // ASK, don't demand — see `ParticleResponseStrategy` and api-surface-coherence 102.
+        $resource = app(ParticleResourceRegistry::class)->find($key);
+
+        return $resource === null ? null : $this->fromDataClass($resource->input, $endpointData);
     }
 
     /**

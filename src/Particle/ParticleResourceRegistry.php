@@ -170,8 +170,33 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
      */
     public function get(string $key): ParticleResource
     {
-        $resource = $this->lookup($key)
+        return $this->find($key)
             ?? throw new RuntimeException("No particle resource registered for key [{$key}].");
+    }
+
+    /**
+     * The nullable half of the miss pair — {@see get()} without the throw, contributions folded identically.
+     *
+     * The REST tier is right to demand: a request that reached {@see ParticleController} for an
+     * unregistered key cannot be served, and 500 is the honest answer. A READER that merely wants to
+     * *describe* the key is not in that position. Whether `guest-links` names a registered particle
+     * resource **on this host** is a fact about the host, not something the declaration's author could
+     * have gotten right (AGENTS.md, "a check whose answer depends on the host must not throw"), and the
+     * Scribe strategies that ask it were turning one host's registration gap into 30 endpoints silently
+     * missing from `openapi.yaml` (api-surface-coherence 102).
+     *
+     * The sibling registry has had this since it was written — {@see ParticleOperationRegistry::find()},
+     * whose caller's docblock states the principle: a route mounted for an unregistered thing is *a
+     * reportable absence, not a reason to fail an entire spec build*. This is the resource tier's copy of
+     * it. The absence is reported by {@see \Splicewire\Beam\Doctor\ParticleRouteResourceAudit}.
+     */
+    public function find(string $key): ?ParticleResource
+    {
+        $resource = $this->lookup($key);
+
+        if ($resource === null) {
+            return null;
+        }
 
         if ($this->contributions === null || ! $this->contributions->has($key)) {
             return $resource;

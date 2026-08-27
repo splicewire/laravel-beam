@@ -58,7 +58,22 @@ class ParticleListParameterStrategy extends Strategy
             return [];
         }
 
-        $resource = app(ParticleResourceRegistry::class)->get($key);
+        // ASK, don't demand (api-surface-coherence 102). `inResource()` stamps this same route default on
+        // a HAND-ROLLED exposure, and its argument is a *data-filters* resource key that need not also be
+        // a `#[ParticleResource]` — `guest-links` and `releases` at the flagship are both, deliberately.
+        // Demanding here turned that legitimate mount into a per-route `RuntimeException`; Scribe catches
+        // per-route, prints only under `-v` and exits WARN, so 30 live endpoints were absent from
+        // `openapi.yaml`, the SDK and the docs surface with nothing on screen but a mild warning.
+        $resource = app(ParticleResourceRegistry::class)->find($key);
+
+        if ($resource === null) {
+            // No particle declaration, but the key may still be a data-filters resource — which is the
+            // whole point of `inResource($key, filters: true)`. Document the query contract that IS
+            // declared and omit pagination: a hand-rolled index chooses its own paging (the flagship's
+            // `ReleaseController::index` does a bare `->get()`), so `perPage` would be an invention.
+            // The absence itself is reported by `ParticleRouteResourceAudit`, not swallowed.
+            return $this->fromFilterRegistry($key);
+        }
 
         // A `filterable: false` resource has no data-filters query at all — its index is an unfiltered,
         // default-sorted list, so there is nothing but pagination to document.
@@ -90,6 +105,34 @@ class ParticleListParameterStrategy extends Strategy
             ...$this->sorts($query->sortNames()),
             ...$this->includes($query->includeNames()),
             ...$this->pagination($resource),
+        ];
+    }
+
+    /**
+     * The filter/sort/include contract for a route stamped `inResource()` with a key that has a
+     * data-filters declaration but no `#[ParticleResource]` (api-surface-coherence 102).
+     *
+     * Deliberately the same three axes minus pagination — see the caller. A key registered in NEITHER
+     * registry documents as a plain endpoint with no query contract, which is the honest reading of a
+     * stamp that resolves to nothing.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    protected function fromFilterRegistry(string $key): array
+    {
+        $definition = DataFilter::tryResource($key);
+
+        if ($definition === null) {
+            return [];
+        }
+
+        $query = DataFilter::query($key);
+        $facets = $this->facets($definition->data);
+
+        return [
+            ...$this->filters($query->filterNames(), $facets['filters']),
+            ...$this->sorts($query->sortNames()),
+            ...$this->includes($query->includeNames()),
         ];
     }
 

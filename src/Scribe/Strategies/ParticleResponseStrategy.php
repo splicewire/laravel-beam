@@ -66,7 +66,18 @@ class ParticleResponseStrategy extends Strategy
             return null; // Not a particle route — defer.
         }
 
-        $resource = app(ParticleResourceRegistry::class)->get($key);
+        // ASK, don't demand — the same correction the operation arm above has always had, applied to the
+        // resource arm (api-surface-coherence 102). A route can carry the `_particle` stamp from
+        // `inResource()` for GROUPING while naming a data-filters key with no `#[ParticleResource]`; that
+        // is a reportable absence (`ParticleRouteResourceAudit`), not a reason to drop the endpoint from
+        // the spec. Defer, and the route documents from its own `#[ResponseFromData]`/`@response` or as
+        // an undescribed response — which is strictly more than nothing.
+        $resource = app(ParticleResourceRegistry::class)->find($key);
+
+        if ($resource === null) {
+            return null;
+        }
+
         $data = $resource->data;
 
         if ($data === null || ! is_subclass_of($data, Data::class)) {

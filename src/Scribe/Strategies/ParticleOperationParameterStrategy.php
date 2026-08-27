@@ -49,7 +49,13 @@ class ParticleOperationParameterStrategy extends Strategy
             return null; // Not an operation route — defer to the other strategies.
         }
 
-        $operation = app(ParticleOperationRegistry::class)->get($resource, $name);
+        // ASK, don't demand (api-surface-coherence 102) — an op route with no registration on this host
+        // documents without its query contract rather than vanishing from the spec.
+        $operation = app(ParticleOperationRegistry::class)->find($resource, $name);
+
+        if ($operation === null) {
+            return null;
+        }
 
         return [
             ...$this->declared($operation, $endpointData),

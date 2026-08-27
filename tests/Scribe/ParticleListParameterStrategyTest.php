@@ -241,4 +241,38 @@ class ParticleListParameterStrategyTest extends TestCase
         // null, not [] — anything else would claim the endpoint and stop Scribe's own strategies running.
         $this->assertNull($this->strategy()($this->endpoint(particle: false)));
     }
+
+    /**
+     * api-surface-coherence 102. `->beam()->inResource($key, filters: true)` stamps this same route
+     * default on a HAND-ROLLED exposure, and its argument is a **data-filters** key that need not also
+     * carry a `#[ParticleResource]`. This used to `get()` and throw; Scribe caught per-route, printed
+     * only under `-v`, and 30 live endpoints at the flagship were silently absent from `openapi.yaml`.
+     */
+    public function test_an_unregistered_particle_key_documents_its_filter_contract_instead_of_throwing(): void
+    {
+        // Deliberately NO ParticleResource registration — only the data-filters one from setUp().
+        $parameters = $this->strategy()($this->endpoint());
+
+        foreach (['id', 'name', 'external_ref', 'status', 'recentlyTouched'] as $facet) {
+            $this->assertArrayHasKey($this->filterKey($facet), $parameters);
+        }
+
+        $this->assertArrayHasKey(config('query-builder.parameters.sort', 'sort'), $parameters);
+        $this->assertArrayHasKey(config('query-builder.parameters.include', 'include'), $parameters);
+
+        // No pagination: a hand-rolled index picks its own paging, so `perPage` would be an invention.
+        $this->assertArrayNotHasKey(ParticleController::PAGE, $parameters);
+        $this->assertArrayNotHasKey(ParticleController::PER_PAGE, $parameters);
+    }
+
+    public function test_a_key_registered_in_neither_registry_documents_no_query_contract(): void
+    {
+        $route = new Route(['GET'], 'nowhere', [
+            'uses' => ParticleController::class.'@index',
+            'controller' => ParticleController::class.'@index',
+        ]);
+        $route->defaults(ParticleController::RESOURCE, 'nowhere');
+
+        $this->assertSame([], $this->strategy()(ExtractedEndpointData::fromRoute($route)));
+    }
 }

@@ -17,6 +17,7 @@ use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
+use Splicewire\Beam\Doctor\ParticleRouteResourceAudit;
 use Splicewire\Beam\Doctor\SchemaDoorAudit;
 use Splicewire\Beam\Doctor\SchemaRoundTripAudit;
 use Splicewire\Beam\Doctor\SitemapReadinessAudit;
@@ -170,6 +171,14 @@ class BeamDoctorCommand extends Command
                 EventCatalogPrefixAudit::class,
                 false,
                 fn (EventCatalogPrefixAudit $audit) => $audit->run(),
+            ),
+            // The reportable absence the Scribe strategies stopped throwing on (api-surface-coherence 102).
+            // Advisory for the same reason as the one above it: whether a stamped key is registered is a
+            // fact about THIS host, and `inResource()` legitimately names data-filters-only keys.
+            $this->guarded(
+                ParticleRouteResourceAudit::class,
+                false,
+                fn (ParticleRouteResourceAudit $audit) => $audit->run(),
             ),
         );
 
