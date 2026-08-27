@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Surgeon;
 
 use Illuminate\Support\Facades\Route;
+use PhpParser\Error;
 use PhpParser\Node;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
@@ -16,6 +17,7 @@ use Rushing\Doctor\Finding;
 use Rushing\Surgeon\Operation\FixableFinding;
 use Rushing\Surgeon\Operation\OperationSuggestion;
 use Rushing\Surgeon\Operation\SuggestsOperations;
+use Splicewire\Beam\Facades\Particle as ParticleFacade;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Attributes\BespokeByDesign;
 use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
@@ -26,7 +28,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * The particle-controller REDUNDANCY audit (refactor-tooling ticket 16, from the hunt-02 "controller vs
  * particle" for-instance). Beam owns the concept of a *proper* particle controller (ticket 07, decision 3:
  * the concept-owner rule), so beam — not surgeon — owns the audit that says "this bespoke controller shell
- * is a route-wiring style the `Route::particleResource()` macro already replaces."
+ * is a route-wiring style the `Particle::mount()` front door already replaces."
  *
  * ## Detection keys on BEHAVIOR, not inheritance (two paths per controller)
  * The original invariant keyed leg 1 on `extends ParticleController`, which made the audit structurally
@@ -38,39 +40,39 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *   1. `extends` the particle base ({@see ParticleController} / a host subclass of it — checked by walking
  *      the `extends` chain up the app's autoloader) and binds a key via its `particleResource()` override, AND
  *   2. serves a resource key that is **already registered** as a `ParticleResource` in the booted
- *      {@see ParticleResourceRegistry} (so the macro has a declaration to mount against), AND
+ *      {@see ParticleResourceRegistry} (so the front door has a declaration to mount against), AND
  *   3. is **hand-wired** — its actions are mounted by bespoke `Route::get/post/…(…, [X::class, 'verb'])`
- *      calls while its peers (`tags`/`media`/`activity`) ride the controller-free `Route::particleResource()`
- *      macro against the SAME registry.
+ *      calls while its peers (`tags`/`media`/`activity`) ride the controller-free `Particle::mount()`
+ *      front door against the SAME registry.
  *
  * **Behavior path** (any controller, no base required; all three, per controller):
  *   1. has public action(s) named with a **CRUD-shaped verb** ({@see CRUD_VERBS}) whose bodies statically
  *      touch (a static call, {@see MODEL_TOUCH_HINTS}) a model class that is the **registered `model`** of
  *      some {@see ParticleResource}, AND
  *   2. that resource key is **hand-wired** in the scanned route files, AND
- *   3. that key does not already ride the `Route::particleResource()` macro.
+ *   3. that key does not already ride the `Particle::mount()` front door.
  * Behavior-path findings are always ADVISORY (a bespoke body is never a mechanical passthrough), naming
  * the actions, the touched model, and the registered resource whose declaration already serves the CRUD.
  *
  * A controller failing every path (no particle base + no CRUD-verb action on a registered model, resource
- * unregistered, already macro-wired) is NOT flagged — the redundancy is precisely "a controller
- * re-implementing surface the macro already mounts for the same declaration."
+ * unregistered, already front-door-mounted) is NOT flagged — the redundancy is precisely "a controller
+ * re-implementing surface `Particle::mount()` already mounts for the same declaration."
  *
  * ## The fix split — the deterministic/agentic seam (ticket 16)
- * Whether the shell can COLLAPSE to the macro is decided by a deterministic AST check of every action
+ * Whether the shell can COLLAPSE to the front door is decided by a deterministic AST check of every action
  * body:
  *   - **pure passthrough** — every action body is a single `return $this-><baseVerb>(…)` /
  *     `return parent::<baseVerb>(…)` against an inherited base verb ({@see BASE_VERBS}) with NO envelope
- *     delta ⇒ a **fixable** {@see OperationSuggestion} nominating the collapse to `Route::particleResource()`
+ *     delta ⇒ a **fixable** {@see OperationSuggestion} nominating the collapse to `Particle::mount()`
  *     (the `particle-resource-collapse` kind a host's route-rewrite operation applies);
  *   - **has a real delta** — any action carries a genuine body (a `validate()` guard, a custom query, a
  *     different response envelope, or a non-CRUD sub-verb like `CircuitController`'s run lifecycle /
  *     `ContextScopeController`'s `embeddings`) ⇒ an **advisory** {@see OperationSuggestion::advisory()}
- *     naming what blocks the collapse. The human decides whether a partial collapse (CRUD → macro, keep a
- *     slim controller for the delta) is worth it.
+ *     naming what blocks the collapse. The human decides whether a partial collapse (CRUD → front door,
+ *     keep a slim controller for the delta) is worth it.
  *
  * It lives in BEAM, not surgeon (ADR-0092 direction: beam depends DOWN on the foundation byte-splice
- * engine): surgeon must never know "a particle-controller shell duplicates a macro-mountable resource" (a
+ * engine): surgeon must never know "a particle-controller shell duplicates a mountable resource" (a
  * beam estate fact). Beam owns that POLICY and nominates a generic collapse operation via the
  * Finding→Operation bridge — exactly like the sibling {@see SdkEndpointDriftAudit} /
  * {@see SdkNameConventionAudit}.
@@ -82,7 +84,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * un-acknowledged, keeping the pure core fixture-testable.
  *
  * ## Honesty about what it can statically see
- * The extends-chain and hand-wired-vs-macro legs are pure route-file/source facts, read statically. The
+ * The extends-chain and hand-wired-vs-front-door legs are pure route-file/source facts, read statically. The
  * behavior path's touched-model detection is a static-call scan against the class's own `use` imports
  * (mirrors {@see ParticleOperationBypassAudit}'s "Honesty" section) — a model reached only via a property,
  * dependency injection, or a repository one level removed is invisible to this pass. The
@@ -103,7 +105,7 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
 
     /**
      * The inherited base verbs a redundant shell's actions passthrough to. `store`/`update`/`destroy`/
-     * `index`/`show` are the REST verbs the macro mounts; `createParticle` is the base's create body an
+     * `index`/`show` are the REST verbs the front door mounts; `createParticle` is the base's create body an
      * extending controller rides to keep a legacy `200` (still a pure passthrough — same pipeline, just the
      * envelope flag). A body calling anything else is a real delta.
      */
@@ -117,7 +119,7 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
 
     /**
      * The REST verbs the behavior path keys on — a public action with one of these names whose body
-     * touches a registered resource's model is CRUD-shaped surface the macro already mounts.
+     * touches a registered resource's model is CRUD-shaped surface the front door already mounts.
      */
     public const CRUD_VERBS = ['index', 'show', 'store', 'update', 'destroy'];
 
@@ -154,7 +156,7 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
     /**
      * The default host-scoped wiring: scan the app's `app/Http/Controllers` PLUS every controllers dir
      * family packages contributed via {@see AuditScanPaths}, parse the app's `routes/` files (plus
-     * contributed routes dirs) for the hand-wired-vs-macro split, and read the booted
+     * contributed routes dirs) for the hand-wired-vs-front-door split, and read the booted
      * {@see ParticleResourceRegistry} for the registered-resource leg. Kept off the constructor so the
      * class is pure-unit testable via {@see suggestFor()} — no registry, no route table, no DB.
      *
@@ -191,12 +193,12 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
      */
     public function suggestOperations(): array
     {
-        [$handWiredKeys, $macroKeys] = $this->collectRouteWiring($this->routesDirs);
+        [$handWiredKeys, $mountedKeys] = $this->collectRouteWiring($this->routesDirs);
 
         return $this->suggestFor(
             $this->collectControllers($this->controllersDirs),
             $handWiredKeys,
-            $macroKeys,
+            $mountedKeys,
             $this->registeredKeys(),
             $this->registeredModels(),
         );
@@ -204,26 +206,26 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
 
     /**
      * The pure core — no disk, no route facade, no registry. Given the parsed controllers, the set of
-     * resource keys mounted by HAND (bespoke `Route::…(…, [X::class, …])`), the set already ridden by the
-     * `Route::particleResource()` macro, the set of REGISTERED `ParticleResource` keys, and the registered
+     * resource keys mounted by HAND (bespoke `Route::…(…, [X::class, …])`), the set already mounted through
+     * the `Particle::mount()` front door, the set of REGISTERED `ParticleResource` keys, and the registered
      * model-FQN => resource-key map (the behavior path's lens), produce one {@see FixableFinding} per
      * redundant CRUD controller.
      *
      * Directly unit testable: a pure-passthrough particle controller on a registered+hand-wired key →
      * fixable collapse; a with-delta one → advisory naming the blocker; a NON-particle controller whose
      * CRUD-verb action body touches a registered resource's model → advisory naming the behavior-level
-     * redundancy; an unregistered resource or an already-macro-wired key → no finding.
+     * redundancy; an unregistered resource or an already-front-door-mounted key → no finding.
      *
      * @param  list<array{class: string, file: string, extendsParticleBase: bool, resourceKey: ?string, actions: array<string, string>, crudModels?: array<string, list<class-string>>}>  $controllers
      *                                                                                                                                                                                                  `actions` maps a public action method name → its body shape: `'passthrough'` or `'delta'`;
      *                                                                                                                                                                                                  `crudModels` maps each CRUD-verb action → the model FQNs its body statically touches.
      * @param  array<string, true>  $handWiredKeys  resource keys mounted by a bespoke controller route call
-     * @param  array<string, true>  $macroKeys  resource keys already mounted via `Route::particleResource()`
+     * @param  array<string, true>  $mountedKeys  resource keys already mounted via `Particle::mount()`
      * @param  array<string, true>  $registeredKeys  registered `ParticleResource` keys
      * @param  array<class-string, list<string>>  $registeredModels  model FQN => every resource key registered against it
      * @return list<FixableFinding>
      */
-    public function suggestFor(array $controllers, array $handWiredKeys, array $macroKeys, array $registeredKeys, array $registeredModels = []): array
+    public function suggestFor(array $controllers, array $handWiredKeys, array $mountedKeys, array $registeredKeys, array $registeredModels = []): array
     {
         $findings = [];
 
@@ -233,7 +235,7 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
             // A controller outside the particle base (or one that never binds a key) can still be a
             // redundant CRUD controller — the BEHAVIOR path judges it by what its actions do.
             if (! $controller['extendsParticleBase'] || $key === null) {
-                foreach ($this->behaviorFindings($controller, $handWiredKeys, $macroKeys, $registeredModels) as $finding) {
+                foreach ($this->behaviorFindings($controller, $handWiredKeys, $mountedKeys, $registeredModels) as $finding) {
                     $findings[] = $finding;
                 }
 
@@ -241,18 +243,18 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
             }
 
             // Structural path. Leg 2: its key must be registered. Leg 3: it must be hand-wired (a peer
-            // macro-mount of the SAME key is fine — the point is THIS class is bespoke).
+            // front-door mount of the SAME key is fine — the point is THIS class is bespoke).
             if (! isset($registeredKeys[$key]) || ! isset($handWiredKeys[$key])) {
                 continue;
             }
-            if (isset($macroKeys[$key])) {
-                // Already macro-wired for its own key — not a redundant hand-wired shell.
+            if (isset($mountedKeys[$key])) {
+                // Already mounted through the front door for its own key — not a redundant hand-wired shell.
                 continue;
             }
 
             $deltas = array_keys(array_filter($controller['actions'], fn (string $shape) => $shape === 'delta'));
             $shortClass = $this->shortName($controller['class']);
-            $peerRidesMacro = $macroKeys !== [];
+            $peerRidesFrontDoor = $mountedKeys !== [];
 
             // An acknowledged bespoke shell downgrades to a Pass that still carries the reason — the
             // ledger keeps the line, the WARN (and the collapse nomination) stand down.
@@ -277,13 +279,13 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
                 $findings[] = new FixableFinding(
                     Finding::warn(self::CHECK, sprintf(
                         '%s is a pure-passthrough particle CRUD shell on the registered resource [%s]; its '.
-                        'peers ride Route::particleResource(). It can collapse to the macro (no envelope delta).',
+                        'peers ride Particle::mount(). It can collapse to the front door (no envelope delta).',
                         $shortClass,
                         $key,
                     )),
                     new OperationSuggestion(
                         kind: 'particle-resource-collapse',
-                        summary: "Collapse {$shortClass} to Route::particleResource('{$key}', …) and delete the shell",
+                        summary: "Collapse {$shortClass} to Particle::mount('{$key}') and delete the shell",
                         payload: [
                             'controller' => $controller['class'],
                             'file' => $controller['file'],
@@ -297,18 +299,18 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
             }
 
             // A real delta blocks the full collapse — advisory nomination of a PARTIAL collapse (CRUD →
-            // macro, keep a slim controller for the delta actions). Named, not applied: the human decides.
+            // front door, keep a slim controller for the delta actions). Named, not applied: the human decides.
             $findings[] = new FixableFinding(
                 Finding::warn(self::CHECK, sprintf(
                     '%s is a particle CRUD shell on the registered resource [%s]%s, but carries real deltas '.
-                    '(%s) that block a full collapse to Route::particleResource().',
+                    '(%s) that block a full collapse to Particle::mount().',
                     $shortClass,
                     $key,
-                    $peerRidesMacro ? ' whose peers ride Route::particleResource()' : '',
+                    $peerRidesFrontDoor ? ' whose peers ride Particle::mount()' : '',
                     implode(', ', $deltas),
                 )),
                 OperationSuggestion::advisory(
-                    "Partial collapse of {$shortClass}: move CRUD to Route::particleResource('{$key}', …), keep a slim ".
+                    "Partial collapse of {$shortClass}: move CRUD to Particle::mount('{$key}'), keep a slim ".
                     'controller for '.implode(', ', $deltas).'.',
                     'splicewire/laravel-beam',
                 ),
@@ -321,25 +323,25 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
     /**
      * The BEHAVIOR path: no particle base required. Each CRUD-verb public action whose body statically
      * touches a model registered as some resource's `model` is redundant surface when that resource key is
-     * hand-wired and not already macro-mounted. Emits ONE finding per (controller, resource key) — always
+     * hand-wired and not already front-door-mounted. Emits ONE finding per (controller, resource key) — always
      * advisory (a bespoke body is never a mechanical passthrough), unless the class carries
      * `#[BespokeByDesign]`, which downgrades to the same acknowledged Pass as the structural path.
      *
      * @param  array{class: string, file: string, extendsParticleBase: bool, resourceKey: ?string, actions: array<string, string>, crudModels?: array<string, list<class-string>>}  $controller
      * @param  array<string, true>  $handWiredKeys
-     * @param  array<string, true>  $macroKeys
+     * @param  array<string, true>  $mountedKeys
      * @param  array<class-string, list<string>>  $registeredModels
      * @return list<FixableFinding>
      */
-    protected function behaviorFindings(array $controller, array $handWiredKeys, array $macroKeys, array $registeredModels): array
+    protected function behaviorFindings(array $controller, array $handWiredKeys, array $mountedKeys, array $registeredModels): array
     {
         // resource key => [actions => list<action>, model => FQN]
         $byKey = [];
         foreach ($controller['crudModels'] ?? [] as $action => $models) {
             foreach ($models as $model) {
                 foreach ($registeredModels[$model] ?? [] as $candidate) {
-                    // Same legs as the structural path: hand-wired, and not already riding the macro.
-                    if (! isset($handWiredKeys[$candidate]) || isset($macroKeys[$candidate])) {
+                    // Same legs as the structural path: hand-wired, and not already riding the front door.
+                    if (! isset($handWiredKeys[$candidate]) || isset($mountedKeys[$candidate])) {
                         continue;
                     }
                     $byKey[$candidate]['actions'][$action] = true;
@@ -377,7 +379,7 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
             $findings[] = new FixableFinding(
                 Finding::warn(self::CHECK, sprintf(
                     '%s hand-wires CRUD action(s) (%s) against [%s], the model of the registered particle '.
-                    'resource [%s], without extending the particle base or riding Route::particleResource() — '.
+                    'resource [%s], without extending the particle base or riding Particle::mount() — '.
                     'behavior-level redundancy the resource declaration already serves.',
                     $shortClass,
                     $actionList,
@@ -386,7 +388,7 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
                 )),
                 OperationSuggestion::advisory(
                     "Fold {$shortClass}'s CRUD ({$actionList}) into the registered '{$key}' particle resource — mount ".
-                    "via Route::particleResource('{$key}', …) and delete the bespoke action(s), or declare the ".
+                    "via Particle::mount('{$key}') and delete the bespoke action(s), or declare the ".
                     'divergence with #[BespokeByDesign].',
                     'splicewire/laravel-beam',
                 ),
@@ -458,24 +460,22 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
      *   - HAND-WIRED — a `Route::get/post/put/patch/delete(uri, [SomeController::class, 'verb'])` whose uri's
      *     first path segment is the resource key (`agents`, `agents/{id}`, `context-scopes/{id}/embeddings`
      *     all key on their leading segment);
-     *   - MACRO — a `Route::particleResource('key', …)` whose first string arg IS the key.
+     *   - FRONT DOOR — a {@see ParticleFacade::mount()} call, read for the key it mounts
+     *     ({@see mountedKeysIn()}).
      *
      * @param  list<string>  $routesDirs
-     * @return array{0: array<string, true>, 1: array<string, true>} [handWiredKeys, macroKeys]
+     * @return array{0: array<string, true>, 1: array<string, true>} [handWiredKeys, mountedKeys]
      */
     protected function collectRouteWiring(array $routesDirs): array
     {
         $handWired = [];
-        $macro = [];
+        $mounted = [];
 
         foreach ($this->phpFilesUnder($routesDirs) as $file) {
             $source = (string) file_get_contents($file);
 
-            // Macro mounts: Route::particleResource('key', …)
-            if (preg_match_all('/particleResource\(\s*[\'"]([^\'"]+)[\'"]/', $source, $m)) {
-                foreach ($m[1] as $key) {
-                    $macro[$key] = true;
-                }
+            foreach ($this->mountedKeysIn($source) as $key) {
+                $mounted[$key] = true;
             }
 
             // Hand-wired controller mounts: Route::<verb>('uri', [X::class, 'action']) — the uri's leading
@@ -491,7 +491,112 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
             }
         }
 
-        return [$handWired, $macro];
+        return [$handWired, $mounted];
+    }
+
+    /**
+     * The resource keys ONE route file mounts through the front door — every
+     * `Particle::mount($uri, $resourceKey)` call in it.
+     *
+     * Read via the AST rather than a regex, for two reasons the deleted `Route::particleResource()` scan
+     * did not have to face:
+     *   - the key is **positional and optional** — `mount(string $uri, ?string $resourceKey = null)` keys on
+     *     `$resourceKey ?? $uri`, so a one-arg `Particle::mount('plans')` mounts `plans` just as surely as a
+     *     two-arg `Particle::mount('extensions', 'market-extensions')` mounts `market-extensions`. Named
+     *     args (`mount(uri: …, resourceKey: …)`) are read the same way;
+     *   - the facade can arrive under an **alias** (`use Splicewire\Beam\Facades\Particle as P;` → a bare
+     *     `P::mount(…)`), which a source-text scan for the word `Particle` silently misses — the exact blind
+     *     spot `BeamRouteProxy`'s `RouteFacade` import cost us.
+     *
+     * A call whose uri/key is not a string literal (a variable, a concatenation, a constant) is skipped:
+     * this pass reads what it can see, and inventing a key it cannot read would be worse than a miss.
+     *
+     * @return list<string>
+     */
+    public function mountedKeysIn(string $source): array
+    {
+        try {
+            $ast = $this->parse($source);
+        } catch (Error) {
+            return [];
+        }
+        if ($ast === null) {
+            return [];
+        }
+
+        // Which bare class names in THIS file mean the Particle facade — its own short name unless an
+        // import shadows it, plus every alias imported onto it.
+        $names = [];
+        $imports = $this->importsOf($ast);
+        foreach ($imports as $alias => $fqn) {
+            if (ltrim($fqn, '\\') === ParticleFacade::class) {
+                $names[$alias] = true;
+            }
+        }
+        if (! isset($imports['Particle'])) {
+            $names['Particle'] = true;
+        }
+
+        $keys = [];
+        /** @var StaticCall[] $calls */
+        $calls = (new NodeFinder)->findInstanceOf($ast, StaticCall::class);
+        foreach ($calls as $call) {
+            if (! $call->class instanceof Node\Name || ! $call->name instanceof Node\Identifier) {
+                continue;
+            }
+            if ($call->name->toString() !== 'mount') {
+                continue;
+            }
+            $class = $call->class->toString();
+            if (! isset($names[$class]) && $class !== ParticleFacade::class) {
+                continue;
+            }
+
+            $key = $this->mountedKeyOf($call);
+            if ($key !== null) {
+                $keys[$key] = true;
+            }
+        }
+
+        return array_keys($keys);
+    }
+
+    /**
+     * The resource key ONE `Particle::mount()` call mounts: its `resourceKey` argument, or — absent, as it
+     * is for the majority of the estate's mounts — the `uri` it defaults to. Null when neither is a string
+     * literal this pass can read.
+     */
+    protected function mountedKeyOf(StaticCall $call): ?string
+    {
+        $uri = null;
+        $resourceKey = null;
+        $position = 0;
+
+        foreach ($call->args as $arg) {
+            if (! $arg instanceof Node\Arg) {
+                continue;   // a `...` variadic placeholder (first-class callable syntax)
+            }
+
+            $value = $arg->value instanceof Node\Scalar\String_ ? $arg->value->value : null;
+            $name = $arg->name?->toString();
+
+            if ($name === 'uri') {
+                $uri = $value;
+            } elseif ($name === 'resourceKey') {
+                $resourceKey = $value;
+            } elseif ($name === null) {
+                if ($position === 0) {
+                    $uri = $value;
+                } elseif ($position === 1) {
+                    $resourceKey = $value;
+                }
+                $position++;
+            }
+        }
+
+        $key = $resourceKey ?? ($uri === null ? null : trim($uri, '/'));
+
+        return $key === null || $key === '' ? null : $key;
     }
 
     /** The leading (non-parameter) path segment of a route uri — the resource key it hangs off. */

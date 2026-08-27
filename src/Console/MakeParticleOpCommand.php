@@ -175,7 +175,7 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
         ]);
 
         $this->report(sprintf(
-            "Route::particleOps('%s', '%s', [%s::class]);",
+            "Particle::ops('%s', '%s', [%s::class]);",
             $this->resolvedResource,
             $this->resolvedResource,
             class_basename($qualified),

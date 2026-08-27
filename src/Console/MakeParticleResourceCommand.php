@@ -23,7 +23,7 @@ use Symfony\Component\Console\Input\InputOption;
  * rather than merely unlikely.
  *
  * ## What it deliberately does NOT do
- * It does not mount a route. Routing is a host concern by design (`Route::particleResource($uri, $key)`) —
+ * It does not mount a route. Routing is a host concern by design (`Particle::mount($uri, $key)`) —
  * the attribute declares, the host routes — so the command prints the mount line and stops. A generator that
  * edited a route file would be guessing which route file, inside which middleware group.
  */
@@ -96,7 +96,7 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             'readClass' => class_basename($qualified),
         ]);
 
-        $this->report(sprintf("Route::particleResource('%s', '%s');", $this->resolvedKey, $this->resolvedKey));
+        $this->report(sprintf("Particle::mount('%s', '%s');", $this->resolvedKey, $this->resolvedKey));
 
         return self::SUCCESS;
     }

@@ -9,7 +9,7 @@ use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * `Route::resourceFilters()` — the per-resource filter sub-surface's MOUNT
+ * `Particle::filters()` — the per-resource filter sub-surface's MOUNT
  * (api-surface-coherence ticket 10, build 35).
  *
  * Scoped to what the macro is responsible for: the shape it mounts, the config it freezes, and the
@@ -113,7 +113,7 @@ class ResourceFiltersRouteTest extends TestCase
         Route::get('papers/filters/schema', [ResourceFiltersController::class, 'schema']);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Register it via Route::resourceFilters()');
+        $this->expectExceptionMessage('Register it via Particle::filters()');
 
         $this->withoutExceptionHandling()->get('papers/filters/schema');
     }

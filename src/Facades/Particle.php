@@ -3,9 +3,9 @@
 namespace Splicewire\Beam\Facades;
 
 use Illuminate\Support\Facades\Facade;
-use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Particle\Mount\ParticleMountManager;
-use Splicewire\Beam\Particle\Mount\PendingParticleMount;
+use Splicewire\Beam\Routing\BeamRouteProxy;
+use Splicewire\Beam\Surgeon\BareParticleMountAudit;
 
 /**
  * The Particle facade — the sanctioned front door for mounting the particle REST + operation surface
@@ -32,14 +32,23 @@ use Splicewire\Beam\Particle\Mount\PendingParticleMount;
  * this class explicitly, so a bare `\Particle` can never become a second, import-free way to say
  * `Particle::mount()` that `surgeon:trace` cannot see.
  *
- * ## It is a front door, not a gate
+ * ## It is now the ONLY door
  *
- * The `Route::particle*()` macros still exist and still work; they are one-line delegations onto the
- * same {@see ParticleMounter} this facade drives, so there is exactly
- * one implementation and the route table cannot diverge between the two spellings. The charter for this
- * class called for deleting them outright; the measured reason that did not happen is on the ticket and
- * summarised in {@see PendingParticleMount}'s docblock — read it before
- * reaching for the delete.
+ * This docblock used to say the `Route::particle*()` macros "still exist and still work" and that the
+ * charter's delete had been declined on measured grounds. Both halves are retired: api-surface-coherence
+ * ticket 93 re-measured the estate and **deleted all six macros**.
+ *
+ * The reason the delete had been declined was that beam-facade 26 put 16 family packages beyond
+ * enumeration ("no local source on this machine"), making a breaking beam-core release unbounded. That
+ * was wrong twice: it is 12 packages, **none of which consume beam**, and the consumer set is enumerable
+ * from the org rather than the disk. The real sweep was 126 executing call sites across 10 repos, with
+ * beam core holding **zero** in `src/` — one aliased `RouteFacade::resourceFilters()` in
+ * {@see BeamRouteProxy} excepted, which is precisely the call every
+ * `Route::`-keyed search missed and the one that would have fataled at runtime.
+ *
+ * {@see BareParticleMountAudit} is the ratchet that keeps them gone: a
+ * leftover macro call in a consumer is now a fatal rather than a second spelling, so the audit is an
+ * early warning for anything still on the old door.
  *
  * @method static \Splicewire\Beam\Particle\Mount\PendingParticleMount mount(string $uri, ?string $resourceKey = null)
  * @method static void relative(string $uri, string $model, string|\Closure $via, \Closure $routes, array $options = [])

@@ -269,7 +269,7 @@ class ParticleController extends Controller
         $key = $request->route()?->defaults[static::RESOURCE] ?? null;
 
         if ($key === null) {
-            throw new RuntimeException(static::class.' has no particle resource — override particleResource() or mount via Route::particleResource().');
+            throw new RuntimeException(static::class.' has no particle resource — override particleResource() or mount via Particle::mount().');
         }
 
         return $this->registry->get($key);

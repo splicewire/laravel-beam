@@ -37,6 +37,23 @@ class ParticleMountFacadeTest extends TestCase
         ));
     }
 
+    /**
+     * The mounted table, narrowed to routes at a given URI prefix.
+     *
+     * The retired parity tests could compare `table()` wholesale because both sides carried the same
+     * ambient routes (beam mounts its own `beam/openapi.*` pair at boot) and they cancelled out. Asserting
+     * an absolute table does not get that for free, so the subject has to be selected explicitly.
+     *
+     * @return list<array{0: string, 1: string, 2: ?string}>
+     */
+    protected function tableAt(string $prefix): array
+    {
+        return array_values(array_filter(
+            $this->table(),
+            fn ($row) => str_starts_with((string) $row[1], $prefix),
+        ));
+    }
+
     /** Routes registered after boot are absent from the name lookup until it is refreshed. */
     protected function named(string $name)
     {
@@ -56,18 +73,20 @@ class ParticleMountFacadeTest extends TestCase
         $this->assertInstanceOf(ParticleMountManager::class, Particle::getFacadeRoot());
     }
 
-    public function test_the_facade_and_the_macro_mount_an_identical_resource_table(): void
+    /**
+     * Was a parity test against `Route::particleResource()`. api-surface-coherence 93 deleted that macro,
+     * so the comparison twin is gone and the assertion is now against the table ITSELF — which is the
+     * stronger shape anyway: parity could only ever say the two doors agreed, never that either was right.
+     */
+    public function test_the_facade_mounts_the_resource_table_it_is_asked_for(): void
     {
         Particle::mount('widgets')->only(['index', 'show', 'store']);
-        $viaFacade = $this->table();
 
-        $this->freshRouter();
-
-        Route::particleResource('widgets', 'widgets', ['only' => ['index', 'show', 'store']]);
-        $viaMacro = $this->table();
-
-        $this->assertSame($viaMacro, $viaFacade);
-        $this->assertNotSame([], $viaFacade);
+        $this->assertSame([
+            ['GET|HEAD', 'widgets', 'widgets.index'],
+            ['GET|HEAD', 'widgets/{id}', 'widgets.show'],
+            ['POST', 'widgets', 'widgets.store'],
+        ], $this->tableAt('widgets'));
     }
 
     public function test_a_diverging_resource_key_is_carried_through_to_the_route_defaults(): void
@@ -139,17 +158,19 @@ class ParticleMountFacadeTest extends TestCase
         $this->assertSame('spin', $route->defaults[ParticleOperationController::NAME]);
     }
 
-    public function test_an_explicit_op_list_matches_the_macro_spelling(): void
+    /**
+     * Was a parity test against `Route::particleOps()`, retired with the macro (93). Note the builder
+     * spelling here mounts the filter sub-surface too when the resource has a filter registration —
+     * `only([])` gates the CRUD verbs, `filters` is a SEPARATE opt-out. That is exactly the footgun
+     * `Particle::ops()` exists to name, and it is why the op-only door is a verb rather than a builder.
+     */
+    public function test_an_explicit_op_list_mounts_the_op_route_it_names(): void
     {
         Particle::mount('sprockets')->only([])->ops(['spin'], ['method' => 'get']);
-        $viaFacade = $this->table();
 
-        $this->freshRouter();
-
-        Route::particleOps('sprockets', 'sprockets', ['spin'], ['method' => 'get']);
-        $viaMacro = $this->table();
-
-        $this->assertSame($viaMacro, $viaFacade);
+        $this->assertSame([
+            ['GET|HEAD', 'sprockets/{id}/op/spin', 'sprockets.op.spin'],
+        ], $this->tableAt('sprockets'));
     }
 
     public function test_renderings_are_off_unless_asked(): void
@@ -193,16 +214,21 @@ class ParticleMountFacadeTest extends TestCase
         $this->assertCount(1, $matching);
     }
 
-    public function test_the_standalone_filter_door_matches_the_macro_spelling(): void
+    /**
+     * Was a parity test against `Route::resourceFilters()`, retired with the macro (93). The standalone
+     * filter door is the one whose only remaining src-side caller was `BeamRouteProxy`'s ALIASED
+     * `RouteFacade::resourceFilters()` — the call every `Route::`-keyed search in that ticket missed.
+     */
+    public function test_the_standalone_filter_door_mounts_the_filter_sub_surface(): void
     {
         Particle::filters(resource: null, at: 'resources/{resource}', names: 'resources');
-        $viaFacade = $this->table();
 
-        $this->freshRouter();
+        $mounted = $this->tableAt('resources/{resource}');
 
-        Route::resourceFilters(resource: null, at: 'resources/{resource}', names: 'resources');
-        $viaMacro = $this->table();
-
-        $this->assertSame($viaMacro, $viaFacade);
+        $this->assertNotSame([], $mounted);
+        foreach ($mounted as [$methods, $uri, $name]) {
+            $this->assertStringStartsWith('resources/{resource}', $uri);
+            $this->assertStringStartsWith('resources.', (string) $name);
+        }
     }
 }

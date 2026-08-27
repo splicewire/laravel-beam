@@ -100,7 +100,7 @@ class ParticleMounter
     /**
      * The five CRUD verbs, stamped `_particle`, plus the automatic per-resource filter sub-surface.
      *
-     * Moved verbatim from `Route::macro('particleResource', …)`.
+     * The body behind `Particle::mount(…)`. Was `Route::macro('particleResource', …)` until api-surface-coherence 93 deleted the macro.
      */
     public function resource(Router $router, string $uri, string $resourceKey, array $options = []): void
     {
@@ -180,7 +180,7 @@ class ParticleMounter
     /**
      * One particle operation: `POST {uri}/{id}/op/{name}`.
      *
-     * Moved verbatim from `Route::macro('particleOp', …)`.
+     * The body behind one op of `Particle::ops(…)`. Was `Route::macro('particleOp', …)` until 93 deleted the macro.
      */
     public function op(Router $router, string $uri, string $resourceKey, string $op, array $options = []): void
     {
@@ -212,7 +212,7 @@ class ParticleMounter
      *   DownloadMedia::class               a #[ParticleOp] class-string — discovered (register) + mounted.
      *   new ParticleOperation(name: …, …)  an inline object — registered here + mounted.
      *
-     * Moved verbatim from `Route::macro('particleOps', …)`.
+     * The body behind `Particle::ops(…)`. Was `Route::macro('particleOps', …)` until 93 deleted the macro.
      */
     public function ops(Router $router, string $uri, string $resourceKey, array $ops, array $options = []): void
     {
@@ -241,7 +241,7 @@ class ParticleMounter
      * The bound-relative mount. Route-model-binds a RELATIVE and pushes it + its `$via` into the route
      * defaults of everything the `$routes` callback mounts.
      *
-     * Moved verbatim from `Route::macro('particleRelative', …)`; the binding line is the one thing that
+     * The body behind `Particle::relative(…)`. Was `Route::macro('particleRelative', …)` until 93 deleted the macro; the binding line is the one thing that
      * has since changed, and api-surface-coherence ticket 51 §1 is the ruling.
      *
      * ## The route-model binding is app-global, and that is now DECLARED rather than incidental
@@ -448,7 +448,7 @@ class ParticleMounter
      * plus a write route only where {@see RenderingCertifier} could prove reversibility, plus the
      * catalog route (ticket 33), which mounts even for zero renderings.
      *
-     * Moved verbatim from `Route::macro('resourceRenderings', …)`.
+     * The body behind `Particle::renderings(…)`. Was `Route::macro('resourceRenderings', …)` until 93 deleted the macro.
      */
     public function resourceRenderings(
         Router $router,
@@ -539,7 +539,7 @@ class ParticleMounter
     /**
      * The per-resource filter sub-surface (api-surface-coherence ticket 10, build 35).
      *
-     * Moved verbatim from `Route::macro('resourceFilters', …)`.
+     * The body behind `Particle::filters(…)`. Was `Route::macro('resourceFilters', …)` until 93 deleted the macro.
      */
     public function resourceFilters(
         Router $router,

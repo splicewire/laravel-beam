@@ -16,6 +16,7 @@ use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Splicewire\Beam\Data\ResponseBody;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Filters\Data\ResourceFilterVariantData;
 use Splicewire\Beam\Filters\Data\ResourceFilterVariantsData;
 use Splicewire\Beam\Filters\Data\SavedFilterStoreInputData;
@@ -42,7 +43,7 @@ use Symfony\Component\HttpFoundation\Response;
  * and {@see RenderingCatalogController} already names it as the reason
  * its own gate exists). Here every read and every write gates on the resource first.
  *
- * **Mounting.** Never mount these by hand — {@see Route::resourceFilters()} does it, and
+ * **Mounting.** Never mount these by hand — {@see Particle::filters()} does it, and
  * `Route::particleResource()` calls that macro automatically, so the sub-surface follows a resource to
  * every exposure of it, nested mounts included. The resource is read off the route's frozen config,
  * NEVER off the URI segment: half the estate's filter keys diverge from their URL word and that
@@ -280,7 +281,7 @@ class ResourceFiltersController extends Controller
         if (! is_array($config) || ! array_key_exists('resource', $config)) {
             throw new RuntimeException(
                 'Filter sub-surface route is missing its '.self::CONFIG.' config. '
-                .'Register it via Route::resourceFilters() — never by hand.'
+                .'Register it via Particle::filters() — never by hand.'
             );
         }
 

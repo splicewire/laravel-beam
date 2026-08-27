@@ -11,40 +11,39 @@ use Splicewire\Beam\BeamServiceProvider;
 /**
  * The provider's `boot` chain — beam's first adoption of popcorn's trait-method chain.
  *
- * `packageBooted()` used to carry a hand-written index of the provider's own parts:
+ * `packageBooted()` used to carry a hand-written index of the provider's own parts; each part moved into
+ * the trait that owns it, declaring `#[Chained('boot', order: N)]`, and the block became one
+ * `chainTraitMethods('boot')` call.
  *
- * ```php
- * $this->bootParticleRouteMacros();
- * $this->bootBeamRouteNamespace();
- * $this->bootResourceRenderingsMacro();
- * ```
+ * ## The chain is down to ONE link, and that is the point of what is left here
  *
- * Each macro now lives in the trait that owns it, declaring `#[Chained('boot', order: N)]`, and the block
- * is one `chainTraitMethods('boot')` call.
+ * This test was originally about ORDER: four links, of which three registered route macros onto the same
+ * router, where `bootResourceFiltersMacro` (order 5) HAD to precede `bootParticleRouteMacros` (order 10)
+ * because `particleResource` mounted the filter sub-surface automatically. api-surface-coherence 93
+ * deleted all three macro traits, so that dependency — and the ordering constraint it justified — no
+ * longer exists.
  *
- * ⚠️ **This test exists because the conversion is only safe if the ORDER is pinned.** The three macros
- * mount onto the same router, and the sequence above was correct by hand. `pint`'s Laravel preset ships
- * the `ordered_traits` fixer, which sorts a class's `use` statements alphabetically — so a chain resting
- * on `use` position would be resequenced by a formatter on an unrelated commit, with nothing failing.
- * The `order:` values are what carry it, and this test is what proves they still say what the deleted
- * call block said.
+ * What survives is the OTHER half, and it is the half worth keeping: a chain that silently resolves to
+ * nothing is a provider that boots clean and registers nothing, which is the dead-seam shape this estate
+ * has now found four times (`afterResolving`, `discover_paths`, `auto_discover_types`, the `#[TypeScript]`
+ * scan). With one link the order assertion is nearly free; the behavioural assertion under it is what
+ * actually catches a chain gone dead.
+ *
+ * ⚠️ The `order:` values still carry the sequence, not `use` position — `pint`'s Laravel preset ships the
+ * `ordered_traits` fixer, which sorts a class's `use` statements alphabetically. Should a second link ever
+ * join, that is why this list exists.
  */
 class BootChainTest extends TestCase
 {
     /**
-     * The hand-written sequence the chain replaced, verbatim. Change this only with the reason written down.
+     * Every link the chain owns, in resolution order.
      *
-     * One member has been added since, and its reason: api-surface-coherence ticket 35's per-resource
-     * filter sub-surface declares `#[Chained('boot', order: 5)]`, ahead of the original three. It has to
-     * be — `resourceFilters` is mounted AUTOMATICALLY from `particleResource`, so the macro must exist by
-     * the time `bootParticleRouteMacros` (order 10) registers the macro that calls it. Order 5 is the
-     * declaration of that dependency; this list is what stops a later edit from quietly reordering it.
+     * Was four. api-surface-coherence 93 deleted `bootResourceFiltersMacro` (order 5),
+     * `bootParticleRouteMacros` (order 10) and `bootResourceRenderingsMacro` (order 30) along with the six
+     * route macros they registered; the `Particle::` facade is the front door those macros stood in for.
      */
     private const HISTORICAL_ORDER = [
-        'bootResourceFiltersMacro',
-        'bootParticleRouteMacros',
         'bootBeamRouteNamespace',
-        'bootResourceRenderingsMacro',
     ];
 
     public function test_the_boot_chain_resolves_in_the_order_the_hand_written_block_used(): void
@@ -65,20 +64,26 @@ class BootChainTest extends TestCase
     }
 
     /**
-     * The behavioural half: every macro the chain is responsible for is actually registered after boot.
+     * The behavioural half: the thing the chain is responsible for is actually registered after boot.
      *
      * Asserted rather than assumed, because the failure mode of a chain that silently resolves to nothing
-     * is a provider that boots clean and mounts no routes — which is exactly the dead-seam shape this
-     * estate has now found four times (`afterResolving`, `discover_paths`, `auto_discover_types`, the
-     * `#[TypeScript]` scan). A chain with zero links is a passing test unless something checks the work.
+     * is a provider that boots clean and registers nothing — exactly the dead-seam shape named in the
+     * class docblock. A chain with zero links is a passing test unless something checks the work.
      */
-    public function test_every_macro_the_chain_owns_is_registered(): void
+    public function test_what_the_chain_owns_is_registered(): void
+    {
+        $this->assertTrue(RouteInstance::hasMacro('beam'), 'The ->beam() route-instance namespace was not registered.');
+    }
+
+    /**
+     * The macros api-surface-coherence 93 deleted stay deleted. Enforcement-by-absence is the whole point
+     * of having deleted them rather than deprecating them, so absence is what gets asserted.
+     */
+    public function test_the_retired_route_macros_are_gone(): void
     {
         foreach (['particleResource', 'particleOp', 'particleOps', 'particleRelative', 'resourceRenderings', 'resourceFilters'] as $macro) {
-            $this->assertTrue(Route::hasMacro($macro), "Route::{$macro}() was not registered by the boot chain.");
+            $this->assertFalse(Route::hasMacro($macro), "Route::{$macro}() is back — the front door is Particle::, see api-surface-coherence 93.");
         }
-
-        $this->assertTrue(RouteInstance::hasMacro('beam'), 'The ->beam() route-instance namespace was not registered.');
     }
 
     public function test_the_chain_is_not_empty(): void

@@ -39,9 +39,6 @@ use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\GuardActorAdapter;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
-use Splicewire\Beam\Concerns\BootsParticleRouteMacros;
-use Splicewire\Beam\Concerns\BootsResourceFilters;
-use Splicewire\Beam\Concerns\BootsResourceRenderings;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\BeamSeedCommand;
@@ -215,9 +212,6 @@ use Splicewire\Beam\Write\ParticleWriter;
 class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitMethodsContract
 {
     use BootsBeamRouteNamespace;
-    use BootsParticleRouteMacros;
-    use BootsResourceFilters;
-    use BootsResourceRenderings;
     use ChainsTraitMethods;
 
     public function configurePackage(Package $package): void

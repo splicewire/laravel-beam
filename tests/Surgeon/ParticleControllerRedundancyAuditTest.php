@@ -10,12 +10,12 @@ use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 /**
  * The hunt-02 dogfood (refactor-tooling ticket 16): four V1 controllers are thin `ParticleController`
  * CRUD shells on already-registered resources whose peers (`tags`/`media`/`activity`) run controller-free
- * via `Route::particleResource()`. This proves {@see ParticleControllerRedundancyAudit} flags exactly the
+ * via `Particle::mount()`. This proves {@see ParticleControllerRedundancyAudit} flags exactly the
  * redundant shells — pure passthrough → fixable collapse; with-delta → advisory naming the blocker — and
- * leaves a non-particle controller, an unregistered resource, and an already-macro-wired key untouched.
+ * leaves a non-particle controller, an unregistered resource, and an already-mounted key untouched.
  *
  * The `suggestFor()` tests are pure over in-memory fixtures (no registry, no route table, no DB); the
- * `parseController()` / passthrough tests exercise the real AST classification off heredoc source.
+ * `parseController()` / `mountedKeysIn()` tests exercise the real AST classification off heredoc source.
  */
 class ParticleControllerRedundancyAuditTest extends TestCase
 {
@@ -40,7 +40,7 @@ class ParticleControllerRedundancyAuditTest extends TestCase
         $findings = $this->audit()->suggestFor(
             $controllers,
             ['agents' => true],            // hand-wired
-            ['tags' => true],              // a PEER rides the macro (not the agents key itself)
+            ['tags' => true],              // a PEER rides the front door (not the agents key itself)
             ['agents' => true],            // registered
         );
 
@@ -180,7 +180,7 @@ class ParticleControllerRedundancyAuditTest extends TestCase
         $findings = $this->audit()->suggestFor(
             $controllers,
             ['plans' => true],                                          // hand-wired
-            [],                                                         // not macro'd
+            [],                                                         // not front-door-mounted
             ['plans' => true],                                          // registered keys
             ['Splicewire\\Beam\\Commerce\\Plan' => ['plans']],          // registered model map
         );
@@ -195,7 +195,7 @@ class ParticleControllerRedundancyAuditTest extends TestCase
         $this->assertStringContainsString('PlanController', $finding->finding->detail);
         $this->assertStringContainsString('[plans]', $finding->finding->detail);
         $this->assertStringContainsString('index', $finding->finding->detail);
-        $this->assertStringContainsString("Route::particleResource('plans'", $finding->suggestion->summary);
+        $this->assertStringContainsString("Particle::mount('plans')", $finding->suggestion->summary);
     }
 
     public function test_the_behavior_path_skips_an_unregistered_model(): void
@@ -219,7 +219,7 @@ class ParticleControllerRedundancyAuditTest extends TestCase
         ));
     }
 
-    public function test_the_behavior_path_skips_a_macro_wired_or_unwired_key(): void
+    public function test_the_behavior_path_skips_a_front_door_mounted_or_unwired_key(): void
     {
         $controller = [
             'class' => 'App\\Http\\Controllers\\PlanController',
@@ -231,7 +231,7 @@ class ParticleControllerRedundancyAuditTest extends TestCase
         ];
         $registeredModels = ['Splicewire\\Beam\\Commerce\\Plan' => ['plans']];
 
-        // Key already rides the macro → not a bespoke redundancy.
+        // Key is already mounted through the front door → not a bespoke redundancy.
         $this->assertSame([], $this->audit()->suggestFor(
             [$controller], ['plans' => true], ['plans' => true], ['plans' => true], $registeredModels,
         ));
@@ -286,7 +286,7 @@ class ParticleControllerRedundancyAuditTest extends TestCase
         ));
     }
 
-    public function test_an_already_macro_wired_key_is_not_flagged(): void
+    public function test_an_already_front_door_mounted_key_is_not_flagged(): void
     {
         $controllers = [[
             'class' => 'App\\Http\\Controllers\\SiloController',
@@ -296,7 +296,7 @@ class ParticleControllerRedundancyAuditTest extends TestCase
             'actions' => ['index' => 'passthrough'],
         ]];
 
-        // 'silos' is registered AND its own key rides the macro → leg 3 fails (not a bespoke hand-wired shell).
+        // 'silos' is registered AND its own key rides the front door → leg 3 fails (not a bespoke hand-wired shell).
         $this->assertSame([], $this->audit()->suggestFor(
             $controllers,
             ['silos' => true],
@@ -403,6 +403,57 @@ class ParticleControllerRedundancyAuditTest extends TestCase
 
         $this->assertNotNull($row);
         $this->assertSame([], $row['crudModels']);
+    }
+
+    // ── mountedKeysIn(): the front-door mount leg, read off a route file's AST ─────────────────────────
+
+    public function test_it_reads_the_keys_a_route_file_mounts_through_the_front_door(): void
+    {
+        // One-arg (key defaults to the uri), two-arg (uri and key genuinely diverge), a chained builder,
+        // and a named-arg spelling — all four are front-door mounts.
+        $source = <<<'PHP'
+        <?php
+        use Splicewire\Beam\Facades\Particle;
+        use Illuminate\Support\Facades\Route;
+
+        Particle::mount('plans');
+        Particle::mount('extensions', 'market-extensions')->only(['index', 'show']);
+        Particle::mount('/fragments/')->ops(true)->filters(true);
+        Particle::mount(uri: 'silos', resourceKey: 'silo-buckets');
+        Route::get('leads', [LeadController::class, 'index']);
+        PHP;
+
+        $keys = $this->audit()->mountedKeysIn($source);
+
+        sort($keys);
+        $this->assertSame(['fragments', 'market-extensions', 'plans', 'silo-buckets'], $keys);
+    }
+
+    public function test_it_resolves_an_aliased_particle_facade_import(): void
+    {
+        // The BeamRouteProxy `RouteFacade` lesson: an alias is invisible to a source-text scan.
+        $source = <<<'PHP'
+        <?php
+        use Splicewire\Beam\Facades\Particle as P;
+
+        P::mount('plans');
+        PHP;
+
+        $this->assertSame(['plans'], $this->audit()->mountedKeysIn($source));
+    }
+
+    public function test_it_skips_a_mount_whose_key_it_cannot_statically_read(): void
+    {
+        // A non-literal uri, and an unrelated class's `mount()` — neither is a readable front-door key.
+        $source = <<<'PHP'
+        <?php
+        use Splicewire\Beam\Facades\Particle;
+
+        Particle::mount($resource);
+        Disk::mount('plans');
+        PHP;
+
+        $this->assertSame([], $this->audit()->mountedKeysIn($source));
     }
 
     /** Wrap method bodies in a minimal particle-controller class source. */

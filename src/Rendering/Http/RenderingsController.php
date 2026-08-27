@@ -9,6 +9,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Rendering\DeclaresDelivery;
 use Splicewire\Beam\Rendering\RenderedDocument;
 use Splicewire\Beam\Rendering\ResourceRendering;
@@ -17,7 +18,7 @@ use Splicewire\Beam\Rendering\ReversibleRendering;
 use Splicewire\Beam\Rendering\Subjects\ResolvesRenderingSubject;
 
 /**
- * The one generic controller behind {@see Route::resourceRenderings()} — read a resource's rendering,
+ * The one generic controller behind {@see Particle::renderings()} — read a resource's rendering,
  * and (only where fidelity was certified) fold an edited one back.
  *
  * Per-route config rides the route's `defaults` as a plain serializable array, so the macro survives
@@ -102,7 +103,7 @@ class RenderingsController extends Controller
 
         if (! is_array($config) || ! isset($config['resource'], $config['rendering'], $config['subject'])) {
             throw new RuntimeException(
-                'Rendering route is missing its _renderings config. Register it via Route::resourceRenderings().'
+                'Rendering route is missing its _renderings config. Register it via Particle::renderings().'
             );
         }
 

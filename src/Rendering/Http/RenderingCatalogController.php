@@ -9,13 +9,14 @@ use Illuminate\Support\Facades\Route;
 use RuntimeException;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Splicewire\Beam\Data\ResponseBody;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Rendering\Data\RenderingDescriptorData;
 use Splicewire\Beam\Rendering\Data\ResourceRenderingCatalogData;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
 
 /**
  * Publish what renderings a resource offers, and in what formats — the discovery half of
- * {@see Route::resourceRenderings()} (api-surface-coherence ticket 09 §7, build 33).
+ * {@see Particle::renderings()} (api-surface-coherence ticket 09 §7, build 33).
  *
  * Before this, that question was answerable only by reading `beam.core.renderings` config or running
  * `splicewire:beam:manifests` — a shell, not a wire.
@@ -57,7 +58,7 @@ class RenderingCatalogController extends Controller
         if (! is_array($config) || ! isset($config['resource'], $config['renderings'])) {
             throw new RuntimeException(
                 'Rendering catalog route is missing its _renderings_catalog config. '
-                .'Register it via Route::resourceRenderings().'
+                .'Register it via Particle::renderings().'
             );
         }
 
