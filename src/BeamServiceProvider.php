@@ -42,6 +42,7 @@ use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\BeamSeedCommand;
+use Splicewire\Beam\Console\ConvergencePreflightCommand;
 use Splicewire\Beam\Console\DocblockCommand;
 use Splicewire\Beam\Console\FrameCacheCommand;
 use Splicewire\Beam\Console\FrameClearCommand;
@@ -1164,6 +1165,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $this->commands([
                 BeamDoctorCommand::class,
                 BeamInstallCommand::class,
+                // The install's convergence preflight, as a READ-ONLY entry point (beam-facade 146).
+                // Registered beside the installer because it is the same phase asked without the mutation:
+                // before this, "what would collide if I published?" could only be asked by an operator
+                // willing to publish. It also reaches the population no migrator-tied instrument can —
+                // unpublished package stubs — which is where ticket 108's evidence base lives.
+                ConvergencePreflightCommand::class,
                 BeamSeedCommand::class,
                 FrameCacheCommand::class,
                 FrameClearCommand::class,

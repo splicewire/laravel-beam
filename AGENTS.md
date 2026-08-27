@@ -73,6 +73,19 @@ off the instance you passed in. `reject` is an oracle by construction and is leg
 an authenticated door. The key recipe is write-once. See
 `docs/agents/dedupe-keyword.convention.md`.
 
+## Asking what the convergent guards would do, without publishing
+
+`splicewire:beam:convergence-preflight` (beam-facade 146) is the **read-only** entry point to the
+install's convergence phase. It rehearses two populations — the pending migrations the next `migrate`
+would read, *and* the unpublished `.php.stub` files installed packages ship, which
+`MigrationFiles::pathsFor()` cannot see by construction — and prints clean / would-change / conflicted
+plus the `?` lines it could not rehearse. It writes nothing.
+
+It is a wrapper and a renderer over `MigrationRehearsal`, `PackageStubs` and `RehearsalSafety`; a second
+rehearsal implementation is the mistake ticket 109 already refused. ⚠️ It **reports, it does not gate** —
+whether a host's live shape conflicts with a package's declaration is a fact about the host, so the exit
+code is 0 even on conflicts and `--fail-on-conflict` is opt-in.
+
 ## What `beam:install` persists
 
 The wizard's answers reach the running process through `config([...])` and reach **disk** only through
