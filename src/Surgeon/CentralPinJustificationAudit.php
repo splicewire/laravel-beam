@@ -46,11 +46,22 @@ use Splicewire\Beam\Surgeon\Support\HostScanRoots;
  * category is how a closed list quietly opens.
  *
  * ## Advisory, permanently
- * The census behind this ticket found 23 pins of which 10 carry no justification of any kind, 7 are clearly
- * NOT floor, and 5 are arguable. The output is therefore a **documentation backlog**, and a documentation
- * backlog that fails the build is just a blocked build. Every finding is a {@see Finding::warn()} — this
- * audit never emits a `Fail` — and it registers advisory (`gate: false`) in
- * `BeamServiceProvider::registerSurgeonAudits()`.
+ * The output is a **documentation backlog**, and a documentation backlog that fails the build is just a
+ * blocked build. Every finding is a {@see Finding::warn()} — this audit never emits a `Fail` — and it
+ * registers advisory (`gate: false`) in `BeamServiceProvider::registerSurgeonAudits()`.
+ *
+ * ## The census, and why this paragraph is dated
+ *
+ * **30 pins, 21 unjustified** at `~/Herd/splicewire-app` (measured 2026-08-27, realm-and-floor
+ * reconciliation ticket 03). Of the unjustified ones, roughly 4 survive the decidable test cleanly, 3 are
+ * arguable, and the rest are `central`-because-untenanted rather than floor.
+ *
+ * This paragraph previously read *"23 pins of which 10 carry no justification"* — and was wrong, while
+ * `HostScanRoots`' own docblock recorded 24/15 from the same effort. Two numbers for one census, in one
+ * package, and the class docblock is the one people read. It is dated now because a census figure is a
+ * MEASUREMENT, not a fact about the code: it moves whenever the scan roots move, and this ticket moved
+ * them twice — `database/` into scope (+2) and anonymous classes no longer skipped (+4). Re-run it rather
+ * than cite it; {@see forApp()}`->pins()` is three lines in tinker.
  *
  * Reporting a pin is NOT a claim that the pin is wrong. The known live contradiction —
  * `Role`/`Permission` pinned central while the corpus argues Spatie roles are per-tenant furniture — is
@@ -83,6 +94,31 @@ class CentralPinJustificationAudit implements DoctorAudit
         'auth',
         'billing-wall',
     ];
+
+    /**
+     * The host dirs this audit scans, WIDER than {@see HostScanRoots::HOST_DIRS} by `database/`.
+     *
+     * A host's migrations and seeders pin the connection like anything else — the flagship's
+     * `create_tenant_syncs_table` carries both `protected $connection = 'central'` and
+     * `Schema::connection('central')` — and the shared default stops at `['app','src']`, so every one of
+     * them sat outside this audit's population. The audit's own argument for recognizing the constant and
+     * call forms is that *"a hint cannot find the pin that does not look like a pin"*; the same argument,
+     * one turn further, is that a census cannot judge a pin it never reads. Widened here rather than in
+     * {@see HostScanRoots::HOST_DIRS} because the other two consumers have no business in `database/` —
+     * registries and Inertia props do not live there, and a shared widening would buy them a slower scan
+     * and nothing else.
+     *
+     * ⚠️ **`config/` is deliberately NOT here.** The flagship pins the OAuth token tables in a config
+     * array — `config/passport.php`: `'connection' => env('PASSPORT_CONNECTION', 'central')` — and that is
+     * a real pin this audit will never see. But it is an array literal: no property, no constant, no
+     * method call, so none of the three forms match it and adding the root would buy scan cost and zero
+     * findings. Detecting it needs a config-shaped matcher, which is a different instrument from an AST
+     * walk over class-likes. Recorded rather than silently skipped, because "the census does not scan
+     * `config/`" and "the census scans `config/` and finds nothing" are indistinguishable in the output.
+     *
+     * @var list<string>
+     */
+    public const HOST_DIRS = ['app', 'src', 'database'];
 
     /** `protected $connection = 'central'` — the form everyone recognizes. */
     public const FORM_PROPERTY = 'property';
@@ -162,7 +198,7 @@ class CentralPinJustificationAudit implements DoctorAudit
      */
     public static function forApp(?array $roots = null): self
     {
-        return new self($roots ?? HostScanRoots::resolve());
+        return new self($roots ?? HostScanRoots::resolve(self::HOST_DIRS));
     }
 
     /**
@@ -261,11 +297,20 @@ class CentralPinJustificationAudit implements DoctorAudit
         $classLikes = $finder->find($ast, fn (Node $n) => $n instanceof Node\Stmt\Class_ || $n instanceof Node\Stmt\Trait_);
 
         foreach ($classLikes as $classLike) {
-            if ($classLike->name === null) {
-                continue;
-            }
-
-            $class = ($namespace !== '' ? $namespace.'\\' : '').$classLike->name->toString();
+            // ⚠️ An ANONYMOUS class is still a pin site, and skipping it hid an entire population.
+            //
+            // This used to `continue` on a null name, which reads as defensive and is not: since Laravel 9
+            // EVERY migration is `return new class extends Migration`, so every migration pin in the estate
+            // was invisible. Measured on the widening that brought `database/` into scope — the flagship's
+            // `create_tenant_syncs_table` carries BOTH `protected $connection = 'central'` and
+            // `Schema::connection('central')`, and the census reported neither, while the two seeders in the
+            // same directory (ordinary named classes) reported fine.
+            //
+            // It has no FQN to report, so it is addressed the way a reader would address it — by file and
+            // line. That is the better identity for a migration anyway: nobody refers to one by class name.
+            $class = $classLike->name === null
+                ? 'class@anonymous'
+                : ($namespace !== '' ? $namespace.'\\' : '').$classLike->name->toString();
 
             if (str_ends_with($class, 'Test')) {
                 continue;

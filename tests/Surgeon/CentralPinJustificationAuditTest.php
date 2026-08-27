@@ -85,6 +85,48 @@ class CentralPinJustificationAuditTest extends TestCase
     }
 
     /**
+     * The MIGRATION shape — and the population this audit could not see at all.
+     *
+     * Since Laravel 9 every migration is `return new class extends Migration`, so every migration pin in
+     * the estate lived in an anonymous class. The walker skipped those outright on a null name, which reads
+     * as ordinary defensiveness and was not: measured at `~/Herd/splicewire-app`, two migrations carrying
+     * BOTH a `$connection` property and a `Schema::connection('central')` call reported ZERO pins, while
+     * two seeders in the same directory — ordinary named classes — reported fine. Bringing `database/` into
+     * the scan roots is what made the gap visible; it was there before, unreachable.
+     *
+     * An anonymous class has no FQN, so it is addressed by file and line. For a migration that is the
+     * better identity anyway — nobody refers to one by class name.
+     */
+    public function test_it_finds_a_pin_in_an_anonymous_class_such_as_a_migration(): void
+    {
+        $pins = $this->pins(<<<'PHP'
+            <?php
+            use Illuminate\Database\Migrations\Migration;
+            use Illuminate\Support\Facades\Schema;
+            return new class extends Migration
+            {
+                protected $connection = 'central';
+
+                public function up(): void
+                {
+                    Schema::connection('central')->create('things', function ($table) {});
+                }
+            };
+            PHP, '/app/database/migrations/2026_01_01_000000_create_things_table.php');
+
+        $this->assertNotSame([], $pins, 'an anonymous class is still a pin site.');
+
+        $forms = array_column($pins, 'form');
+        $this->assertContains(CentralPinJustificationAudit::FORM_PROPERTY, $forms);
+        $this->assertSame(['class@anonymous'], array_unique(array_column($pins, 'class')));
+        $this->assertSame(
+            ['/app/database/migrations/2026_01_01_000000_create_things_table.php'],
+            array_unique(array_column($pins, 'file')),
+            'the file is the address when there is no class name.'
+        );
+    }
+
+    /**
      * The laravel-beam-ux shape, reduced: the connection name lives in a class CONSTANT and the pin happens
      * through `Model::on(self::CONST)`. Nothing in this class contains the substring a property search looks
      * for, and the reported line is the CONSTANT — the declaration every use site defers to, and therefore
