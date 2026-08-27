@@ -43,8 +43,18 @@ class CentralActivityLog extends Activity
 
     // NO $table pin, deliberately. `activity_log` is now ONE shared/ migration run in both the central
     // and every tenant pass, so the central trail is the central schema's copy of that table rather
-    // than a separately-named `central_activity_log`. Leaving $table unset lets spatie's
-    // {@see Activity::__construct()} resolve it from `activitylog.table_name`, which is the same lever
-    // the migration reads — so the model and the schema cannot disagree, and a host that renames the
-    // table gets one table instead of two. The CONNECTION pin above is what still makes this central.
+    // than a separately-named `central_activity_log`. Leaving $table unset means this model resolves
+    // its table exactly the way the configured activity model does, which is what stops the model and
+    // the schema disagreeing. HOW that happens differs by major, and beam declares `^4.0|^5.0`:
+    // 4.x's {@see Activity::__construct()} calls setTable(config('activitylog.table_name')), while 5.x
+    // deleted that config key and hardcodes `protected $table = 'activity_log'`. Either way the value
+    // is spatie's, not ours. The migration stub reaches the same answer from the other side — it asks
+    // `activitylog.activity_model` for getTable() — so a host that renames the table still gets one
+    // table instead of two, under both majors.
+    //
+    // The one gap, stated because it is invisible: a host that renames by pointing
+    // `activitylog.activity_model` at its OWN subclass moves the migration but not this class, which
+    // extends Activity directly. No host does that today.
+    //
+    // The CONNECTION pin above is what still makes this central.
 }
