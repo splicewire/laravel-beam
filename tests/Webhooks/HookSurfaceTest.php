@@ -12,6 +12,7 @@ use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Events\HookEventRegistrar;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\Hook;
+use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Particle\Ops\ResetHookOp;
 use Splicewire\Beam\Tests\TestCase;
@@ -182,6 +183,38 @@ class HookSurfaceTest extends TestCase
         $this->assertSame(['endpoint' => 'https://new.test/hooks'], $attributes);
     }
 
+    public function test_the_caller_supplied_token_can_be_revoked_by_sending_it_null(): void
+    {
+        // The three states a PATCH body can be in. `token` is the additive bearer the receiver already
+        // knows (nullable in `create_beam_hooks_table`, orthogonal to `secret`), so "stop sending an
+        // Authorization header" is a real subscriber intent — and on the old `!== null` gate it had no
+        // wire representation at all: an omitted field and an explicit null were the same request.
+        $absent = HookInputData::from(['endpoint' => 'https://new.test/hooks'])->toModelAttributes();
+        $this->assertArrayNotHasKey('token', $absent, 'An omitted field must not be written.');
+
+        $revoked = HookInputData::from(['token' => null])->toModelAttributes();
+        $this->assertArrayHasKey('token', $revoked, 'An explicit null must reach the column.');
+        $this->assertNull($revoked['token']);
+
+        $set = HookInputData::from(['token' => 'bearer-token'])->toModelAttributes();
+        $this->assertSame('bearer-token', $set['token']);
+    }
+
+    public function test_the_not_null_columns_stay_on_the_drop_nulls_gate(): void
+    {
+        // Deliberate non-conversion. `endpoint` and `events` are NOT NULL in the table, so a "clear" on
+        // either is a constraint violation dressed up as an API affordance. `subject_type`/`subject_id`
+        // ARE nullable and are still held back — see the class docblock for the authorization reason.
+        $attributes = HookInputData::from([
+            'endpoint' => null,
+            'events' => null,
+            'subject_type' => null,
+            'subject_id' => null,
+        ])->toModelAttributes();
+
+        $this->assertSame([], $attributes);
+    }
+
     public function test_pausing_is_a_boolean_on_the_wire_and_a_timestamp_in_the_column(): void
     {
         $this->assertNotNull(HookInputData::from(['paused' => true])->toModelAttributes()['paused_at']);
@@ -191,7 +224,7 @@ class HookSurfaceTest extends TestCase
     public function test_the_reset_op_declares_no_input_rather_than_omitting_the_slot(): void
     {
         $attribute = (new \ReflectionClass(ResetHookOp::class))
-            ->getAttributes(\Splicewire\Beam\Particle\Attributes\ParticleOp::class)[0]->newInstance();
+            ->getAttributes(ParticleOp::class)[0]->newInstance();
 
         $this->assertSame('hooks', $attribute->resource);
         $this->assertSame('reset', $attribute->name);

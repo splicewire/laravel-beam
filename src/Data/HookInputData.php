@@ -5,6 +5,9 @@ namespace Splicewire\Beam\Data;
 use Spatie\LaravelData\Attributes\Validation\ActiveUrl;
 use Spatie\LaravelData\Attributes\Validation\Url;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\Optional;
+use Splicewire\Beam\Models\Hook;
+use Splicewire\Beam\Webhooks\Http\HookSubscriptionController;
 
 /**
  * The WRITE DTO for the `hooks` particle resource — the `input:` slot of {@see HookData}.
@@ -14,7 +17,7 @@ use Spatie\LaravelData\Data;
  *
  * ## What is NOT here, and why each absence is deliberate
  *
- * - **`secret`.** Minted by the platform ({@see \Splicewire\Beam\Models\Hook::mintSecret()}), never
+ * - **`secret`.** Minted by the platform ({@see Hook::mintSecret()}), never
  *   supplied. A caller-chosen HMAC key is a caller-chosen weak HMAC key.
  * - **`disabled_at`, `consecutive_failures`.** System health. The only write path is `op/reset`,
  *   which is the acceptance criterion "op/reset is the only path out of auto-disable" — making them
@@ -26,6 +29,34 @@ use Spatie\LaravelData\Data;
  *
  * `paused_at` IS writable, as a boolean rather than a timestamp: pausing is user intent, and a user
  * choosing WHEN they paused is meaningless.
+ *
+ * ## The three input states, and which fields can tell them apart
+ *
+ * A PATCH body can say three different things about a field: it can be *absent* ("leave it alone"),
+ * *present-and-null* ("clear it"), or *present with a value*. A promoted property written
+ * `public ?T $x = null` can only ever express TWO of them — `DefaultValuesDataPipe` checks
+ * `hasDefaultValue` BEFORE `type->isOptional`, so the declared default wins and an absent field
+ * arrives as `null`, indistinguishable from a submitted one. On a `!== null` gate the two collapse,
+ * and the collapse is one-directional: the column can be set and can never be cleared.
+ *
+ *   - **`token`** is `string|Optional|null` with NO `= null` default (the default is the sentinel
+ *     itself). Removing the `= null` is the whole fix; putting it back makes the `Optional` arm
+ *     unreachable again. Absent ⇒ untouched · present-and-null ⇒ written as null, revoking the
+ *     bearer · value ⇒ written. It is the additive receiver-known bearer, orthogonal to `secret`, so
+ *     "stop sending an Authorization header" is a real subscriber intent that previously had no wire
+ *     representation.
+ *   - **`endpoint`, `events`** are NOT NULL in `create_beam_hooks_table`. Clearing either is a
+ *     constraint violation, not an affordance; dropping the null is the correct no-op.
+ *   - **`paused`** already has all three states without `Optional`: `true` stamps `paused_at`,
+ *     `false` clears it, absent leaves it. The boolean IS the tri-state, so there is nothing to fix.
+ *   - **`subject_type`/`subject_id`** are nullable in the table and are STILL held back, deliberately,
+ *     on the authorization axis. Clearing the pair BROADENS a narrowed subscription into a firehose
+ *     over the whole resource, and the check that vets that reach —
+ *     {@see HookSubscriptionController::authorizeSubscription()} — runs only on `POST /hooks`, never on
+ *     the particle update, which authorizes the Hook ROW instead. (That the same gap already lets a
+ *     PATCH re-point a subject at another record is a separate pre-existing defect; this DTO is not
+ *     the place to widen it further while it stands.) Converting these two is a one-line change the
+ *     moment the update path re-runs `authorizeSubscription` — not before.
  */
 class HookInputData extends Data
 {
@@ -42,7 +73,13 @@ class HookInputData extends Data
         /** @var list<string>|null */
         public ?array $events = null,
 
-        public ?string $token = null,
+        /**
+         * The additive caller-supplied bearer — nullable in the column, and CLEARABLE, because revoking
+         * it is a real subscriber intent. `string|Optional|null` with no `= null` default, so an absent
+         * field is the `Optional` sentinel and an explicit null is a real null that reaches the column.
+         * See the class docblock; do not restore the default.
+         */
+        public string|Optional|null $token = new Optional,
 
         public ?string $subject_type = null,
 
@@ -55,16 +92,30 @@ class HookInputData extends Data
      * The write map: DTO field ⇒ model column. Only keys the caller actually sent are returned, so a
      * PATCH that names one field does not null the other five.
      *
+     * Two gates, deliberately. `endpoint`/`events`/`subject_*` drop their nulls. `token` is gated on
+     * PRESENCE instead, because an explicit null there is a caller revoking the bearer and that is the
+     * one thing the null-dropping gate cannot express. See the class docblock for why `subject_*` is
+     * not in that second group.
+     *
+     * Explicit per-field checks, never `get_object_vars`, which would leak `Optional` sentinels onto the
+     * write.
+     *
      * @return array<string, mixed>
      */
     public function toModelAttributes(): array
     {
         $attributes = [];
 
-        foreach (['endpoint', 'events', 'token', 'subject_type', 'subject_id'] as $field) {
+        foreach (['endpoint', 'events', 'subject_type', 'subject_id'] as $field) {
             if ($this->{$field} !== null) {
                 $attributes[$field] = $this->{$field};
             }
+        }
+
+        // Absent ⇒ leave the column alone. Present ⇒ write it, INCLUDING a null, which revokes the
+        // bearer the receiver was checking for. See the property's note.
+        if (! $this->token instanceof Optional) {
+            $attributes['token'] = $this->token;
         }
 
         if ($this->paused !== null) {

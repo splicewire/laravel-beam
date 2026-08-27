@@ -130,7 +130,7 @@ would abuse. `text/markdown` source bytes are application data and stay in the p
 `UndeclaredSurfaceAudit::DEFAULT_EXEMPT_URIS` / `DEFAULT_EXEMPT_NAMESPACES`, by exact URI or exact
 controller FQCN, so the population of exemptions stays countable.
 
-## Three one-line rules
+## Four one-line rules
 
 - **List facets are declared on the Data class.** A resource's LIST surface is not a hand-rolled
   query: the read Data class carries `rushing/laravel-data-filters` attributes —
@@ -161,6 +161,27 @@ controller FQCN, so the population of exemptions stays countable.
   `PublishPayload` is the seam. Fidelity (and therefore whether a write verb exists at all) is read
   from **certification, never a self-declared claim** — for renderings and for lenses alike; an empty
   proof certifies `Lossy`.
+- **⚠️ A write DTO field written `public ?T $x = null` cannot express "clear this".**
+  `Spatie\LaravelData\DataPipes\DefaultValuesDataPipe` checks `hasDefaultValue` **before**
+  `type->isOptional`, so a declared default always wins and an **absent** field arrives as `null` —
+  never as `Optional`. Three input states (absent / present-and-null / value) collapse to two, and a
+  `toModelAttributes()` gating on `!== null` then **cannot null out a column**: it can set and never
+  clear, silently, with a 200. Verified at runtime, not reasoned about.
+
+  The fix, per field: type becomes `T|Optional|null`, the **`= null` default is removed** (use
+  `= new Optional` when parameter order needs a default — the sentinel IS the default), and the gate
+  becomes `! $this->x instanceof Optional`. Absent ⇒ untouched · present-and-null ⇒ written as null ·
+  value ⇒ written. Restoring the `= null` makes the `Optional` arm unreachable again, so say so in the
+  docblock.
+
+  **It is a per-field judgment, never a sweep.** Convert a field only when *clearing* it is a real
+  caller intent AND the column is nullable — converting a `NOT NULL` column turns a silent no-op into
+  a constraint violation, and converting an authorization-bearing field can widen reach past a check
+  that only runs on create. Leave the rest on the `!== null` path and say in the docblock why. Never
+  `get_object_vars` in a write map — it leaks `Optional` sentinels onto the write. Model reading:
+  `splicewire/tower` `src/Data/Compliance/OpenApiSpecInputData.php` (mixed gates, one clearable field)
+  and `splicewire/laravel-beam` `src/Data/HookInputData.php` (mixed gates, with the non-conversions
+  argued).
 - **Tenancy floor.** [multitenancy.md](multitenancy.md) says the model doesn't know it's tenanted; the
   connection does. The floor test: **does this record index the churn, or participate in it?** Floor
   indexes; profile participates. Every central pin carries `@central-floor <category>` naming one of
