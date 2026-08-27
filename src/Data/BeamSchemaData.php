@@ -6,10 +6,10 @@ use Rushing\DataFilters\Attributes\Sortable;
 use Schemastud\DataSchemas\Attributes\Description;
 use Schemastud\Frame\Attributes\Column;
 use Schemastud\Frame\Attributes\NotInList;
-use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
+use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 
 /**
  * The READ projection for the `schemas` particle resource, and its declaration site.
@@ -33,7 +33,7 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
  * the record. So this resource declares an `input:` and accepts writes.
  *
  * What it does NOT declare is an update affordance, and that is the model's immutability rather than a
- * policy choice: {@see \Splicewire\Beam\Schema\DatabaseSchemaRegistry::register()} no-ops an identical
+ * policy choice: {@see DatabaseSchemaRegistry::register()} no-ops an identical
  * re-publish and REJECTS a changed shape under an existing `$id`, because a changed shape is a new
  * version. "Editing" a schema means minting the next `$id` — an ordinary create. See
  * {@see BeamSchemaInputData} for the derivation the write shares with `register()`.
@@ -49,6 +49,12 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
  * the exact condition ticket 65 exists to end. Those routes declare themselves into this resource with
  * `->beam()->inResource('schemas')` instead — ticket 01's sanctioned form for a hand-rolled route whose
  * subject is a particle resource.
+ *
+ * `Data` here is beam's OWN `Splicewire\Beam\Data\Data` — the sibling class in this
+ * namespace — not `Spatie\LaravelData\Data`. The import is absent on purpose: beam ships that base
+ * class so every DTO answers `::jsonSchema()` through the host's configured generator (`66e2dff`),
+ * and a particle-declared DTO inside beam that skipped it was the one shape beam's own doctrine
+ * could not describe.
  */
 #[ParticleResource(
     key: 'schemas',

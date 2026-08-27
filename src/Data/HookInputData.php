@@ -4,7 +4,6 @@ namespace Splicewire\Beam\Data;
 
 use Spatie\LaravelData\Attributes\Validation\ActiveUrl;
 use Spatie\LaravelData\Attributes\Validation\Url;
-use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Webhooks\HookSubscriptionReach;
@@ -64,6 +63,12 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  *     above) is now the one-line change the docblock has promised since ticket 01, and it is safe. It
  *     is left to ticket 01's own follow-up rather than done here, so the security repair lands as a
  *     security repair and the surface widening is a separate, separately-reviewed diff.
+ *
+ * `Data` here is beam's OWN `Splicewire\Beam\Data\Data` — the sibling class in this
+ * namespace — not `Spatie\LaravelData\Data`. The import is absent on purpose: beam ships that base
+ * class so every DTO answers `::jsonSchema()` through the host's configured generator (`66e2dff`),
+ * and a particle-declared DTO inside beam that skipped it was the one shape beam's own doctrine
+ * could not describe.
  */
 class HookInputData extends Data implements MapsToModelAttributes
 {

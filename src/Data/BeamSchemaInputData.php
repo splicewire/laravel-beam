@@ -5,7 +5,6 @@ namespace Splicewire\Beam\Data;
 use InvalidArgumentException;
 use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
 use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
-use Spatie\LaravelData\Data;
 use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
@@ -28,6 +27,12 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  * The filesystem tier does not contradict this. It is a SYNC SOURCE, not the authority: the canonical
  * record is the DB row, the same way a beam-ux entry's canonical record is its row rather than the
  * scaffold it was seeded from.
+ *
+ * `Data` here is beam's OWN `Splicewire\Beam\Data\Data` — the sibling class in this
+ * namespace — not `Spatie\LaravelData\Data`. The import is absent on purpose: beam ships that base
+ * class so every DTO answers `::jsonSchema()` through the host's configured generator (`66e2dff`),
+ * and a particle-declared DTO inside beam that skipped it was the one shape beam's own doctrine
+ * could not describe.
  */
 class BeamSchemaInputData extends Data implements MapsToModelAttributes
 {

@@ -3,7 +3,6 @@
 namespace Splicewire\Beam\Data;
 
 use Schemastud\Frame\Attributes\Column;
-use Spatie\LaravelData\Data;
 use Splicewire\Beam\Models\GitRepo;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Storage\GitRepoRegistrar;
@@ -14,6 +13,12 @@ use Splicewire\Beam\Storage\GitRepoRegistrar;
  * despite the name; it's Frame's own REST-resource registration attribute), so it shows up in Admin's
  * resource-blind `/frame/manifest` list for free. `readOnly: true` — nothing writes to a `GitRepo`
  * through Frame; it's a cache {@see GitRepoRegistrar} owns exclusively.
+ *
+ * `Data` here is beam's OWN `Splicewire\Beam\Data\Data` — the sibling class in this
+ * namespace — not `Spatie\LaravelData\Data`. The import is absent on purpose: beam ships that base
+ * class so every DTO answers `::jsonSchema()` through the host's configured generator (`66e2dff`),
+ * and a particle-declared DTO inside beam that skipped it was the one shape beam's own doctrine
+ * could not describe.
  */
 #[ParticleResource(
     key: 'git-repo',

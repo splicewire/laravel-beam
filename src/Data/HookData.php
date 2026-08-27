@@ -4,7 +4,6 @@ namespace Splicewire\Beam\Data;
 
 use Illuminate\Database\Eloquent\Builder;
 use Schemastud\Frame\Attributes\Column;
-use Spatie\LaravelData\Data;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Webhooks\HookSubscriptionReach;
@@ -34,6 +33,12 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
  * projection, the operator realm — projects {@see $secret_preview} and nothing more. A `secret`
  * property here would be revealed by every one of them, and no amount of route-level care would fix
  * it, because the projection is the thing the routes share.
+ *
+ * `Data` here is beam's OWN `Splicewire\Beam\Data\Data` — the sibling class in this
+ * namespace — not `Spatie\LaravelData\Data`. The import is absent on purpose: beam ships that base
+ * class so every DTO answers `::jsonSchema()` through the host's configured generator (`66e2dff`),
+ * and a particle-declared DTO inside beam that skipped it was the one shape beam's own doctrine
+ * could not describe.
  */
 #[ParticleResource(
     key: 'hooks',
