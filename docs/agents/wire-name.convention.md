@@ -63,7 +63,43 @@ which works only while property and column happen to share a spelling — become
 Because the sweep **retains** the attribute and renames only the property, the published key is the
 attribute's argument. So the invariant is textual and exact: **the set of (file, attribute-argument)
 pairs must be identical before and after.** That is stronger than regenerating schemas and diffing
-them, because nothing else moving can confound it.
+them, because nothing else moving can confound it — a schema diff on a live estate picks up every
+neighbour's in-flight DTO edit.
+
+`scripts/wire-keys.php` is that check:
+
+```
+php scripts/wire-keys.php ~/Workspaces/php/packages/'*'/'*'/src > before.txt
+# …rename properties, leaving every attribute argument untouched…
+php scripts/wire-keys.php ~/Workspaces/php/packages/'*'/'*'/src > after.txt
+diff before.txt after.txt        # MUST be empty
+```
+
+⚠️ **Quote the globs.** zsh does not glob after parameter expansion, so collecting roots into a
+variable makes every one silently match nothing — this estate's recurring shell trap, and it fails
+by reporting a clean diff.
+
+### ⚠️ Two ways this check has lied, both fixed, both worth knowing
+
+**It read prose as code.** The first version did not strip comments, so it matched the attribute
+inside docblocks *explaining the convention*: a file illustrating `#[MapInputName('expires_in_days')]`
+reported that key twice, and one writing `#[MapInputName('<snake_key>')]` generically reported a key
+literally named `<snake_key>`. Mid-sweep the output read as a botched rename. The script now strips
+comments with `token_get_all()` first.
+
+**It was run against the file that had just been reverted.** During the same investigation, a
+generated artifact was copied, regenerated, restored (to avoid committing a neighbour's drift), and
+*then* grepped — measuring the pre-run copy. Every reading came back zero and a working pipeline was
+recorded as broken for hours.
+
+**Measure BEFORE you restore, or measure a copy of the post-run output. Never inspect the artifact
+you just reverted.**
+
+These are two of five instruments that, in a single day, **succeeded while measuring something other
+than the question** — alongside an import scan that called itself source-blindness, an audit that
+flagged identity mappings, and a namespace grep against a file that writes nested `declare namespace`
+blocks so the dotted string never appears. Four of the five were caught by a second,
+differently-shaped measurement. **None were caught by re-reading the first.**
 
 ## Adding a property
 
