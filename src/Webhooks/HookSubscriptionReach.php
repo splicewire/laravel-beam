@@ -233,11 +233,35 @@ class HookSubscriptionReach
         }
 
         try {
-            $backing = $this->resources->get($resourceKey)->backing;
+            $resource = $this->resources->get($resourceKey);
         } catch (Throwable) {
             return null;
         }
 
-        return class_exists($backing) ? $backing : null;
+        // ⚠️ Ask for the MODEL, not the raw `backing:` slot. `$resource->backing` is a
+        // `ResourceBacking|class-string` — since particle-contribution-seam 11 it may name a BACKING
+        // class rather than a model, and this method's return is fed straight to
+        // `Gate::authorize('viewAny', …)` at `:86-92`. Handing the Gate a backing class-string gates
+        // against a class with no policy.
+        //
+        // Live instance, 2026-08-28: `laravel-beam-accounts` moved `users` from `backing: User::class`
+        // to `backing: ConfiguredUserBacking::class` so the model follows host config. `class_exists()`
+        // is true for a backing, so the old guard let it straight through and `users.*` hook
+        // subscriptions started gating on a non-model.
+        if (($model = $resource->modelClass()) !== null) {
+            return $model;
+        }
+
+        // A backing that declares NO single model (`members` → `MembershipSource`, `review-queue`)
+        // reaches here. Deliberately preserving the pre-existing behaviour — return the backing
+        // class-string — rather than returning null.
+        //
+        // ⚠️ This is NOT an endorsement of it. `Gate::authorize('viewAny', MembershipSource::class)`
+        // finds no policy and DENIES, so a hook spanning those events cannot be created; that is very
+        // likely its own bug. But the caller's `null` branch is `continue` (`:88-90`), i.e. NO check at
+        // all — so "fixing" this to null would silently turn a deny into an allow on an authorization
+        // path. That is a security decision with its own evidence to gather, not a tidy-up to fold into
+        // a backing rename. Left exactly as it was; flagged for its own ticket.
+        return class_exists($resource->backing) ? $resource->backing : null;
     }
 }
