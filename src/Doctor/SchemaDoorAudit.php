@@ -133,7 +133,8 @@ class SchemaDoorAudit implements DoctorAudit
         // `Schemastud\DataSchemas\*` classes and type-hints them BELOW the guard, so a genuinely absent
         // package would fatal on autoload whatever the branch returned. It was not a safety net, it was
         // a note claiming one — and its PASS message was the only in-repo assertion left that base beam
-        // is schema-agnostic. It is not (ADR-0213, superseding that clause of ADR-0082).
+        // is schema-agnostic. It is not (`splicewire/splicewire-app` ADR-0213, superseding that
+        // clause of ADR-0082) — prefixed because this package owns an ADR-0213 of its own.
         $base = $this->config('data-schemas.base_uri');
 
         if ($base === false || $base === null || $base === '') {

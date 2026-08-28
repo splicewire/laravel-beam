@@ -94,7 +94,8 @@ class SchemaProjectionDriftAudit implements DoctorAudit
         // hard-requires `schemastud/laravel-data-schemas` and `spatie/laravel-data` in `require`, so
         // that branch could not execute in any installation composer is able to build — and while it
         // sat here it asserted, in the one place anyone would read it, that base beam is
-        // schema-agnostic. It is not (ADR-0213, superseding that clause of ADR-0082).
+        // schema-agnostic. It is not (`splicewire/splicewire-app` ADR-0213, superseding that clause
+        // of ADR-0082) — prefixed because this package owns an ADR-0213 of its own.
         $config = (array) config('data-schemas', []);
         $config['output_directory'] ??= resource_path('schemas');
 
