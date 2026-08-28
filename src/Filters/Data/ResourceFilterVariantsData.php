@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Filters\Data;
 
 use Schemastud\DataSchemas\Attributes\Description;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 
 /**
  * The `GET /{resource}/filters/variants` response — every addressable filter vocabulary for one
@@ -12,7 +12,7 @@ use Splicewire\Beam\Data\Data;
  * Non-optional by ticket 10 §4: the variant segment is an address space, and an address space nobody
  * can enumerate is not a surface.
  */
-class ResourceFilterVariantsData extends Data
+class ResourceFilterVariantsData extends BeamData
 {
     /**
      * @param  list<ResourceFilterVariantData>  $variants

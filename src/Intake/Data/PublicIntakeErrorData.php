@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Intake\Data;
 use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Validation\SchemaIntakeValidator;
 
 /**
@@ -28,7 +28,7 @@ use Splicewire\Beam\Validation\SchemaIntakeValidator;
  * publish a contract beam does not control.
  */
 #[TypeScript]
-class PublicIntakeErrorData extends Data
+class PublicIntakeErrorData extends BeamData
 {
     /**
      * @param  array<string, list<string>>  $errors

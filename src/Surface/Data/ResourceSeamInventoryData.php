@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Surface\Data;
 
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Surface\SpecSource;
 
 /**
@@ -16,7 +16,7 @@ use Splicewire\Beam\Surface\SpecSource;
  * real inventory with no application booted.
  */
 #[TypeScript]
-class ResourceSeamInventoryData extends Data
+class ResourceSeamInventoryData extends BeamData
 {
     /**
      * @param  list<string>  $securitySchemes  scheme names the document defines under `components`

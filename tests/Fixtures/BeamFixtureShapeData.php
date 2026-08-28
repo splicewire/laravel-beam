@@ -2,10 +2,10 @@
 
 namespace Splicewire\Beam\Tests\Fixtures;
 
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Particle\Fixtures\HasParticleFixtures;
 
-class BeamFixtureShapeData extends Data
+class BeamFixtureShapeData extends BeamData
 {
     use HasParticleFixtures;
 

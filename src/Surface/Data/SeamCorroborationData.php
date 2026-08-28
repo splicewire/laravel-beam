@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Surface\Data;
 
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 
 /**
  * The result of comparing one document against one runtime: per-seam **agreement**, **disagreement**,
@@ -19,7 +19,7 @@ use Splicewire\Beam\Data\Data;
  * {@see SurfaceFindingData::$provenanceRank}, so the distinction survives being flattened into a report.
  */
 #[TypeScript]
-class SeamCorroborationData extends Data
+class SeamCorroborationData extends BeamData
 {
     /** A live runtime was walked; findings can reach the strong rank. */
     public const MODE_CORROBORATED = 'corroborated';

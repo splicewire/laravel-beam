@@ -29,7 +29,7 @@ use Splicewire\Beam\Storage\GitRepoRegistrar;
     section: 'ops',
     readOnly: true,
 )]
-class GitRepoData extends Data
+class GitRepoData extends BeamData
 {
     public function __construct(
         public string $id,

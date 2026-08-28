@@ -51,7 +51,7 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
     icon: 'webhook',
     section: 'platform',
 )]
-class HookData extends Data
+class HookData extends BeamData
 {
     public function __construct(
         public string $id,
@@ -115,7 +115,7 @@ class HookData extends Data
         app(HookSubscriptionReach::class)->vetWrite($hook, $input, $actor);
     }
 
-    public static function project(Hook $model): Data
+    public static function project(Hook $model): BeamData
     {
         return new self(
             id: (string) $model->id,

@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Webhooks\Data;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Events\EventType;
 
 /**
@@ -24,7 +24,7 @@ use Splicewire\Beam\Events\EventType;
  * (`subject_type` on the hook record is the same string, so the two halves of the surface agree).
  */
 #[TypeScript]
-class EventTypeDescriptorData extends Data
+class EventTypeDescriptorData extends BeamData
 {
     public function __construct(
         #[Description('The full event name, plural-verbatim — the exact string an `events` array subscribes with.')]

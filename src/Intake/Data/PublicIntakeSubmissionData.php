@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Intake\Data;
 
 use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Http\PublicIntakeController;
 
 /**
@@ -30,4 +30,4 @@ use Splicewire\Beam\Http\PublicIntakeController;
  */
 #[TypeScript]
 #[LiteralTypeScriptType('Record<string, unknown>')]
-class PublicIntakeSubmissionData extends Data {}
+class PublicIntakeSubmissionData extends BeamData {}

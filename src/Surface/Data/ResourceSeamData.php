@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Surface\Data;
 
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Surface\SurfaceSignature;
 
 /**
@@ -21,7 +21,7 @@ use Splicewire\Beam\Surface\SurfaceSignature;
  * into "you told us it's open", which is the exact conflation the corroborator exists to avoid.
  */
 #[TypeScript]
-class ResourceSeamData extends Data
+class ResourceSeamData extends BeamData
 {
     /**
      * @param  list<string>|null  $security  declared security scheme names; null ⇒ undeclared (a gap)

@@ -8,7 +8,7 @@ use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Optional;
 use Spatie\LaravelData\Support\Validation\ValidationContext;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 
 /**
  * The `PUT|PATCH /{resource}/filters/{id}` body.
@@ -22,7 +22,7 @@ use Splicewire\Beam\Data\Data;
  * did not go away: `name` is `required` on create and `sometimes` here, so one union DTO would
  * publish it as optional on the endpoint that demands it.
  */
-class SavedFilterUpdateInputData extends Data
+class SavedFilterUpdateInputData extends BeamData
 {
     /**
      * @param  array<string, mixed>|null  $query_parameters

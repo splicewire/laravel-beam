@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Webhooks\Data;
 use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 
 /**
  * The body of `GET /hooks/events` and of its scoped twin `GET /{resource}/hooks/events`
@@ -16,7 +16,7 @@ use Splicewire\Beam\Data\Data;
  * this body can tell which catalog it holds without being told out of band.
  */
 #[TypeScript]
-class EventCatalogData extends Data
+class EventCatalogData extends BeamData
 {
     /**
      * @param  list<EventTypeDescriptorData>  $events

@@ -16,7 +16,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *
  * ## A trait, for the reason the tier below already established
  *
- * Not a method on {@see \Splicewire\Beam\Data\Data}. `StudData`'s docblock records that the `extends`
+ * Not a method on {@see \Splicewire\Beam\Data\BeamData}. `StudData`'s docblock records that the `extends`
  * slot is contested — six abstract Data bases exist in this family, `SyncData` among them — so a
  * base-class method reaches only what already extends that base. A trait reaches anything, and
  * `DerivesJsonSchema` is the precedent.

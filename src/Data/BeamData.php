@@ -19,7 +19,7 @@ use Schemastud\DataSchemas\StudData;
  * call sites this estate carries have one less reason to exist. Beam already requires
  * schemastud/laravel-data-schemas, so this adds no dependency.
  */
-class Data extends StudData
+class BeamData extends StudData
 {
     use RendersJsonSafely;
 

@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Webhooks\Data;
 
 use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Webhooks\DispatchWebhookJob;
 
 /**
@@ -33,7 +33,7 @@ use Splicewire\Beam\Webhooks\DispatchWebhookJob;
  * id ends at exactly one row.
  */
 #[TypeScript]
-class HookDeliveryData extends Data
+class HookDeliveryData extends BeamData
 {
     public function __construct(
         #[Description('The delivery uuid — the same string the receiver saw as `Idempotency-Key` and `X-Beam-Delivery`.')]

@@ -8,7 +8,7 @@ use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Optional;
 use Spatie\LaravelData\Support\Validation\ValidationContext;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 
 /**
  * The `POST /{resource}/filters` body.
@@ -30,7 +30,7 @@ use Splicewire\Beam\Data\Data;
  * The optional fields are `X|Optional|null` rather than plain nullables (ticket 31: a plain nullable
  * still lands in the schema's `required` list, and only the `Optional` union escapes).
  */
-class SavedFilterStoreInputData extends Data
+class SavedFilterStoreInputData extends BeamData
 {
     /**
      * @param  array<string, mixed>|null  $query_parameters

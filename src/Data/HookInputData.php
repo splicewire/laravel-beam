@@ -70,7 +70,7 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  * and a particle-declared DTO inside beam that skipped it was the one shape beam's own doctrine
  * could not describe.
  */
-class HookInputData extends Data implements MapsToModelAttributes
+class HookInputData extends BeamData implements MapsToModelAttributes
 {
     /**
      * @param  list<string>|null  $events  catalog event names; validated against the live catalog at

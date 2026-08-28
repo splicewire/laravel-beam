@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Rendering\Data;
 use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 
 /**
  * What one resource offers by way of renderings — the body of `GET {resource}/renderings`
@@ -23,7 +23,7 @@ use Splicewire\Beam\Data\Data;
  * the 404.
  */
 #[TypeScript]
-class ResourceRenderingCatalogData extends Data
+class ResourceRenderingCatalogData extends BeamData
 {
     /**
      * @param  list<RenderingDescriptorData>  $renderings

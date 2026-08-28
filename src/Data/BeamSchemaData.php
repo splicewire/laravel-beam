@@ -67,7 +67,7 @@ use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
     section: 'authoring',
 )]
 #[TypeScript]
-class BeamSchemaData extends Data
+class BeamSchemaData extends BeamData
 {
     public function __construct(
         #[NotInList]

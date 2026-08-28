@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Filters\Data;
 
 use Schemastud\DataSchemas\Attributes\Description;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 
 /**
  * One addressable filter vocabulary for a resource — the unit `GET /{resource}/filters/variants`
@@ -22,7 +22,7 @@ use Splicewire\Beam\Data\Data;
  * them. Enumerating that honestly is the point: ticket 10 §4 made variants non-optional precisely so
  * this does not become an address space nobody can discover.
  */
-class ResourceFilterVariantData extends Data
+class ResourceFilterVariantData extends BeamData
 {
     public function __construct(
         #[Description('The registry key. Use it as the `{variant}` segment: `GET /{resource}/filters/{variant}/schema`.')]

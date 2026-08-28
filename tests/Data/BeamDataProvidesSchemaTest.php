@@ -6,7 +6,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Schemastud\DataSchemas\Contracts\ProvidesJsonSchema;
 use Splicewire\Beam\Data\BeamSchemaData;
 use Splicewire\Beam\Data\BeamSchemaInputData;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Data\GitRepoData;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Data\HookInputData;
@@ -23,7 +23,7 @@ class BeamDataProvidesSchemaTest extends TestCase
 {
     public function test_the_beam_base_dto_provides_a_schema(): void
     {
-        $this->assertTrue(is_subclass_of(Data::class, ProvidesJsonSchema::class));
+        $this->assertTrue(is_subclass_of(BeamData::class, ProvidesJsonSchema::class));
     }
 
     public function test_a_subclass_answers_with_its_own_shape(): void
@@ -64,12 +64,12 @@ class BeamDataProvidesSchemaTest extends TestCase
     #[DataProvider('beamsOwnParticleSlots')]
     public function test_beams_own_particle_slot_dtos_answer_with_a_schema(string $class): void
     {
-        $this->assertTrue(is_subclass_of($class, Data::class), $class.' is not on beam\'s own Data base.');
+        $this->assertTrue(is_subclass_of($class, BeamData::class), $class.' is not on beam\'s own Data base.');
         $this->assertSame('object', $class::jsonSchema()['type'] ?? null);
     }
 }
 
-class SampleBeamDto extends Data
+class SampleBeamDto extends BeamData
 {
     public function __construct(public string $label) {}
 }

@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Intake\Data;
 
 use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Models\BeamSubmission;
 
 /**
@@ -19,7 +19,7 @@ use Splicewire\Beam\Models\BeamSubmission;
  * shape of its own success response.
  */
 #[TypeScript]
-class PublicIntakeAcceptedData extends Data
+class PublicIntakeAcceptedData extends BeamData
 {
     public function __construct(
         #[Description('The written '.BeamSubmission::class.' key — a uuid7. Under dedupe-ignore this is the MATCHED row\'s key, which is what makes a repeat capture indistinguishable from a first one.')]

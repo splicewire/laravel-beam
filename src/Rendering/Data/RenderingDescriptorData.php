@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Rendering\Data;
 use Schemastud\DataSchemas\Attributes\ArrayItems;
 use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Rendering\DeclaresDelivery;
 use Splicewire\Beam\Rendering\Http\RenderingsController;
 use Splicewire\Beam\Rendering\RenderingCertifier;
@@ -29,7 +29,7 @@ use Splicewire\Beam\Rendering\ResourceRendering;
  * make it read as a decision.
  */
 #[TypeScript]
-class RenderingDescriptorData extends Data
+class RenderingDescriptorData extends BeamData
 {
     /**
      * @param  list<string>  $formats

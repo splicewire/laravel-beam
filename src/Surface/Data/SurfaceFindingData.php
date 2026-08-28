@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Surface\Data;
 
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 
 /**
  * One corroboration finding: what the document says about a seam, what the runtime shows, and how much
@@ -20,7 +20,7 @@ use Splicewire\Beam\Data\Data;
  * ({@see RANK_OBSERVED}). Mapping those onto the compliance ladder is the consumer's job.
  */
 #[TypeScript]
-class SurfaceFindingData extends Data
+class SurfaceFindingData extends BeamData
 {
     /** The finding rests on the document's own claim; nothing checked it against a running system. */
     public const RANK_DOCUMENTED = 1;

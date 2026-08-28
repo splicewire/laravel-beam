@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Surface\Data;
 
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Surface\PostureFacet;
 
 /**
@@ -16,7 +16,7 @@ use Splicewire\Beam\Surface\PostureFacet;
  * returns `null` for an absent key, and treat that null as a gap: it is not `false`.
  */
 #[TypeScript]
-class RoutePostureData extends Data
+class RoutePostureData extends BeamData
 {
     /**
      * @param  array<string, bool>  $facets  determinable facets only, keyed by {@see PostureFacet} value

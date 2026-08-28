@@ -34,7 +34,7 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  * and a particle-declared DTO inside beam that skipped it was the one shape beam's own doctrine
  * could not describe.
  */
-class BeamSchemaInputData extends Data implements MapsToModelAttributes
+class BeamSchemaInputData extends BeamData implements MapsToModelAttributes
 {
     /**
      * @param  array<string, mixed>  $artifact  The complete authored schema document, `$id` included.

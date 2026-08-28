@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Webhooks\Data;
 
 use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Data\Data;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Models\Hook;
 
@@ -28,7 +28,7 @@ use Splicewire\Beam\Models\Hook;
  * ("Frame's generic create has no notion of a create-response carrying a display-once secret").
  */
 #[TypeScript]
-class CreatedHookData extends Data
+class CreatedHookData extends BeamData
 {
     public function __construct(
         #[Description('The hook, in the same shape every subsequent read projects it.')]
