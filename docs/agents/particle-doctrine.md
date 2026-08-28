@@ -63,6 +63,45 @@ it had to be hand-kept in sync; native FQNs are globally unique, so this is coll
 schema. A `.tsx` component's props can be *inferred* into a draft JSON Schema — never with fabricated
 widgets or `$ref`s, and graduating the draft is a separate authoring act.
 
+**Which HANDLER runs a resource's CRUD is a declaration slot too — `handler:`.** Omit it and the
+resource rides `ParticleFrameResourceHandler`, the one generic handler; name a class and that class
+serves it. There is exactly one non-null instance in the estate (`conduits`, whose federated edit
+writes an alternate subject the generic write pipeline `findOrFail`s before any hook can redirect it).
+
+The slot exists because the alternative had been tried and failed twice over. The flagship carried
+`App\Frame\FrameResourceRegistry`, a constructor-seeded `key => handler` table — the residue of the
+ADR-0156 fold, which collapsed 18 bespoke handlers onto the generic one and left a table behind to say
+so. It had already conceded most of its job (`keysForRealm()` delegated to `ParticleResourceRegistry`,
+"the declared membership authority"; the inverse `realmFor()` deleted for having zero callers, on the
+reasoning that *resurrecting an unused inverse is how a second authority gets recreated*). The handler
+map was the same mistake one slot over: a second place, beside the declaration, where a fact about a
+resource was written down.
+
+Two failure modes follow from that placement, and both were live:
+
+- **A host table cannot express absence.** `$this->handlers[$key] ?? DefaultResourceHandler::class`
+  answers for keys it has never heard of, so a miss is indistinguishable from a choice. Nine of the
+  flagship's framed resources were never listed and therefore sat on the host's *legacy* handler
+  undetected — one of them, `users`, throwing `CannotCreateData` on every non-empty read, in a repeat
+  of the `hooks` defect (api-surface-coherence 107) that outlived its own repair because that repair
+  named one key instead of asking which others were absent. A read that cannot miss cannot report one.
+  ⚠️ Note the direction: absence produced the **legacy** handler, so the explicit rows naming the
+  generic one were **load-bearing**, not padding. Deleting them as no-ops would have moved 18
+  resources *backwards*.
+- **A host table cannot be written by the party that knows.** Every one of those resources is declared
+  in a *package*, so the only place able to name a handler for `conduits` was a host file — which is
+  why tower's `ConduitResourceData` docblock pointed at `\App\Frame\Handlers\ConduitResourceHandler`
+  in prose. Declared on the resource, the handler travels with it and an installing host wires nothing.
+
+`Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver` reads the slot. Its `handlerFor()`
+**throws** `UnknownFrameResource` for a key this host does not declare, and `handlerIfDeclared()` is
+the nullable half — the `get()`/`find()` pair `ParticleResourceRegistry` already ships, mirrored one
+tier out. A caller wanting a default supplies it at its own call site. The throw is safe because
+Frame's transport resolves a `ResourceDefinition` (and 404s) before it ever asks for a handler, and
+because every Frame manifest key is a registered particle at every host — set difference empty across
+the flagship and 11 `~/Herd` roots. Enumerate hosts from disk when re-checking that, never from
+`symlinks.json`, which cannot see the three starter symlinks.
+
 ### How far the chain is wired (updated: particle-doctrine-followups 12–14)
 
 The four gaps this section used to list are closed or explicitly decided; what remains open is stated

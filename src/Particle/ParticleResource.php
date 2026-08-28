@@ -9,6 +9,7 @@ use RuntimeException;
 use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
 use Rushing\Popcorn\Registries\RegistryKey;
+use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
@@ -168,6 +169,40 @@ class ParticleResource implements HasRegistryKey
      *                                 gate — which is what lets a route key be unique only **per parent** (a
      *                                 product slug unique per seller under `/sellers/{seller}/extensions/{slug}`)
      *                                 rather than globally.
+     * @param  class-string<FrameResourceHandler>|null  $handler
+     *                                                            the Frame CRUD handler that serves this resource. null (the default, and
+     *                                                            the overwhelmingly common case) ⇒ {@see ParticleFrameResourceHandler}, the
+     *                                                            ONE generic handler that runs the canonical CRUD off this declaration. A
+     *                                                            non-null class-string is a resource saying its persistence is genuinely
+     *                                                            bespoke — see `conduits`, whose federated edit writes an ALTERNATE SUBJECT
+     *                                                            that the generic write pipeline `findOrFail`s before any hook can redirect
+     *                                                            it.
+     *
+     *                                 **Why this is a declaration slot and not a host-side map.** It replaces
+     *                                 `App\Frame\FrameResourceRegistry` at the flagship — a constructor-seeded
+     *                                 `key => handler` table that had accumulated 19 explicit rows. That class
+     *                                 was the residue of the ADR-0156 fold (tower-api-dissolution #06-#18), which
+     *                                 collapsed 18 bespoke per-resource handlers onto the one generic handler and
+     *                                 left the table behind to say so. Its own docblock had already conceded the
+     *                                 rest of its job away: `keysForRealm()` was delegated to
+     *                                 {@see ParticleResourceRegistry}, "the declared membership authority", and
+     *                                 the inverse `realmFor()` was deleted for having zero callers, on the
+     *                                 reasoning that resurrecting an unused inverse is how a second authority
+     *                                 gets recreated. The handler map was the last thing keeping it alive, and it
+     *                                 was the same mistake one slot over: a second place, beside the declaration,
+     *                                 where a fact about a resource was written down.
+     *
+     *                                 Two things go wrong when that fact lives in a host table. It **cannot
+     *                                 express absence** — a lookup with a `?? DefaultHandler` tail answers for
+     *                                 keys it has never heard of, so nine of the flagship's resources sat on the
+     *                                 host's legacy handler for months with nothing able to report it, one of
+     *                                 them (`users`) throwing on every non-empty read. And it **cannot be written
+     *                                 by the party that knows** — every one of those resources is declared in a
+     *                                 package, so the only place able to name a handler for `conduits` was a host
+     *                                 file, which is why tower's `ConduitResourceData` docblock had to point at
+     *                                 `\App\Frame\Handlers\ConduitResourceHandler` in prose. Declared here, the
+     *                                 handler travels with the resource and a host that installs the package gets
+     *                                 the right one without wiring.
      */
     public function __construct(
         public string $key,
@@ -199,6 +234,7 @@ class ParticleResource implements HasRegistryKey
         public ?bool $frame = null,
         public string $singularLabel = '',
         public ?string $routeKey = null,
+        public ?string $handler = null,
     ) {}
 
     /**

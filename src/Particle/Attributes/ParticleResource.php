@@ -3,7 +3,9 @@
 namespace Splicewire\Beam\Particle\Attributes;
 
 use Attribute;
+use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
@@ -86,6 +88,7 @@ class ParticleResource
      * @param  bool|null  $frame  explicit override for the framed predicate: true forces framed even with an empty label, false forces REST-only even with a label; null ⇒ framed iff the label is non-empty
      * @param  string  $singularLabel  display SINGULAR for docs/titles when the inflector mangles the noun (`media` → "Medium"); empty ⇒ inflect from the label/key. Display-only — no framing/nav semantics
      * @param  string|null  $routeKey  the column `{id}` resolves against for show/update/destroy (e.g. `'slug'`); null ⇒ the primary key, today's path. A declared route key is the resource saying how it is NAMED — never where it is hung. Resolution still runs through the relative base query and the `scope` gate, so the column need only be unique per PARENT under a relative mount. See {@see \Splicewire\Beam\Particle\ParticleResource::$routeKey}
+     * @param  class-string<FrameResourceHandler>|null  $handler  the Frame CRUD handler this resource is served by; null ⇒ {@see ParticleFrameResourceHandler}, the generic one. See {@see \Splicewire\Beam\Particle\ParticleResource::$handler} for why this is a declaration slot rather than a host-side lookup table
      */
     public function __construct(
         public string $key,
@@ -113,5 +116,6 @@ class ParticleResource
         public ?bool $frame = null,
         public string $singularLabel = '',
         public ?string $routeKey = null,
+        public ?string $handler = null,
     ) {}
 }
