@@ -38,6 +38,7 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\GuardActorAdapter;
+use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
@@ -538,6 +539,19 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // as well as in role, so the two migrate as one archetype when registry-kernel's
         // per-resource-registry sweep reaches beam.
         $this->app->singleton(ParticleRelativeRegistry::class);
+
+        // The gated-capability registry (root `beam.capabilities`, app ADR-0023). Bound HERE, by the
+        // package that owns the root, because contributors now seed it from their OWN boot
+        // (`Splicewire\Tower\TowerServiceProvider::packageBooted()`) instead of through a subclass
+        // whose `registerDefaults()` hook the host had to remember to bind. A shared singleton is what
+        // makes that seeding reach a reader: unbound, this class is auto-resolvable, so every
+        // `app(CapabilityRegistry::class)` and every constructor injection would get a FRESH, EMPTY
+        // registry and the contributor's writes would land on an object nobody reads — green suite,
+        // empty registry. That was the live state before this binding: the flagship bound tower's
+        // SUBCLASS, so `DefaultEntitlementGate` and `FreePlanEntitlementGate`, which type-hint THIS
+        // class, were autowired an unseeded one and `get('schema.llm-migration')` answered null in a
+        // host where the capability was registered.
+        $this->app->singleton(CapabilityRegistry::class);
 
         // The host's API taxonomy and the chain that resolves a route into it (api-surface-coherence 17).
         // Beam ships the registry EMPTY on purpose: a taxonomy belongs to the host, and seeding this

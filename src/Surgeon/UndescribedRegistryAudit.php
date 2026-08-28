@@ -42,9 +42,11 @@ use Splicewire\Beam\Surgeon\Support\HostScanRoots;
  * So this audit now asks the DECLARATION question, which is the half that is answerable today, and it is
  * strictly better at it: matching moved off the descriptor's short `name` onto the attribute itself, which
  * kills the live defect where all three estate classes called `CapabilityRegistry` reported described by
- * colliding with each other. (Two of the three still carry the name; the third was renamed to
- * `Splicewire\Tower\Circuit\Capabilities\CapabilityLadder` by registry-kernel ticket 44. The defect was
- * never fixed by the rename — it was fixed by matching on the attribute.)
+ * colliding with each other. (None of the three carries that exact short name any more: one was renamed to
+ * `Splicewire\Tower\Circuit\Capabilities\CapabilityLadder` by registry-kernel ticket 44, and
+ * `Splicewire\Tower\Capabilities\CapabilityRegistry` — beam's attribute-less subclass — was deleted in
+ * favour of provider-tier seeding. The defect was never fixed by either change; it was fixed by matching
+ * on the attribute, and would return the day two classes shared a name again.)
  *
  * **The membership ratchet below is vacuous until owners start describing into `RegistryIndex`.** Roots are
  * derived from index membership, and the index fills as ticket 37/38's migrations land — so a PASS from this
@@ -776,16 +778,20 @@ class UndescribedRegistryAudit implements DoctorAudit
      *
      * **This replaces a name match, and that is the point.** The old test compared the descriptor's `name`
      * against the registry's SHORT class name, so all three estate classes then called `CapabilityRegistry`
-     * (beam's, tower's subclass of it, and the unrelated `Tower\Circuit\Capabilities` one — now
-     * `CapabilityLadder`, registry-kernel ticket 44) satisfied each
+     * (beam's, tower's subclass of it — since deleted — and the unrelated `Tower\Circuit\Capabilities` one,
+     * now `CapabilityLadder`, registry-kernel ticket 44) satisfied each
      * other's obligation by collision — one descriptor answered for three registries. An attribute cannot
      * collide: it is either on this class or it is not.
      *
      * Both sides are checked because a host codes against the interface while the declaration belongs on
      * whatever owns the keyspace, and `singleton(Schema::class, NodeSchema::class)` legitimately puts those
-     * on different classes. Attributes are NOT inherited through `getAttributes()`, so a subclass that
-     * genuinely owns a different root must declare its own — which is the behaviour we want and the reason
-     * tower's `Tower\Capabilities\CapabilityRegistry` subclass is a real finding here rather than a false one.
+     * on different classes. ⚠️ **`IsRegistry::of()` WALKS the parent chain** since registry-kernel ticket 42
+     * (nearest declaration wins), so an undeclared subclass of a declared registry reports described here
+     * rather than being rowed — deliberately, because it is one logical registry with two seeding sites,
+     * not two registries. A subclass that genuinely owns a different root must declare its own. The estate
+     * has no production instance of the inheriting shape on this seam any more — tower's
+     * `Tower\Capabilities\CapabilityRegistry`, which was the one that forced 42, is gone — so what pins
+     * the walk is `Tests\Doctor\Fixtures\InheritingFixtureRegistry`, and it is the only thing that does.
      */
     public function isDescribed(string $abstract, ?string $concrete = null): bool
     {
