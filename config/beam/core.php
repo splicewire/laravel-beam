@@ -268,6 +268,32 @@ return [
         'tracker_path' => env('BEAM_TRACKER_PATH'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Family Tailwind scan (the two advisory @source/token audits)
+    |--------------------------------------------------------------------------
+    |
+    | Where `FamilySourceCoverageAudit` and `FamilyTokenContractAudit` look. Every key has a working
+    | default and exists only so an unusual host shape (a second frontend, a non-standard Vite config
+    | path) can be named rather than silently missed — the flagship's app is `ui/src`, not
+    | `resources/js`, and a scan pointed at the wrong tree returns a small non-zero result that reads
+    | like a real answer.
+    |
+    | `css_roots` are searched for Tailwind **v4** entries (`@import "tailwindcss"`); a v3 host has no
+    | `@source` and is out of the population. `plugin_markers` are what "the list is derived" looks
+    | like in a Vite config — the audit's post-migration branch, satisfied by
+    | `familySources()` from `@schemastud/seam/vite`.
+    */
+    'tailwind' => [
+        'css_roots' => ['resources', 'ui', 'src'],
+        'vite_configs' => [
+            'vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.mts',
+            'ui/vite.config.ts', 'ui/vite.config.js',
+        ],
+        'plugin_markers' => ['familySources', 'familyDistSources', 'vite-plugin-family-sources'],
+        'file_cap' => 4000,
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 

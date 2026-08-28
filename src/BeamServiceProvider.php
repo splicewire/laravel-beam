@@ -61,6 +61,8 @@ use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
+use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
+use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
@@ -71,6 +73,7 @@ use Splicewire\Beam\Doctor\RetiredMigrationAudit;
 use Splicewire\Beam\Doctor\ScribeOutputContractAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
+use Splicewire\Beam\Doctor\Support\FamilyTailwindScan;
 use Splicewire\Beam\Doctor\Support\TrackerTicketStatus;
 use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
@@ -635,6 +638,21 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // twin of the install manifest — a singleton consumers push their own audits into, so one
         // `beam:doctor` run aggregates the whole family. beam-core's own audits stay hardcoded (coexist).
         $this->app->singleton(BeamDoctorManifest::class);
+
+        // The shared static read both family-Tailwind audits sit on (audit-and-cadence-sidebar). It takes
+        // the host base path + `beam.core.tailwind`, so the manifest can `make()` either audit with no
+        // per-check wiring in the aggregating command — the PrototypeWiringAudit binding precedent.
+        //
+        // `bind`, deliberately, not `scoped`. It memoises its own filesystem read, which is exactly the
+        // silhouette {@see UndescribedRegistryAudit} gates on — plural array state plus a read verb — and
+        // as a `scoped()` it failed that audit's own dogfood assertion. It is NOT a registry: nothing
+        // registers into it and it holds no keyspace, so declaring `#[IsRegistry]` to quiet the gate would
+        // be a lie. A fresh instance per resolution is the honest shape and costs nothing (~40ms across 24
+        // resolved packages at the flagship); the memo still serves the one audit run that owns it.
+        $this->app->bind(FamilyTailwindScan::class, fn ($app) => new FamilyTailwindScan(
+            $app->basePath(),
+            (array) config('beam.core.tailwind', []),
+        ));
 
         // The beam-seed self-registration manifest: the seed-side twin of the install/doctor manifests — a
         // singleton every beam-* package pushes its own SeedStep into, so one `splicewire:beam:seed` run
@@ -1522,6 +1540,46 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // arms an `Application::booted()` callback rather than checking inline, because a package that
         // boots after beam has not registered its hook yet at this point in the order.
         (new DeadResolvingHookGuard($this->app))->arm();
+
+        $this->registerFamilyTailwindAudits();
+    }
+
+    /**
+     * The two family-Tailwind audits, registered DOWN into beam's own doctor manifest — ADVISORY, and
+     * the token contract ordered behind the coverage check because it is a tier below it.
+     *
+     * They ride {@see BeamDoctorManifest} rather than surgeon's `BuiltInAudits` for reach: beam is
+     * installed at every affected root, and at least one of them (`beam-pilot-gcp-cloud-run`) has no
+     * surgeon at all. Beam-core's own audits are otherwise hardcoded in {@see BeamDoctorCommand} — these
+     * two are deliberately not, because they carry no bespoke `run(...)` inputs (the whole read is behind
+     * {@see FamilyTailwindScan}) and so satisfy the argument-free {@see DoctorAudit}
+     * contract the manifest exists to run.
+     *
+     * ⚠️ `gate: false` on both, and it is the AGENTS.md rule rather than caution: "does this host scan
+     * this dist" and "does this host declare this token" are facts about the HOST, which its author
+     * could not have gotten right, so neither may ever join an exit code.
+     */
+    protected function registerFamilyTailwindAudits(): void
+    {
+        if (! $this->app->bound(BeamDoctorManifest::class)) {
+            return;
+        }
+
+        $manifest = $this->app->make(BeamDoctorManifest::class);
+
+        $manifest->register(
+            package: 'splicewire/laravel-beam',
+            audit: FamilySourceCoverageAudit::class,
+            gate: false,
+            order: 120,
+        );
+
+        $manifest->register(
+            package: 'splicewire/laravel-beam',
+            audit: FamilyTokenContractAudit::class,
+            gate: false,
+            order: 121,
+        );
     }
 
     /**
