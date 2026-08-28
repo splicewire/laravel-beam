@@ -154,12 +154,17 @@ class ParticleResourcesCommand extends Command
     /**
      * Whether nothing bespoke serves this key.
      *
-     * Matched on the class NAME rather than on a class-string, because one of the two generic handlers is
-     * HOST-owned and beam cannot name it: at `~/Herd/splicewire-app` the fall-through is
-     * `App\Frame\DefaultResourceHandler`, which `api-surface-coherence` 112 measured as honouring none of
-     * a declaration's conventions; beam's own OOTB resolver answers `ParticleFrameResourceHandler`, which
-     * honours all of them. They are opposite in quality and identical in the fact this counts — no
-     * per-resource handler was written — so the resolver line above is what tells the two apart.
+     * Matched on the class NAME rather than on a class-string, because a generic fall-through handler may
+     * be HOST-owned, in which case beam cannot name it. The flagship's was `App\Frame\DefaultResourceHandler`
+     * — which `api-surface-coherence` 112 measured as honouring none of a declaration's conventions, against
+     * beam's `ParticleFrameResourceHandler`, which honours all of them. Opposite in quality, identical in
+     * the fact this counts (no per-resource handler was written), which is why the resolver line above is
+     * what tells them apart.
+     *
+     * That particular host handler is gone: the flagship's `key => handler` table dissolved onto the
+     * declaration's `handler:` slot, and the nine resources that had been silently falling through to it
+     * now ride the generic handler. The name-matching stays, because a host may still bind its own
+     * resolver and its own fall-through — `numero` and `schemastud` do.
      */
     private function isGenericHandler(ResourceRegistryRow $row): bool
     {

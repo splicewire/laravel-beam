@@ -65,13 +65,17 @@ class ResourceRegistryReport
      * WHICH resolver answered the handler column, or null when none is bound.
      *
      * Worth surfacing beside the rows rather than inferring from them, because the two interesting
-     * readings are indistinguishable at row level. A host may bind a bespoke map (its handler names then
-     * vary per key), or bind nothing and take beam's OOTB
-     * {@see DefaultParticleResourceHandlerResolver}, which answers the one generic
-     * handler for every key. Measured at `~/Herd/splicewire-app`: it is the SECOND — the flagship builds
-     * an 18-entry handler map in `App\Frame\FrameResourceRegistry` and never binds it to this port, so
-     * the map is reachable only from the host's own controller and Frame's socket sees the default. That
-     * is a fact a reader should be handed, not asked to deduce from 41 identical cells.
+     * readings are indistinguishable at row level. A host may bind its own resolver (its handler names
+     * then vary per key), or bind nothing and take beam's OOTB
+     * {@see DefaultParticleResourceHandlerResolver}, which reads each declaration's `handler:` slot and
+     * falls back to the one generic handler. That is a fact a reader should be handed, not asked to
+     * deduce from 41 near-identical cells.
+     *
+     * ⚠️ This used to record that the flagship built an 18-entry map in `App\Frame\FrameResourceRegistry`
+     * and never bound it to this port, so the map was reachable only from the host's own controller while
+     * Frame's socket saw the default. Both halves are now dead: the map is dissolved onto the `handler:`
+     * slot, and the flagship binds nothing. `numero` and `schemastud` are the estate's only host-bound
+     * resolvers today.
      *
      * @return class-string|null
      */
