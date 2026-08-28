@@ -2,9 +2,13 @@
 
 namespace Splicewire\Beam\Seed;
 
+use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryKey;
+use Rushing\Popcorn\Registries\RelativeUriKey;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Install\BeamInstallManifest;
 
@@ -34,10 +38,18 @@ use Splicewire\Beam\Install\BeamInstallManifest;
         .'skipping are different states; the command reports a gated skip rather than omitting it.',
     order: 3,
 )]
-class BeamSeedManifest
+/**
+ * @implements Registry<SeedStep>
+ */
+class BeamSeedManifest implements Registry
 {
-    /** @var list<SeedStep> */
-    private array $steps = [];
+    /** @var BasicRegistry<SeedStep> */
+    private BasicRegistry $store;
+
+    public function __construct()
+    {
+        $this->store = BasicRegistry::for($this);
+    }
 
     /**
      * Register a package's seed step. Idempotent per package name — re-registering replaces, so a provider
@@ -47,14 +59,28 @@ class BeamSeedManifest
      * @param  int  $order  lower runs first; beam-core registers at 0 (core-first), consumers default to 100
      * @param  ?string  $configGate  a config key that must be truthy to run this step; null ⇒ always runs
      */
-    public function register(string $package, string $seederClass, int $order = 100, ?string $configGate = null): void
-    {
-        $this->steps = array_values(array_filter(
-            $this->steps,
-            static fn (SeedStep $step): bool => $step->package !== $package,
-        ));
+    public function register(
+        RegistryKey|string $package,
+        mixed $seederClass = null,
+        ?string $by = null,
+        ?string $ability = null,
+        int $order = 100,
+        ?string $configGate = null,
+    ): static {
+        // ⚠️ The key is a COMPOSER PACKAGE NAME — `splicewire/laravel-beam-accounts` — and `/` is not a
+        // `Key` character, so a bare string throws. Registry-kernel 58 D5 rules this shape for
+        // `BeamExtensionInstallManifest`: `RelativeUriKey`, "composer coordinate preserved as
+        // spelled." The slash is a joiner being translated, not a new grammar — every segment must
+        // still satisfy `Key`'s own charset — and the translation is lossless both ways, which
+        // matters because the same string is the coordinate a human reads back out of `beam:seed`.
+        $this->store->register(
+            $package instanceof RegistryKey ? $package : RelativeUriKey::of($package),
+            new SeedStep((string) $package, (string) $seederClass, $order, $configGate),
+            $by,
+            $ability,
+        );
 
-        $this->steps[] = new SeedStep($package, $seederClass, $order, $configGate);
+        return $this;
     }
 
     /**
@@ -65,9 +91,47 @@ class BeamSeedManifest
      */
     public function steps(): array
     {
-        $steps = $this->steps;
+        $steps = array_values(array_map(
+            fn (RegistryKey $key): mixed => $this->store->resolve($key),
+            $this->store->keys(),
+        ));
+
         usort($steps, static fn (SeedStep $a, SeedStep $b): int => $a->order <=> $b->order);
 
         return $steps;
+    }
+
+    /* ---------------- Registry contract ---------------- */
+
+    public function has(RegistryKey|string $key): bool
+    {
+        return $this->store->has($key);
+    }
+
+    public function resolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->resolve($key);
+    }
+
+    public function tryResolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->tryResolve($key);
+    }
+
+    /** @return array<string, mixed> */
+    public function matches(RegistryKey|string $key): array
+    {
+        return $this->store->matches($key);
+    }
+
+    /** @return list<RegistryKey> */
+    public function keys(): array
+    {
+        return $this->store->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        return $this->store->unfiltered();
     }
 }

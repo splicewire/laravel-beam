@@ -4,9 +4,13 @@ namespace Splicewire\Beam\Doctor;
 
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\DoctorRegistration;
+use Rushing\Popcorn\Registries\BasicRegistry;
+use Rushing\Popcorn\Registries\ClassKey;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Install\BeamInstallManifest;
 
@@ -39,10 +43,18 @@ use Splicewire\Beam\Install\BeamInstallManifest;
         .'hardcoded in BeamDoctorCommand. This carries the consumer tail only.',
     order: 2,
 )]
-class BeamDoctorManifest
+/**
+ * @implements Registry<DoctorRegistration>
+ */
+class BeamDoctorManifest implements Registry
 {
-    /** @var list<DoctorRegistration> */
-    private array $registrations = [];
+    /** @var BasicRegistry<DoctorRegistration> */
+    private BasicRegistry $store;
+
+    public function __construct()
+    {
+        $this->store = BasicRegistry::for($this);
+    }
 
     /**
      * Register a package's audit. Idempotent per audit class — re-registering the same audit replaces,
@@ -50,14 +62,26 @@ class BeamDoctorManifest
      *
      * @param  class-string<DoctorAudit>  $audit
      */
-    public function register(string $package, string $audit, bool $gate = false, int $order = 100): void
-    {
-        $this->registrations = array_values(array_filter(
-            $this->registrations,
-            static fn (DoctorRegistration $r): bool => $r->audit !== $audit,
-        ));
+    public function register(
+        RegistryKey|string $package,
+        mixed $audit = null,
+        ?string $by = null,
+        ?string $ability = null,
+        bool $gate = false,
+        int $order = 100,
+    ): static {
+        // ⚠️ The KEY is the audit class, not the package — this manifest has always been idempotent
+        // per audit ("re-registering the same audit replaces"), and one package ships many audits.
+        // `ClassKey` carries the full namespace, so two audits sharing a basename across packages
+        // cannot silently supersede one another under `Supersede`; `Key::fromClass()` would reduce
+        // both to the same segment.
+        //
+        // `$package` stays slot 1 and keeps its name because 44 call sites spell it that way. That
+        // makes slot 1 the contract's `$key` position while carrying the package, which is a
+        // deliberate divergence recorded here rather than a rename that would break every caller.
+        $this->store->register(ClassKey::of((string) $audit), new DoctorRegistration((string) $package, (string) $audit, $gate, $order), $by, $ability);
 
-        $this->registrations[] = new DoctorRegistration($package, $audit, $gate, $order);
+        return $this;
     }
 
     /**
@@ -68,9 +92,47 @@ class BeamDoctorManifest
      */
     public function registrations(): array
     {
-        $registrations = $this->registrations;
+        $registrations = array_values(array_map(
+            fn (RegistryKey $key): mixed => $this->store->resolve($key),
+            $this->store->keys(),
+        ));
+
         usort($registrations, static fn (DoctorRegistration $a, DoctorRegistration $b): int => $a->order <=> $b->order);
 
         return $registrations;
+    }
+
+    /* ---------------- Registry contract ---------------- */
+
+    public function has(RegistryKey|string $key): bool
+    {
+        return $this->store->has($key);
+    }
+
+    public function resolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->resolve($key);
+    }
+
+    public function tryResolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->tryResolve($key);
+    }
+
+    /** @return array<string, mixed> */
+    public function matches(RegistryKey|string $key): array
+    {
+        return $this->store->matches($key);
+    }
+
+    /** @return list<RegistryKey> */
+    public function keys(): array
+    {
+        return $this->store->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        return $this->store->unfiltered();
     }
 }

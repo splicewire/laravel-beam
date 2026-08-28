@@ -3,9 +3,12 @@
 namespace Splicewire\Beam\Schema;
 
 use Closure;
+use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Splicewire\Beam\Install\BeamInstallManifest;
 
@@ -39,10 +42,18 @@ use Splicewire\Beam\Install\BeamInstallManifest;
         .'own binding-side map wins over every registration here.',
     order: 11,
 )]
-class SchemaSources
+/**
+ * @implements Registry<Closure(): SchemaRegistry>
+ */
+class SchemaSources implements Registry
 {
-    /** @var array<string, Closure(): SchemaRegistry> key → lazy tier factory, in registration order */
-    protected array $factories = [];
+    /** @var BasicRegistry<Closure(): SchemaRegistry> key → lazy tier factory, in registration order */
+    protected BasicRegistry $store;
+
+    public function __construct()
+    {
+        $this->store = BasicRegistry::for($this);
+    }
 
     /**
      * Contribute (or override) a source tier. Last registration per key wins among packages;
@@ -50,30 +61,97 @@ class SchemaSources
      *
      * @param  Closure(): SchemaRegistry  $factory
      */
-    public function register(string $key, Closure $factory): static
+    public function register(RegistryKey|string $key, mixed $factory = null, ?string $by = null, ?string $ability = null): static
     {
-        $this->factories[$key] = $factory;
+        $this->store->register($key, $factory, $by, $ability);
 
         return $this;
     }
 
-    public function has(string $key): bool
+    public function has(RegistryKey|string $key): bool
     {
-        return isset($this->factories[$key]);
+        return $this->store->has($key);
     }
 
-    /** Build the registered tier for a key, or null when nothing is registered under it. */
-    public function resolve(string $key): ?SchemaRegistry
+    /**
+     * Build the registered tier for a key, or null when nothing is registered under it.
+     *
+     * ⚠️ This DIVERGES from {@see Registry::resolve()} in two ways, both deliberate and both
+     * pre-existing. It returns the BUILT tier rather than the stored entry (the entry is a lazy
+     * factory, and every caller wants the thing it builds), and it answers `null` on a miss where
+     * the contract throws — i.e. it is `tryResolve()` semantics under the `resolve()` name.
+     * Renaming it would break every caller for no gain; {@see tryFactory()} exposes the raw entry
+     * for anything that genuinely wants the contract's reading.
+     */
+    public function resolve(RegistryKey|string $key): ?SchemaRegistry
     {
-        $factory = $this->factories[$key] ?? null;
+        $factory = $this->store->tryResolve($key);
 
-        return $factory === null ? null : $factory();
+        return $factory instanceof Closure ? $factory() : null;
     }
 
-    /** @return array<string, Closure(): SchemaRegistry> */
+    /** The stored factory itself — the contract's reading of `resolve`, under a name that cannot collide. */
+    public function tryFactory(RegistryKey|string $key): ?Closure
+    {
+        $factory = $this->store->tryResolve($key);
+
+        return $factory instanceof Closure ? $factory : null;
+    }
+
+    public function tryResolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->tryResolve($key);
+    }
+
+    /** @return array<string, mixed> */
+    public function matches(RegistryKey|string $key): array
+    {
+        return $this->store->matches($key);
+    }
+
+    /** @return list<RegistryKey> */
+    public function keys(): array
+    {
+        return $this->store->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        return $this->store->unfiltered();
+    }
+
+    /**
+     * @return array<string, Closure(): SchemaRegistry>
+     */
     public function factories(): array
     {
-        return $this->factories;
+        $factories = [];
+
+        foreach ($this->store->keys() as $key) {
+            $factory = $this->store->resolve($key);
+
+            if ($factory instanceof Closure) {
+                $factories[$this->bareKey($key)] = $factory;
+            }
+        }
+
+        return $factories;
+    }
+
+    /**
+     * The key as callers spell it, with the declared root stripped.
+     *
+     * `keys()` answers with ABSOLUTE `RegistryKey`s while `factories()` and `orderedSources()` both
+     * key by the bare source name and are compared against config values — pass 1's recipe amendment
+     * 4, where a relative-vs-absolute mismatch compiles, passes and makes the index read the wrong
+     * thing.
+     */
+    protected function bareKey(RegistryKey|string $key): string
+    {
+        $prefix = 'schemas.sources.';
+        $rendered = (string) $key;
+
+        return str_starts_with($rendered, $prefix) ? substr($rendered, strlen($prefix)) : $rendered;
     }
 
     /**
@@ -85,6 +163,6 @@ class SchemaSources
      */
     public function orderedSources(array $configured): array
     {
-        return array_values(array_unique([...$configured, ...array_keys($this->factories)]));
+        return array_values(array_unique([...$configured, ...array_keys($this->factories())]));
     }
 }
