@@ -111,7 +111,10 @@ use Splicewire\Beam\Surgeon\Support\HostScanRoots;
  *      parameter (the config-source and constructor-policy seams are seeded, not `register()`ed into);
  *   3. it exposes an **entry path** (a public write-verb method, or that array constructor parameter) AND a
  *      **lookup path** (a public read-verb method). Both halves are required: a thing you can only put into
- *      is a sink, a thing you can only read from is a value.
+ *      is a sink, a thing you can only read from is a value. The constructor half excludes an array
+ *      parameter named for a PLACE ({@see STORE_PARAM_NAMES}) — a list of directories to scan seeds no
+ *      entries, and reading it as an entry path is what put a source-scanner in the population
+ *      ({@see hasArrayConstructorParam()}).
  *
  * Verbs match on a camelCase prefix, so `resolveGenerate()`/`hasGround()` count — `HandlerRegistry` names
  * its lookups after what they look up, which a whole-name match would miss.
@@ -239,10 +242,16 @@ class UndescribedRegistryAudit implements DoctorAudit
      * name the thing itself rather than where a keyspace is kept, and admitting them would make criterion 4
      * fire on most of the estate's small value objects.
      *
+     * The list serves TWO criteria, in opposite directions, and that is deliberate rather than reuse for
+     * its own sake — it is one vocabulary answering one question, *"does this parameter name a place?"*:
+     * on a `string` parameter it is criterion 4 (c)'s evidence that the entries live elsewhere, and on an
+     * `array` parameter it DISQUALIFIES criterion 3's constructor entry path
+     * ({@see hasArrayConstructorParam()}). A list of places to look is not a list of entries.
+     *
      * @var list<string>
      */
     public const STORE_PARAM_NAMES = [
-        'directory', 'directories', 'dir', 'path', 'basepath', 'root', 'rootpath',
+        'directory', 'directories', 'dir', 'path', 'paths', 'basepath', 'root', 'roots', 'rootpath',
         'disk', 'filesystem', 'table', 'connection', 'bucket', 'store', 'storage',
     ];
 
@@ -1011,13 +1020,53 @@ class UndescribedRegistryAudit implements DoctorAudit
         return false;
     }
 
-    /** The seeded shape: `new Registry(config('...'))` — a config-source/constructor-policy seam. */
+    /**
+     * The seeded shape: `new Registry(config('...'))` — a config-source/constructor-policy seam.
+     *
+     * ## A store-LOCATION list is not an entry path (registry-kernel 38, 2026-08-28)
+     *
+     * This is criterion 3's *entry* half, and the reason an array constructor parameter satisfies it is
+     * that the seam **seeds entries**: `config('data-nav.stages')` IS the keyspace, arriving by
+     * constructor rather than by `register()`. A parameter named for a place seeds nothing. It says where
+     * to LOOK, and what is found there is read, not registered.
+     *
+     * Measured on `Splicewire\Beam\Dev\Databases\SuiteHarness`, which broke the flagship's
+     * `splicewire:beam:registry-conformance --check` ratchet (12 → 13) the day it landed. It is a
+     * read-only evidence reader: it regex-scans a project's own `phpunit.xml` and `tests/` for the env
+     * vars and drivers that project's harness names, so that `splicewire:beam:dev:isolated-test-db` stops
+     * guessing. Nothing registers into it, nothing addresses it by key, and its only caller is one command
+     * in its own package. It wears the silhouette anyway: its two memo caches (`?array $scan`, `?array
+     * $pins`) are criterion 2's plural state, `sources()`/`resolveProjectPath()` are criterion 3's lookup,
+     * and `array $roots` — the DIRECTORIES it scans — was reading as the entry path. It has no write verb
+     * at all, which is the tell: **a thing you cannot put into is not a registry**, and the constructor
+     * was the only thing claiming you could.
+     *
+     * So the row is ejected rather than exempted — the same act ticket 36 performed on
+     * `config('data-schemas.strategies')` and ticket 57 on the position-3 ladder, and for the same reason
+     * both gave: a `DEFAULT_WHITELIST` row would record a judgement about a class that was never in the
+     * population, and it would have beam naming a sibling package's FQCN to do it.
+     *
+     * ### The miss this takes, priced
+     *
+     * A genuine registry seeded ONLY through the constructor, whose seed parameter is named for a place —
+     * `new SchemaRegistry(paths: [...])` with no write verb — becomes invisible. Measured across the
+     * flagship composition the day this landed: of the thirteen registry-shaped undeclared rows, exactly
+     * one had a store-named array parameter and it is the false positive above; the real seams name their
+     * cargo (`$stages`, `$schemas`, `$declared`). Consistent with the class docblock's precision trade —
+     * a miss is recoverable by widening, a false row is a gate nobody trusts.
+     */
     protected function hasArrayConstructorParam(?ReflectionClass $class): bool
     {
         foreach ($class?->getConstructor()?->getParameters() ?? [] as $parameter) {
-            if ($this->isArrayType($parameter->getType())) {
-                return true;
+            if (! $this->isArrayType($parameter->getType())) {
+                continue;
             }
+
+            if (in_array(strtolower($parameter->getName()), self::STORE_PARAM_NAMES, true)) {
+                continue;
+            }
+
+            return true;
         }
 
         return false;

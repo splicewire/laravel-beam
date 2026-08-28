@@ -501,4 +501,51 @@ class UndescribedRegistryAuditTest extends TestCase
 
         $this->assertTrue($audit->isRegistryShaped(ParticleResourceRegistry::class));
     }
+
+    /**
+     * Registry-kernel ticket 38 — an array constructor parameter named for a **place** is not an entry path.
+     *
+     * The planted class is a source SCANNER, which is the live shape this was measured on:
+     * `Splicewire\Beam\Dev\Databases\SuiteHarness` takes the directories it reads as `array $roots`, memoizes
+     * its parse results in two array properties, hands them back through `sources()`, and has **no write
+     * verb anywhere** — nothing registers into it. Criterion 2 fires on the memo caches and criterion 3's
+     * lookup half fires on `sources()`, so before this rule the directory list was the only thing standing
+     * in for an entry path, and the class entered the population as `outstanding`. It broke the flagship's
+     * ratchet at 12 → 13 the day it landed.
+     */
+    public function test_a_directory_list_constructor_param_is_not_an_entry_path(): void
+    {
+        [$audit, $registry] = $this->plant(
+            properties: 'private ?array $scan = null; private ?array $pins = null;',
+            methods: 'public function __construct(private array $roots = []) {}'
+                .' public function sources(): array { return $this->scan ??= $this->roots; }'
+                .' public function resolveProjectPath(string $path, string $fallback): string { return $path; }',
+        );
+
+        $this->assertFalse(
+            $audit->isRegistryShaped($registry),
+            'a list of directories to scan seeds no entries, so criterion 3 has no entry half',
+        );
+        // Ejected from the POPULATION, not merely silenced: the row should never have been counted, so it
+        // must not reach the artifact as an exemption someone later has to re-argue.
+        $this->assertSame([], array_column($audit->registries(), 'registry'));
+        $this->assertSame([], array_column($audit->undescribed(), 'registry'));
+    }
+
+    /**
+     * The other half of that rule, and the reason it is a NAME test rather than a retreat from constructor
+     * seeding: a seam that seeds the keyspace names its cargo, and it stays in the population with no write
+     * verb at all. `config('data-nav.stages')` arriving as `array $stages` is registration by constructor.
+     */
+    public function test_an_array_constructor_param_named_for_its_cargo_is_still_an_entry_path(): void
+    {
+        [$audit, $registry] = $this->plant(
+            properties: '',
+            methods: 'public function __construct(private array $stages = []) {}'
+                .' public function get(string $k): ?string { return $this->stages[$k] ?? null; }',
+        );
+
+        $this->assertTrue($audit->isRegistryShaped($registry));
+        $this->assertSame([$registry], array_column($audit->undescribed(), 'registry'));
+    }
 }
