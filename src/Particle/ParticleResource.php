@@ -92,7 +92,16 @@ class ParticleResource implements HasRegistryKey
      *                                          {@see MapsToModelAttributes} and its
      *                                          `toModelAttributes()` maps the request to columns (an undeclared
      *                                          `toModelAttributes()` is still honoured while the duck type is migrated
-     *                                          out); null ⇒ snake-map the request body
+     *                                          out); `false` ⇒ accept NOTHING, enforced by
+     *                                          {@see \Splicewire\Beam\Http\Particle\ParticleController::rejectInput()};
+     *                                          null ⇒ UNDECLARED — snake-map the request body whole, which is
+     *                                          the residue, not a design. `null` is scheduled to become a
+     *                                          synonym for `false`, and the gate on that flip is a
+     *                                          MEASUREMENT rather than a memory:
+     *                                          {@see \Splicewire\Beam\Doctor\UndeclaredInputAudit}'s
+     *                                          `particle.resource-input` check (api-surface-coherence 117)
+     *                                          counts the residue over REACHABLE write mounts, derived from
+     *                                          the router on every run
      * @param  list<string>  $includes  default includes — compiled to BOTH the eager-load and the
      *                                  serialization axis by the hydrator (one list, no double-declaration)
      * @param  bool  $filterable  index rides the data-filters builder (`DataFilter::query($key)`) when

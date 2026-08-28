@@ -81,6 +81,7 @@ use Splicewire\Beam\Doctor\Support\FamilyTailwindScan;
 use Splicewire\Beam\Doctor\Support\TrackerTicketStatus;
 use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
+use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Doctor\UnrehearsableStubAudit;
@@ -892,6 +893,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host
         // mounted, and the count is the gate the `null` → derived-permission-name flip waits on.
         $manifest->register('splicewire/laravel-beam', UngatedOperationAudit::class);
+        // The `input:` twin of the audit above (api-surface-coherence 117). Two checks from one class,
+        // because the axes are decoupled: the RESOURCE axis counts REACHABLE write mounts, derived from
+        // the router every run — a declaration count reports the 22-route saved-filters sub-surface and
+        // cries wolf — while the OPERATION axis is registry-side, since every mounted op reads its
+        // declaration unconditionally. Warn on both; the `null` → `false` flip is what they gate.
+        $manifest->register('splicewire/laravel-beam', UndeclaredInputAudit::class);
         // Intent measured against capability across the whole resource registry — the standing half of
         // `splicewire:beam:particle:resources` (otb-ui-frontier-sidebar DESIGN-02). Registry-side like the
         // one above it, and in the MANIFEST rather than hardcoded in `BeamDoctorCommand` because the

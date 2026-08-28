@@ -69,10 +69,16 @@ use Splicewire\Beam\Particle\Subject\SubjectResolvers;
  * **What replaces it**, on {@see UngatedOperationAudit}'s precedent — the sibling
  * slot that asked this same question first, measured a constructor throw, and refused it because it would
  * fail BOOT: `input:`'s residue becomes a **counted, warn-level audit over both particle registries**, not
- * a reject. The estate's own answer to *"what does undeclared mean"* on the `ability:` axis was never
- * *"rejected"*; it was *"COUNTED, loudly, until it is zero."* The flip is what that audit gates, and it
- * ships with a NAMED carve-out for a package op whose input is host-bound rather than an asterisk on an
- * unreachable gate. Blast radius the audit exists to make visible, measured statically 2026-08-28: five
+ * a reject. **That audit is {@see \Splicewire\Beam\Doctor\UndeclaredInputAudit}, built by
+ * api-surface-coherence 117, and it IS the gate on this flip** — the paragraph you are reading is no
+ * longer the gate, so the count is a check rather than a memory. It emits two checks, not one, because
+ * the axes are decoupled: `particle.resource-input` counts REACHABLE write mounts derived from the router
+ * per run, `particle.operation-input` counts this registry. The estate's own answer to *"what does
+ * undeclared mean"* on the `ability:` axis was never *"rejected"*; it was *"COUNTED, loudly, until it is
+ * zero."* The NAMED carve-out 69 promised is spelled in that audit's
+ * `ACKNOWLEDGED` map — a key plus its reason, reported as acknowledged rather than outstanding, so no
+ * fourth declaration state enters this attribute for the sake of one operation. `media.ingest` is its
+ * one entry. Blast radius the audit exists to make visible, measured statically 2026-08-28: five
  * `#[ParticleOp]` declarations outside this host carry no `input:` (`laravel-beam-calendars` ×3,
  * `laravel-beam-rank` ×1, `laravel-satellite-training` ×1) — none with a deferral comment, so all five
  * read as omissions rather than decisions, which is the state `false` exists to distinguish.
