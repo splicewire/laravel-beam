@@ -66,18 +66,20 @@ pairs must be identical before and after.** That is stronger than regenerating s
 them, because nothing else moving can confound it — a schema diff on a live estate picks up every
 neighbour's in-flight DTO edit.
 
-`scripts/wire-keys.php` is that check:
+`splicewire:beam:dev:wire-names` is that check. It lives in **`splicewire/laravel-beam-dev`**, not
+here — it is a developer act like taking a scratch database, not runtime particle code, and beam-dev
+is `require-dev` at hosts so it never ships to production.
 
 ```
-php scripts/wire-keys.php ~/Workspaces/php/packages/'*'/'*'/src > before.txt
+artisan splicewire:beam:dev:wire-names <src…> > before.txt
 # …rename properties, leaving every attribute argument untouched…
-php scripts/wire-keys.php ~/Workspaces/php/packages/'*'/'*'/src > after.txt
-diff before.txt after.txt        # MUST be empty
+artisan splicewire:beam:dev:wire-names <src…> > after.txt
+diff before.txt after.txt        # MUST be empty, or a published key moved
 ```
 
-⚠️ **Quote the globs.** zsh does not glob after parameter expansion, so collecting roots into a
-variable makes every one silently match nothing — this estate's recurring shell trap, and it fails
-by reporting a clean diff.
+`--count` gives a summary instead of the diffable listing. A path that is not a directory is a hard
+error rather than an empty listing — an empty result would read as "no keys declared", which is the
+failure this check exists to prevent.
 
 ### ⚠️ Two ways this check has lied, both fixed, both worth knowing
 
