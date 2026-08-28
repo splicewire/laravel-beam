@@ -13,4 +13,17 @@
             <directory>src</directory>
         </include>
     </source>
+    <php>
+        <!--
+            The suite peaks at ~131M against PHP's 128M default, so a cold run dies at roughly
+            test 1464 of 1594 with "Allowed memory size exhausted" in a schemastud package —
+            a failure that reads like a leak in whatever test happened to be running when the
+            ceiling was hit, and is not one. 512M is headroom, not a target.
+
+            Set here as well as in the composer `test` script because the two entry points are
+            independent: `vendor/bin/phpunit` run directly is what CI and agents reach for, and
+            it never sees the composer script's -d flag.
+        -->
+        <ini name="memory_limit" value="512M"/>
+    </php>
 </phpunit>

@@ -105,7 +105,7 @@
     "prefer-stable": true,
     "scripts": {
         "pint": "@php -d memory_limit=512M vendor/bin/pint",
-        "test": "@php vendor/bin/phpunit"
+        "test": "@php -d memory_limit=512M vendor/bin/phpunit"
     },
     "repositories": [
         {
