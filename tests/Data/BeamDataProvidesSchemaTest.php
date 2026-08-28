@@ -15,7 +15,7 @@ use Splicewire\Beam\Tests\TestCase;
 /**
  * Beam's base DTO carries the schema seam, so all 85 estate-wide subclasses get it at once.
  *
- * `Splicewire\Beam\Data\Data` was already the family's shared DTO parent ("lives in beam-base so
+ * `Splicewire\Beam\Data\BeamData` was already the family's shared DTO parent ("lives in beam-base so
  * every downstream package can extend it via a legal DOWN edge"); this pins that it now also answers
  * `::jsonSchema()` through the host's CONFIGURED generator rather than a hand-built one.
  */
