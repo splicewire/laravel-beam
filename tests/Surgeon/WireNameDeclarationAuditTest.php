@@ -119,6 +119,47 @@ class WireNameDeclarationAuditTest extends TestCase
         $this->assertNotEmpty($findings);
         $this->assertNotSame(DoctorStatus::Fail, $findings[0]->status);
     }
+
+    public function test_it_catches_a_partiall_y_declared_class_even_when_the_mapper_is_the_identity(): void
+    {
+        // ⚠️ The gap the transformation-only rule left, and the realistic slip. After a sweep every
+        // property is camelCase, so CamelCaseMapper is the IDENTITY on them — dropping one attribute
+        // silently moves that field's published key from `calendar_id` to `calendarId` while the
+        // transformation test stays quiet.
+        //
+        // A class that declares SOME of its multi-word wire names and not others has made a decision
+        // and then failed to apply it. That is checkable at one moment, without a baseline.
+        $audit = new WireNameDeclarationAudit(
+            [PartiallyDeclaredData::class],
+            input: CamelCaseMapper::class,
+            output: null,
+        );
+
+        $details = array_map(fn ($f) => $f->detail, array_filter(
+            $audit->run(), fn ($f) => $f->status !== DoctorStatus::Pass,
+        ));
+
+        $this->assertCount(1, $details);
+        $this->assertStringContainsString('calendarId', $details[0]);
+        $this->assertStringContainsString('siblings', $details[0]);
+    }
+
+    public function test_it_stays_quie_t_on_a_class_that_declares_nothing_at_all(): void
+    {
+        // A class that has made no declaration posture is not "partially" anything — silence here is
+        // what keeps the audit's list short enough to read. The transformation rule still covers it.
+        $audit = new WireNameDeclarationAudit([CamelReadData::class], input: null, output: null);
+
+        $this->assertSame([], array_filter($audit->run(), fn ($f) => $f->status !== DoctorStatus::Pass));
+    }
+}
+
+class PartiallyDeclaredData extends Data
+{
+    public function __construct(
+        public ?string $calendarId = null,                              // attribute DROPPED
+        #[MapName('series_ref')] public ?string $seriesRef = null,      // sibling still declares
+    ) {}
 }
 
 class UndeclaredWireData extends Data

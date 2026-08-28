@@ -26,7 +26,27 @@ The defect runs in both directions and neither was visible:
 
 Both are the same thing: **the global mapper deciding a package's published contract by default.**
 
-## ⚠️ The audit reports TRANSFORMATION, not absence — and the first version got this wrong
+## The audit asks two questions, and it needs both
+
+**1. Would a configured mapper REWRITE this name?** If so the mapper is choosing the contract — see
+the section below for why this is the rule and what the naive version cost.
+
+**2. Does this class declare SOME of its wire names and not others?** A class with siblings pinned
+and one field bare has made a decision and failed to apply it, and that is checkable at a single
+moment with no baseline.
+
+⚠️ **The second exists because the first cannot see the realistic slip.** After a casing sweep every
+property is camelCase, so `CamelCaseMapper` is the *identity* on them — **dropping an attribute
+during a rename silently moves that field's published key** (`calendar_id` → `calendarId`) while the
+transformation test stays quiet. Measured 2026-08-28: removing one `#[MapName]` from a swept DTO
+produced **no finding at all** until this check existed.
+
+That is the difference between the audit and `splicewire:beam:dev:wire-names`. The command needs two
+readings and answers *"did this change move a key?"*. The audit needs one and answers *"is this
+declaration internally coherent right now?"* — which is what a doctor can ask of a codebase it is
+seeing for the first time. Neither subsumes the other, and the estate wants both.
+
+## ⚠️ The transformation rule, and why the first version got it wrong
 
 Only a property that a **configured** global mapper would **rewrite** is a finding. An identity
 mapping means the property name *is* the key, deterministically, and there is nothing to declare.

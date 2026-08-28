@@ -144,6 +144,17 @@ class WireNameDeclarationAudit implements DoctorAudit
                 continue;
             }
 
+            foreach ($this->partiallyDeclared($reflection) as $property) {
+                $findings[] = Finding::warn(self::CHECK, sprintf(
+                    '%s::$%s declares no wire name while its siblings in the same class do — so this '
+                    ."one field's published key is whatever the global mapper produces and the rest are "
+                    .'pinned. A class that declares some of its wire names and not others has made a '
+                    .'decision and failed to apply it.',
+                    $reflection->getShortName(),
+                    $property,
+                ));
+            }
+
             foreach ($this->undeclaredProperties($reflection) as $row) {
                 $findings[] = Finding::warn(self::CHECK, sprintf(
                     '%s::$%s declares no wire name, and the host\'s global %s mapper rewrites it to '
@@ -172,6 +183,56 @@ class WireNameDeclarationAudit implements DoctorAudit
         }
 
         return false;
+    }
+
+    /**
+     * Multi-word properties with no wire name **in a class where siblings have one**.
+     *
+     * ⚠️ This exists because {@see undeclaredProperties()} cannot see the realistic slip. That check
+     * reports only where a configured mapper would REWRITE a name — correct, and it is what took this
+     * audit from 232 findings to 20. But after a casing sweep every property is camelCase, so
+     * `CamelCaseMapper` is the IDENTITY on them, and **dropping an attribute during a rename silently
+     * moves that field's published key** (`calendar_id` → `calendarId`) with the transformation test
+     * staying quiet.
+     *
+     * Measured 2026-08-28: removing one `#[MapName]` from a swept DTO produced **no finding at all**
+     * until this check existed.
+     *
+     * Partial declaration is checkable at a single moment, with no baseline — which is what makes it
+     * a doctor's question rather than a diff's. A class that declares NONE of its wire names is not
+     * reported here (it has taken no posture; the transformation rule covers it), so this stays quiet
+     * on the estate's ordinary undeclared classes and speaks only where an intent is visibly broken.
+     *
+     * @return list<string>
+     */
+    private function partiallyDeclared(ReflectionClass $reflection): array
+    {
+        if ($this->classDeclaresMapping($reflection)) {
+            return []; // a class-level mapper declares every property at once.
+        }
+
+        $declared = [];
+        $bare = [];
+
+        foreach ($reflection->getProperties() as $property) {
+            if (! $property->isPublic() || $property->isStatic() || ! $this->isMultiWord($property->getName())) {
+                continue;
+            }
+
+            $hasAttribute = false;
+            foreach ([MapName::class, MapInputName::class, MapOutputName::class] as $attribute) {
+                if ($property->getAttributes($attribute) !== []) {
+                    $hasAttribute = true;
+                    break;
+                }
+            }
+
+            $hasAttribute ? $declared[] = $property->getName() : $bare[] = $property->getName();
+        }
+
+        // Only meaningful when the class has BOTH — all-declared is correct, none-declared is a
+        // different (and quieter) question.
+        return $declared !== [] ? $bare : [];
     }
 
     /**
