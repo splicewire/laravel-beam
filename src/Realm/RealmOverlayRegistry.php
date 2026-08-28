@@ -2,9 +2,13 @@
 
 namespace Splicewire\Beam\Realm;
 
+use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\BeamServiceProvider;
 
 /**
@@ -43,18 +47,46 @@ use Splicewire\Beam\BeamServiceProvider;
         .'collision. An overlay never CREATES a realm — an unregistered realmKey is a silent no-op.',
     order: 17,
 )]
-class RealmOverlayRegistry
+/**
+ * @implements Registry<RealmOverlay>
+ */
+class RealmOverlayRegistry implements Registry
 {
-    /** @var array<string, list<RealmOverlay>> realm key => overlays targeting it, in registration order. */
-    private array $overlays = [];
+    /** @var BasicRegistry<RealmOverlay> realm key => the overlays targeting it, in registration order. */
+    private BasicRegistry $store;
+
+    public function __construct()
+    {
+        $this->store = BasicRegistry::for($this);
+    }
 
     /**
      * Register an additive overlay ON an existing realm. Additive/append — a second overlay for the same
-     * realm folds after the first.
+     * realm folds after the first, which is what `OnDuplicate::Admit` above buys.
+     *
+     * The overlay SELF-KEYS off `$overlay->realmKey`, which is why the first parameter is widened rather
+     * than replaced: every live caller passes a bare {@see RealmOverlay} positionally
+     * (`splicewire/laravel-satellite`'s `SatelliteRealmOverlay::register()`, and both packages' tests),
+     * and a widened union keeps those call sites byte-identical while satisfying
+     * {@see Registry::register()}'s `(key, entry, by, ability)` shape.
+     *
+     * A realm key is a bare {@see Key} — `tenant`, `user`, `admin`, `site`
+     * — so no URI or class key type is needed here.
      */
-    public function register(RealmOverlay $overlay): void
-    {
-        $this->overlays[$overlay->realmKey][] = $overlay;
+    public function register(
+        RegistryKey|string|RealmOverlay $key,
+        mixed $overlay = null,
+        ?string $by = null,
+        ?string $ability = null,
+    ): static {
+        if ($key instanceof RealmOverlay) {
+            $overlay = $key;
+            $key = $key->realmKey;
+        }
+
+        $this->store->register($key, $overlay, $by, $ability);
+
+        return $this;
     }
 
     /**
@@ -64,23 +96,63 @@ class RealmOverlayRegistry
      */
     public function for(string $realmKey): array
     {
-        return $this->overlays[$realmKey] ?? [];
-    }
-
-    /** Whether any overlay targets the given realm. */
-    public function has(string $realmKey): bool
-    {
-        return ! empty($this->overlays[$realmKey]);
+        return $this->store->matches($realmKey);
     }
 
     /**
-     * All realm keys any overlay targets. Used only for diagnostics — the projector iterates the realm
-     * registry, not this, so an overlay for an unregistered realm never surfaces.
+     * All realm keys any overlay targets, as CALLERS spell them — bare, root-stripped, deduplicated.
+     * Used only for diagnostics — the projector iterates the realm registry, not this, so an overlay
+     * for an unregistered realm never surfaces.
+     *
+     * ⚠️ Deliberately not {@see keys()}, which answers with ABSOLUTE `RegistryKey`s
+     * (`beam.realm.overlays.tenant`). The two are signature-compatible and mean different things
+     * (registry-kernel 38, recipe amendment 4).
      *
      * @return list<string>
      */
     public function targetedRealmKeys(): array
     {
-        return array_keys($this->overlays);
+        return array_values(array_unique($this->store->relativeKeys()));
+    }
+
+    /* ---------------- Registry contract ---------------- */
+
+    /** Whether any overlay targets the given realm. */
+    public function has(RegistryKey|string $key): bool
+    {
+        return $this->store->has($key);
+    }
+
+    /**
+     * ⚠️ `Admit` is declared, so a realm carrying MORE than one overlay — the design, not an accident —
+     * makes this throw `AmbiguousRegistryMatch`. {@see for()} is the read this registry is actually
+     * built for; `resolve()` exists because the contract requires it, and it is honest about the
+     * multiplicity rather than silently returning the first.
+     */
+    public function resolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->resolve($key);
+    }
+
+    public function tryResolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->tryResolve($key);
+    }
+
+    /** @return list<RealmOverlay> */
+    public function matches(RegistryKey|string $key): array
+    {
+        return $this->store->matches($key);
+    }
+
+    /** @return list<RegistryKey> */
+    public function keys(): array
+    {
+        return $this->store->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        return $this->store->unfiltered();
     }
 }

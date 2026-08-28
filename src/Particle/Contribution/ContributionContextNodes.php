@@ -48,7 +48,7 @@ class ContributionContextNodes implements ResourceContextContributor
     {
         // Inert by default: the overwhelmingly common case is a resource nobody contributes to,
         // and it costs one array lookup.
-        if (! $this->contributions->has($key)) {
+        if (! $this->contributions->contributesTo($key)) {
             return [];
         }
 

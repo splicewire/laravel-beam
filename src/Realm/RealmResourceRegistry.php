@@ -2,9 +2,14 @@
 
 namespace Splicewire\Beam\Realm;
 
+use Rushing\Popcorn\Registries\BasicRegistry;
+use Rushing\Popcorn\Registries\Exceptions\InvalidRegistryKey;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Registry\ResourceDefinition;
 
 /**
@@ -41,16 +46,24 @@ use Schemastud\Frame\Registry\ResourceDefinition;
         .'also config-driven and mutable at runtime, so it cannot be baked. Ticket 36 owns the shape.',
     order: 18,
 )]
-class RealmResourceRegistry
+/**
+ * @implements Registry<RealmResourceOverride>
+ */
+class RealmResourceRegistry implements Registry
 {
     /**
-     * Overlays indexed by realm then resource key: `['<realm>' => ['<key>' => RealmResourceOverride]]`.
+     * Overlays at `<realm>.<key>` — the two DIMENSIONS the declaration's note describes, expressed as
+     * one dotted address so the kernel can hold them. Both halves are ordinary bare keys (`tenant`,
+     * `widgets`), so no URI or class key type is needed.
      *
-     * @var array<string, array<string, RealmResourceOverride>>
+     * @var BasicRegistry<RealmResourceOverride>
      */
-    private array $overrides = [];
+    private BasicRegistry $store;
 
-    public function __construct(private RealmRegistry $realms) {}
+    public function __construct(private RealmRegistry $realms)
+    {
+        $this->store = BasicRegistry::for($this);
+    }
 
     /**
      * Hydrate the registry from the `frame.realm_resource_overrides` config shape
@@ -84,16 +97,40 @@ class RealmResourceRegistry
      */
     public function override(string $key, string $realm, RealmResourceOverride $override): self
     {
-        $this->overrides[$realm][$key] = $override;
+        $this->store->register($realm.'.'.$key, $override, by: 'override()');
 
         return $this;
     }
 
-    /** Whether ANY overlay applies to `$key` in `$realm` (following the realm's stack chain). */
-    public function has(string $key, string $realm): bool
+    /**
+     * The one dotted address a `(realm, key)` pair lives at, or null when either half is not a legal
+     * key.
+     *
+     * Nullable on purpose. `$realm` reaches `apply()` off a request-derived resource read, and
+     * {@see Key::parse()} throws {@see InvalidRegistryKey}
+     * on an illegal string BEFORE any miss is considered. The array lookup this replaced simply
+     * missed, so gating with `tryParse()` is what keeps a garbage `?realm=` a no-op overlay rather
+     * than a 500 (the rule is written on {@see Registry::tryResolve()}).
+     */
+    private function address(string $realm, string $key): ?Key
+    {
+        return Key::tryParse($realm.'.'.$key);
+    }
+
+    /**
+     * Whether ANY overlay applies to `$key` in `$realm` (following the realm's stack chain).
+     *
+     * ⚠️ RENAMED from `has()` by registry-kernel 38, and this one could not have been widened: it takes
+     * TWO required arguments and walks a chain, while {@see Registry::has()} takes one key and means
+     * "exactly here". No signature satisfies both, so the domain method moves and the contract's
+     * {@see has()} sits beside it.
+     */
+    public function hasOverride(string $key, string $realm): bool
     {
         foreach ($this->chain($realm) as $through) {
-            if (isset($this->overrides[$through][$key])) {
+            $address = $this->address($through, $key);
+
+            if ($address !== null && $this->store->has($address)) {
                 return true;
             }
         }
@@ -115,9 +152,10 @@ class RealmResourceRegistry
         $definition = $base;
 
         foreach ($this->chain($realm) as $through) {
-            $override = $this->overrides[$through][$base->key] ?? null;
+            $address = $this->address($through, $base->key);
+            $override = $address === null ? null : $this->store->tryResolve($address);
 
-            if ($override !== null) {
+            if ($override instanceof RealmResourceOverride) {
                 $definition = $override->mergeInto($definition);
             }
         }
@@ -144,5 +182,59 @@ class RealmResourceRegistry
         $stack = $this->realms->tryResolve($realm)?->stack ?? [];
 
         return [...$stack, $realm];
+    }
+
+    /* ---------------- Registry contract ---------------- */
+
+    /**
+     * Register an overlay at a full `<realm>.<key>` address. The fluent, dimension-named
+     * {@see override()} is what every live caller uses and stays exactly as it was; this is the
+     * kernel's door onto the same store.
+     */
+    public function register(
+        RegistryKey|string $key,
+        mixed $override = null,
+        ?string $by = null,
+        ?string $ability = null,
+    ): static {
+        $this->store->register($key, $override, $by, $ability);
+
+        return $this;
+    }
+
+    /**
+     * Whether a visible overlay sits at EXACTLY this address — a full `<realm>.<key>`, and no stack
+     * walk. {@see hasOverride()} is the chain-following predicate this registry is built for.
+     */
+    public function has(RegistryKey|string $key): bool
+    {
+        return $this->store->has($key);
+    }
+
+    public function resolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->resolve($key);
+    }
+
+    public function tryResolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->tryResolve($key);
+    }
+
+    /** @return list<RealmResourceOverride> */
+    public function matches(RegistryKey|string $key): array
+    {
+        return $this->store->matches($key);
+    }
+
+    /** @return list<RegistryKey> */
+    public function keys(): array
+    {
+        return $this->store->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        return $this->store->unfiltered();
     }
 }

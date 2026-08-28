@@ -47,9 +47,9 @@ class AuditScanPathsTest extends TestCase
     public function test_registrations_accumulate_and_project_dir_lists(): void
     {
         $paths = (new AuditScanPaths)
-            ->register('splicewire/laravel-beam-commerce', '/pkg/commerce/src/Http', '/pkg/commerce/routes')
-            ->register('splicewire/laravel-beam-market', '/pkg/market/src/Http', '/pkg/market/routes')
-            ->register('splicewire/laravel-beam-market', '/pkg/market/src/Http', '/pkg/market/routes');
+            ->registerScanPaths('splicewire/laravel-beam-commerce', '/pkg/commerce/src/Http', '/pkg/commerce/routes')
+            ->registerScanPaths('splicewire/laravel-beam-market', '/pkg/market/src/Http', '/pkg/market/routes')
+            ->registerScanPaths('splicewire/laravel-beam-market', '/pkg/market/src/Http', '/pkg/market/routes');
 
         $this->assertCount(3, $paths->paths());
         $this->assertSame('splicewire/laravel-beam-commerce', $paths->paths()[0]['package']);
@@ -94,7 +94,7 @@ class AuditScanPathsTest extends TestCase
 
         // The package's provider would push this pair at boot; `plans` is a registered resource.
         $this->app->make(AuditScanPaths::class)
-            ->register('acme/billing', $this->controllersDir, $this->routesDir);
+            ->registerScanPaths('acme/billing', $this->controllersDir, $this->routesDir);
 
         $registry = new ParticleResourceRegistry;
         $registry->register(new ParticleResource(key: 'plans', backing: 'Acme\\Billing\\Plan'));

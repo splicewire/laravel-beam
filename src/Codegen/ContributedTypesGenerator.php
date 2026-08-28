@@ -82,7 +82,7 @@ class ContributedTypesGenerator
     {
         $derived = [];
 
-        foreach ($this->contributions->keys() as $key) {
+        foreach ($this->contributions->ownerKeys() as $key) {
             $owner = $this->owner($key);
 
             if ($owner === null) {

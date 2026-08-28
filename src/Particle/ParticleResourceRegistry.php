@@ -198,7 +198,7 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
             return null;
         }
 
-        if ($this->contributions === null || ! $this->contributions->has($key)) {
+        if ($this->contributions === null || ! $this->contributions->contributesTo($key)) {
             return $resource;
         }
 

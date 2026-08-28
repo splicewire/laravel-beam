@@ -2,9 +2,15 @@
 
 namespace Splicewire\Beam\Doctor\Support;
 
+use Rushing\Popcorn\Registries\AbsoluteUriKey;
+use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryKey;
+use Rushing\Popcorn\Registries\RelativeUriKey;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Facades\Beam;
@@ -85,7 +91,10 @@ use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
         .'not register. That is real information, not an absent seam.',
     order: 11,
 )]
-class FacadeConformanceScope
+/**
+ * @implements Registry<string>
+ */
+class FacadeConformanceScope implements Registry
 {
     /** The family vendor directories whose symlinked children are live source. */
     public const FAMILY_VENDORS = ['splicewire', 'rushing', 'schemastud'];
@@ -119,8 +128,41 @@ class FacadeConformanceScope
     /** @var list<string>|null memoized: the walk is shared by five audits, so it happens once per scope */
     private ?array $files = null;
 
+    /** @var BasicRegistry<string> the same roots, addressable — see {@see pathKey()} */
+    private BasicRegistry $store;
+
     /** @param  list<string>  $roots  absolute directory paths */
-    public function __construct(public array $roots) {}
+    public function __construct(public array $roots)
+    {
+        $this->store = BasicRegistry::for($this);
+
+        foreach ($this->roots as $root) {
+            $this->store->register(static::pathKey((string) $root), (string) $root, by: 'constructor');
+        }
+    }
+
+    /**
+     * A root's address: the absolute path as a `file:` URI, held whole by {@see AbsoluteUriKey}.
+     *
+     * The three obvious alternatives are all wrong here, which is why this is spelled out rather than
+     * assumed. A bare {@see Key} cannot hold `/`. A
+     * {@see RelativeUriKey} refuses an absolute path outright, and would
+     * reject these anyway — real path segments here are `Users`, `Workspaces`, `Herd`, and the key
+     * charset does no case folding by design. And decomposing a path into dotted segments is the exact
+     * lie `AbsoluteUriKey`'s docblock refuses for URIs: `/a/b` and the address `a.b` would become
+     * indistinguishable.
+     *
+     * So the path is one opaque segment compared whole, and the `file:` scheme is what makes it an
+     * absolute URI rather than a path — lossless in both directions (strip the scheme to get the path
+     * back). The documented consequence is accepted: an `AbsoluteUriKey` declines root-stamping, so
+     * these entries are reachable as a registry through the index but not addressable through the
+     * global keyspace. That costs this registry nothing — it is `exempt: private` on the sweep ledger,
+     * constructor-seeded, and nothing outside it ever addresses a root by key.
+     */
+    public static function pathKey(string $path): AbsoluteUriKey
+    {
+        return AbsoluteUriKey::of('file://'.$path);
+    }
 
     /**
      * The default host-scoped wiring: the host's own authored code plus every family package it composes
@@ -379,5 +421,71 @@ class FacadeConformanceScope
         $real = realpath($path);
 
         return str_starts_with($real === false ? $path : $real, $src.DIRECTORY_SEPARATOR);
+    }
+
+    /* ---------------- Registry contract ---------------- */
+
+    /**
+     * Add a root. Purely additive, and there is no live caller — the roots are seeded once by
+     * {@see forApp()}, and a host with an unusual source layout REBINDS the singleton rather than
+     * registering, which the declaration's note already records as real information.
+     *
+     * Called with one argument the key IS the path, which is what makes the contract's
+     * `(key, entry, by, ability)` shape usable for a self-keying path list.
+     */
+    public function register(
+        RegistryKey|string $key,
+        mixed $root = null,
+        ?string $by = null,
+        ?string $ability = null,
+    ): static {
+        if ($root === null && is_string($key)) {
+            $root = $key;
+            $key = static::pathKey($key);
+        }
+
+        $this->store->register($key, $root, $by, $ability);
+
+        if (is_string($root) && ! in_array($root, $this->roots, true)) {
+            $this->roots[] = $root;
+
+            // The walk is memoized; a new root invalidates it. Nothing registers after binding today,
+            // so this has never had to fire — which is exactly why it is written down.
+            $this->files = null;
+        }
+
+        return $this;
+    }
+
+    public function has(RegistryKey|string $key): bool
+    {
+        return $this->store->has($key);
+    }
+
+    public function resolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->resolve($key);
+    }
+
+    public function tryResolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->tryResolve($key);
+    }
+
+    /** @return list<string> */
+    public function matches(RegistryKey|string $key): array
+    {
+        return $this->store->matches($key);
+    }
+
+    /** @return list<RegistryKey> */
+    public function keys(): array
+    {
+        return $this->store->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        return $this->store->unfiltered();
     }
 }

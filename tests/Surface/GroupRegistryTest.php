@@ -16,7 +16,7 @@ class GroupRegistryTest extends TestCase
 {
     protected function registry(): GroupRegistry
     {
-        return (new GroupRegistry)->register(
+        return (new GroupRegistry)->registerGroups(
             new ApiGroup(key: 'knowledge', name: 'Knowledge'),
             new ApiGroup(key: 'fragments', name: 'Fragments', parent: 'knowledge'),
             new ApiGroup(key: 'media', name: 'Media', parent: 'knowledge'),
@@ -90,7 +90,7 @@ class GroupRegistryTest extends TestCase
 
     public function test_validate_rejects_a_parent_that_was_never_registered(): void
     {
-        $registry = (new GroupRegistry)->register(new ApiGroup(key: 'orphan', name: 'Orphan', parent: 'nowhere'));
+        $registry = (new GroupRegistry)->registerGroups(new ApiGroup(key: 'orphan', name: 'Orphan', parent: 'nowhere'));
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('parent [nowhere]');
@@ -100,7 +100,7 @@ class GroupRegistryTest extends TestCase
 
     public function test_validate_rejects_a_cycle(): void
     {
-        $registry = (new GroupRegistry)->register(
+        $registry = (new GroupRegistry)->registerGroups(
             new ApiGroup(key: 'a', name: 'A', parent: 'b'),
             new ApiGroup(key: 'b', name: 'B', parent: 'a'),
         );

@@ -4,9 +4,13 @@ namespace Splicewire\Beam\Surface;
 
 use Illuminate\Support\Str;
 use RuntimeException;
+use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
@@ -68,10 +72,18 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
         .'ladder is expressed is ticket 36\'s.',
     order: 12,
 )]
-class GroupRegistry
+/**
+ * @implements Registry<ApiGroup>
+ */
+class GroupRegistry implements Registry
 {
-    /** @var array<string, ApiGroup> keyed by group key */
-    private array $groups = [];
+    /**
+     * The one keyspace — the group tree. `$assignments` and `$globs` below are a resolution LADDER over
+     * it, not more entries, which is what the declaration's note says and why only this one is a store.
+     *
+     * @var BasicRegistry<ApiGroup>
+     */
+    private BasicRegistry $store;
 
     /** @var array<string, string> resource key => group key (rung 1) */
     private array $assignments = [];
@@ -82,16 +94,25 @@ class GroupRegistry
     /** URI segments that are never the resource collection — stripped before the rung-4 guess. */
     protected array $noiseSegments = ['api', 'splice', 'beam', 'stud'];
 
-    public function __construct(protected ?ParticleResourceRegistry $resources = null) {}
+    public function __construct(protected ?ParticleResourceRegistry $resources = null)
+    {
+        $this->store = BasicRegistry::for($this);
+    }
 
     /**
      * Declare one or more groups. Idempotent per key — re-registering replaces, so a provider that boots
      * twice (test harness) doesn't double-declare.
+     *
+     * ⚠️ RENAMED from `register()` by registry-kernel 38, and this is the one shape that could not be
+     * widened: a VARIADIC first parameter cannot also be {@see Registry::register()}'s `$key`, at any
+     * arity. A rename fails LOUDLY at every call site, which is the whole reason it was chosen over
+     * anything cleverer — the two live callers are `App\Docs\ApiTaxonomy::describe()` in the flagship
+     * and this package's own `GroupRegistryTest`, both updated in the same change.
      */
-    public function register(ApiGroup ...$groups): static
+    public function registerGroups(ApiGroup ...$groups): static
     {
         foreach ($groups as $group) {
-            $this->groups[$group->key] = $group;
+            $this->store->register($group->key, $group, by: 'registerGroups()');
         }
 
         return $this;
@@ -123,20 +144,51 @@ class GroupRegistry
         return $this;
     }
 
-    /** @return array<string, ApiGroup> */
+    /**
+     * The declared tree, keyed as CALLERS spell it — bare group keys, not the absolute `RegistryKey`s
+     * {@see keys()} answers with (recipe amendment 4). Every consumer of this — the flagship's coverage
+     * tests, the OpenAPI tag generator — indexes by the bare key.
+     *
+     * @return array<string, ApiGroup>
+     */
     public function all(): array
     {
-        return $this->groups;
+        $keys = $this->store->keys();
+        $relative = $this->store->relativeKeys();
+        $all = [];
+
+        foreach ($keys as $index => $key) {
+            $all[$relative[$index]] = $this->store->resolve($key);
+        }
+
+        return $all;
     }
 
-    public function has(string $key): bool
+    /**
+     * Whether a group is DECLARED at exactly this key. Satisfies {@see Registry::has()} unchanged in
+     * meaning — the group key is the address.
+     *
+     * Gated with {@see Key::tryParse()} rather than parsing: a token reaching here can be a loose
+     * display word off a package declaration (`Knowledge Graph`), and "not a legal key" and "no such
+     * group" are the same answer to this question.
+     */
+    public function has(RegistryKey|string $key): bool
     {
-        return isset($this->groups[$key]);
+        return $this->addressable($key) && $this->store->has($key);
     }
 
-    public function get(string $key): ?ApiGroup
+    /** The declared group at exactly `$key`, or null — the contract's `tryResolve()` reading, kept under its own name. */
+    public function get(RegistryKey|string $key): ?ApiGroup
     {
-        return $this->groups[$key] ?? null;
+        $group = $this->addressable($key) ? $this->store->tryResolve($key) : null;
+
+        return $group instanceof ApiGroup ? $group : null;
+    }
+
+    /** Whether a `RegistryKey|string` can address this keyspace at all. See {@see has()}. */
+    private function addressable(RegistryKey|string $key): bool
+    {
+        return $key instanceof RegistryKey || Key::tryParse($key) !== null;
     }
 
     /**
@@ -148,22 +200,30 @@ class GroupRegistry
      * not two taxonomies, and this method is where that claim is cashed. An unresolvable token is a MISS
      * (null), not an error — a package default the host has not adopted simply falls through to the next
      * rung.
+     *
+     * ⚠️ This DIVERGES from {@see Registry::resolve()}, deliberately and pre-existingly, in both of the
+     * ways `SchemaSources::resolve()` does: it accepts a LOOSE token rather than a key, and it answers
+     * `null` on a miss where the contract throws — `tryResolve()` semantics under the `resolve()` name.
+     * Renaming it would break every caller for no gain (registry-kernel 38, and the flagship reaches it
+     * from `ParticleServiceProvider`), so {@see get()} and {@see tryResolve()} carry the contract's
+     * strict reading under names that cannot collide.
      */
-    public function resolve(string $token): ?ApiGroup
+    public function resolve(RegistryKey|string $token): ?ApiGroup
     {
-        if (isset($this->groups[$token])) {
-            return $this->groups[$token];
+        if (($exact = $this->get($token)) !== null) {
+            return $exact;
         }
 
+        $token = (string) $token;
         $slug = Str::slug($token);
 
-        foreach ($this->groups as $group) {
+        foreach ($this->all() as $group) {
             if ($group->name === $token || $group->navLabel === $token) {
                 return $group;
             }
         }
 
-        foreach ($this->groups as $group) {
+        foreach ($this->all() as $group) {
             if (Str::slug($group->name) === $slug || ($group->navLabel !== null && Str::slug($group->navLabel) === $slug)) {
                 return $group;
             }
@@ -232,7 +292,7 @@ class GroupRegistry
     /** Whether this group came off a declaration rather than the rung-4 guess. */
     public function isDeclared(ApiGroup $group): bool
     {
-        return isset($this->groups[$group->key]);
+        return $this->has($group->key);
     }
 
     /**
@@ -287,13 +347,13 @@ class GroupRegistry
     /** @return list<ApiGroup> the roots, in declared order */
     public function roots(): array
     {
-        return array_values(array_filter($this->groups, static fn (ApiGroup $g): bool => $g->isRoot()));
+        return array_values(array_filter($this->all(), static fn (ApiGroup $g): bool => $g->isRoot()));
     }
 
     /** @return list<ApiGroup> the direct children of a group, order-then-registration */
     public function children(string $key): array
     {
-        $children = array_values(array_filter($this->groups, static fn (ApiGroup $g): bool => $g->parent === $key));
+        $children = array_values(array_filter($this->all(), static fn (ApiGroup $g): bool => $g->parent === $key));
         usort($children, static fn (ApiGroup $a, ApiGroup $b): int => $a->order <=> $b->order);
 
         return $children;
@@ -320,7 +380,7 @@ class GroupRegistry
      */
     public function validate(): void
     {
-        foreach ($this->groups as $group) {
+        foreach ($this->all() as $group) {
             $this->ancestry($group->key);
         }
 
@@ -356,5 +416,51 @@ class GroupRegistry
         }
 
         return null;
+    }
+
+    /* ---------------- Registry contract ---------------- */
+
+    /**
+     * Declare one group at an explicit key — the kernel's door onto the same store
+     * {@see registerGroups()} writes through. A group SELF-KEYS off `$group->key`, so passing an
+     * `ApiGroup` alone keys it that way.
+     */
+    public function register(
+        RegistryKey|string|ApiGroup $key,
+        mixed $group = null,
+        ?string $by = null,
+        ?string $ability = null,
+    ): static {
+        if ($key instanceof ApiGroup) {
+            $group = $key;
+            $key = $key->key;
+        }
+
+        $this->store->register($key, $group, $by, $ability);
+
+        return $this;
+    }
+
+    /** The contract's strict nullable read: exactly this key, no loose-token fallback. See {@see resolve()}. */
+    public function tryResolve(RegistryKey|string $key): mixed
+    {
+        return $this->addressable($key) ? $this->store->tryResolve($key) : null;
+    }
+
+    /** @return list<ApiGroup> */
+    public function matches(RegistryKey|string $key): array
+    {
+        return $this->store->matches($key);
+    }
+
+    /** @return list<RegistryKey> */
+    public function keys(): array
+    {
+        return $this->store->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        return $this->store->unfiltered();
     }
 }

@@ -5,11 +5,15 @@ namespace Splicewire\Beam\Particle\Contribution;
 use ReflectionAttribute;
 use ReflectionClass;
 use RuntimeException;
+use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Attributes\WidgetIn;
 use Schemastud\Frame\Registry\WidgetContextProjector;
+use Splicewire\Beam\Codegen\ContributedTypesGenerator;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
 
@@ -61,23 +65,59 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
         .'here is merged into a declaration at boot, because the contributor boots first.',
     order: 13,
 )]
-class ResourceContributionRegistry
+/**
+ * @implements Registry<ResourceContribution>
+ */
+class ResourceContributionRegistry implements Registry
 {
     /**
-     * Contributions indexed by owner resource key then sub-projection key.
+     * Contributions at `<owner key>.<as>` — the two DIMENSIONS the docblock describes, expressed as one
+     * dotted address so the kernel can hold them. `for('tenants')` is then a `matches()` over the branch,
+     * which is exactly what `ComposeMany` means.
      *
-     * @var array<string, array<string, ResourceContribution>>
+     * @var BasicRegistry<ResourceContribution>
      */
-    private array $contributions = [];
+    private BasicRegistry $store;
+
+    public function __construct()
+    {
+        $this->store = BasicRegistry::for($this);
+    }
 
     /**
      * Register one package's slice of another's projection.
      *
+     * The contribution SELF-KEYS off `(key, as)`, so the first parameter is WIDENED rather than
+     * replaced — every live caller passes a bare {@see ResourceContribution} positionally
+     * (beam-commerce, beam-embed, beam-accounts' test, and this package's own suite) and keeps its call
+     * site byte-identical.
+     *
+     * ⚠️ The duplicate throw below is kept in PHP rather than delegated to `OnDuplicate::Reject`. The
+     * declaration still says Reject and still governs, but this message names the losing and winning
+     * packages and the reason a contribution is not an override, and no caller's `expectException` has
+     * to move — registry-kernel 38 pass 1's *"declining the exception change is legitimate and often
+     * strictly better."*
+     *
      * @throws RuntimeException when `(key, as)` is already claimed — see the class docblock.
      */
-    public function register(ResourceContribution $contribution): self
-    {
-        $existing = $this->contributions[$contribution->key][$contribution->as] ?? null;
+    public function register(
+        RegistryKey|string|ResourceContribution $key,
+        mixed $contribution = null,
+        ?string $by = null,
+        ?string $ability = null,
+    ): static {
+        if ($key instanceof ResourceContribution) {
+            $contribution = $key;
+            $key = $this->address($contribution->key, $contribution->as);
+        }
+
+        if (! $contribution instanceof ResourceContribution) {
+            $this->store->register($key, $contribution, $by, $ability);
+
+            return $this;
+        }
+
+        $existing = $this->contribution($contribution->key, $contribution->as);
 
         if ($existing !== null) {
             throw new RuntimeException(
@@ -89,9 +129,15 @@ class ResourceContributionRegistry
 
         $this->assertReadOnlyParticipation($contribution);
 
-        $this->contributions[$contribution->key][$contribution->as] = $contribution;
+        $this->store->register($key, $contribution, $by, $ability);
 
         return $this;
+    }
+
+    /** The one dotted address a `(key, as)` pair lives at. */
+    private function address(string $key, string $as): string
+    {
+        return $key.'.'.$as;
     }
 
     /**
@@ -148,10 +194,18 @@ class ResourceContributionRegistry
         }
     }
 
-    /** Whether ANY package contributes to `$key`. The inert-by-default predicate every fold point asks first. */
-    public function has(string $key): bool
+    /**
+     * Whether ANY package contributes to `$key`. The inert-by-default predicate every fold point asks
+     * first.
+     *
+     * ⚠️ RENAMED from `has()` by registry-kernel 38. `Registry::has()` means "a visible entry at EXACTLY
+     * this key", and a contribution never sits at a bare owner key — it sits at `<key>.<as>`. Keeping the
+     * name would have satisfied the contract's signature while meaning something else, which is the one
+     * failure this migration exists to avoid; the rename fails loudly at every call site instead.
+     */
+    public function contributesTo(string $key): bool
     {
-        return ($this->contributions[$key] ?? []) !== [];
+        return $this->store->matches($key) !== [];
     }
 
     /**
@@ -166,7 +220,9 @@ class ResourceContributionRegistry
      */
     public function contribution(string $key, string $as): ?ResourceContribution
     {
-        return $this->contributions[$key][$as] ?? null;
+        $entry = $this->store->tryResolve($this->address($key, $as));
+
+        return $entry instanceof ResourceContribution ? $entry : null;
     }
 
     /**
@@ -177,17 +233,71 @@ class ResourceContributionRegistry
      */
     public function for(string $key): array
     {
-        return array_values($this->contributions[$key] ?? []);
+        return $this->store->matches($key);
     }
 
     /**
      * Every owner key that has at least one contribution — for auditors and the doctor sweep, which
      * need the declared set rather than a lookup.
      *
+     * ⚠️ RENAMED from `keys()` by registry-kernel 38, recipe amendment 4. The contract's {@see keys()}
+     * answers with ABSOLUTE `RegistryKey`s down to the sub-projection
+     * (`beam.particle.resource-contributions.tenants.commerce`); this answers with BARE OWNER keys
+     * (`tenants`), which is what `for()` takes. The two were signature-compatible, so leaving the name
+     * alone would have compiled, passed and quietly changed what
+     * {@see ContributedTypesGenerator} iterates.
+     *
      * @return list<string>
      */
+    public function ownerKeys(): array
+    {
+        $owners = [];
+
+        foreach ($this->store->relativeKeys() as $relative) {
+            $segments = explode('.', $relative);
+            array_pop($segments);
+
+            $owners[implode('.', $segments)] = true;
+        }
+
+        return array_values(array_filter(array_keys($owners), static fn (string $k): bool => $k !== ''));
+    }
+
+    /* ---------------- Registry contract ---------------- */
+
+    /**
+     * Whether a visible contribution sits at EXACTLY this address — i.e. a full `<key>.<as>`.
+     * {@see contributesTo()} is the owner-key predicate the fold points ask.
+     */
+    public function has(RegistryKey|string $key): bool
+    {
+        return $this->store->has($key);
+    }
+
+    public function resolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->resolve($key);
+    }
+
+    public function tryResolve(RegistryKey|string $key): mixed
+    {
+        return $this->store->tryResolve($key);
+    }
+
+    /** @return list<ResourceContribution> */
+    public function matches(RegistryKey|string $key): array
+    {
+        return $this->store->matches($key);
+    }
+
+    /** @return list<RegistryKey> */
     public function keys(): array
     {
-        return array_keys($this->contributions);
+        return $this->store->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        return $this->store->unfiltered();
     }
 }

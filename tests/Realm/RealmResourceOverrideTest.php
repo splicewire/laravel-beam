@@ -152,11 +152,11 @@ class RealmResourceOverrideTest extends TestCase
         $overrides = (new RealmResourceRegistry(new RealmRegistry))
             ->override('widgets', 'operator', new RealmResourceOverride(label: 'X'));
 
-        $this->assertTrue($overrides->has('widgets', 'operator'));
-        $this->assertFalse($overrides->has('widgets', 'tenant'));
+        $this->assertTrue($overrides->hasOverride('widgets', 'operator'));
+        $this->assertFalse($overrides->hasOverride('widgets', 'tenant'));
         // The `user` realm stacks on `tenant`, so a tenant overlay is reachable from user...
         $overrides->override('gadgets', 'tenant', new RealmResourceOverride(label: 'G'));
-        $this->assertTrue($overrides->has('gadgets', 'user'), 'stack chain makes the tenant overlay reachable from user');
+        $this->assertTrue($overrides->hasOverride('gadgets', 'user'), 'stack chain makes the tenant overlay reachable from user');
 
         // apply() with a null realm is always identity (the realm-agnostic manifest path).
         $base = $this->registry()->definition('widgets');

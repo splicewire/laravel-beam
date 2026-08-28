@@ -59,7 +59,7 @@ class ContributionProjector
      */
     public function apply(string $key, Data $data, Model $record, ReadContext $ctx, array $filters = []): Data
     {
-        if (! $this->contributions->has($key)) {
+        if (! $this->contributions->contributesTo($key)) {
             return $data;
         }
 
