@@ -107,9 +107,9 @@ class ResourceFiltersController extends Controller
         $saved = new SavedFilter([
             'name' => $input->name,
             'resource' => $definition->key,
-            'query_parameters' => $validator->validate($definition->key, $this->arrayOr($input->query_parameters)),
+            'query_parameters' => $validator->validate($definition->key, $this->arrayOr($input->queryParameters)),
             'visibility' => $this->stringOr($input->visibility) ?? Visibility::Private->value,
-            'is_default' => $this->boolOr($input->is_default) ?? false,
+            'is_default' => $this->boolOr($input->isDefault) ?? false,
         ]);
         $saved->owner()->associate($request->user());
 
@@ -146,9 +146,9 @@ class ResourceFiltersController extends Controller
 
         $saved->fill([
             'name' => $input->name,
-            'query_parameters' => $validator->validate($saved->resource, $this->arrayOr($input->query_parameters)),
+            'query_parameters' => $validator->validate($saved->resource, $this->arrayOr($input->queryParameters)),
             'visibility' => $this->stringOr($input->visibility) ?? $saved->visibility->value,
-            'is_default' => $this->boolOr($input->is_default) ?? $saved->is_default,
+            'is_default' => $this->boolOr($input->isDefault) ?? $saved->is_default,
         ]);
 
         $this->demoteSiblingDefaults($saved);

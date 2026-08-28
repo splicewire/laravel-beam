@@ -25,7 +25,7 @@ use Splicewire\Beam\Data\BeamData;
 class SavedFilterUpdateInputData extends BeamData
 {
     /**
-     * @param  array<string, mixed>|null  $query_parameters
+     * @param  array<string, mixed>|null  $queryParameters
      */
     public function __construct(
         #[Description('Human-readable label for the saved filter.')]
@@ -33,14 +33,14 @@ class SavedFilterUpdateInputData extends BeamData
 
         #[MapInputName('query_parameters')]
         #[Description("The stored query-parameter blob, validated against the resource's own Filter Data class (ADR-0007). Facet names inside it are camelCase.")]
-        public array|Optional|null $query_parameters = null,
+        public array|Optional|null $queryParameters = null,
 
         #[Description('Who can see the filter. Omitted leaves the stored visibility alone.')]
         public string|Optional|null $visibility = null,
 
         #[MapInputName('is_default')]
         #[Description("Whether this filter is the owner's default view of this resource. At most one saved filter per (owner, resource) carries it — setting it here clears the flag on the owner's other filters for the same resource.")]
-        public bool|Optional|null $is_default = null,
+        public bool|Optional|null $isDefault = null,
     ) {}
 
     /**
