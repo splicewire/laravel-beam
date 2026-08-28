@@ -175,6 +175,7 @@ use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
 use Splicewire\Beam\Surgeon\UndeclaredWriteMapAudit;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
+use Splicewire\Beam\Surgeon\WireNameDeclarationAudit;
 use Splicewire\Beam\Webhooks\HookSubjectPruner;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\GateWriteGate;
@@ -962,6 +963,21 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $app->make(ParticleResourceRegistry::class),
             $app->make(ParticleOperationRegistry::class),
         ));
+        // The wire-name burn-down, same population and same reason: a declared slot is a registered
+        // value. Sibling of the write-map meter — that one asks whether a DTO declared how it maps onto
+        // COLUMNS, this one asks whether it declared what a client must SEND, which is the published
+        // half. api-surface-coherence 100.
+        // ⚠️ The host's OWN mapper config is passed in, and the audit reports only where a configured
+        // mapper would REWRITE a property name. That is the whole rule: an identity mapping means the
+        // property name IS the published key and there is nothing to declare. Without it the audit
+        // reported 232 rows at the flagship, 212 of them correct camelCase read properties under
+        // `output => null`, and its suggestion would have renamed all 212 on the wire.
+        $this->app->bind(WireNameDeclarationAudit::class, fn ($app) => WireNameDeclarationAudit::forRegistries(
+            $app->make(ParticleResourceRegistry::class),
+            $app->make(ParticleOperationRegistry::class),
+            input: config('data.name_mapping_strategy.input'),
+            output: config('data.name_mapping_strategy.output'),
+        ));
         $this->app->bind(DocblockTierAudit::class, function ($app) {
             $root = $app->basePath();
             $graph = PackageGraph::fromRoots([$root]);
@@ -1030,6 +1046,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // beam's own documented behaviour — and the POPULATION is a host fact (which resources are
         // registered here) even though each row's verdict is a fact about the declaration.
         $manifest->register('splicewire/laravel-beam', UndeclaredWriteMapAudit::class);
+        // Advisory, permanently. The POPULATION is a host fact (which Data classes this host declares),
+        // and by the estate's rule a check whose answer depends on the host must not throw. Measured
+        // 2026-08-28 on laravel-beam-calendars: fifteen Data classes declared NEITHER mapping axis, so
+        // the package emitted `calendar_id` and demanded `calendarId` for the same field — read one key,
+        // write another — and nothing anywhere reported it.
+        $manifest->register('splicewire/laravel-beam', WireNameDeclarationAudit::class);
         $manifest->register('splicewire/laravel-beam', DocblockTierAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkHookMigrationAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkReturnsCoverageAudit::class);
