@@ -52,10 +52,30 @@ use Splicewire\Beam\Particle\Subject\SubjectResolvers;
  * GET one. A declaration says WHAT is accepted; the mount says where it arrives.
  *
  * **`null` is scheduled to become a synonym for `false`** — a contract that is only binding when present is
- * not a contract. That flip is deliberately NOT made here: at the time of writing, zero of the estate's
- * registered operations declare `input` at all, so making it binding today would break every one of them.
- * The gate is the count of remaining `null`s reaching zero across the registry, and the flip covers the
- * resource axis ({@see ParticleResource::$input}) in the same act.
+ * not a contract. That flip is deliberately NOT made here. **The paragraph that used to stand in this slot
+ * described a plan that changed and is corrected by api-surface-coherence 69 (2026-08-28):**
+ *
+ *   - Its figure is dead. It read *"zero of the estate's registered operations declare `input` at all"*.
+ *     Live: **25 operations — 5 class-string, 19 `false`, 1 `null`.** Twenty-four of twenty-five declare.
+ *   - Its coupling is dead. It promised the flip *"covers the resource axis in the same act"*. The two axes
+ *     are **decoupled**, and in the opposite direction 65 predicted: the resource axis was the one that
+ *     could not even SPELL `false` until 69 widened {@see ParticleResource::$input}, and it is the axis
+ *     that carried a live forgery (`seller-repo-authorizations`). The op axis is the one that cannot flip.
+ *   - Its gate is dead as written. *"The count of remaining `null`s reaching zero"* is **unreachable by
+ *     construction**: `media.ingest`'s `null` is not undone work — beam-media owns the operation and the
+ *     HOST owns what its request means, so any class named there would be a lie in another host. See
+ *     `IngestMedia`'s own fourteen-line refusal.
+ *
+ * **What replaces it**, on {@see UngatedOperationAudit}'s precedent — the sibling
+ * slot that asked this same question first, measured a constructor throw, and refused it because it would
+ * fail BOOT: `input:`'s residue becomes a **counted, warn-level audit over both particle registries**, not
+ * a reject. The estate's own answer to *"what does undeclared mean"* on the `ability:` axis was never
+ * *"rejected"*; it was *"COUNTED, loudly, until it is zero."* The flip is what that audit gates, and it
+ * ships with a NAMED carve-out for a package op whose input is host-bound rather than an asterisk on an
+ * unreachable gate. Blast radius the audit exists to make visible, measured statically 2026-08-28: five
+ * `#[ParticleOp]` declarations outside this host carry no `input:` (`laravel-beam-calendars` ×3,
+ * `laravel-beam-rank` ×1, `laravel-satellite-training` ×1) — none with a deferral comment, so all five
+ * read as omissions rather than decisions, which is the state `false` exists to distinguish.
  *
  * `output` is kind-dependent, and that asymmetry is deliberate rather than an inconsistency: a read/write/task
  * resolves ONE payload, so a single class-string says everything; a Stream emits a sequence of discrete typed

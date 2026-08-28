@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Particle\Attributes;
 
 use Attribute;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /**
@@ -47,9 +48,12 @@ class ParticleResource
      * @param  class-string|null  $data  read/output Data class; null ⇒ the annotated class itself is the
      *                                   projection (the single-class default), unless a static `project()`
      *                                   convention method takes precedence
-     * @param  class-string|null  $input  input Data DTO — declares `Splicewire\Beam\Write\Contracts\MapsToModelAttributes`
-     *                                    for its write map (`toModelAttributes()` is still honoured undeclared,
-     *                                    as a migration fallback); null ⇒ snake-map
+     * @param  class-string|false|null  $input  input Data DTO — declares `Splicewire\Beam\Write\Contracts\MapsToModelAttributes`
+     *                                          for its write map (`toModelAttributes()` is still honoured undeclared,
+     *                                          as a migration fallback). THREE-STATE, mirroring
+     *                                          {@see ParticleOperation::$input} (api-surface-coherence 69):
+     *                                          class-string ⇒ validated; `false` ⇒ accepts NOTHING, enforced with a 422;
+     *                                          `null` ⇒ UNDECLARED, which still means snake-map-anything and is the residue
      * @param  list<string>  $includes  default includes (eager-load + serialization axis)
      * @param  bool  $filterable  index rides the data-filters builder when true; plain `latest()` otherwise
      * @param  int  $perPage  default page size
@@ -87,7 +91,7 @@ class ParticleResource
         public string $key,
         public string $backing,
         public ?string $data = null,
-        public ?string $input = null,
+        public string|false|null $input = null,
         public array $includes = [],
         public bool $filterable = true,
         public int $perPage = 20,

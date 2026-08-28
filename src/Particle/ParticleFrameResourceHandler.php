@@ -428,10 +428,19 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     /**
      * The parsed, VALIDATED input: the resource's input DTO via `validateAndCreate` (its rules run and
      * reject with 422), else the raw input array.
+     *
+     * `input: false` (api-surface-coherence 69) means the resource accepts nothing, so Frame's transport
+     * hands the writer an EMPTY payload rather than the raw array — the same fact `ParticleController`
+     * enforces with a 422 over HTTP, spelled for a transport whose caller is the editor rather than an API
+     * client. Both leave the resource's `prepare()` hook as the only thing that fills the record.
      */
     protected function parseInput(ResourceDefinition $definition, array $input): mixed
     {
         $resource = $this->resource($definition);
+
+        if ($resource?->input === false) {
+            return [];
+        }
 
         return $resource?->input !== null ? $resource->input::validateAndCreate($input) : $input;
     }

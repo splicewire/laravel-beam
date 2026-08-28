@@ -499,6 +499,12 @@ class ParticleController extends Controller
      */
     protected function parseInput(ParticleResource $resource, Request $request): mixed
     {
+        if ($resource->input === false) {
+            $this->rejectInput($resource, $request);
+
+            return $request;
+        }
+
         if ($resource->input === null) {
             return $request;
         }
@@ -513,6 +519,56 @@ class ParticleController extends Controller
                 ),
             );
         }
+    }
+
+    /**
+     * `input: false` — the resource accepts NOTHING through the generic write pipeline, and says so.
+     *
+     * The REST twin of {@see ParticleOperationController::rejectInput()},
+     * built by api-surface-coherence 69 so the two particle axes share one three-state `input:` rather than
+     * the op axis having a state the resource axis cannot spell. Before it existed the resource axis was
+     * `?string`: a create whose every attribute is server-derived had no way to say so, so it declared
+     * `null` and {@see toAttributes()} snake-mapped the raw body onto the model AFTER the `prepare()` hook
+     * had force-filled the derived values — the body winning, silently.
+     *
+     * That was not a tidiness question. Probe-verified 2026-08-28 on `seller-repo-authorizations`
+     * (`laravel-beam-market-packages`): a Seller could POST `status`/`repos`/`seller_id` and mint an
+     * ACTIVE GitHub repo authorization, for a repo they do not own or attributed to another Seller,
+     * skipping the install handshake `BeginSellerRepoAuthorization` exists to run. `SubmitListingForReview`
+     * gates on exactly that row.
+     *
+     * `withoutStructuralColumns()` does NOT cover this: it is a relative-mount guard and no-ops on a flat
+     * mount, which is what that resource is.
+     *
+     * Rejection rather than silent stripping, for the op axis's own reason: a body sent to a surface that
+     * accepts none is a caller who believes something false about the contract, and a 422 naming the keys is
+     * the only answer that corrects them.
+     */
+    protected function rejectInput(ParticleResource $resource, Request $request): void
+    {
+        $source = match (true) {
+            $request->isJson() => (array) $request->json()->all(),
+            default => $request->post(),
+        };
+
+        $unexpected = array_keys($source);
+
+        if ($unexpected === []) {
+            return;
+        }
+
+        throw new HttpResponseException(
+            new JsonResponse(
+                [
+                    'message' => "The `{$resource->key}` resource accepts no input.",
+                    'errors' => array_fill_keys(
+                        $unexpected,
+                        "The `{$resource->key}` resource accepts no input.",
+                    ),
+                ],
+                422,
+            ),
+        );
     }
 
     /**
