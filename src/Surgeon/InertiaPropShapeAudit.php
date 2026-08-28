@@ -493,7 +493,7 @@ class InertiaPropShapeAudit implements DoctorAudit
 
     /**
      * A closure has no name, so the useful label is the call it was PASSED TO — `Fortify::loginView()`,
-     * `ShareLinkScopes::handle()`. That is the string an author greps for, and without it every one of the
+     * `GuestTokenScopes::handle()`. That is the string an author greps for, and without it every one of the
      * seven Fortify sites reports as an indistinguishable "closure".
      */
     protected function closureLabel(Closure|ArrowFunction $closure): string

@@ -197,7 +197,7 @@ class InertiaPropShapeAuditTest extends TestCase
         // tier tracks how hard it is to CONVERT.
         $sites = $this->sites(<<<'PHP'
         <?php
-        app(ShareLinkScopes::class)->handle('composition', function ($link, $uuid) {
+        app(GuestTokenScopes::class)->handle('composition', function ($link, $uuid) {
             return Inertia::render('songs/shared', ['song' => SongProjectData::project($c)]);
         });
         PHP);
