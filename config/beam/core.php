@@ -224,6 +224,25 @@ return [
     ],
 
     /*
+    | The converged per-resource discovery listing, `GET {mount}/discovery`
+    | (api-surface-coherence 105, decided by 41 D1/D5/D6). Mounted on `booted()`, ONE per stamped
+    | MOUNT — a resource live at two exposures gets two listings, each reporting only its own reach.
+    | The population follows ROUTES, not registrations: a stamped key with no `#[ParticleResource]`
+    | still gets a listing, and a registered resource with no route does not.
+    |
+    | `probes` is how a host teaches the listing about its OWN middleware. Beam reads `auth` and
+    | `can:` itself; `require.admin`, `entitlement:*` and friends are host predicates it has never
+    | heard of, and it does not guess — an alias with no probe is treated as REACHABLE, so a missing
+    | probe over-lists rather than silently hiding a route. Middleware alias => ReachabilityProbe
+    | class-string.
+    */
+    'discovery' => [
+        'enabled' => true,
+
+        'probes' => [],
+    ],
+
+    /*
     | The publishable-event catalog (api-surface-coherence ticket 40). `EventTypeRegistry` is the
     | accumulator; `#[BeamEvent]` is a FEEDER onto it, never a second store. Both keys are empty by
     | default and the scan is skipped entirely when they are — a fresh beam host still gets the

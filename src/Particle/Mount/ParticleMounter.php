@@ -11,6 +11,10 @@ use InvalidArgumentException;
 use ReflectionClass;
 use Rushing\DataFilters\Facades\DataFilter;
 use Schemastud\DataSchemas\Overlay\Lens\Fidelity;
+use Splicewire\Beam\Discovery\Data\ResourceDiscoveryData;
+use Splicewire\Beam\Discovery\Http\ResourceDiscoveryController;
+use Splicewire\Beam\Discovery\ResourceDiscoveryAutoMounter;
+use Splicewire\Beam\Discovery\ResourceMount;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Filters\Data\ResourceFilterVariantsData;
 use Splicewire\Beam\Filters\Http\ResourceFiltersController;
@@ -593,6 +597,39 @@ class ParticleMounter
             ])
             ->name($catalogName)
             ->beam()->returns(ResourceRenderingCatalogData::class);
+    }
+
+    /**
+     * The per-resource discovery listing: `GET {mount}/discovery` (api-surface-coherence 105, 41 D5).
+     *
+     * Takes a {@see ResourceMount} rather than a URI and a key, because the mount is exactly the unit
+     * the listing is published per — 41 D5's *"per-MOUNT, not per-resource"* — and re-deriving one from
+     * two loose strings at the call site is how the two halves drift apart.
+     *
+     * The route carries the mount's COMMON middleware, and it has to: this is called from a boot-time
+     * pass over the finished route table ({@see ResourceDiscoveryAutoMounter}), so there is no enclosing
+     * route group to inherit `auth:sanctum` and the tenancy stack from. Without it the listing would be
+     * the one unauthenticated door onto an authenticated resource.
+     */
+    public function resourceDiscovery(Router $router, ResourceMount $mount): RouteInstance
+    {
+        $route = $router->get($mount->uri(), [ResourceDiscoveryController::class, 'index'])
+            ->defaults(ResourceDiscoveryController::CONFIG, [
+                'resource' => $mount->resource,
+                'mount' => $mount->root,
+            ])
+            // ALSO the ordinary `_particle` stamp (ticket 01), so the listing groups, documents and
+            // name-checks as a sub-operation of its resource exactly as the filter sub-surface does.
+            ->defaults(ParticleController::RESOURCE, $mount->resource)
+            ->name($mount->routeName());
+
+        if ($mount->middleware !== []) {
+            $route->middleware($mount->middleware);
+        }
+
+        $route->beam()->returns(ResourceDiscoveryData::class);
+
+        return $route;
     }
 
     /**

@@ -57,6 +57,9 @@ use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Data\BeamSchemaData;
+use Splicewire\Beam\Discovery\ResourceDiscoveryAutoMounter;
+use Splicewire\Beam\Discovery\ResourceMountMap;
+use Splicewire\Beam\Discovery\RouteReachability;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
@@ -592,6 +595,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->singleton(ResourceKeyOracle::class, fn ($app) => new ResourceKeyOracle($app));
         $this->app->singleton(EventTypeRegistry::class, fn ($app) => new EventTypeRegistry(
             $app->make(ResourceKeyOracle::class),
+        ));
+
+        // The converged per-resource discovery listing (api-surface-coherence 105, decided by 41 D1/D5/D6).
+        // All three are plain binds, not singletons: the map is a READ over the live route table and
+        // memoising it would hand a request the table as it stood at first resolve — which is precisely
+        // the staleness a runtime listing exists to avoid.
+        $this->app->bind(ResourceMountMap::class, fn ($app) => new ResourceMountMap($app->make('router')));
+        $this->app->bind(RouteReachability::class, fn ($app) => new RouteReachability(
+            $app,
+            $app->make(Gate::class),
+            (array) config('beam.core.discovery.probes', []),
         ));
 
         // particle-doctrine-convergence ticket 09: the cross-transport ability resolver + its ACTOR port.
@@ -1546,6 +1560,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // hands the registrar the store and every write would bypass that validation silently. See the
         // registry's class docblock.
         $this->app->booted(fn () => $this->registerEventTypes());
+
+        // The discovery listing's auto-mount (api-surface-coherence 105). On `booted()` for the same
+        // reason the event catalog is: its population is "every resource key with a stamped route", and
+        // that is only a settled question once every provider — including the host's — has registered.
+        if ((bool) config('beam.core.discovery.enabled', true)) {
+            $this->app->booted(fn () => $this->app->make(ResourceDiscoveryAutoMounter::class)->mount());
+        }
 
         // The second act (registry-kernel ticket 21 D1) for the event catalog.
         $this->app->make(RegistryIndex::class)->describe(
