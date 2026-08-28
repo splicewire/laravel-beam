@@ -52,6 +52,7 @@ use Splicewire\Beam\Console\GenerateContributedTypesCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
+use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Data\BeamSchemaData;
@@ -64,6 +65,7 @@ use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 use Splicewire\Beam\Doctor\PackageStubConflictAudit;
+use Splicewire\Beam\Doctor\ParticleCapabilityDisagreementAudit;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
 use Splicewire\Beam\Doctor\ScribeOutputContractAudit;
@@ -117,6 +119,7 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleRelativeRegistry;
 use Splicewire\Beam\Particle\ParticleResourceModelResolver;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Particle\ResourceRegistryReport;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
@@ -818,6 +821,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // the overrides this reports at audiostud are the estate's shape-ownership mechanism working.
         $this->app->bind(PackageStubConflictAudit::class, fn () => PackageStubConflictAudit::forApp());
 
+        // The registry projection both the command and the disagreement audit read. Bound explicitly
+        // rather than left to autowiring so the HANDLER column is filled from whatever resolver this host
+        // ended up with — beam's OOTB default, or the bespoke map an app provider bound over it.
+        $this->app->bind(ResourceRegistryReport::class, fn ($app) => new ResourceRegistryReport(
+            $app->make(ParticleResourceRegistry::class),
+            $app->make(FrameResourceHandlerResolver::class),
+        ));
+        $this->app->bind(ParticleCapabilityDisagreementAudit::class, fn ($app) => new ParticleCapabilityDisagreementAudit(
+            $app->make(ResourceRegistryReport::class),
+        ));
+
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', KeyTypeConformanceAudit::class);
         $manifest->register('splicewire/laravel-beam', DeadConfigKeyAudit::class);
@@ -831,6 +845,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host
         // mounted, and the count is the gate the `null` → derived-permission-name flip waits on.
         $manifest->register('splicewire/laravel-beam', UngatedOperationAudit::class);
+        // Intent measured against capability across the whole resource registry — the standing half of
+        // `splicewire:beam:particle:resources` (otb-ui-frontier-sidebar DESIGN-02). Registry-side like the
+        // one above it, and in the MANIFEST rather than hardcoded in `BeamDoctorCommand` because the
+        // manifest is what `surgeon:audit` discovers through the host's `ConformanceManifest` port; a
+        // disagreement that only appears when an operator runs a command is a reading nobody is
+        // accountable to. Advisory permanently — see the audit's docblock.
+        $manifest->register('splicewire/laravel-beam', ParticleCapabilityDisagreementAudit::class);
         // Joins the PUBLISHED migration files this host will actually run (stamped filename → tables
         // created / pointed at) against each other, so a migration whose foreign key targets a table
         // created later is caught at boot rather than by a failed greenfield migrate. Reads published
@@ -1197,6 +1218,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 // declaration exists before the logic does and a fresh surface is born conformance-clean.
                 MakeParticleResourceCommand::class,
                 MakeParticleOpCommand::class,
+                // The registry's own reading surface (otb-ui-frontier-sidebar DESIGN-02, reshaped from an
+                // operator SCREEN to a command). Nav-invisibility is the registry's default — most
+                // declarations name no `section` — so nothing in-product could enumerate the vocabulary;
+                // and a screen over that set would have to reimplement the host's secure-by-omission nav
+                // gate or disclose resources the viewer is denied. A shell already holds the host.
+                ParticleResourcesCommand::class,
             ]);
 
             // The estate-POLICY surgeon commands relocated DOWN from surgeon (they hard-code estate
