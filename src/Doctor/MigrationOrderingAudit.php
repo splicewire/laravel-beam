@@ -284,12 +284,9 @@ class MigrationOrderingAudit implements DoctorAudit
 
     private function installPath(string $package): ?string
     {
-        // The manifest labels beam-core's own step for humans ('… (core)'); the composer name is clean.
-        $name = trim((string) preg_replace('/\s*\(.*\)$/', '', $package));
-
         try {
-            return InstalledVersions::isInstalled($name)
-                ? InstalledVersions::getInstallPath($name)
+            return InstalledVersions::isInstalled($package)
+                ? InstalledVersions::getInstallPath($package)
                 : null;
         } catch (\OutOfBoundsException) {
             return null;

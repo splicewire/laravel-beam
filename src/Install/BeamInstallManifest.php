@@ -71,35 +71,19 @@ class BeamInstallManifest implements Registry
     ): static {
         // The key is a COMPOSER PACKAGE NAME, so `/` makes it illegal as a bare `Key` — 58 D5's
         // ruling for `BeamExtensionInstallManifest` applies verbatim: `RelativeUriKey`, coordinate
-        // preserved as spelled. Every parameter keeps its name because every call site in the estate
+        // preserved as spelled. It is a coordinate and nothing else: beam-core used to register
+        // itself as `… (core)`, and the two strips that existed only to undo that decoration are
+        // both gone. Every parameter keeps its name because every call site in the estate
         // passes by name; the sweep that established that covered every package `src`/`tests`, every
         // Herd host and every starter, not a three-package sample.
         $this->store->register(
-            $package instanceof RegistryKey ? $package : RelativeUriKey::of(static::coordinateOf($package)),
+            $package instanceof RegistryKey ? $package : RelativeUriKey::of($package),
             new InstallStep((string) $package, is_array($publishTags) ? $publishTags : [], $migrates, $order, $note),
             $by,
             $ability,
         );
 
         return $this;
-    }
-
-    /**
-     * The composer coordinate inside a package label.
-     *
-     * ⚠️ This field carries a HUMAN LABEL, not just a coordinate: beam-core registers itself as
-     * `splicewire/laravel-beam (core)`, which is legal as neither a `Key` nor a `RelativeUriKey` —
-     * the space and parentheses are outside the charset. Identity and presentation have been
-     * conflated in this one field all along, and `MigrationOrderingAudit::installPath()` already
-     * carries the same strip (`preg_replace('/\s*\(.*\)$/', '', $package)`) to look a package up.
-     *
-     * The KEY takes the coordinate; the `InstallStep` keeps the label verbatim, so nothing a human
-     * reads changes. Fixing the conflation properly means a separate `$label` on the step, which is
-     * a wider change than this migration should make on its own.
-     */
-    protected static function coordinateOf(string $package): string
-    {
-        return trim((string) preg_replace('/\s*\(.*\)$/', '', $package));
     }
 
     /** @return list<InstallStep> */

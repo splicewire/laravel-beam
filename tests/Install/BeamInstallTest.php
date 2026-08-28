@@ -181,7 +181,7 @@ class BeamInstallTest extends TestCase
         // Non-interactive (CI/scripted) install: no prompts, pure Phase-1 manifest mechanics. The bare
         // `php artisan splicewire:beam:install` in a TTY is now the Phase-2 wizard (covered below).
         $this->artisan('splicewire:beam:install', ['--no-interaction' => true])
-            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam (core)')
+            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam')
             ->expectsOutputToContain('splicewire:beam:install → acme/late')
             ->expectsOutputToContain('beam stack installed.')
             ->assertExitCode(0);
@@ -232,7 +232,7 @@ class BeamInstallTest extends TestCase
             '--tenancy' => 'multi',
             '--no-interaction' => true,
         ])
-            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam (core)')
+            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam')
             ->assertExitCode(0);
 
         // The empty prefix means Beam::table() no longer prefixes — a retrofit host's tables stand as-is.
@@ -254,13 +254,13 @@ class BeamInstallTest extends TestCase
         $manifest->register('acme/skipped', ['skipped-config'], order: 100);
 
         $this->artisan('splicewire:beam:install', ['--modules' => 'wanted', '--no-interaction' => true])
-            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam (core)')
+            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam')
             ->expectsOutputToContain('splicewire:beam:install → acme/wanted')
             ->doesntExpectOutputToContain('acme/skipped')
             ->assertExitCode(0);
 
         $this->artisan('splicewire:beam:install', ['--modules' => '', '--no-interaction' => true])
-            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam (core)')
+            ->expectsOutputToContain('splicewire:beam:install → splicewire/laravel-beam')
             ->doesntExpectOutputToContain('acme/wanted')
             ->assertExitCode(0);
     }

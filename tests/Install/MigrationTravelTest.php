@@ -228,7 +228,7 @@ class MigrationTravelTest extends TestCase
             '--no-interaction' => true,
         ])
             ->expectsOutputToContain('is not a relative shift')
-            ->doesntExpectOutputToContain('splicewire:beam:install → splicewire/laravel-beam (core)')
+            ->doesntExpectOutputToContain('splicewire:beam:install → splicewire/laravel-beam')
             ->assertExitCode(1);
     }
 }

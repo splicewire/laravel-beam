@@ -1311,7 +1311,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // tenant/ → database/migrations/tenant/); `migrates: true` then runs a single `migrate` at the end
         // so the freshly-published copies apply.
         $this->app->make(BeamInstallManifest::class)->register(
-            package: 'splicewire/laravel-beam (core)',
+            package: 'splicewire/laravel-beam',
             publishTags: ['beam-config', 'beam-migrations', 'beam-scribe'],
             migrates: true,
             order: 0,
