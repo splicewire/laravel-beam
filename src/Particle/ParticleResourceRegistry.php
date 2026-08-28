@@ -22,6 +22,7 @@ use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\Superseded;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Splicewire\Beam\Doctor\ParticleRouteResourceAudit;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
@@ -29,6 +30,7 @@ use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
+use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
 
 /**
  * The container-singleton registry of {@see ParticleResource} declarations, keyed by resource key — the
@@ -188,7 +190,7 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
      * The sibling registry has had this since it was written — {@see ParticleOperationRegistry::find()},
      * whose caller's docblock states the principle: a route mounted for an unregistered thing is *a
      * reportable absence, not a reason to fail an entire spec build*. This is the resource tier's copy of
-     * it. The absence is reported by {@see \Splicewire\Beam\Doctor\ParticleRouteResourceAudit}.
+     * it. The absence is reported by {@see ParticleRouteResourceAudit}.
      */
     public function find(string $key): ?ParticleResource
     {
@@ -299,6 +301,17 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
      * attaches an {@see AttributeRegistrar} in beam's own
      * `boot()`, so a consumer provider that hand-registers the same key afterwards lands second and
      * wins by {@see OnDuplicate::Supersede} alone — no tier, no branch, no precedence rule.
+     *
+     * ⚠️ **That is true for ONE of the two documented host-override routes, and false for the other**
+     * (registry-kernel ticket 67). `discoverResources()` has a second intake that is not a consumer
+     * registration at all: the explicit `beam.core.resources.classes` list (falling back to
+     * `frame.resources`), which it reads FIRST — before the manifest/scan this registrar serves, and
+     * before every other family package's provider boots. So a class named there is the entry that gets
+     * displaced, silently, and the sentence above describes only the route that works. Neither the
+     * ordering nor the miss policy is wrong; what was missing was anything that SAYS which route you are
+     * on. {@see ListedResourceDisplacementAudit} now reports it, and
+     * distinguishes a real override that lost from a listing displaced by its own class (16 of the 31
+     * entries measured across the estate) and from a listing that is the only registration there is.
      *
      * ⚠️ The delegation trap, measured while landing that: `$this->entries->attach($r)` reads naturally
      * and is wrong, because `BasicRegistry::attach()` hands the registrar the STORE, so every write

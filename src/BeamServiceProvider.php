@@ -80,8 +80,8 @@ use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Doctor\Support\FamilyTailwindScan;
 use Splicewire\Beam\Doctor\Support\TrackerTicketStatus;
 use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
-use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
+use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Doctor\UnrehearsableStubAudit;
@@ -161,6 +161,7 @@ use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
+use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
 use Splicewire\Beam\Surgeon\MorphAliasCoverageAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
@@ -1121,6 +1122,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // burn-down is one `Relation::morphMap()` line per finding; promote to `gate: true` once it is
         // clear and the permanently-exempt set is decided.
         $manifest->register('splicewire/laravel-beam', MorphAliasCoverageAudit::class);
+        // Advisory, permanently. The explicit `beam.core.resources.classes` / `frame.resources` list is
+        // registered FIRST — before beam's own manifest/scan and before every other package's provider
+        // boots — so under `OnDuplicate::Supersede` a host's listed override is the entry that LOSES,
+        // silently, while the provider-boot route the registry's own docblock describes wins
+        // (registry-kernel ticket 67). The population is a host fact — which classes this host lists and
+        // which packages it composes them with — so by the estate's rule this reports rather than throws,
+        // and the ordering is left exactly as ticket 19 D1 settled it.
+        $manifest->register('splicewire/laravel-beam', ListedResourceDisplacementAudit::class);
     }
 
     /**
