@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests;
 
 use Orchestra\Testbench\TestCase as Orchestra;
+use Rushing\DataFilters\ServiceProvider as DataFiltersServiceProvider;
 use Rushing\PermissionCascade\PermissionCascadeServiceProvider;
 use Rushing\Popcorn\Laravel\PopcornServiceProvider;
 use Rushing\Versioning\VersioningServiceProvider;
@@ -65,6 +66,15 @@ abstract class TestCase extends Orchestra
             // "04 D1 reached by a second route"). beam requires `rushing/laravel-popcorn`; the harness was
             // the only thing not booting it.
             PopcornServiceProvider::class,
+            // ⚠️ The SEVENTH recorded instance of the testbench trap, and the one that makes beam's own
+            // `filterable: true` promise testable. `Rushing\DataFilters\Registry\ResourceRegistry` is
+            // auto-resolvable, so without this provider `app()` mints a FRESH registry per call: beam's
+            // boot-time `declareFilterResources()` writes into a throwaway and every read sees an empty
+            // registry — green suite, no registrations, no error. It also binds `DataFilterManager`
+            // (what `DataFilter::query()` resolves through) and the `data-filters` config the reflector
+            // reads. `rushing/laravel-data-filters` is a hard `require` of beam, not a dev extra; the
+            // harness was the only thing not booting it.
+            DataFiltersServiceProvider::class,
         ];
     }
 

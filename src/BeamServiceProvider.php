@@ -11,6 +11,8 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Rushing\DataFilters\Contracts\ResourceModelResolver;
+use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
+use Rushing\DataFilters\Registry\ResourceRegistry as FilterResourceRegistry;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Rushing\Popcorn\Concerns\ChainsTraitMethods;
@@ -57,6 +59,7 @@ use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Data\BeamSchemaData;
+use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Discovery\ResourceDiscoveryAutoMounter;
 use Splicewire\Beam\Discovery\ResourceMountMap;
 use Splicewire\Beam\Discovery\RouteReachability;
@@ -128,6 +131,7 @@ use Splicewire\Beam\Particle\ParticleRelativeRegistry;
 use Splicewire\Beam\Particle\ParticleResourceModelResolver;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\ResourceRegistryReport;
+use Splicewire\Beam\Query\HookResourceQuery;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
@@ -1528,6 +1532,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // from `public static` convention methods on the annotated class.
         $this->discoverParticleAttributes();
 
+        // The data-filters resources that back the FILTERABLE particle resources declared just above.
+        // AFTER discovery, deliberately: the guard below asks data-filters what it already holds, and
+        // the model port it leaves empty resolves off the particle registry discovery has just filled.
+        $this->declareFilterResources();
+
         // The per-resource rendering registry's own registrar, attached in the OWNER's boot() for the
         // reason its binding above states (registry-kernel ticket 53). `beam.core.renderings` is
         // `resource => [class, class]`; the expansion of that list into one entry per rendering is the
@@ -1742,6 +1751,61 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $this->app->make(ParticleOperationRegistry::class),
             $this->app->make(ParticleRelativeRegistry::class),
         ))->discover($classes, $paths);
+    }
+
+    /**
+     * Ship the `data-filters` resources beam's own filterable `#[ParticleResource]` declarations
+     * promise.
+     *
+     * ⚠️ **`filterable` is a PROMISE, and beam is the tier that defined it.** `ParticleResource`
+     * defaults `filterable` to **true** — `hooks` never spells it out, it simply doesn't opt out — and
+     * {@see ParticleController::index()} sends a filterable resource through
+     * `hydrator->query($key)`, which raises `BadMethodCallException` on a key with no data-filters
+     * registration. Measured over authenticated HTTP at `~/Herd/splicewire-app` on 2026-08-29,
+     * `GET /api/v1/hooks` was a live **500**: "No data-filters resource is registered under [hooks]".
+     * The exact defect `splicewire/laravel-beam-calendars` (b1a9cd9) had just been repaired for its
+     * three, and beam was carrying one of its own the whole time.
+     *
+     * `filterable: false` is not the escape here: that path is `defaultSortedQuery()`, which cannot see
+     * the request, and it would demote a resource that has two REST mounts and an operator realm.
+     *
+     * Registered IMPERATIVELY rather than through data-filters' `#[ResourceFilter]` discovery, for the
+     * same reason `laravel-beam-lineage` and `-calendars` do it this way:
+     * `config('data-filters.discover')` is HOST-owned and empty by default — a closed door to a
+     * package, exactly as `discover_paths` is for particles. A package cannot add itself to a host's
+     * config array, so discovery here would register nothing at a host and leave the 500 in place.
+     *
+     * No `model:` — {@see ParticleResourceModelResolver} (bound onto data-filters'
+     * `ResourceModelResolver` port above) fills the backing off the `#[ParticleResource]` registered
+     * under the *same key*, lazily. So the model lives in one place and the two read paths cannot
+     * drift.
+     *
+     * The `has()` guard is **the caller's job, not the registry's**: `registerDefinition()` overwrites
+     * plainly, so an unguarded package registration would silently stomp a host that seeded its own
+     * `hooks` key from `config('data-filters.resources')`. Guarded, this is strictly additive.
+     *
+     * Only `hooks` today. `schemas` ({@see Data\BeamSchemaData}) and `git-repo`
+     * ({@see Data\GitRepoData}) are beam's other two unregistered filterable keys, but neither is
+     * mounted at the probed tenant — both answer 404 at `/api/v1/<key>`, so they are latent rather
+     * than broken, and each is left for its own measurement rather than folded in blind.
+     */
+    protected function declareFilterResources(): void
+    {
+        if (! $this->app->bound(FilterResourceRegistry::class)) {
+            return; // data-filters genuinely absent — `hooks` is declared, just not filterable here.
+        }
+
+        $registry = $this->app->make(FilterResourceRegistry::class);
+
+        if ($registry->has('hooks')) {
+            return;
+        }
+
+        $registry->registerDefinition(new FilterResourceDefinition(
+            key: 'hooks',
+            data: HookData::class,
+            query: HookResourceQuery::class,
+        ));
     }
 
     /**
