@@ -58,7 +58,6 @@ use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
-use Splicewire\Beam\Data\BeamSchemaData;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Discovery\ResourceDiscoveryAutoMounter;
 use Splicewire\Beam\Discovery\ResourceMountMap;
@@ -1763,17 +1762,26 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $classes = config('beam.core.particle.classes', []);
         $paths = config('beam.core.particle.discover_paths', []);
 
-        // Beam's OWN declaration sites, always registered — they are not a host's to name.
+        // Beam's OWN declaration ROOTS, always scanned — they are not a host's to name.
         //
         // This is `particle-contribution-seam` ticket 07's ratified idiom applied to the owner itself:
         // a package registers its own declarations rather than waiting for a host to list their FQCNs.
         // The estate-wide `discover_paths` points at the HOST's `app_path('Data')`, which a beam class
-        // can never be inside, so without this line `BeamSchemaData` would reach a registry only where
-        // some host happened to name it — the exact defect ADR-0214 §5 removed for beam-ux.
+        // can never be inside, so without this a beam declaration would reach a registry only where some
+        // host happened to name it — the exact defect ADR-0214 §5 removed for beam-ux.
+        //
+        // ⚠️ It used to be a hand-written FQCN list (`PARTICLE_DECLARATIONS`, one entry), and that was a
+        // MISREAD of 07 rather than an implementation of it: "a package registers its own declarations"
+        // became *list your own FQCNs* when it could simply have been *scan your own directory*. The
+        // list held `BeamSchemaData` and silently omitted `GitRepoData`, `HookData` and `ResetHookOp` —
+        // three declarations that reached a registry only where a host's `frame.resources` named them.
+        // Nothing reported the omission, because a hand-list cannot report what its author forgot.
         //
         // Registration is idempotent by key (last wins), so a host that also lists these classes during
-        // a migration window registers the same declaration twice and gets the same result.
-        $classes = [...self::PARTICLE_DECLARATIONS, ...$classes];
+        // a migration window registers the same declaration twice and gets the same result. The
+        // `$classes` argument is untouched — an explicit list is still the cheap door, and is what a
+        // caller with a class-string rather than a directory should keep using.
+        $paths = [...self::PARTICLE_DECLARATION_PATHS, ...$paths];
 
         (new AttributedParticleDiscovery(
             $this->app->make(ParticleResourceRegistry::class),
@@ -1838,16 +1846,19 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
     }
 
     /**
-     * Every `#[ParticleResource]` / `#[ParticleOp]` declaration site inside beam itself.
+     * Every directory inside beam that may hold a `#[ParticleResource]` / `#[ParticleOp]` /
+     * `#[ParticleRelative]` declaration.
      *
-     * `BeamSchemaData` is the `schemas` resource over the DB-backed schema registry (`beam_schemas`),
-     * declared by registry-kernel ticket 65. It mounts no generic CRUD — see that class's docblock for
-     * why none of the five verbs fit a write-once, `$id`-addressed, two-tier surface.
+     * Directories rather than class-strings, deliberately: a new declaration next to its siblings is
+     * then registered by existing as a file, which is the only version of this that cannot rot. Both
+     * roots are small (beam's `Data` holds 8 files, `Particle/Ops` holds 1), and an unattributed class
+     * under either is ignored rather than an error.
      *
-     * @var list<class-string>
+     * @var list<string>
      */
-    protected const PARTICLE_DECLARATIONS = [
-        BeamSchemaData::class,
+    protected const PARTICLE_DECLARATION_PATHS = [
+        __DIR__.'/Data',
+        __DIR__.'/Particle/Ops',
     ];
 
     /**

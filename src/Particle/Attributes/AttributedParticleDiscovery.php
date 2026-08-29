@@ -53,6 +53,15 @@ class AttributedParticleDiscovery
      * Register the explicit class-strings and everything under the discover paths that carries a
      * `#[ParticleResource]`, `#[ParticleOp]` or `#[ParticleRelative]` attribute.
      *
+     * ⚠️ **ONE filesystem walk, not three.** This used to call `$scanner->scan()` once per attribute,
+     * and each call re-ran `classesIn()` — a full `Finder` walk plus a `class_exists()` on every `*.php`
+     * under the paths. That was tolerable while the `$paths` half was dead code (measured 2026-08-29:
+     * not one caller in the estate passed it). It is not tolerable now that every declaring package
+     * scans its own declaration root at boot, so the paths are enumerated ONCE and each class is asked
+     * for all three attributes. Behaviour is unchanged — `registerAttributed()` is exactly the
+     * three-way test the three scans performed, minus {@see registerClass()}'s throw for a class that
+     * carries none (an unattributed class under a scanned directory is the normal case, not an error).
+     *
      * @param  array<int, class-string>  $classes  explicit annotated class list (cheap — always honoured)
      * @param  array<int, string>  $paths  filesystem paths to scan for annotated classes
      */
@@ -62,19 +71,46 @@ class AttributedParticleDiscovery
             $this->registerClass($class);
         }
 
-        $scanner = new AttributedClassScanner;
+        if ($paths === []) {
+            return;
+        }
 
-        foreach ($scanner->scan($paths, ParticleResource::class, instanceof: false) as $class) {
+        foreach ((new AttributedClassScanner)->classesIn($paths) as $class) {
+            $this->registerAttributed($class);
+        }
+    }
+
+    /**
+     * Register whichever of the three particle attributes $class carries, and say whether it carried any.
+     *
+     * The scan's counterpart to {@see registerClass()}: same three tests, same order, no throw. A class
+     * the scanner surfaced is a file that happened to sit under a declaration root — silence is the
+     * correct answer for it. A class a CALLER named is a claim, and {@see registerClass()} still fails
+     * that claim loudly.
+     *
+     * @param  class-string  $class
+     */
+    private function registerAttributed(string $class): bool
+    {
+        $reflection = new ReflectionClass($class);
+        $registered = false;
+
+        if ($reflection->getAttributes(ParticleResource::class) !== []) {
             $this->registerResourceClass($class);
+            $registered = true;
         }
 
-        foreach ($scanner->scan($paths, ParticleOp::class, instanceof: false) as $class) {
+        if ($reflection->getAttributes(ParticleOp::class) !== []) {
             $this->registerOpClass($class);
+            $registered = true;
         }
 
-        foreach ($scanner->scan($paths, ParticleRelative::class, instanceof: false) as $class) {
+        if ($reflection->getAttributes(ParticleRelative::class) !== []) {
             $this->registerRelativeClass($class);
+            $registered = true;
         }
+
+        return $registered;
     }
 
     /**
@@ -89,25 +125,7 @@ class AttributedParticleDiscovery
             throw new InvalidArgumentException("Particle attribute class [{$class}] does not exist.");
         }
 
-        $reflection = new ReflectionClass($class);
-        $registered = false;
-
-        if (! empty($reflection->getAttributes(ParticleResource::class))) {
-            $this->registerResourceClass($class);
-            $registered = true;
-        }
-
-        if (! empty($reflection->getAttributes(ParticleOp::class))) {
-            $this->registerOpClass($class);
-            $registered = true;
-        }
-
-        if (! empty($reflection->getAttributes(ParticleRelative::class))) {
-            $this->registerRelativeClass($class);
-            $registered = true;
-        }
-
-        if (! $registered) {
+        if (! $this->registerAttributed($class)) {
             throw new InvalidArgumentException(
                 "Class [{$class}] carries none of #[ParticleResource], #[ParticleOp], #[ParticleRelative]."
             );
