@@ -356,6 +356,11 @@ class ParticleResource implements HasRegistryKey
             ),
             layout: $this->layout,
             createAffordance: $this->createAffordance,
+            // The declared display singular travels with the definition now. It has existed on this
+            // class since the Scribe title strategies needed it (`media` → "Medium" is the whole
+            // reason) and reached only the docs generator; frame's list toolbar was rendering the
+            // raw KEY — "New scaffold-packs" — for a word the declaration already carried.
+            singularLabel: $this->singularLabel,
         );
     }
 }
