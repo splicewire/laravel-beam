@@ -70,6 +70,7 @@ use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
 use Splicewire\Beam\Doctor\FilterablePromiseAudit;
+use Splicewire\Beam\Doctor\FilterStampReadPathAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
@@ -713,6 +714,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->registerFacadeConformanceAudits();
         $this->registerRegistryConformanceAudits();
         $this->registerFilterablePromiseAudit();
+        $this->registerFilterStampReadPathAudit();
         $this->registerConformanceManifest();
     }
 
@@ -1254,6 +1256,27 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
     {
         $this->app->make(BeamDoctorManifest::class)
             ->register('splicewire/laravel-beam', FilterablePromiseAudit::class);
+    }
+
+    /**
+     * The detector for the promise a hand-rolled exposure makes by SAYING so.
+     *
+     * `->beam()->inResource($key, filters: true)` mounts the resource's whole filter sub-surface beside a
+     * hand-written index, and nothing checked that the index reads the vocabulary those routes publish.
+     * Three at the flagship did not (api-surface-coherence 101). See {@see FilterStampReadPathAudit}.
+     *
+     * Registered UNCONDITIONALLY, beside {@see registerFilterablePromiseAudit()} and for the same
+     * reason: it reads the route table and one booted registry and parses no PHP, so it depends on
+     * neither surgeon nor `nikic/php-parser`, and gating it on a dev dependency would make the check a
+     * function of how the host installed.
+     *
+     * Advisory, permanently — every input (which routes this composition mounts, which data-filters
+     * resources it registered, which package's controller ends up bound) is a fact about the HOST.
+     */
+    protected function registerFilterStampReadPathAudit(): void
+    {
+        $this->app->make(BeamDoctorManifest::class)
+            ->register('splicewire/laravel-beam', FilterStampReadPathAudit::class);
     }
 
     /**

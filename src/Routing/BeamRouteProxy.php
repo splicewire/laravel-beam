@@ -5,6 +5,8 @@ namespace Splicewire\Beam\Routing;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as RouteFacade;
 use Rushing\DataFilters\Facades\DataFilter;
+use Splicewire\Beam\Discovery\SubSurface;
+use Splicewire\Beam\Doctor\FilterStampReadPathAudit;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Http\Particle\ParticleController;
 
@@ -39,6 +41,26 @@ class BeamRouteProxy
      * host action key ever again.
      */
     public const ACTION = 'beam';
+
+    /**
+     * The route DEFAULT recording that this route asked for a filter sub-surface — the ask itself, not
+     * its outcome (api-surface-coherence 101).
+     *
+     * `filters: true` used to leave no trace: an argument that ran one method and was forgotten. So
+     * nothing could ask the only question that matters afterwards — *does the index under those routes
+     * read the vocabulary they publish?* — and three flagship routes published one they did not serve.
+     * Worse, {@see mountFilterSubSurface()} returns early on an unregistered key, so a stamp naming a
+     * key no registry carries mounts nothing **silently**; a population derived from the mounted
+     * sub-surface can only see the promises that were kept. Recording the ask is what makes both
+     * failures visible to {@see FilterStampReadPathAudit}.
+     *
+     * A DEFAULT rather than an action key, matching {@see ParticleController::RESOURCE} for the reason
+     * {@see SubSurface} gives: sub-surface classification reads defaults, so this sits where every other
+     * mount-time stamp already is. The leading underscore is the framework's
+     * "not a URI parameter" convention. It holds the resource key rather than `true` so a reader of
+     * `$route->defaults` sees WHICH vocabulary was promised without a second lookup.
+     */
+    public const FILTERS_PROMISE = '_particle_filters';
 
     protected Route $route;
 
@@ -129,6 +151,7 @@ class BeamRouteProxy
         $this->route->defaults(ParticleController::RESOURCE, $resourceKey);
 
         if ($filters) {
+            $this->route->defaults(self::FILTERS_PROMISE, $resourceKey);
             $this->mountFilterSubSurface($resourceKey);
         }
 
