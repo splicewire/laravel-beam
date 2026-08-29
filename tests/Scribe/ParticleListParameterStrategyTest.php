@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Tools\DocumentationConfig;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Rushing\DataFilters\Attributes\Filterable;
 use Rushing\DataFilters\Attributes\Includable;
 use Rushing\DataFilters\Attributes\Sortable;
@@ -20,15 +21,31 @@ use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use Spatie\QueryBuilder\AllowedFilter;
+use Splicewire\Beam\Discovery\Http\ResourceDiscoveryController;
+use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Routing\BeamRouteProxy;
 use Splicewire\Beam\Scribe\Strategies\ParticleListParameterStrategy;
 use Splicewire\Beam\Tests\TestCase;
+use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
 
 class ListFixtureModel extends Model
 {
     protected $table = 'catalogs';
+}
+
+class ListFixtureHostController
+{
+    /** The estate's conventional collection action. */
+    public function index() {}
+
+    /** A SECOND collection action on one controller — `GuestTokenController@indexAll` at the flagship. */
+    public function indexAll() {}
+
+    /** A collection action under a third spelling, to show the gate does not enumerate names. */
+    public function listAll() {}
 }
 
 enum ListFixtureStatus: string
@@ -274,5 +291,124 @@ class ParticleListParameterStrategyTest extends TestCase
         $route->defaults(ParticleController::RESOURCE, 'nowhere');
 
         $this->assertSame([], $this->strategy()(ExtractedEndpointData::fromRoute($route)));
+    }
+
+    /**
+     * A route on an arbitrary controller/method, with arbitrary route defaults — the shape every
+     * hand-mounted exposure and every sub-surface mount actually has.
+     *
+     * @param  array<string, mixed>  $defaults
+     */
+    private function routeFor(string $controller, string $method, array $defaults = [], string $uri = 'catalogs'): ExtractedEndpointData
+    {
+        $route = new Route(['GET'], $uri, [
+            'uses' => $controller.'@'.$method,
+            'controller' => $controller.'@'.$method,
+        ]);
+
+        $route->defaults(ParticleController::RESOURCE, 'catalogs');
+
+        foreach ($defaults as $key => $value) {
+            $route->defaults($key, $value);
+        }
+
+        return ExtractedEndpointData::fromRoute($route);
+    }
+
+    /**
+     * api-surface-coherence 103, the under-trigger half. `GET /api/v1/guest-tokens` is served by
+     * `GuestTokenController@indexAll` and published ZERO parameters while its circuit-scoped twin
+     * published three — same resource, same data-filters key, different documentation.
+     *
+     * `filters: true` is the declaration that fixes it: {@see BeamRouteProxy::mountFilterSubSurface()}
+     * defines the flag as "this route is the resource's INDEX at this exposure", which is exactly the
+     * fact the method name was being asked to stand in for.
+     */
+    public function test_a_second_collection_action_is_documented_when_the_exposure_declares_the_index(): void
+    {
+        $this->register();
+
+        $parameters = $this->strategy()($this->routeFor(
+            ListFixtureHostController::class,
+            'indexAll',
+            [BeamRouteProxy::FILTERS_PROMISE => 'catalogs'],
+        ));
+
+        $this->assertArrayHasKey($this->filterKey('name'), $parameters);
+        $this->assertArrayHasKey(config('query-builder.parameters.sort', 'sort'), $parameters);
+    }
+
+    /** The second declared spelling: an explicit cardinality on the mount. */
+    public function test_a_declared_many_return_documents_the_list_contract_under_any_method_name(): void
+    {
+        $this->register();
+
+        $route = new Route(['GET'], 'catalogs', [
+            'uses' => ListFixtureHostController::class.'@listAll',
+            'controller' => ListFixtureHostController::class.'@listAll',
+            BeamRouteProxy::ACTION => ['returns' => ListFixtureFilterData::class, 'returnsMany' => true],
+        ]);
+        $route->defaults(ParticleController::RESOURCE, 'catalogs');
+
+        $parameters = $this->strategy()(ExtractedEndpointData::fromRoute($route));
+
+        $this->assertArrayHasKey($this->filterKey('name'), $parameters);
+    }
+
+    /**
+     * api-surface-coherence 103, the OVER-trigger half — 96 routes at the flagship, and the half nothing
+     * could see. Each sub-surface mounted beside a resource carries the same `_particle` stamp and is
+     * served by a controller whose method is ALSO called `index`, so the saved-filter listing was
+     * documented as accepting the filter vocabulary of the resource it lists saved filters FOR.
+     *
+     * @return array<string, array{0: class-string, 1: array<string, mixed>}>
+     */
+    public static function subSurfaceProvider(): array
+    {
+        return [
+            'saved filters' => [ResourceFiltersController::class, [ResourceFiltersController::CONFIG => ['resource' => 'catalogs']]],
+            'discovery' => [ResourceDiscoveryController::class, [ResourceDiscoveryController::CONFIG => ['resource' => 'catalogs']]],
+            // The one sub-surface with no config default of its own: recognised by its controller class.
+            'hook events' => [HookEventCatalogController::class, []],
+        ];
+    }
+
+    /**
+     * @param  class-string  $controller
+     * @param  array<string, mixed>  $defaults
+     */
+    #[DataProvider('subSurfaceProvider')]
+    public function test_a_sub_surface_does_not_inherit_its_resources_list_contract(string $controller, array $defaults): void
+    {
+        $this->register();
+
+        $this->assertSame([], $this->strategy()($this->routeFor($controller, 'index', $defaults)));
+    }
+
+    /**
+     * The rung that is a CONVENTION rather than a declaration, kept deliberately and pinned so its
+     * removal is a visible decision: three flagship routes (`api/v1/silos`, `api/v1/agents`,
+     * `api/v1/circuits`) are hand-mounted indexes declaring neither cardinality nor a filter promise,
+     * and dropping the rung would strip a contract they genuinely serve.
+     */
+    public function test_an_undeclared_crud_index_still_falls_back_to_the_method_name(): void
+    {
+        $this->register();
+
+        $parameters = $this->strategy()($this->routeFor(ListFixtureHostController::class, 'index'));
+
+        $this->assertArrayHasKey($this->filterKey('name'), $parameters);
+    }
+
+    /**
+     * The honest limit of that fallback, stated as a test rather than as prose: a second collection
+     * action that declares NOTHING is still invisible. That is the declaration gap 103 reports, not a
+     * defect this strategy can close on its own.
+     */
+    public function test_an_undeclared_second_collection_action_is_still_not_documented(): void
+    {
+        $this->register();
+
+        $this->assertSame([], $this->strategy()($this->routeFor(ListFixtureHostController::class, 'indexAll')));
     }
 }
