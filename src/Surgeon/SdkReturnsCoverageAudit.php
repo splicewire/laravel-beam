@@ -56,6 +56,20 @@ use Splicewire\Beam\Source\RouteManifestSource;
  * serves this app's own first-party SPA; visibility is a separate, later, public-OpenAPI-spec concern. No
  * dependency either direction.
  *
+ * **A STREAMING route is not undeclared surface** (overnight-alignment Wave 1 item 3). `returns` is one of
+ * the manifest's two shape slots; the other is `streams`, and {@see \Splicewire\Beam\Routing\RouteReturnType}
+ * says in its own docblock that *"a stream has no single response type — it emits discrete typed events
+ * under distinct wire names — so it deliberately resolves nothing from `for()`"*. A route carrying a
+ * populated `streams` map has therefore declared its wire shape at the only site that can express it, and
+ * asking it for a `->returns()` is a category error, not a gap. {@see declaresShape()} reads BOTH slots.
+ *
+ * Measured at the flagship 2026-08-29 before the fix: 3 of 231 findings were streaming routes
+ * (`circuits.op.run`, `circuits.runs.resume`, `thread.completions.stream`), and `thread.completions.stream`
+ * was one of only TWO findings the tiering rated `medium` — i.e. the audit's highest-confidence
+ * recommendation was to add a single response type to an SSE emitter. This is the estate's recurring
+ * defect class: the instrument counts `returns:` slots, the question is *"does this surface declare a
+ * shape?"*, and the answer to the first was being written down as the answer to the second.
+ *
  * **Step 2 (call-chain following).** Most controllers delegate DTO construction to a service/trait method
  * rather than building the DTO inline, which the direct-body checks above can't see. When the direct body
  * resolves nothing, {@see classifyViaCallChain()} follows exactly ONE level into any `$this->method()` or
@@ -130,7 +144,7 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
             }
 
             foreach ($source->toArray() as $name => $entry) {
-                if (isset($entry['returns']) || isset($seen[$name])) {
+                if (self::declaresShape($entry) || isset($seen[$name])) {
                     continue;
                 }
                 $seen[$name] = true;
@@ -165,6 +179,30 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
         }
 
         return new self($rows, self::defaultRouteFiles(), $unresolvableBindings);
+    }
+
+    /**
+     * Whether one {@see RouteManifestSource} entry already declares its wire shape — at EITHER of the
+     * manifest's two shape slots, not just `returns`.
+     *
+     * A `streams` map is the declaration site a streaming route has; there is no `returns` it could
+     * legally carry, because an SSE endpoint emits several typed payloads under distinct event names
+     * rather than one body. Reading only `returns` therefore turns every correctly-declared stream into
+     * a coverage gap, and the tiering then rates some of them *above* the genuinely undeclared ones
+     * (a stream handler that constructs its event DTOs inline scores `medium`).
+     *
+     * Kept as a static predicate rather than inlined so it is unit-testable without a router, a
+     * manifest source, or an app boot — the same reason {@see forApp()} is kept off the constructor.
+     *
+     * @param  array<string, mixed>  $entry  one route-manifest entry
+     */
+    public static function declaresShape(array $entry): bool
+    {
+        if (isset($entry['returns'])) {
+            return true;
+        }
+
+        return isset($entry['streams']) && $entry['streams'] !== [] && $entry['streams'] !== null;
     }
 
     /**

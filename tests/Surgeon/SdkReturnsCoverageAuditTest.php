@@ -664,6 +664,34 @@ class SdkReturnsCoverageAuditTest extends TestCase
         return $file;
     }
 
+    /**
+     * A streaming route declares its wire shape in `streams`, not `returns` — so it is NOT a coverage
+     * gap. Measured at the flagship 2026-08-29: three findings (`circuits.op.run`,
+     * `circuits.runs.resume`, `thread.completions.stream`) were routes with a populated `streams` map
+     * and no `returns`, and one of them was one of only two the tiering rated `medium`. Reading only
+     * `returns` asks whether the route-macro slot is filled; the audit's question is whether the surface
+     * declares a shape at all.
+     */
+    public function test_a_route_declaring_streams_is_not_a_coverage_gap(): void
+    {
+        // The genuinely undeclared shape: neither slot.
+        $this->assertFalse(SdkReturnsCoverageAudit::declaresShape(['path' => 'a']));
+
+        // The ordinary declared shape.
+        $this->assertTrue(SdkReturnsCoverageAudit::declaresShape(['path' => 'a', 'returns' => 'AData']));
+
+        // The stream's own declaration site — an event-name → payload-variants map.
+        $this->assertTrue(SdkReturnsCoverageAudit::declaresShape([
+            'path' => 'circuits/{id}/op/run',
+            'streams' => ['node_status' => ['NodeStatusData']],
+        ]));
+
+        // An EMPTY streams map is "checked, nothing declared" (RouteReturnType's own convention), so it
+        // stays a gap — the fix must not mute a route just for carrying the key.
+        $this->assertFalse(SdkReturnsCoverageAudit::declaresShape(['path' => 'a', 'streams' => []]));
+        $this->assertFalse(SdkReturnsCoverageAudit::declaresShape(['path' => 'a', 'streams' => null]));
+    }
+
     /** @var list<string> */
     private array $tempFiles = [];
 
