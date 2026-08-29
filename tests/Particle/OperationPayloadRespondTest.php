@@ -296,6 +296,24 @@ class OperationPayloadRespondTest extends TestCase
         }
     }
 
+    public function test_the_helper_never_lowers_an_unlimited_ceiling(): void
+    {
+        // `0` is PHP's "no limit", and it is the ONE baseline the sibling test above structurally cannot
+        // reach: it starts from 600, where raising to 36000 is the correct behaviour, so the guard's
+        // string comparison (`'0' < 36000` is true) reads as a pass there. From 0 the same comparison
+        // lowers infinity to a finite ceiling — the exact thing this helper's contract forbids. Octane
+        // hosts run with 0 normally, so this is the live case, not a theoretical one.
+        $original = ini_get('max_execution_time');
+
+        try {
+            ini_set('max_execution_time', '0');
+            set_min_time_limit(36000);
+            $this->assertSame('0', ini_get('max_execution_time'), 'an unlimited ceiling must survive.');
+        } finally {
+            ini_set('max_execution_time', (string) $original);
+        }
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────
 
     private function op(
