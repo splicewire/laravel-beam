@@ -158,6 +158,7 @@ use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\CentralPinResolvabilityAudit;
 use Splicewire\Beam\Surgeon\ClientRuntimeContractAudit;
 use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
+use Splicewire\Beam\Surgeon\DeclarationDocblockAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
@@ -1069,6 +1070,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bind(CentralPinResolvabilityAudit::class, fn ($app) => CentralPinResolvabilityAudit::forApp(
             $app->make(CentralPinJustificationAudit::class),
         ));
+        // The one audit in the estate that compares a declaration against its OWN docblock rather than
+        // against another declaration across a seam. Its TypeScript roots are DERIVED from the resolved
+        // PHP roots (each package's structural JS sibling) plus whatever the host declares, so nothing
+        // per-machine is committed anywhere.
+        $this->app->bind(DeclarationDocblockAudit::class, fn () => DeclarationDocblockAudit::forApp());
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkEndpointDriftAudit::class);
@@ -1114,6 +1120,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // case, and because ticket 88 ruled a foundation package may not decide what fails a root's build.
         // A host that wants it to gate registers this class in its own manifest with `gate: true`.
         $manifest->register('splicewire/laravel-beam', CentralPinResolvabilityAudit::class);
+        // Advisory, and the split inside it is the point: `docblock.phantom-parameter` is a Fail, because
+        // whether a docblock names a parameter the constructor beneath it declares is grammar its own
+        // author could have gotten right without knowing which host would load it. The other two are Warns,
+        // because both need a counterpart artifact whose PRESENCE is a fact about where the audit is
+        // standing. The registration is advisory because the POPULATION — which packages this host composes
+        // — is a host fact either way, and a foundation package does not decide what fails a root's build.
+        $manifest->register('splicewire/laravel-beam', DeclarationDocblockAudit::class);
         // Advisory: every Eloquent model a family package ships should have its alias registered by that
         // package's OWN provider, not by the host composing it. Not a gate, and for the same reason the
         // others here are not — the scope is every model in every installed family package, which includes
