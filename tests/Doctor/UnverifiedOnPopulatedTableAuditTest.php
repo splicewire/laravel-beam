@@ -18,11 +18,15 @@ use Splicewire\Beam\Tests\TestCase;
  * composer's manifest, a glob, a `require` of an unpublished file, a live `getColumns()` and a live
  * `count`. Mocking any of them tests the mock.
  *
- * ⚠️ **The estate's live population is ONE pairing, so every case here is manufactured** — a verdict
- * reasoned against a zero-instance dataset is not a verdict. `enum` is used deliberately rather than an
- * invented type: it is the estate's real unmapped type, it is genuinely absent from
- * `ColumnTypeEquivalence::ACCEPTS`, and the test asserts that absence rather than assuming it, so the
- * day someone adds the mapping these cases fail loudly instead of passing vacuously.
+ * ⚠️ **The estate's live population is ZERO pairings, so every case here is manufactured** — a verdict
+ * reasoned against a zero-instance dataset is not a verdict. It was ONE (`federation_grants.pin_mode`,
+ * a declared `enum`) until beam-facade **184** added the `enum` mapping; that column now verifies, and
+ * this audit's estate-wide finding count is legitimately nil.
+ *
+ * The fixture type is `ipAddress` — chosen for the same reason `enum` was: a **real** Blueprint method
+ * that is genuinely absent from `ColumnTypeEquivalence::ACCEPTS`, never an invented one. The absence is
+ * asserted rather than assumed, so the day someone maps it these cases fail loudly instead of passing
+ * vacuously. That guard is what caught this file when 184 landed, exactly as its author intended.
  */
 class UnverifiedOnPopulatedTableAuditTest extends TestCase
 {
@@ -102,7 +106,7 @@ class UnverifiedOnPopulatedTableAuditTest extends TestCase
                 ConvergentTable::named('widgets')
                     ->define(function (Blueprint \$table) {
                         \$table->uuid('id')->primary();
-                        \$table->{$type}('pin_mode', ['head', 'pinned'])->nullable();
+                        \$table->{$type}('pin_mode')->nullable();
                     })
                     ->assert();
             }
@@ -110,7 +114,11 @@ class UnverifiedOnPopulatedTableAuditTest extends TestCase
         PHP;
     }
 
-    /** The live table, as Laravel actually compiles `enum()` — varchar plus a check, not an enum type. */
+    /**
+     * The live table. `pin_mode` is a `varchar` (Laravel compiles `enum()` to varchar plus a check, not
+     * to an enum type) — so the declaration above pairs an unmapped `ipAddress` against a real column,
+     * which is the shape the audit exists to find.
+     */
     private function liveWidgets(int $rows): void
     {
         Schema::create('widgets', function (Blueprint $table) {
@@ -139,16 +147,21 @@ class UnverifiedOnPopulatedTableAuditTest extends TestCase
 
     public function test_the_type_this_whole_audit_turns_on_is_genuinely_absent_from_the_map(): void
     {
-        // Rule 4: state what the zero means. If `enum` is ever mapped, every case below stops measuring
-        // what it claims to measure — so the premise is asserted rather than assumed.
-        $this->assertNotContains('enum', ColumnTypeEquivalence::mappedTypes());
-        $this->assertNull(ColumnTypeEquivalence::matches('sqlite', 'enum', 'varchar'));
+        // Rule 4: state what the zero means. If `ipAddress` is ever mapped, every case below stops
+        // measuring what it claims to measure — so the premise is asserted rather than assumed.
+        $this->assertNotContains('ipAddress', ColumnTypeEquivalence::mappedTypes());
+        $this->assertNull(ColumnTypeEquivalence::matches('sqlite', 'ipAddress', 'varchar'));
+
+        // …and the type that used to sit here is mapped now, which is the whole of 184's precondition.
+        // Asserted from this side too, so the two tickets cannot drift apart silently.
+        $this->assertContains('enum', ColumnTypeEquivalence::mappedTypes());
+        $this->assertTrue(ColumnTypeEquivalence::matches('sqlite', 'enum', 'varchar'));
     }
 
     public function test_an_unmapped_type_on_a_populated_table_is_reported_with_the_pairing_named(): void
     {
         $this->liveWidgets(rows: 3);
-        $this->publish('2026_01_01_000000_create_widgets_table.php', $this->widgetsDeclaring('enum'));
+        $this->publish('2026_01_01_000000_create_widgets_table.php', $this->widgetsDeclaring('ipAddress'));
 
         $findings = $this->audit();
 
@@ -168,7 +181,7 @@ class UnverifiedOnPopulatedTableAuditTest extends TestCase
         // identical map verdict, zero rows. Without this case the audit could be reporting `unverified`
         // and never reading a row at all.
         $this->liveWidgets(rows: 0);
-        $this->publish('2026_01_01_000000_create_widgets_table.php', $this->widgetsDeclaring('enum'));
+        $this->publish('2026_01_01_000000_create_widgets_table.php', $this->widgetsDeclaring('ipAddress'));
 
         $findings = $this->audit();
 
@@ -202,8 +215,8 @@ class UnverifiedOnPopulatedTableAuditTest extends TestCase
     {
         // Two populations, one hazard. Summing them would report the estate's single pairing as two.
         $this->liveWidgets(rows: 3);
-        $this->publish('2026_01_01_000000_create_widgets_table.php', $this->widgetsDeclaring('enum'));
-        $this->template('create_widgets_table.php.stub', $this->widgetsDeclaring('enum'));
+        $this->publish('2026_01_01_000000_create_widgets_table.php', $this->widgetsDeclaring('ipAddress'));
+        $this->template('create_widgets_table.php.stub', $this->widgetsDeclaring('ipAddress'));
 
         $findings = $this->audit();
 
@@ -225,7 +238,7 @@ class UnverifiedOnPopulatedTableAuditTest extends TestCase
         // The population `MigrationFiles` cannot see: a host override holds the stem forever, so the
         // stub drops out of what `migrate` reads and only a republish would run it.
         $this->liveWidgets(rows: 3);
-        $this->template('create_widgets_table.php.stub', $this->widgetsDeclaring('enum'));
+        $this->template('create_widgets_table.php.stub', $this->widgetsDeclaring('ipAddress'));
 
         $findings = $this->audit();
 
@@ -264,7 +277,7 @@ class UnverifiedOnPopulatedTableAuditTest extends TestCase
     {
         // A counter that only appears when there is already something to report is not a counter.
         $this->liveWidgets(rows: 0);
-        $this->publish('2026_01_01_000000_create_widgets_table.php', $this->widgetsDeclaring('enum'));
+        $this->publish('2026_01_01_000000_create_widgets_table.php', $this->widgetsDeclaring('ipAddress'));
 
         $findings = $this->audit();
 
@@ -308,7 +321,7 @@ class UnverifiedOnPopulatedTableAuditTest extends TestCase
         // `gate-or-advisory.convention.md`: whether a table holds rows HERE is a host fact. This is the
         // regression guard for the severity, because the argument to escalate it lives one ticket away.
         $this->liveWidgets(rows: 3);
-        $this->publish('2026_01_01_000000_create_widgets_table.php', $this->widgetsDeclaring('enum'));
+        $this->publish('2026_01_01_000000_create_widgets_table.php', $this->widgetsDeclaring('ipAddress'));
 
         foreach ($this->audit() as $finding) {
             $this->assertNotSame(DoctorStatus::Fail, $finding->status);
