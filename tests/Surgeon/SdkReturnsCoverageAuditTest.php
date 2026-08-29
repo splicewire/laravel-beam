@@ -266,11 +266,20 @@ class SdkReturnsCoverageAuditTest extends TestCase
 
     // --- ticket 26: suggestOperations() / apply-half tests ------------------------------------------
 
+    /**
+     * ⚠️ CHANGED 2026-08-29. This fixture's DTO used to be a bare `T26WidgetData` — a class that exists
+     * nowhere — and the assertion below expected the rewrite to read `->returns(\T26WidgetData::class)`.
+     * That is the defect being pinned: the fix half took the SHORT name as written in the controller and
+     * prefixed a backslash, producing a global-namespace FQN. Both live suggestions at the flagship did
+     * exactly this. The fixture now imports a real class under that alias, so the test asserts the
+     * RESOLVED name, and an aliased import is the harder case on purpose.
+     */
     public function test_suggest_operations_produces_a_fixable_literal_rewrite_for_a_high_tier_route(): void
     {
         $controllerFile = $this->writeFixture(<<<'PHP'
             <?php
             use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
+            use Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit as T26WidgetData;
             class T26HighController {
                 #[ResponseFromData(T26WidgetData::class)]
                 public function show($id) {
@@ -294,13 +303,17 @@ class SdkReturnsCoverageAuditTest extends TestCase
         $this->assertSame('literal-rewrite', $fixables[0]->suggestion->kind);
         $this->assertSame($routeFile, $fixables[0]->suggestion->payload['file']);
         $this->assertStringContainsString("->name('t26.widgets.show');", $fixables[0]->suggestion->payload['old']);
-        $this->assertStringContainsString('->returns(\T26WidgetData::class);', $fixables[0]->suggestion->payload['new']);
+        $this->assertStringContainsString(
+            '->returns(\Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit::class);',
+            $fixables[0]->suggestion->payload['new'],
+        );
     }
 
     public function test_suggest_operations_produces_a_fixable_many_true_rewrite_for_a_medium_tier_route(): void
     {
         $controllerFile = $this->writeFixture(<<<'PHP'
             <?php
+            use Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit as T26WidgetData;
             class T26MediumController {
                 public function index() {
                     return T26WidgetData::collect(Widget::all());
@@ -319,7 +332,10 @@ class SdkReturnsCoverageAuditTest extends TestCase
 
         $suggestion = $audit->suggestOperations()[0]->suggestion;
         $this->assertNotNull($suggestion);
-        $this->assertStringContainsString('->returns(\T26WidgetData::class, many: true);', $suggestion->payload['new']);
+        $this->assertStringContainsString(
+            '->returns(\Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit::class, many: true);',
+            $suggestion->payload['new'],
+        );
     }
 
     public function test_suggest_operations_stays_advisory_for_low_tier(): void
@@ -533,6 +549,92 @@ class SdkReturnsCoverageAuditTest extends TestCase
         ]);
 
         return $rows[0]['tier'];
+    }
+
+    /* ---------------- the DTO-name resolution the fix half writes into a rewrite ---------------- */
+
+    /**
+     * ⚠️ The regression test for a suggestion that named a class which does not exist. `dtoClass` is the
+     * name **as written in the controller body** — a SHORT name, resolved there by that file's `use`
+     * statements — and the fix half used to prefix a backslash to it, producing a GLOBAL-namespace FQN.
+     * Measured 2026-08-29 at `~/Herd/splicewire-app`: both live suggestions read `\BillingRedirectData`
+     * and `\ThreadData`, neither of which `class_exists()`. `surgeon:*` writers preview by default, so
+     * nothing auto-applied it — but the `-v` output exists to be copied.
+     */
+    public function test_it_resolves_a_short_dto_name_through_the_controllers_own_use_statements(): void
+    {
+        $file = $this->writeFixture(<<<'PHP'
+            <?php
+            namespace App\Http\Controllers;
+            use Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit as WidgetData;
+            class WidgetController {}
+            PHP);
+
+        $this->assertSame(
+            SdkReturnsCoverageAudit::class,
+            $this->resolve('WidgetData', $file),
+            'an ALIASED import is exactly how a short name gets reused, so it must be honoured',
+        );
+    }
+
+    public function test_it_resolves_a_short_dto_name_through_a_plain_import(): void
+    {
+        $file = $this->writeFixture(<<<'PHP'
+            <?php
+            namespace App\Http\Controllers;
+            use Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit;
+            class WidgetController {}
+            PHP);
+
+        $this->assertSame(SdkReturnsCoverageAudit::class, $this->resolve('SdkReturnsCoverageAudit', $file));
+    }
+
+    public function test_it_declines_a_short_name_it_cannot_resolve_rather_than_guessing(): void
+    {
+        $file = $this->writeFixture(<<<'PHP'
+            <?php
+            namespace App\Http\Controllers;
+            class WidgetController {}
+            PHP);
+
+        // Declining is the right outcome: the finding still says WHERE to look, and a wrong FQN in a
+        // copy-pasteable rewrite is worse than no rewrite.
+        $this->assertNull($this->resolve('WidgetData', $file));
+    }
+
+    public function test_it_declines_an_import_naming_a_class_that_does_not_exist(): void
+    {
+        $file = $this->writeFixture(<<<'PHP'
+            <?php
+            namespace App\Http\Controllers;
+            use Acme\Gone\WidgetData;
+            class WidgetController {}
+            PHP);
+
+        $this->assertNull($this->resolve('WidgetData', $file));
+    }
+
+    public function test_an_already_qualified_name_is_taken_as_is_and_still_has_to_exist(): void
+    {
+        $this->assertSame(
+            SdkReturnsCoverageAudit::class,
+            $this->resolve('\\'.SdkReturnsCoverageAudit::class, null),
+        );
+
+        $this->assertNull($this->resolve('Acme\\Gone\\WidgetData', null));
+    }
+
+    public function test_it_declines_when_there_is_no_controller_file_to_read(): void
+    {
+        $this->assertNull($this->resolve('WidgetData', null));
+        $this->assertNull($this->resolve('WidgetData', '/no/such/controller.php'));
+    }
+
+    private function resolve(string $name, ?string $file): ?string
+    {
+        $method = new \ReflectionMethod(SdkReturnsCoverageAudit::class, 'resolveDtoClass');
+
+        return $method->invoke($this->audit(), $name, $file);
     }
 
     private function writeFixture(string $source): string

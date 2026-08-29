@@ -268,7 +268,22 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
      * fails ANY of the hard bail rules: not high/medium, an ambiguous multi-DTO body, or no uniquely
      * locatable registration statement.
      *
-     * @param  array{routeName: ?string, uri: string, tier: ?string, dtoClass: ?string, many: bool, ambiguous: bool}  $row
+     * ⚠️ **The DTO name is resolved against the controller's own imports before it is written, and an
+     * unresolvable one bails to advisory.** `$row['dtoClass']` is the name **as written in the
+     * controller body** — almost always a SHORT name, resolved there by that file's `use` statements —
+     * so prefixing a backslash to it produces a GLOBAL-namespace FQN that does not exist. Measured
+     * 2026-08-29 at `~/Herd/splicewire-app`: both suggestions this audit emitted named
+     * `\BillingRedirectData` and `\ThreadData`, neither of which `class_exists()`, against real classes
+     * at `Splicewire\Beam\Commerce\Data\BillingRedirectData` and `Splicewire\Tower\Data\ThreadData`.
+     * `surgeon:*` writers preview by default so nothing auto-applied it, but the `-v` output is written
+     * to be copied.
+     *
+     * `ThreadData` also shows why existence is checked and not just resolution: **two** classes carry
+     * that short name (`laravel-beam-threads` and `tower`), and the existing `ambiguous` flag does not
+     * see it — that flag counts DTOs constructed in one method body, a different question from one short
+     * name owned by two packages.
+     *
+     * @param  array{routeName: ?string, uri: string, tier: ?string, dtoClass: ?string, many: bool, ambiguous: bool, controllerFile?: ?string}  $row
      */
     protected function suggestionFor(array $row): ?OperationSuggestion
     {
@@ -279,14 +294,19 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
             return null;
         }
 
+        $dto = $this->resolveDtoClass($row['dtoClass'], $row['controllerFile'] ?? null);
+        if ($dto === null) {
+            return null;
+        }
+
         $located = $this->locateRouteStatement($row['routeName']);
         if ($located === null) {
             return null;
         }
 
         $call = $row['many']
-            ? sprintf('->returns(\\%s::class, many: true)', ltrim($row['dtoClass'], '\\'))
-            : sprintf('->returns(\\%s::class)', ltrim($row['dtoClass'], '\\'));
+            ? sprintf('->returns(\\%s::class, many: true)', $dto)
+            : sprintf('->returns(\\%s::class)', $dto);
 
         // Insert immediately before the statement's terminating `;` — matches the convention every
         // hand-applied step-1 edit already follows (append to the END of the chain, not after `->name()`
@@ -299,6 +319,60 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
             summary: "Add ->returns() to {$row['routeName']}",
             payload: ['file' => $located['file'], 'old' => $old, 'new' => $new],
         );
+    }
+
+    /**
+     * Resolve a DTO name as written in a controller body to a fully-qualified class that EXISTS, or null
+     * to bail the suggestion to advisory.
+     *
+     * Three steps, most specific first, and every one of them can decline:
+     *
+     *  1. a name already containing a separator is taken as fully qualified;
+     *  2. otherwise the controller file's `use` statements are read — both `use A\B\Short;` and
+     *     `use A\B\Other as Short;`, since an aliased import is exactly how a short name gets reused;
+     *  3. otherwise the controller's own namespace is tried, which is where a same-namespace DTO sits.
+     *
+     * Whatever comes out must satisfy `class_exists()`. Declining is the right outcome rather than a
+     * best guess: this audit's whole posture is that adding `->returns()` is an API-contract commitment
+     * a human makes, and an advisory finding still tells them where to look. A wrong FQN in a
+     * copy-pasteable rewrite is worse than no rewrite.
+     */
+    protected function resolveDtoClass(string $name, ?string $controllerFile): ?string
+    {
+        $name = ltrim($name, '\\');
+
+        if (str_contains($name, '\\')) {
+            return class_exists($name) ? $name : null;
+        }
+
+        if ($controllerFile === null || ! is_file($controllerFile)) {
+            return null;
+        }
+
+        $source = (string) @file_get_contents($controllerFile);
+
+        // `use A\B\Short;` and `use A\B\Other as Short;` — grouped and function/const imports are not
+        // matched, and that is fine: a DTO is neither.
+        if (preg_match_all('/^\s*use\s+([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*;/m', $source, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $alias = $match[2] ?? '';
+                $short = $alias !== '' ? $alias : substr($match[1], (int) strrpos($match[1], '\\') + 1);
+
+                if ($short === $name) {
+                    return class_exists($match[1]) ? $match[1] : null;
+                }
+            }
+        }
+
+        if (preg_match('/^\s*namespace\s+([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)\s*;/m', $source, $ns)) {
+            $sameNamespace = $ns[1].'\\'.$name;
+
+            if (class_exists($sameNamespace)) {
+                return $sameNamespace;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -374,7 +448,7 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
      * "many" signal, and multi-class ambiguity flag {@see suggestOperations()} needs to build a fix.
      *
      * @param  list<array{routeName: ?string, uri: string, controllerFile: ?string, controllerClass: ?string, actionMethod: ?string}>  $routes
-     * @return list<array{routeName: ?string, uri: string, tier: ?string, dtoClass: ?string, many: bool, ambiguous: bool}>
+     * @return list<array{routeName: ?string, uri: string, tier: ?string, dtoClass: ?string, many: bool, ambiguous: bool, controllerFile: ?string}>
      */
     public function classifyDetailed(array $routes): array
     {
@@ -416,6 +490,9 @@ class SdkReturnsCoverageAudit implements DoctorAudit, SuggestsOperations
                 'dtoClass' => $dtoClass,
                 'many' => $many,
                 'ambiguous' => $ambiguous,
+                // Carried so the fix half can resolve `$dtoClass` — which is a SHORT name as written in
+                // the controller — against that controller's own imports. See suggestionFor().
+                'controllerFile' => $row['controllerFile'],
             ];
         }
 
