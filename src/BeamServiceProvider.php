@@ -75,6 +75,7 @@ use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 use Splicewire\Beam\Doctor\PackageStubConflictAudit;
 use Splicewire\Beam\Doctor\ParticleCapabilityDisagreementAudit;
+use Splicewire\Beam\Doctor\ParticleIdConstraintKeyTypeAudit;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
 use Splicewire\Beam\Doctor\ScribeOutputContractAudit;
@@ -906,6 +907,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // cries wolf — while the OPERATION axis is registry-side, since every mounted op reads its
         // declaration unconditionally. Warn on both; the `null` → `false` flip is what they gate.
         $manifest->register('splicewire/laravel-beam', UndeclaredInputAudit::class);
+        // A declared `IdConstraint` measured against the model's REAL key type
+        // (particle-operation-surface 14 gate 1). Advisory, because a key type is a fact about the
+        // HOST and not grammar a package's declaration could have gotten right blind — and registry-
+        // side, because only a booted host knows which concrete model the declaration resolved to.
+        // Its reading is the precondition for gate 3: `Ulid`/`Int` stay inert until this reads zero.
+        $manifest->register('splicewire/laravel-beam', ParticleIdConstraintKeyTypeAudit::class);
         // Intent measured against capability across the whole resource registry — the standing half of
         // `splicewire:beam:particle:resources` (otb-ui-frontier-sidebar DESIGN-02). Registry-side like the
         // one above it, and in the MANIFEST rather than hardcoded in `BeamDoctorCommand` because the
@@ -1919,10 +1926,21 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      *                             generic {@see ParticleController} (still stamped with the `_particle`
      *                             default, so it keeps the auto-`@group`); default: the generic controller
      *
-     *   Route::particleOp('timeline-projects', 'timeline_project', 'regenerate', ['name' => '...'])
-     *      → POST {uri}/{id}/op/{op} → invoke  ({resourceKey}.op.{op}, or the 'name' override)
-     *      stamped with the operation controller's RESOURCE + NAME defaults. Options: 'method' (default
-     *      'post'), 'name' (route-name override), 'idConstraint'.
+     *   Particle::ops('timeline-projects', 'timeline_project', 'regenerate')
+     *      → {method} {uri}/{id}/{op} → invoke  ({resourceKey}.{op}, or the 'name' override)
+     *        plus the deprecated {uri}/{id}/op/{op} alias keeping the OLD name (ticket 12)
+     *      stamped with the operation controller's RESOURCE + NAME defaults.
+     *
+     *      ⚠️ Two of the options this line used to list have MOVED ONTO THE DECLARATION
+     *      (particle-operation-surface 14): 'method' is `#[ParticleOp(method: HttpMethod::Get)]` and
+     *      'idConstraint' is `#[ParticleOp(idConstraint: IdConstraint::Uuid)]`. The option keys are
+     *      still read, as a migration fallback with a deletion condition — see
+     *      {@see ParticleMounter::op()}. Do not write new call sites against them. The one option that
+     *      is genuinely a MOUNT fact and stays is 'name', the route-name override.
+     *
+     * ⚠️ This whole docblock speaks in `Route::particleResource()`/`Route::particleOp()`, macros
+     * api-surface-coherence 93 DELETED. `Particle::mount()` / `Particle::ops()` are the doors; the
+     * spellings above survive only as a shape sketch and must not be copied into a call site.
      */
 
     /**

@@ -9,15 +9,23 @@ use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Authorization\AbilityResolver;
+use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Particle\Subject\RecordSubject;
 use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
 use Splicewire\Beam\Particle\Subject\SubjectResolvers;
+use Splicewire\Beam\Routing\HttpMethod;
+use Splicewire\Beam\Routing\IdConstraint;
 
 /**
- * A named operation on a particle resource, mounted at `POST /{resource}/{id}/op/{name}` by
- * `Route::particleOp()` and run by {@see ParticleOperationController}.
+ * A named operation on a particle resource, mounted at `{$method} /{resource}/{id}/{name}` by
+ * {@see ParticleMounter::op()} and run by {@see ParticleOperationController}.
+ *
+ * ⚠️ Two spellings this docblock used to carry are gone and must not come back: the `/op/` path segment
+ * (dropped by particle-operation-surface 12, which left the old URL mounted as a deprecated alias) and
+ * the `Route::particleOp()` macro (deleted by api-surface-coherence 93). `Particle::ops()` is the door.
  *
  * This generalizes the CRUD verbs to arbitrary named actions — the escape hatch that lets the bespoke
  * (bucket-D) controllers dissolve their *actions* while the framework supplies the cross-cutting plumbing
@@ -69,7 +77,7 @@ use Splicewire\Beam\Particle\Subject\SubjectResolvers;
  * **What replaces it**, on {@see UngatedOperationAudit}'s precedent — the sibling
  * slot that asked this same question first, measured a constructor throw, and refused it because it would
  * fail BOOT: `input:`'s residue becomes a **counted, warn-level audit over both particle registries**, not
- * a reject. **That audit is {@see \Splicewire\Beam\Doctor\UndeclaredInputAudit}, built by
+ * a reject. **That audit is {@see UndeclaredInputAudit}, built by
  * api-surface-coherence 117, and it IS the gate on this flip** — the paragraph you are reading is no
  * longer the gate, so the count is a check rather than a memory. It emits two checks, not one, because
  * the axes are decoupled: `particle.resource-input` counts REACHABLE write mounts derived from the router
@@ -245,6 +253,34 @@ use Splicewire\Beam\Particle\Subject\SubjectResolvers;
  * (Distinct from `Splicewire\Beam\Webhooks\HookSignature`, which signs beam's OUTBOUND webhook
  * deliveries with a per-hook HMAC secret. Same word, opposite direction, no shared machinery: that one
  * proves *we sent this*, this one proves *we minted this URL*.)
+ *
+ * ## `method:` and `idConstraint:` — route facts the declaration could not state
+ *
+ * particle-operation-surface tickets 11 and 14. Both are **moves, not inventions**: the verb and the
+ * `{id}` constraint were already choosable, as `Particle::ops(…, ['method' => 'get', 'idConstraint' =>
+ * 'uuid'])`, read by {@see ParticleMounter::op()}. What could not be said was *whose fact it is*. The
+ * cost was measured before it was fixed: ten `method` mount sites across seven trees, and one
+ * operation — `beam-ux-entry.body`, mounted by five hosts — restating `['method' => 'get']` five
+ * times, once per host, for a verb that is a property of the read it performs and of nothing else.
+ *
+ * `null` on either slot preserves today's behaviour by construction, not by discipline: the mounter's
+ * two branches were already `$options['method'] ?? 'post'` and `($options['idConstraint'] ?? null) ===
+ * 'uuid'`, so an undeclared slot short-circuits into the identical arm.
+ *
+ * ⚠️ **`idConstraint:` here NARROWS; it does not widen.** The resource's own declaration owns the
+ * shape of `{id}` across all of its mounts — an operation that disagreed with its resource about what
+ * a `{id}` *is* would be describing a different resource. The slot exists for the case the estate
+ * actually has: a resource mounted unconstrained whose one operation wants the tighter match so a
+ * sibling literal segment is not swallowed.
+ *
+ * ⚠️ **The mount option still wins where it is passed, and that is a MIGRATION state, not the design.**
+ * Ticket 14's end state is that `op()` stops reading `$options['method']` and `$options['idConstraint']`
+ * entirely. It cannot until every call site has moved, and one of them
+ * (`laravel-beam-accounts`' `Concerns\WiresDemo`, mounting the imperative `LogInAsUser` as GET) is in a
+ * package this landing did not own. Removing the option read early would have silently turned that
+ * host's signed login-as link into a POST — a 405 behind a green suite, on a signed URL nobody can
+ * re-mint. The precedence is therefore *declaration first, option second, default third*, and the
+ * option arm is what gets deleted when the last site moves.
  */
 class ParticleOperation implements HasRegistryKey
 {
@@ -302,6 +338,12 @@ class ParticleOperation implements HasRegistryKey
      *                                                                                         (`Subject::record()`) is not a constant expression and FATALS inside the
      *                                                                                         `#[ParticleOp]` twin, so the two declaration sites would not be able to
      *                                                                                         say the same thing. See {@see SubjectResolvers}
+     * @param  HttpMethod|null  $method  the HTTP verb this operation mounts under; `null` ⇒ POST, which
+     *                                   is exactly what {@see ParticleMounter::op()}'s
+     *                                   `$options['method'] ?? 'post'` already did (see the class docblock)
+     * @param  IdConstraint|null  $idConstraint  a NARROWING override of the resource's `{id}` shape for
+     *                                           this operation's mount; `null` ⇒ inherit the mount's own
+     *                                           (see the class docblock and {@see IdConstraint})
      */
     public function __construct(
         public string $resource,
@@ -316,6 +358,8 @@ class ParticleOperation implements HasRegistryKey
         public string|array|null $output = null,
         public bool $signed = false,
         public ResolvesOperationSubject|string|null $subject = null,
+        public ?HttpMethod $method = null,
+        public ?IdConstraint $idConstraint = null,
     ) {
         $this->assertOutputMatchesKind();
     }

@@ -8,6 +8,7 @@ use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\OperationKind;
+use Splicewire\Beam\Routing\IdConstraint;
 
 /**
  * `POST /hooks/{hook}/op/reset` — the ONLY path out of auto-disable (api-surface-coherence ticket 38,
@@ -44,6 +45,10 @@ use Splicewire\Beam\Particle\OperationKind;
     ability: 'update',
     input: false,
     output: HookData::class,
+    // The `{id}` shape moved off the mount and onto the declaration
+    // (particle-operation-surface 14) — every host mounting this op restated `'idConstraint' => 'uuid'`
+    // for a key type the model already knows.
+    idConstraint: IdConstraint::Uuid,
 )]
 class ResetHookOp
 {

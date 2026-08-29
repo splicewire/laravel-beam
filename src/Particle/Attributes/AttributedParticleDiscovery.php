@@ -219,7 +219,14 @@ class AttributedParticleDiscovery
             respond: $this->convention($class, 'respond'),
             input: $attribute->input,
             output: $attribute->output,
+            // ⚠️ `signed:` is here because it was NOT, for two days, and nothing could see the gap:
+            // an attributed op silently took the runtime default `false`, so "cannot be signed" and
+            // "declared unsigned" were the same reading. Every slot on `#[ParticleOp]` must appear in
+            // this argument list — the twin declares, this line is the only thing that carries.
+            signed: $attribute->signed,
             subject: $attribute->subject,
+            method: $attribute->method,
+            idConstraint: $attribute->idConstraint,
         ));
     }
 

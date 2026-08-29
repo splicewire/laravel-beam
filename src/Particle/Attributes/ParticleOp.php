@@ -8,13 +8,19 @@ use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\Subject\RecordSubject;
 use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
+use Splicewire\Beam\Routing\HttpMethod;
+use Splicewire\Beam\Routing\IdConstraint;
 
 /**
  * Marks a class as a **named particle operation** on a resource — the attribute twin of
  * `$registry->register(new ParticleOperation(...))` (ADR-0160). Boot-time discovery reflects it into a
- * runtime {@see ParticleOperation} mounted at
- * `POST /{resource}/{id}/op/{name}` (via `Route::particleOp()`) and run by
- * {@see ParticleOperationController}.
+ * runtime {@see ParticleOperation} mounted at `{$method} /{resource}/{id}/{name}` by
+ * `Particle::ops()` and run by {@see ParticleOperationController}.
+ *
+ * ⚠️ This docblock used to say `POST …/{id}/op/{name}` *"via `Route::particleOp()`"*. Both halves are
+ * dead: particle-operation-surface 12 dropped the `/op/` segment (leaving the old URL as a deprecated
+ * alias) and api-surface-coherence 93 deleted the macro. The verb is no longer fixed at POST either —
+ * see `method:` below.
  *
  * The op's HOST CODE — which an attribute cannot carry — lives as `public static` convention methods on
  * the SAME annotated class, wired in by {@see AttributedParticleDiscovery}:
@@ -37,6 +43,18 @@ use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
  * `subject:` is the op's SUBJECT slot — what the framework resolves before `handle` runs
  * ({@see ResolvesOperationSubject}); omitted, it is {@see RecordSubject}, the `{id}` record read through
  * the resource, which is what every declaration had implicitly.
+ *
+ * `signed:`, `method:` and `idConstraint:` are the SCALAR slots (particle-operation-surface 14). All
+ * three are plain constant expressions, all three default to the value that reproduces today's
+ * behaviour, and every one of their rules lives on {@see ParticleOperation} — this twin adds none.
+ *
+ * ⚠️ **`signed:` was absent here for two days for no stated reason, and the absence was invisible.**
+ * `bae7a08` added the slot to the runtime object and to one imperative op, touched five files, and
+ * never opened this one or {@see AttributedParticleDiscovery} — `git log -S 'signed'` on this file
+ * returned nothing at all. The result was that no attributed op *could* be signed, and the container
+ * reported it as `false` rather than as an error, which is this estate's most expensive shape: a
+ * declaration that exists and a forwarding that does not. When a slot is added to `ParticleOperation`,
+ * the twin and `AttributedParticleDiscovery::registerOpClass()` are the same change, not a follow-up.
  *
  * ⚠️ **Spell it `RecordSubject::class` or `new ActorSubject`.** An attribute argument must be a CONSTANT
  * EXPRESSION: `new` is legal in one since PHP 8.1, a static factory call (`Subject::record()`) is not and
@@ -69,6 +87,14 @@ class ParticleOp
      *                                                                       on {@see OperationKind::Stream} an
      *                                                                       event-name → payload-list map instead
      * @param  ResolvesOperationSubject|class-string<ResolvesOperationSubject>|null  $subject  see above
+     * @param  bool  $signed  whether a validly-signed URL is an ADMITTING credential for this op —
+     *                        {@see ParticleOperation}'s docblock carries the whole reasoning, including
+     *                        the warning that a valid signature ADMITS and does NOT refuse an unsigned
+     *                        request. Do not restate it here
+     * @param  HttpMethod|null  $method  the HTTP verb this op mounts under; `null` ⇒ POST, today's
+     *                                   behaviour exactly — {@see HttpMethod}
+     * @param  IdConstraint|null  $idConstraint  a NARROWING override of the resource's `{id}` shape for
+     *                                           this op's mount; `null` ⇒ inherit — {@see IdConstraint}
      */
     public function __construct(
         public string $resource,
@@ -80,5 +106,8 @@ class ParticleOp
         public string|false|null $input = null,
         public string|array|null $output = null,
         public ResolvesOperationSubject|string|null $subject = null,
+        public bool $signed = false,
+        public ?HttpMethod $method = null,
+        public ?IdConstraint $idConstraint = null,
     ) {}
 }

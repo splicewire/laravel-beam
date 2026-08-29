@@ -36,6 +36,7 @@ use Splicewire\Beam\Rendering\RenderingCertifier;
 use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
 use Splicewire\Beam\Routing\BeamRouteAction;
 use Splicewire\Beam\Routing\BeamRouteProxy;
+use Splicewire\Beam\Routing\IdConstraint;
 use Splicewire\Beam\Routing\RouteVisibility;
 use Splicewire\Beam\Webhooks\Data\EventCatalogData;
 use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
@@ -274,17 +275,44 @@ class ParticleMounter
      */
     public function op(Router $router, string $uri, string $resourceKey, string $op, array $options = []): void
     {
-        $verb = strtolower($options['method'] ?? 'post');
+        // ## The DECLARATION is asked first, and the option is what is left of the old world
+        //
+        // particle-operation-surface 14. `method:` and `idConstraint:` moved onto the operation, which
+        // is where they always belonged — the verb of `beam-ux-entry.body` is a fact about the read it
+        // performs, and it was being restated once per host in five different repositories.
+        //
+        // The registry read is safe here and is not a boot-order gamble: `ops()` registers each
+        // declaration immediately before calling this, `find()` is the non-throwing lookup, and a
+        // `null` means "mounted by bare name, registered elsewhere" — which is the pre-existing shape
+        // and falls straight through to the option.
+        //
+        // ⚠️ The option arm is a MIGRATION state with a deletion condition, not a permanent fallback.
+        // 14's end state is that this method stops reading either key; it cannot until the last mount
+        // site moves, and `laravel-beam-accounts`' `Concerns\WiresDemo` (the imperative `LogInAsUser`,
+        // mounted GET) was in a package that landing did not own. Deleting the arm early turns a signed
+        // login-as link into a 405 that no suite in the estate would have seen.
+        $declaration = app(ParticleOperationRegistry::class)->find($resourceKey, $op);
+
+        $verb = $declaration?->method?->value
+            ?? strtolower($options['method'] ?? 'post');
+
+        $idConstraint = $declaration?->idConstraint
+            ?? (is_string($options['idConstraint'] ?? null)
+                ? IdConstraint::tryFrom($options['idConstraint'])
+                : null);
+
         $name = $options['name'] ?? "{$resourceKey}.{$op}";
         $legacyName = "{$resourceKey}.op.{$op}";
 
-        $mount = function (string $path, string $routeName) use ($router, $verb, $resourceKey, $op, $options) {
+        $mount = function (string $path, string $routeName) use ($router, $verb, $idConstraint, $resourceKey, $op, $options) {
             $route = $router->{$verb}($path, [ParticleOperationController::class, 'invoke'])
                 ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
                 ->defaults(ParticleOperationController::NAME, $op)
                 ->name($routeName);
 
-            if (($options['idConstraint'] ?? null) === 'uuid') {
+            // Only `Uuid` is enforced — {@see IdConstraint} states why `Ulid`/`Int` are declared-but-inert
+            // and what has to read zero before that flips.
+            if ($idConstraint?->enforced()) {
                 $route->whereUuid('id');
             }
 
