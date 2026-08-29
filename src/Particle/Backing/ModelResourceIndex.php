@@ -22,10 +22,20 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * ## One-to-MANY, deliberately
  *
  * ⚠️ Two resources may legitimately share a model — a resource and its realm-varied twin — so a model
- * maps to a LIST of keys and a duplicate is not an error. This is the shape's only difference from its
- * sibling `SchemaBindingIndex` (ticket 09), which is one-to-one and **throws** on a duplicate because a
- * schema `$id` names exactly one Data class. Same shape, opposite cardinality; inheriting 09's throw
- * here would hard-fail boot on a legal declaration.
+ * maps to a LIST of keys and a duplicate is not an error. This is the shape's only difference from the
+ * *planned* sibling `SchemaBindingIndex` (ticket 09), which would be one-to-one and would **throw** on a
+ * duplicate because a schema `$id` names exactly one Data class. Same shape, opposite cardinality;
+ * inheriting that throw here would hard-fail boot on a legal declaration.
+ *
+ * ⚠️ **`SchemaBindingIndex` DOES NOT EXIST.** It is ticket 09's named answer and was never built — verified
+ * 2026-08-29 by three differently-shaped instruments: no `class`/`interface` declaration anywhere under the
+ * family package roots or any `~/Herd/<host>/app` (its only five occurrences estate-wide are prose, four of them
+ * in this package); `git log -S` in beam and at the flagship names only the commits that wrote that prose;
+ * and a booted `class_exists()` plus a composer classmap scan at `~/Herd/splicewire-app` resolve nothing,
+ * with `BeamData` as a working control. Kept as a DESIGN NOTE because the reasoning is sound and someone
+ * will build it; the sentence above no longer says it is here. This class's own cardinality argument does
+ * not depend on the sibling existing — it stands on its own measurement, and reads as a comparison rather
+ * than a dependency.
  *
  * ## Membership
  *

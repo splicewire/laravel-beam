@@ -64,6 +64,11 @@ class ProjectStage implements ReadStage
      * `schemaRef` binding (a `SchemaBindingIndex`), because one PHP class can carry many `schema_ref`-discriminated
      * record types and `instanceof` cannot discriminate them.
      *
+     * ⚠️ That binding was SETTLED, not BUILT — `SchemaBindingIndex` does not exist anywhere in the estate
+     * (verified 2026-08-29 by a filesystem read, `git log -S`, and a booted resolve with a working
+     * control). So the `instanceof` scheme below is not a leftover awaiting a landed replacement; it is
+     * the only implementation there is. Read the sentence above as a decision, not as a description.
+     *
      * @return class-string<Data>|null
      */
     private function dataClassFor(Model $record): ?string

@@ -23,7 +23,15 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *
  * ⚠️ A realm-varied twin may declare the same Data class from a second resource, exactly as two
  * resources may legitimately share a model. So this is one-to-many and a duplicate is not an error.
- * Inheriting `SchemaBindingIndex`'s throw would hard-fail boot on a legal declaration.
+ * Inheriting the throw planned for `SchemaBindingIndex` would hard-fail boot on a legal declaration.
+ *
+ * ⚠️ **`SchemaBindingIndex` DOES NOT EXIST.** It is ticket 09's named answer and was never built — verified
+ * 2026-08-29 by three differently-shaped instruments: no `class`/`interface` declaration anywhere under the
+ * family package roots or any `~/Herd/<host>/app` (its only five occurrences estate-wide are prose, four of them
+ * in this package); `git log -S` in beam and at the flagship names only the commits that wrote that prose;
+ * and a booted `class_exists()` plus a composer classmap scan at `~/Herd/splicewire-app` resolve nothing,
+ * with `BeamData` as a working control. Kept as a DESIGN NOTE because the reasoning is sound and someone
+ * will build it; the sentence above no longer says it is here.
  *
  * Its first caller is the fixture seam: `HasParticleFixtures::fixtureKey()` prefers a short declared
  * resource key and falls back to a class key, so the ambiguity `keyFor()` resolves by registration
