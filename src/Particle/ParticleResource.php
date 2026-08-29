@@ -212,6 +212,28 @@ class ParticleResource implements HasRegistryKey
      *                                 `\App\Frame\Handlers\ConduitResourceHandler` in prose. Declared here, the
      *                                 handler travels with the resource and a host that installs the package gets
      *                                 the right one without wiring.
+     * @param  'frame'|'host'  $createAffordance  WHERE this resource's create affordance lives — a PRESENTATION
+     *                                            slot, projected verbatim onto frame's
+     *                                            {@see ResourceDefinition::$createAffordance}. `'frame'` (the
+     *                                            default, and today's behaviour for every existing declaration)
+     *                                            means frame's own list Toolbar emits the "New …" button;
+     *                                            `'host'` means the host's page chrome owns the affordance — a
+     *                                            title-row button, a chooser dialog, a bespoke create sheet — so
+     *                                            frame emits none and the host stops spelling that by hand as
+     *                                            `Toolbar: () => null`.
+     *
+     *                                 ⚠️ **Independent of {@see $readOnly}, and the independence is the whole
+     *                                 point.** `creatable` answers *may this be created at all*; this answers
+     *                                 *whose job is it to draw the button*. A resource can be perfectly
+     *                                 creatable with its affordance somewhere frame cannot see (all four
+     *                                 opted-in surfaces), and a `readOnly` resource can still have a real,
+     *                                 working create that is not a Frame write — `tenants` is exactly that
+     *                                 (`readOnly: true` alongside `editData: CreateTenantData`, whose create
+     *                                 submits to the REST provisioning endpoint). ANDing the two axes would
+     *                                 delete a live button behind a green suite. Frame collapses them into ONE
+     *                                 resolved value server-side in `ResourceDefinition::resolvedCreateAffordance()`,
+     *                                 where `creatable` WINS: this slot can move an affordance, never re-open a
+     *                                 closed write path.
      */
     public function __construct(
         public string $key,
@@ -244,6 +266,7 @@ class ParticleResource implements HasRegistryKey
         public string $singularLabel = '',
         public ?string $routeKey = null,
         public ?string $handler = null,
+        public string $createAffordance = 'frame',
     ) {}
 
     /**
@@ -332,6 +355,7 @@ class ParticleResource implements HasRegistryKey
                 routeName: $this->routeName,
             ),
             layout: $this->layout,
+            createAffordance: $this->createAffordance,
         );
     }
 }

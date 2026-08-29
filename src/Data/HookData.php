@@ -49,6 +49,14 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
     group: 'Platform',
     icon: 'webhook',
     section: 'platform',
+    // The create affordance is the HOST's. Frame's generic "New" opens the generic create form, and a
+    // hook's create is not generic: it MINTS A SECRET that is returned exactly once, so the flagship's
+    // HooksPage owns a bespoke create dialog plus a reveal-once follow-up dialog. The page was spelling
+    // this by hand as `Toolbar: () => null`; the declaration says it now.
+    //
+    // ⚠️ Presentation only — `hooks` stays fully creatable (`readOnly` is false and untouched). This slot
+    // moves who draws the button, never whether the write is open.
+    createAffordance: 'host',
 )]
 class HookData extends BeamData
 {
