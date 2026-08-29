@@ -59,6 +59,17 @@ class MigrationRehearsal
     {
         $source ??= (string) @file_get_contents($file);
 
+        $named = static::declaredClassIn($source);
+
+        if ($named !== null) {
+            return RehearsedMigration::skip($migration, $file, sprintf(
+                'declares the NAMED migration class `%s` — including it would leave that class defined '.
+                'for the rest of this process, and whatever loads it next (the migrator itself, or a '.
+                'second instrument) dies on `Cannot redeclare class`, a PHP fatal no `catch` can intercept',
+                $named,
+            ));
+        }
+
         $unsafe = RehearsalSafety::explain($source);
 
         if ($unsafe !== null) {
@@ -88,5 +99,55 @@ class MigrationRehearsal
         } finally {
             @unlink($copy);
         }
+    }
+
+    /**
+     * The top-level NAMED migration class this body declares, or null for the anonymous
+     * `return new class extends Migration` the estate writes almost everywhere.
+     *
+     * ## Why a named class is refused OUTRIGHT rather than merely deduplicated
+     *
+     * Every rehearsal copies to a **fresh** temp path, deliberately: `require` returns `true` rather than
+     * the migration object on a second include of the same path, and `migrate` runs in this same process
+     * moments later. That is a complete defence for an anonymous class, which has no name to collide. It
+     * is **no defence at all** for a named one — the include declares the class globally, two distinct
+     * temp paths defeat PHP's own include-once protection, and the next thing to load that class dies on
+     * `Cannot redeclare class`. That is a **fatal error, not a Throwable**, so the `catch` below cannot
+     * see it and the command dies with no output at all.
+     *
+     * **The poisoning outlives the rehearsal, which is why refusing late is not enough.** Two different
+     * victims have been measured, and only the first is inside this class:
+     *
+     * - a **second instrument** rehearsing the same file — measured 2026-08-29 (beam-facade 187), when a
+     *   second audit joined `PackageStubConflictAudit` and `splicewire:beam:doctor` at
+     *   `~/Herd/splicewire-app` exited **255 with zero findings**;
+     * - **`migrate` itself**, a few lines after the preflight that rehearsed the pending file — measured
+     *   2026-08-27 (beam-docs-satellite 25), when `splicewire:tower:install` exited **255** on a fresh
+     *   database. Nothing in this class is on that second path, so a guard that only refused an
+     *   already-loaded class would not have helped it at all.
+     *
+     * `RehearsalSafety::WRITES` screens three hazards — a Schema write outside a guard, a raw statement,
+     * a row write — and **has no concept of a class declaration**, so this shape is invisible to it by
+     * construction. It is screened here instead, where the `require` actually happens.
+     *
+     * **Coverage cost, measured rather than assumed: zero.** The estate declares exactly two convergent
+     * class-named migrations family-wide, both in `splicewire/laravel-beam-tenancy`
+     * (`create_domains_table`, `create_tenants_table`), and both were *already* being skipped — one for
+     * returning no Migration instance, the other on a `RehearsalSafety` refusal. The flagship rehearses
+     * the same 150 of 182 declarations with this guard as without it. What changes is that `domains` is
+     * now skipped **before** the include rather than after it, which is the whole repair: the old skip
+     * was not side-effect-free.
+     *
+     * The durable fix upstream is to rewrite those two stubs in the anonymous shape every sibling uses.
+     * This guard is what makes the estate safe while they are not, and it stays afterwards, because the
+     * next such stub will be written by someone who does not know this.
+     */
+    protected static function declaredClassIn(string $source): ?string
+    {
+        if (preg_match('/^\s*(?:abstract\s+)?class\s+(\w+)\s+extends\s+/mi', $source, $matches) !== 1) {
+            return null;
+        }
+
+        return $matches[1];
     }
 }

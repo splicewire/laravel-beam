@@ -90,6 +90,7 @@ use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Doctor\UnrehearsableStubAudit;
+use Splicewire\Beam\Doctor\UnverifiedOnPopulatedTableAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Events\BeamEventRegistrar;
 use Splicewire\Beam\Events\EventTypeRegistry;
@@ -879,6 +880,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // the overrides this reports at audiostud are the estate's shape-ownership mechanism working.
         $this->app->bind(PackageStubConflictAudit::class, fn () => PackageStubConflictAudit::forApp());
 
+        // The FOURTH convergence instrument, and the one no tier below beam can build (beam-facade
+        // ticket 187). `ColumnTypeEquivalence::matches()` answers `null` for a pairing it has no mapping
+        // for, and `ConvergentTable` reports that as `unverified` rather than guessing. Surgeon's
+        // `unmapped-convergent-type` answers which declared TYPES those are from stub text — reaching
+        // the beamless `rushing/*` packages this cannot — and stops where a text scan must, because
+        // pairing a type with a live COLUMN means executing the declaration. That is `MigrationRehearsal`,
+        // which lives here, and surgeon's `mustNotRequire` names `splicewire/*`. Advisory permanently:
+        // whether a table holds rows HERE is a host fact, and this estate has already paid once for a
+        // host-dependent throw.
+        $this->app->bind(UnverifiedOnPopulatedTableAudit::class, fn () => UnverifiedOnPopulatedTableAudit::forApp());
+
         // The registry projection both the command and the disagreement audit read. Bound explicitly
         // rather than left to autowiring so the HANDLER column is filled from whatever resolver this host
         // ended up with — beam's OOTB default, or the bespoke map an app provider bound over it.
@@ -898,6 +910,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $manifest->register('splicewire/laravel-beam', UnguardedCreateAudit::class);
         $manifest->register('splicewire/laravel-beam', UnrehearsableStubAudit::class);
         $manifest->register('splicewire/laravel-beam', PackageStubConflictAudit::class);
+        $manifest->register('splicewire/laravel-beam', UnverifiedOnPopulatedTableAudit::class);
         // An operation whose `ability:` is `null` is UNDECLARED, not decided — the residue
         // particle-operation-surface ticket 03 named and could not close in one act without 403ing
         // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host
