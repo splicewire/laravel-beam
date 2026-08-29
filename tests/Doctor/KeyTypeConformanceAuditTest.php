@@ -644,6 +644,168 @@ class KeyTypeConformanceAuditTest extends TestCase
 
         $this->assertSame([], $audit->disagreements());
     }
+
+    // ---- Reach: the second create verb, the stated FK target, and the unparsed counter (191) -------
+    //
+    // Every one of these is a case where the reader **succeeded and looked at nothing**. The estate's
+    // conformance program tells every root to migrate `Schema::create` → `ConvergentTable::named`, and
+    // this reader knew only the first verb — so compliance removed a root from the audit's reach and the
+    // most compliant root was the blindest: 28 tables indexed of 164 at `~/Herd/splicewire-app`, 5 of 29
+    // at `~/Herd/tower`, both reported as a clean Pass.
+
+    private function convergentUsersMigration(string $name, string $key): string
+    {
+        return "<?php\n\nuse Rushing\\SchemaConvergence\\ConvergentTable;\n\nreturn new class extends Migration {\n public function up(): void {\n"
+            ."  ConvergentTable::named({$name})\n   ->define(function (Blueprint \$table) {\n"
+            .'    '.$key."\n    \$table->string('email');\n   })\n   ->matches();\n }\n};\n";
+    }
+
+    /** The verb the whole estate is being told to migrate to, which this reader could not see at all. */
+    public function test_it_indexes_a_convergent_table_create(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->convergentUsersMigration("'users'", "\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory'),
+        ]);
+
+        $rows = $audit->disagreements();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('pk-model-disagreement', $rows[0]['kind']);
+        $this->assertSame('users', $rows[0]['table']);
+    }
+
+    /** The config-array name form, for the convergent verb as well as `Schema::create`. */
+    public function test_it_indexes_a_convergent_table_create_named_from_a_config_array(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->convergentUsersMigration("\$tableNames['users']", "\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory'),
+        ]);
+
+        $rows = $audit->disagreements();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('users', $rows[0]['table']);
+    }
+
+    /**
+     * `~/Herd/numero`'s three bigint columns explicitly constrained to a uuid `users.id`. The target was
+     * derived by pluralising the column prefix — `purchaser_users`, a table that does not exist — so the
+     * predicate skipped on an unknown target and reported nothing, while the migration named `users` on
+     * the same line.
+     */
+    public function test_it_reads_the_constrained_argument_rather_than_pluralising_the_prefix(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'database/migrations/2026_07_01_000200_create_commerce_intents_table.php' => "<?php\n\nSchema::create('commerce_intents', function (Blueprint \$table) {\n"
+                ." \$table->foreignId('purchaser_user_id')->nullable()->constrained('users')->nullOnDelete();\n});\n",
+        ]);
+
+        $rows = $audit->disagreements();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('fk-target-disagreement', $rows[0]['kind']);
+        $this->assertStringContainsString('commerce_intents.purchaser_user_id', $rows[0]['detail']);
+        $this->assertStringContainsString('`users`', $rows[0]['detail']);
+    }
+
+    /** A stated target with no `_id` suffix — `invited_by`, `signed_by`, `created_by` are a third of them. */
+    public function test_a_stated_target_needs_no_id_suffix(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'database/migrations/2026_07_01_000200_create_invitations_table.php' => "<?php\n\nSchema::create('invitations', function (Blueprint \$table) {\n"
+                ." \$table->foreignId('invited_by')->constrained('users');\n});\n",
+        ]);
+
+        $rows = $audit->disagreements();
+
+        $this->assertCount(1, $rows);
+        $this->assertStringContainsString('invitations.invited_by', $rows[0]['detail']);
+    }
+
+    /**
+     * The half of this repair that widening reach *found*: a column that constrains nothing states no
+     * target, and the pluralised guess names a real but **different** table. `~/Herd/splicewire-app`'s
+     * `stripe_subscription_items.subscription_id` references `stripe_subscriptions` (bigint), its own
+     * docblock says so in words, and the guess pointed at the uuid-keyed `subscriptions` — a live,
+     * shipping false positive before this change.
+     */
+    public function test_a_foreign_id_that_constrains_nothing_states_no_target_and_is_counted(): void
+    {
+        $audit = $this->site([
+            'database/migrations/2026_08_13_222429_create_subscriptions_table.php' => "<?php\n\nSchema::create('subscriptions', function (Blueprint \$table) {\n \$table->uuid('id')->primary();\n});\n",
+            'database/migrations/2026_08_13_222434_create_stripe_subscriptions_table.php' => "<?php\n\nSchema::create('stripe_subscriptions', function (Blueprint \$table) {\n \$table->id();\n});\n",
+            'database/migrations/2026_08_13_222435_create_stripe_subscription_items_table.php' => "<?php\n\nSchema::create('stripe_subscription_items', function (Blueprint \$table) {\n"
+                ." \$table->id();\n \$table->foreignId('subscription_id');\n});\n",
+        ]);
+
+        $this->assertSame([], $audit->disagreements());
+
+        $this->assertStringContainsString(
+            '1 foreignId-family column(s) skipped',
+            $audit->run()[0]->detail,
+        );
+    }
+
+    /** A bare `constrained()` is Laravel's own derivation, not this reader's guess, so it still counts. */
+    public function test_a_bare_constrained_call_still_derives_the_target_the_way_laravel_does(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'database/migrations/2024_01_01_000000_create_passkeys_table.php' => "<?php\n\nSchema::create('passkeys', function (Blueprint \$table) {\n \$table->foreignId('user_id')->constrained();\n});\n",
+        ]);
+
+        $rows = $audit->disagreements();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('fk-target-disagreement', $rows[0]['kind']);
+    }
+
+    /**
+     * The durable half. A create whose name is a method call was in **none** of the counts: not checked,
+     * and not reported as unchecked. The estate's own `create_teams_table` — the very table ticket 191
+     * was opened about — is `ConvergentTable::named($this->target())`, and it is named here now.
+     */
+    public function test_a_create_it_cannot_name_is_reported_rather_than_absorbed(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'database/migrations/2026_08_25_135336_create_teams_table.php' => $this->convergentUsersMigration('$this->target()', "\$table->uuid('id')->primary();"),
+        ]);
+
+        $findings = $audit->run();
+
+        $this->assertCount(2, $findings);
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
+        $this->assertStringContainsString('1 create(s) skipped', $findings[0]->detail);
+        $this->assertSame(DoctorStatus::Warn, $findings[1]->status);
+        $this->assertStringContainsString('2026_08_25_135336_create_teams_table.php', $findings[1]->detail);
+    }
+
+    /**
+     * The counter must not cry about the instrument reading itself. An unscoped version of it counted 24
+     * hits in the estate's own scanners, whose regex literals spell the verb without creating anything.
+     */
+    public function test_the_unparsed_counter_ignores_source_that_merely_names_the_verb(): void
+    {
+        $audit = $this->site([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $this->userModel('HasFactory, HasUuids'),
+            'src/MigrationTableScanner.php' => "<?php\n\nclass MigrationTableScanner {\n public \$pattern = '/Schema::create\\(/';\n public \$other = '/ConvergentTable::named\\(/';\n}\n",
+        ]);
+
+        $findings = $audit->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertStringContainsString('0 create(s) skipped', $findings[0]->detail);
+    }
 }
 
 /** Stands in for `Spatie\Permission\Models\Role`: a plain Eloquent model, auto-incrementing by default. */

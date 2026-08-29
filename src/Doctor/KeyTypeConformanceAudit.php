@@ -239,21 +239,63 @@ class KeyTypeConformanceAudit implements DoctorAudit
     {
         $rows = $this->disagreements();
 
-        if ($rows === []) {
-            return [Finding::pass(self::CHECK, sprintf(
+        $findings = $rows === []
+            ? [Finding::pass(self::CHECK, sprintf(
                 'Primary keys, models and foreign keys agree (%d table(s) and %d model(s) checked; '.
                 '%d model(s) skipped — table name not statically resolvable; '.
                 '%d third-party binding(s) skipped — class not loadable here; '.
-                '%d column(s) skipped — altered after their create by DDL this reader cannot classify).',
+                '%d column(s) skipped — altered after their create by DDL this reader cannot classify; '.
+                '%d create(s) skipped — table name not statically resolvable; '.
+                '%d foreignId-family column(s) skipped — the declaration states no target table).',
                 $this->index->tableCount(),
                 $this->index->modelCount(),
                 $this->index->unresolvedModelCount(),
                 $this->unresolvedBindings,
                 $this->index->unreadableAlterationCount(),
-            ))];
+                $this->index->unparsedCreateCount(),
+                $this->index->unreferencedForeignKeyColumnCount(),
+            ))]
+            : array_map(fn (array $row): Finding => Finding::warn(self::CHECK, $row['detail']), $rows);
+
+        if ($this->index->unparsedCreateCount() > 0) {
+            $findings[] = $this->unparsedCreateFinding();
         }
 
-        return array_map(fn (array $row): Finding => Finding::warn(self::CHECK, $row['detail']), $rows);
+        return $findings;
+    }
+
+    /**
+     * The tables this audit **did not look at**, said out loud — beam-facade 191.
+     *
+     * The Pass line counted three kinds of skip and not this one, so a create whose name is a method call
+     * or a concatenation left no trace anywhere: not in `tables()`, not in a finding, not in the skip
+     * tally. The reader indexed 28 tables of 164 at the flagship and 5 of 29 at `~/Herd/tower` and
+     * reported *"primary keys, models and foreign keys agree"* over both. **An instrument that enumerates
+     * its known blind spots and not its unknown ones reads as thorough precisely where it is weakest.**
+     *
+     * Emitted alongside the Pass rather than instead of it: "everything I could read agrees" and "here is
+     * what I could not read" are two true statements and the report needs both. Warn, never Fail — this
+     * is a fact about the reader's reach, and nothing a host authored is wrong because of it.
+     */
+    protected function unparsedCreateFinding(): Finding
+    {
+        $files = $this->index->unparsedCreateFiles();
+        arsort($files);
+        $named = array_slice(array_keys($files), 0, 6);
+
+        return Finding::warn(self::CHECK, sprintf(
+            '%d create(s) across %d file(s) name a table this reader cannot resolve statically — a '
+            .'`Schema::create(Beam::table(...))` or a `ConvergentTable::named($this->target())`, whose '
+            .'result is a concatenation or a method call rather than a spelling. Those tables are in '
+            .'none of the counts above: they were not checked, and until now nothing said so. %s%s '
+            .'Nothing is necessarily wrong in them; this is the reach of the check, reported rather '
+            .'than absorbed, because "agrees" and "was never looked at" are different facts and only '
+            .'one of them was previously visible.',
+            $this->index->unparsedCreateCount(),
+            count($files),
+            implode(', ', $named),
+            count($files) > 6 ? sprintf(' (+%d more).', count($files) - 6) : '.',
+        ));
     }
 
     /**

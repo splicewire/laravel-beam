@@ -135,6 +135,13 @@ class SchemaKeyIndex
 
     private int $unreadableAlterations = 0;
 
+    private int $unparsedCreates = 0;
+
+    private int $unreferencedForeignKeyColumns = 0;
+
+    /** @var array<string, int> */
+    private array $unparsedCreateFiles = [];
+
     /** @param  list<string>  $roots */
     public function __construct(public array $roots)
     {
@@ -297,6 +304,37 @@ class SchemaKeyIndex
         return $this->unreadableAlterations;
     }
 
+    /**
+     * Create constructs whose table name this reader could not resolve statically — see
+     * {@see countUnparsedCreates()}. The number of tables that exist in the estate's source and are not in
+     * {@see tables()} for a reason nothing else reports.
+     */
+    public function unparsedCreateCount(): int
+    {
+        return $this->unparsedCreates;
+    }
+
+    /**
+     * `foreignId`-family columns that state no target at all — see {@see statedReference()}. A counted
+     * skip, because the alternative is a fabricated target, and the estate has a live case where the
+     * fabricated one names a real but different table.
+     */
+    public function unreferencedForeignKeyColumnCount(): int
+    {
+        return $this->unreferencedForeignKeyColumns;
+    }
+
+    /**
+     * The files those unparsed creates are in, `basename => count`, so the finding can name them rather
+     * than only counting them.
+     *
+     * @return array<string, int>
+     */
+    public function unparsedCreateFiles(): array
+    {
+        return $this->unparsedCreateFiles;
+    }
+
     private function build(): void
     {
         $files = [];
@@ -404,24 +442,52 @@ class SchemaKeyIndex
      * disagreeing with the model that reads it) is the same defect either way, because the key and the
      * table are one-to-one. A wrong label on a real finding, never a fabricated finding.
      *
-     * Creates whose name is a method call or a concatenation are still simply not indexed.
+     * Creates whose name is a method call or a concatenation are still simply not indexed — but they are
+     * now **counted**; see {@see unparsedCreateCount()}.
+     *
+     * ## Two create verbs, because the estate is migrating off one of them (beam-facade 191)
+     * `Schema::create` was the only verb this reader knew, and `rushing/laravel-schema-convergence`'s
+     * `ConvergentTable::named(...)->define(...)` — which registry-kernel ticket 30's guard audit tells
+     * every root to migrate *to*, and which **replaces** the `Schema::create` call rather than wrapping
+     * it — was invisible. The consequence was not a missing finding here and there: **every root that
+     * complied with the estate's own conformance program removed itself from this audit's reach, and the
+     * most compliant root was the blindest.** `~/Herd/splicewire-app` indexed 28 tables against a
+     * 164-table schema and reported agreement over the rest; `~/Herd/tower` indexed 5 of 29. Both read as
+     * a clean Pass.
+     *
+     * The same two name forms are read for both verbs and for the same reasons — a literal, or a
+     * config-array lookup whose key is itself the conventional table name. `ConvergentTable::named(Beam::table('x'))`
+     * and the `$this->target()` accessor spellings stay unindexed, deliberately, and are what the unparsed
+     * counter now reports.
      */
     private function indexMigration(string $source, string $file): void
     {
         $order = [$this->stampOf($file), $file, 0];
         $creates = [];
 
-        preg_match_all('/Schema::create\(\s*[\'"]([^\'"]+)[\'"]\s*,.*?\n(\s*)\}\)/s', $source, $literal, PREG_SET_ORDER);
+        // The two create verbs, spelled once. `Schema::create('t', function (...) {` and
+        // `ConvergentTable::named('t')->define(function (...) {` both end their declaration block at the
+        // first `\n<indent>})`, so one block terminator serves both.
+        $verbs = [
+            'Schema::create\(\s*',
+            'ConvergentTable::named\(\s*',
+        ];
 
-        foreach ($literal as $create) {
-            $creates[] = [$create[0], $create[1], false];
+        foreach ($verbs as $verb) {
+            preg_match_all('/'.$verb.'[\'"]([^\'"]+)[\'"]\s*[,)].*?\n(\s*)\}\)/s', $source, $literal, PREG_SET_ORDER);
+
+            foreach ($literal as $create) {
+                $creates[] = [$create[0], $create[1], false];
+            }
+
+            preg_match_all('/'.$verb.'\$\w+\[\s*[\'"](\w+)[\'"]\s*\]\s*[,)].*?\n(\s*)\}\)/s', $source, $configured, PREG_SET_ORDER);
+
+            foreach ($configured as $create) {
+                $creates[] = [$create[0], $create[1], true];
+            }
         }
 
-        preg_match_all('/Schema::create\(\s*\$\w+\[\s*[\'"](\w+)[\'"]\s*\]\s*,.*?\n(\s*)\}\)/s', $source, $configured, PREG_SET_ORDER);
-
-        foreach ($configured as $create) {
-            $creates[] = [$create[0], $create[1], true];
-        }
+        $this->countUnparsedCreates($source, $file, count($creates));
 
         foreach ($creates as $create) {
             [$block, $table, $inferredName] = $create;
@@ -446,24 +512,145 @@ class SchemaKeyIndex
                 ];
             }
 
-            // Foreign keys declared with an explicit integer form. `foreignUuid` is the uuid counterpart;
-            // `foreignIdFor(Model::class)` is omitted on purpose — it derives from the model, so it is
-            // right exactly when the model is, which the primary-key predicate already governs.
-            if (preg_match_all('/->foreignId\(\s*[\'"](\w+)_id[\'"]\s*\)/', $block, $fks, PREG_SET_ORDER)) {
-                foreach ($fks as $fk) {
-                    $this->declaredAt[$table.'.'.$fk[1].'_id'] ??= $order;
-                    $this->foreignKeys[] = [
-                        'table' => $table,
-                        'column' => $fk[1].'_id',
-                        'type' => 'int',
-                        'source' => basename($file),
-                        'references' => $this->pluralize($fk[1]),
-                    ];
-                }
-            }
+            $this->indexForeignKeys($block, $table, $file, $order);
 
             $this->indexMorphKeys($block, $table, $file);
         }
+    }
+
+    /**
+     * The declared foreign keys in one create block, with the table each one actually points at.
+     *
+     * `foreignIdFor(Model::class)` stays omitted on purpose — it derives from the model, so it is right
+     * exactly when the model is, which the primary-key predicate already governs.
+     *
+     * ## The target is READ where the migration states it, and only inferred where it does not
+     * This used to derive every target by pluralising the column prefix, and never looked at the
+     * `->constrained('users')` argument sitting three characters later on the same line. That is a blind
+     * spot in the predicate's whole reason for existing: `~/Herd/numero` declares
+     * `foreignId('purchaser_user_id')->constrained('users')` against a **uuid** `users.id`, and
+     * `fk-target-disagreement` reported nothing, because it looked up `purchaser_users` — a table that
+     * does not exist — and every predicate skips on an unknown target. Three such columns at one host,
+     * invisible (beam-facade 191). An explicit `constrained('<literal>')` is a *declaration* of the
+     * target; the pluralised prefix is a *guess*, and a declaration must win over a guess.
+     *
+     * A column whose target is stated explicitly no longer has to end in `_id` either — `signed_by`,
+     * `invited_by` and `created_by` are how a third of the estate's holder references are spelled, and
+     * the suffix requirement was only ever there to make the pluralise guess safe.
+     *
+     * ## And a column that constrains NOTHING is not a foreign key
+     * Widening reach armed the old guess, which is the half of this repair that was found by doing it.
+     * `~/Herd/splicewire-app` declares a bare `foreignId('subscription_id')` in
+     * `create_stripe_subscription_items_table` whose own docblock says, in words, *"`subscription_id`
+     * references stripe_subscriptions.id (bigint)"* — and the pluralised prefix names `subscriptions`,
+     * a **different, uuid-keyed table in the same estate.** Under the old reach `subscriptions` was
+     * never indexed and the guess died quietly on a null target; index it and the guess becomes a
+     * confident, fabricated finding against a perfectly correct migration.
+     *
+     * So the reference is taken only where the migration **states** one: `constrained('t')`,
+     * `references(...)->on('t')`, or a bare `constrained()` — which is not a guess but *Laravel's own*
+     * derivation from the column name, i.e. the same rule the framework will apply at migrate time. A
+     * column with no constraint clause at all states no target, is counted by
+     * {@see unreferencedForeignKeyColumnCount()}, and is reported by nothing else. This is the audit's
+     * own standing rule (*"a wrong label on a real finding, never a fabricated finding"*) applied to the
+     * one place it was not.
+     *
+     * @param  array{string, string, int}  $order
+     */
+    private function indexForeignKeys(string $block, string $table, string $file, array $order): void
+    {
+        // The whole declaration statement, so the chained `->constrained(...)` is in reach. Terminated by
+        // `;` rather than a newline because the estate spells long chains across several lines.
+        if (! preg_match_all('/->(foreignId|foreignUuid|foreignUlid)\(\s*[\'"](\w+)[\'"]\s*\)([^;]*);/s', $block, $fks, PREG_SET_ORDER)) {
+            return;
+        }
+
+        foreach ($fks as $fk) {
+            [, $form, $column, $chain] = $fk;
+
+            $references = $this->statedReference($column, $chain);
+
+            if ($references === null) {
+                $this->unreferencedForeignKeyColumns++;
+
+                continue;
+            }
+
+            $this->declaredAt[$table.'.'.$column] ??= $order;
+            $this->foreignKeys[] = [
+                'table' => $table,
+                'column' => $column,
+                'type' => self::MORPH_KEY_TYPES[$form] ?? null,
+                'source' => basename($file),
+                'references' => $references,
+            ];
+        }
+    }
+
+    /**
+     * The table a `foreignId`-family declaration **states** it points at, or null when it states none.
+     *
+     * Three stated forms, in precedence order — a named `constrained('t')`, an explicit
+     * `references(...)->on('t')`, and a bare `constrained()`, whose target is Laravel's own
+     * `Str::plural(Str::beforeLast($column, '_id'))`. The first two are declarations; the third is a
+     * derivation the framework itself performs, which is why reproducing it here is reading rather than
+     * guessing. Anything else — including a bare `foreignId('x_id')` with no constraint clause — states
+     * nothing, and this returns null rather than inventing a table name.
+     */
+    private function statedReference(string $column, string $chain): ?string
+    {
+        if (preg_match('/->constrained\(\s*[\'"](\w+)[\'"]/', $chain, $named) === 1) {
+            return $named[1];
+        }
+
+        if (preg_match('/->on\(\s*[\'"](\w+)[\'"]/', $chain, $on) === 1) {
+            return $on[1];
+        }
+
+        if (preg_match('/->constrained\(\s*\)/', $chain) === 1 && str_ends_with($column, '_id')) {
+            return $this->pluralize(substr($column, 0, -3));
+        }
+
+        return null;
+    }
+
+    /**
+     * Create constructs this reader **saw the verb of and could not name a table from** — the audit's own
+     * unknown blind spot, counted instead of vanishing.
+     *
+     * The Pass line already counts three kinds of skip (an unresolvable model table, an unloadable
+     * third-party binding, an unreadable ALTER) and argues in the audit's docblock that *"no findings"
+     * and "could not look" are different facts*. It did not count this one. A `Schema::create(Beam::table('x'), …)`
+     * or a `ConvergentTable::named($this->target())` simply never entered `$this->tables`, so the table
+     * was not checked, was not reported as unchecked, and the Pass line's *"N table(s) checked"* read as
+     * thorough precisely where the reader was blind. **An instrument that enumerates its known blind
+     * spots and not its unknown ones is at its most misleading when it is most confident** — this counter
+     * is the durable half of beam-facade 191, because the next unreadable spelling will not be
+     * `ConvergentTable`.
+     *
+     * Counted per **construct**, not per file: one migration can create three tables and lose one.
+     *
+     * Scoped to files on a `migrations` path, which is not tidiness — measured 2026-08-29 at
+     * `~/Herd/splicewire-app`, an unscoped count read 124 across 98 files and **34 of them were the
+     * estate's own scanners** (`MigrationTableScanner`, `SchemaCreateScanner`, `MigrationOrderingAudit`,
+     * and this very file), whose regex literals spell the verb without creating anything. That is the
+     * same false positive `UnmappedConvergentTypeAudit`'s substring marker takes on a docblock, and a
+     * blind-spot counter that cries about the instrument reading itself is a counter nobody reads.
+     */
+    private function countUnparsedCreates(string $source, string $file, int $parsed): void
+    {
+        if (! str_contains(str_replace('\\', '/', $file), '/migrations/')) {
+            return;
+        }
+
+        $constructs = preg_match_all('/(?:Schema::create|ConvergentTable::named)\s*\(/', $source);
+
+        if ($constructs <= $parsed) {
+            return;
+        }
+
+        $this->unparsedCreates += $constructs - $parsed;
+        $this->unparsedCreateFiles[basename($file)] = ($this->unparsedCreateFiles[basename($file)] ?? 0) + ($constructs - $parsed);
     }
 
     /**
