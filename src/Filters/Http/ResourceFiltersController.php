@@ -16,12 +16,15 @@ use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Splicewire\Beam\Data\ResponseBody;
+use Splicewire\Beam\Doctor\FilterablePromiseAudit;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Filters\Data\ResourceFilterVariantData;
 use Splicewire\Beam\Filters\Data\ResourceFilterVariantsData;
 use Splicewire\Beam\Filters\Data\SavedFilterStoreInputData;
 use Splicewire\Beam\Filters\Data\SavedFilterUpdateInputData;
 use Splicewire\Beam\Http\Controller;
+use Splicewire\Beam\Particle\ParticleListQuery;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -179,11 +182,82 @@ class ResourceFiltersController extends Controller
      *
      * Facet names on the wire are **camelCase**: `filter[externalRef]`, not `filter[external_ref]`.
      *
+     * A resource that DECLARES no filter surface (`#[ParticleResource(filterable: false)]`) answers an
+     * EMPTY vocabulary — `{"type":"object","properties":{}}` — rather than 404. See
+     * {@see declaredEmptyVocabulary()} for why that is the honest answer and what still 404s.
+     *
      * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
      */
-    public function schema(Request $request): JsonResponse
+    public function schema(Request $request, ParticleResourceRegistry $resources): JsonResponse
     {
-        return $this->schemaFor($this->definition($request));
+        $key = $this->resourceKey($request);
+        $definition = $key === '' ? null : DataFilter::tryResource($key);
+
+        if ($definition !== null) {
+            $this->gateOnModel($definition->model);
+
+            return $this->schemaFor($definition);
+        }
+
+        return $this->declaredEmptyVocabulary($key, $resources);
+    }
+
+    /**
+     * The 200 a resource that DECLARED no filter surface gets, in place of the 404 a missing
+     * data-filters registration used to produce (api-surface-coherence ticket 125).
+     *
+     * ## Why 404 was the wrong answer
+     *
+     * `DataFilter::tryResource()` misses for two structurally different reasons, and the flat 404 said
+     * the same thing about both: *"there is no such resource"*. For `tenants` and `scaffold-packs` that
+     * is false — both are registered `#[ParticleResource]`s, listed in the frame manifest the same
+     * request already fetched, whose declarations say `filterable: false`. The honest answer to *"what
+     * may I filter here"* is **nothing**, and an empty vocabulary says exactly that.
+     *
+     * ## What still 404s, and why the narrowing is the whole point
+     *
+     * Only a declaration that opted OUT reaches the empty vocabulary. Two other misses keep their 404:
+     *
+     *  - **An unknown key.** Nothing is registered under it in either registry; 404 is true, and it is
+     *    also what keeps the flat `filter-schema/{resource}` enumeration leak closed (see the class
+     *    docblock) — this branch never confirms a key the particle registry does not carry.
+     *  - **A `filterable: true` resource with no data-filters registration** — the promise made by *not
+     *    opting out* ({@see FilterablePromiseAudit}). That is a live defect, its
+     *    index raises, and its filter sub-surface must keep answering 404 or the audit's own live arm
+     *    would be reporting a fault the wire had learned to hide. Measured at the flagship 2026-08-29:
+     *    3 of 51 registered resources are in that state (`role-assignments`, `role-templates`,
+     *    `role-obligations`); 15 declare `filterable: false`, and those are this branch's population.
+     *
+     * ## It cannot cost sorting, which is the trap this ticket was filed around
+     *
+     * `x-sort` rides the same schema as `x-filter`, so anything that suppresses the schema fetch also
+     * silently deletes column sorting. Nothing is deleted here: a `filterable: false` index is served by
+     * {@see ParticleListQuery::forList()}, which applies the DECLARED default
+     * order and never reads the request's `sort`. The set of sortable fields such a resource offers a
+     * client is already empty; an empty `properties` is that fact stated rather than a fact lost.
+     *
+     * Gated like every other read in this sub-surface — on the declaration's own model, `viewAny` where
+     * a policy defines one. The gate is the same code path {@see gateOnResource()} takes, not a second
+     * spelling of it.
+     */
+    private function declaredEmptyVocabulary(string $key, ParticleResourceRegistry $resources): JsonResponse
+    {
+        $resource = $key === '' ? null : $resources->find($key);
+
+        if ($resource === null || $resource->filterable) {
+            abort(Response::HTTP_NOT_FOUND, "No filter resource registered for [{$key}].");
+        }
+
+        $this->gateOnModel($resource->modelClass());
+
+        // `(object) []` and never `[]`: an empty PHP array encodes as a JSON *array*, and the wire
+        // contract's `properties` is an object (`FilterSchema` in `@schemastud/facets`). A client
+        // reading `Object.values(schema.properties)` survives either, which is precisely why the wrong
+        // one would ship unnoticed.
+        return response()->json(['data' => [
+            'type' => 'object',
+            'properties' => (object) [],
+        ]]);
     }
 
     /**
@@ -276,19 +350,7 @@ class ResourceFiltersController extends Controller
      */
     private function definition(Request $request): ResourceDefinition
     {
-        $config = $request->route()->defaults[self::CONFIG] ?? null;
-
-        if (! is_array($config) || ! array_key_exists('resource', $config)) {
-            throw new RuntimeException(
-                'Filter sub-surface route is missing its '.self::CONFIG.' config. '
-                .'Register it via Particle::filters() — never by hand.'
-            );
-        }
-
-        // A null configured resource is the Frame-resource-root case and ONLY that: the frame root is
-        // itself parameterised by the registration key, so `{resource}` there is not a URL word that
-        // might diverge from the key — it IS the key.
-        $key = $config['resource'] ?? (string) $request->route('resource');
+        $key = $this->resourceKey($request);
 
         // `tryResource()`, never `resource()` — registry-kernel ticket 61. The throwing accessor raises
         // `RegistryMiss`, which escaping a controller is a 500; that is right for a key the code chose
@@ -307,6 +369,30 @@ class ResourceFiltersController extends Controller
         $this->gateOnResource($definition);
 
         return $definition;
+    }
+
+    /**
+     * The resource key this route serves, read off the route's frozen config — never off the URI.
+     *
+     * Split out of {@see definition()} so {@see schema()} can ask "which resource is this route for"
+     * WITHOUT committing to "…and it must have a data-filters registration": the two questions used to
+     * be one method, which is why a declaration that opted out of filtering could only be answered 404.
+     */
+    private function resourceKey(Request $request): string
+    {
+        $config = $request->route()->defaults[self::CONFIG] ?? null;
+
+        if (! is_array($config) || ! array_key_exists('resource', $config)) {
+            throw new RuntimeException(
+                'Filter sub-surface route is missing its '.self::CONFIG.' config. '
+                .'Register it via Particle::filters() — never by hand.'
+            );
+        }
+
+        // A null configured resource is the Frame-resource-root case and ONLY that: the frame root is
+        // itself parameterised by the registration key, so `{resource}` there is not a URL word that
+        // might diverge from the key — it IS the key.
+        return $config['resource'] ?? (string) $request->route('resource');
     }
 
     /**
@@ -342,8 +428,18 @@ class ResourceFiltersController extends Controller
      */
     private function gateOnResource(ResourceDefinition $definition): void
     {
-        $model = $definition->model;
+        $this->gateOnModel($definition->model);
+    }
 
+    /**
+     * The gate itself, keyed on the model rather than on a data-filters definition — so the
+     * declared-empty-vocabulary branch ({@see declaredEmptyVocabulary()}), which has no
+     * `ResourceDefinition` to hand, gates through the SAME code rather than a second spelling of it.
+     *
+     * @param  class-string|null  $model
+     */
+    private function gateOnModel(?string $model): void
+    {
         if ($model === null) {
             return;
         }
