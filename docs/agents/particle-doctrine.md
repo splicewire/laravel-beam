@@ -15,7 +15,8 @@ one machine. One screen. Everything below is a link.*
 
 Three legal declaration sites — no fourth:
 
-1. **`#[ParticleResource]`** — `data:` (the read projection) and `input:` (the write DTO).
+1. **`#[ParticleResource]`** — `backing:` (what the rows *are*), `data:` (the read projection) and
+   `input:` (the write DTO).
 2. **`#[ParticleOp]`** — `input:` and `output:`. On `kind: Stream`, `output:` is an **event-name map**
    (`['run_status' => [StatusData::class], …]`); on every other kind it is a single class-string.
    `ParticleOperation`'s constructor rejects the wrong pairing, so a mis-shaped declaration fails at
@@ -29,6 +30,117 @@ Three legal declaration sites — no fourth:
 Don't hand-roll: `splicewire:beam:make:particle-resource` and `splicewire:beam:make:particle-op`
 emit the attribute with every slot filled, the classes those slots name, and the
 `Route::particleResource` / `Route::particleOp` mount line to paste into the host's route file.
+
+## What BACKS a resource — one polymorphic slot, and a capability is allowed to be absent
+
+⚠️ **`#[ParticleResource]` is NOT model-required, and has not been since particle-contribution-seam
+ticket 11.** The attribute carries `public string $backing` and **no `$model` property at all** —
+verified by reflection at `~/Herd/splicewire-app` on 2026-08-29, 26 properties, `model` not among them.
+The `model` / `source` / `sourceKind` triple and its `model` XOR `source` contract are gone and were not
+re-homed. Read `splicewire/laravel-beam` `src/Particle/Backing/` — every class there carries its own
+reasoning.
+
+The slot is polymorphic **on type**, never on a discriminator field (a `sourceKind` string with zero
+branching readers is what the type test replaced). `BackingResolver::resolve()` takes three forms:
+
+| given | meaning |
+|---|---|
+| a `ResourceBacking` **instance** | used as-is — imperative registration only, the attribute slot is a `string` |
+| a `ResourceBacking` **class-string** | container-resolved **per request**, so it may take constructor injection |
+| any other class-string | read as an Eloquent model, wrapped in `EloquentBacking` — the ordinary case |
+
+So the ordinary declaration stays `backing: Silo::class`, one word longer than the `model:` it replaced,
+and the declaration genuinely carries no model field. A model class-string is deliberately **not**
+validated at declaration time (a host's model, or a fictional FQCN used to exercise the manifest without
+a database, are both legal); a bogus one fails at the first query, exactly where `$model::query()`
+already failed.
+
+### The capabilities, and declining one is an ANSWER
+
+`ResourceBacking` is a **marker with no methods**. Every real job is a capability sub-interface, and a
+backing implements the ones it genuinely has:
+
+- **`StreamsRecords`** — `records(filters, cursor, perPage): CursorPaginator`. The GENERAL list
+  capability, the one a non-Eloquent backing can honestly implement.
+- **`QueriesRecords`** — `query(filters): Builder`. Eloquent-only and **narrower, not weaker**: it hands
+  back a query the caller may still compose, which is what data-filters, saved filters, owner scoping and
+  the declared `#[Sortable(default: true)]` order need in order to work *on* the query. Implement both and
+  the `BacksEloquent` trait expresses `records()` in terms of `query()` for free.
+- **`ResolvesRecord`** — `resolve(id, filters): ?ResolvedRecord`, a projected detail read for a union-ish
+  backing. The union-arm discriminator rides the same opaque `$filters` bag every other capability takes,
+  so **a caller hands every capability the identical argument shape**.
+- **`WritesRecords`** — `resolveForWrite()` + `newRecord()`. A write needs the mutable record, not a
+  projection, which is why it does not reuse `ResolvesRecord`.
+- **`BacksModel`** — `modelClass()`: every row is an instance of ONE Eloquent model. **Conditionally**
+  required: a backing whose rows are pivot rows, or span two record types, has no legal answer and must
+  not invent one. That is exactly why it is a capability and not a method on the port.
+
+⚠️ **A declined capability is a legitimate answer, never an error, and the readers are written that way.**
+`EloquentBacking` deliberately declines `ResolvesRecord` — a model-backed detail runs through the
+declaration's own `data:`/`project:` projection, and adding it would give the model path a second
+competing projection route. `ParticleResourceModelResolver` states the general rule: *absence is a return
+value here, never an exception* — an unknown key, or one whose backing declares no single model, yields
+`null` and lets the caller decide. `ModelResourceIndex` simply omits such a resource. Measured on the
+flagship 2026-08-29: **44 registered resources, 2 of them with a null model** (`members`,
+`review-queue`), and both read correctly rather than throwing.
+
+### Capability is the CEILING; the affordance flags may only narrow
+
+`instanceof WritesRecords` is what the backing **can** do; `creatable`/`editable`/`deletable`/`showable`/
+`filterable` are what the resource **may** do. Opening a write affordance against a non-writing backing
+is a declaration error the author could have gotten right, so `ParticleResourceRegistry::register()`
+throws at registration — measured verbatim:
+
+```
+Resource [probe-bad] declares creatable/editable/deletable but its backing [Splicewire\Tower\Frame\Sources\MembershipSource]
+cannot write (it does not implement …\WritesRecords). Capability is the ceiling: an affordance may narrow
+what a backing can do, never widen it.
+```
+
+The reverse — a writing backing declared `readOnly` — is the mechanism working, not a finding. The
+**read** axis is unvalidated at registration (`filterable` and `showable` both default to true, so a
+custom backing acquires those claims by saying nothing), which is why the live population is reported,
+advisory, by `surgeon:audit`'s `particle.capability-disagreement`. The whole picture per host:
+
+```
+XDEBUG_MODE=off herd php artisan splicewire:beam:particle:resources --json     # add --disagreements to narrow
+```
+
+### When imperative `register()` is genuinely required — and when it is a fossil
+
+The attribute and `ParticleResourceRegistry::register()` build the **same** runtime `ParticleResource`;
+`AttributedParticleDiscovery::resourceFromAttribute()` passes `backing:` through verbatim. So the only
+real reasons to register imperatively are:
+
+- the backing is a pre-built **instance** rather than a class-string (the attribute slot is `string`);
+- a slot needs a **non-constant expression** — but check first whether a `ResourceBacking` class-string
+  answers it better, because that resolves at **request** time rather than boot. Three freeze points, and
+  only the last follows a host's config: attribute ⇒ compile · imperative `new ParticleResource(...)` ⇒
+  boot · a `ResourceBacking` class-string ⇒ request. `splicewire/laravel-beam-accounts`
+  `src/Particle/Backing/ConfiguredUserBacking.php` is the worked example (the `users` resource, whose
+  model is the host's);
+- the Data class is one you cannot annotate.
+
+**"The backing is not an Eloquent model" is NOT on that list**, and the closures are not either — `scope`,
+`project`, `prepare` and `afterWrite` are resolved by convention from `public static` methods on the
+annotated class.
+
+⚠️ **`splicewire/tower`'s `src/Frame/TowerFrameResourceProvider.php` still says otherwise**, and its
+docblock is the reason this section exists: it justifies registering `members` and `review-queue`
+imperatively with *"the unified `#[ParticleResource]` attribute is model-required (`public string
+$model`, no `$source`)"*. That sentence describes an attribute that no longer exists. Probed at the
+flagship on 2026-08-29 — a throwaway class carrying
+`#[ParticleResource(key: 'probe-members', backing: MembershipSource::class, data: MembershipResourceData::class, filterable: false, readOnly: true, …)]`
+reflected, registered and read back clean, `modelClass()` null, `isFramed()` true. **Both registrations
+are declarable by attribute today.** Tower was deliberately left unchanged; this is a recorded finding,
+not a landed migration.
+
+⚠️ **The real constraint on those two is the TRANSPORT, not the attribute, and it is easy to swap them.**
+`ParticleController` (REST) demands `QueriesRecords` and refuses a merely-streaming backing by name;
+`ParticleFrameResourceHandler` serves a streams-only backing through its `streamedIndex()` /
+`resolvedShow()` branches. So a `StreamsRecords`-only resource is a Frame-transport resource whether it is
+declared by attribute or imperatively — moving it onto the attribute changes nothing about which
+transport can serve it.
 
 ## What a declaration buys — the generation chain
 
@@ -194,7 +306,9 @@ controller FQCN, so the population of exemptions stays countable.
   host's config before concluding anything about a resource's gate.** A key registered in no tier
   makes `ResourceRegistry::get()` throw `InvalidArgumentException` and the index breaks on first
   request — loudly, with nothing exposed, because no `ResourceQuery` is ever constructed
-  (`particle-doctrine-followups` 15).
+  (`particle-doctrine-followups` 15). `filterable: true` needs one more thing nobody checks at
+  registration: a backing implementing `QueriesRecords` — see the backing section above, and
+  `particle.capability-disagreement` for the standing reading.
 - **Derived vs. published.** A rendering stays derived unless it becomes independently addressable
   *and* independently editable — at which point it is not a rendering, it is a publish, and
   `PublishPayload` is the seam. Fidelity (and therefore whether a write verb exists at all) is read
