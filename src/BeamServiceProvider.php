@@ -70,6 +70,7 @@ use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
+use Splicewire\Beam\Doctor\FilterablePromiseAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
@@ -711,6 +712,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->registerSurgeonAudits();
         $this->registerFacadeConformanceAudits();
         $this->registerRegistryConformanceAudits();
+        $this->registerFilterablePromiseAudit();
         $this->registerConformanceManifest();
     }
 
@@ -1219,6 +1221,33 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // a judgement call that fails the build is a judgement someone else made for you. It ratchets via
         // its committed artifact and `splicewire:beam:registry-conformance --check`, not via the gate.
         $manifest->register('splicewire/laravel-beam', UndeclaredRegistryShapeAudit::class);
+    }
+
+    /**
+     * The detector for the promise `#[ParticleResource]` makes by NOT opting out.
+     *
+     * `filterable` defaults to **true**, and a filterable resource's index rides
+     * `hydrator->query($key)`, which raises on a key with no `rushing/laravel-data-filters` resource
+     * behind it. Four live 500s were repaired by hand on 2026-08-29 (b1a9cd9 for beam-calendars' three,
+     * 9717817 for beam's own `hooks`) and not one of the four declarations spelled the flag out. See
+     * {@see FilterablePromiseAudit} for the full argument.
+     *
+     * Registered UNCONDITIONALLY rather than from {@see registerSurgeonAudits()}: the audit reads two
+     * booted registries and the route table and parses nothing, so it needs neither `nikic/php-parser`
+     * nor surgeon. Putting it behind that guard would make the check a function of whether the host
+     * installed dev dependencies — ticket 04 D1's defect, which {@see registerRegistryConformanceAudits()}
+     * already exists to avoid.
+     *
+     * Advisory, permanently, and the audit's own docblock argues it at length: BOTH halves of the
+     * population — which particle resources this composition registers, and what its
+     * `config/data-filters.php` plus every installed provider declare — are facts about the HOST, which
+     * `rushing/laravel-doctor`'s gate-or-advisory convention names as its textbook advisory case. A host
+     * that wants it to block registers the class in its own manifest with `gate: true`.
+     */
+    protected function registerFilterablePromiseAudit(): void
+    {
+        $this->app->make(BeamDoctorManifest::class)
+            ->register('splicewire/laravel-beam', FilterablePromiseAudit::class);
     }
 
     /**
