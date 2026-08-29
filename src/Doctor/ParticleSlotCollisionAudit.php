@@ -9,6 +9,8 @@ use Rushing\Doctor\Finding;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Rendering\Http\RenderingsController;
+use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteVisibility;
 
 /**
  * **The instrument that has to exist before `/op/` can be dropped** (particle-operation-surface 05).
@@ -30,14 +32,25 @@ use Splicewire\Beam\Rendering\Http\RenderingsController;
  * So the check is over the **real route table**, not over any registry: the collision is created by the
  * MOUNT, and the route table is the only place all three mounts are visible at once.
  *
- * ## Why it reports the collision that WOULD happen, not one that has
+ * ## It reported the collision that WOULD happen; since the drop landed it reports one that HAS
+ *
+ * ⚠️ **The tense changed on 2026-08-29 and the code did not have to.** Ticket 12 executed the drop, so
+ * the primary mount is now `{uri}/{id}/{op}` and the normalisation below is a no-op on it. What the
+ * audit watches is unchanged — the slot `{uri}/{id}/{segment}` — but a finding here is now a live
+ * outage rather than a work-list line, which is what the paragraph below always said would happen.
+ *
+ * The one code change the drop forced is the `Deprecated` skip in {@see run()}: the legacy `/op/` alias
+ * is the same operation mounted a second time, and collapsing it would make every operation in the
+ * estate collide with itself.
  *
  * The audit normalises every route to its post-drop spelling — `/op/` collapsed out of the URI, `.op.`
- * out of the route name — and looks for duplicates in *that* keyspace. It is therefore useful while
- * `/op/` is still mounted, which is the only time it can be: once the drop lands, a collision is a live
- * outage rather than a work-list line. Measured 2026-08-27 across every bootable host in the estate
- * (`~/Herd/*` on disk, twenty route tables, 2,997 routes, 67 of them under `/op/`): **zero collisions on
- * either axis.** The drop is safe today; this is what keeps it safe tomorrow.
+ * out of the route name — and looks for duplicates in *that* keyspace. Measured 2026-08-27 across the
+ * estate before the drop (twenty route tables, 2,997 routes, 67 under `/op/`) and RE-measured 2026-08-29
+ * immediately before executing it (`~/Herd/*` enumerated on disk with symlinks resolved, **21 bootable
+ * hosts, 3,135 routes, 61 under `/op/`**, the one unbootable root being `numero-legacy`): **zero
+ * collisions on either axis, both times.** Neither figure was carried forward; the second is not a
+ * refinement of the first but a different estate, which is why the ticket refused to key an acceptance
+ * criterion to the integer.
  *
  * ## The two axes are different failures, and the name axis is the quieter one
  *
@@ -79,6 +92,18 @@ class ParticleSlotCollisionAudit implements DoctorAudit
 
         foreach ($this->router->getRoutes() as $route) {
             /** @var Route $route */
+            // ⚠️ The deprecated `/op/` alias is skipped ENTIRELY, and this line is the difference between
+            // this audit staying useful and it reporting a permanent false positive at every host in the
+            // estate. Since particle-operation-surface 12, `ParticleMounter::op()` mounts each operation
+            // twice — `{uri}/{id}/{op}` and the legacy `{uri}/{id}/op/{op}`. Collapsed into this audit's
+            // post-drop keyspace those two are the SAME uri and (once `.op.` collapses) the same name, so
+            // without this skip every operation in the estate would report as colliding with itself, on
+            // both axes at once. That is not the collision this audit is for: an alias is one operation
+            // spelled twice on purpose, not two claimants to one slot.
+            if (BeamRouteAction::visibility($route) === RouteVisibility::Deprecated) {
+                continue;
+            }
+
             if ($this->isOperation($route)) {
                 $operations++;
             }
@@ -112,14 +137,14 @@ class ParticleSlotCollisionAudit implements DoctorAudit
 
         if ($rows === []) {
             return [Finding::pass(self::CHECK, sprintf(
-                '%d mounted particle operation%s; dropping the `/op/` segment collides with no rendering, CRUD verb or hand-written route on this host, on either the URI or the route-name axis.',
+                '%d mounted particle operation%s at `{resource}/{id}/{name}`; none collides with a rendering, CRUD verb or hand-written route on this host, on either the URI or the route-name axis. (Deprecated `/op/` aliases are excluded — an alias is one operation spelled twice, not two claimants.)',
                 $operations,
                 $operations === 1 ? '' : 's',
             ))];
         }
 
         return [Finding::warn(self::CHECK, sprintf(
-            '%d slot collision%s would be created by dropping the `/op/` segment: %s. A URI collision resolves '
+            '%d slot collision%s in the particle-operation slot `{resource}/{id}/{name}`: %s. A URI collision resolves '
                 .'by registration order — the second claimant silently stops answering; a route-name collision '
                 .'generates one URL and matches the other, and Laravel only catches it at `route:cache`. Rename '
                 .'one claimant, or expose them at different `at` prefixes.',

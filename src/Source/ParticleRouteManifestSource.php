@@ -8,6 +8,8 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteVisibility;
 
 /**
  * The **particle-route source** — the satellite-side {@see RouteManifestSource}. Where the platform binds a
@@ -106,6 +108,21 @@ class ParticleRouteManifestSource implements RouteManifestSource
      */
     private function isParticleRoute(Route $route): bool
     {
+        // A DEPRECATED route is not part of the published surface, and this is the line that makes
+        // particle-operation-surface 12's second acceptance criterion true rather than aspirational:
+        // *"the generated client carries the new spelling, and ONLY the new spelling"*. Since 12,
+        // `ParticleMounter::op()` mounts each operation twice — the primary `{uri}/{id}/{op}` and the
+        // legacy `{uri}/{id}/op/{op}` alias that keeps shipped callers working. Both are particle
+        // routes by every other test in this method; emitting both would put two entries in the client
+        // for one operation and hand new code the spelling that is on its way out.
+        //
+        // ⚠️ This is `RouteVisibility`'s FIRST consumer anywhere. The enum shipped with `Public` and
+        // `Internal` and tower's own manifest docblock recorded that it had none — so 12 could not
+        // "add a case and rely on the seam", it had to add the case and the reader together.
+        if (BeamRouteAction::visibility($route) === RouteVisibility::Deprecated) {
+            return false;
+        }
+
         $action = $route->getAction('controller');
 
         if (! is_string($action)) {

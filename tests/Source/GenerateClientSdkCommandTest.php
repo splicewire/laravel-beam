@@ -147,9 +147,18 @@ class GenerateClientSdkCommandTest extends TestCase
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
 
         // The op route is no longer excluded: it reaches the manifest, so the generator can cover it.
-        $this->assertArrayHasKey('widgets.op.recalculate', $manifest);
-        $this->assertSame('resources/widgets/{id}/op/recalculate', $manifest['widgets.op.recalculate']['path']);
-        $this->assertSame(['POST'], $manifest['widgets.op.recalculate']['methods']);
+        $this->assertArrayHasKey('widgets.recalculate', $manifest);
+        $this->assertSame('resources/widgets/{id}/recalculate', $manifest['widgets.recalculate']['path']);
+        $this->assertSame(['POST'], $manifest['widgets.recalculate']['methods']);
+
+        // ...and its DEPRECATED `/op/` alias does not. The alias is mounted (particle-operation-surface
+        // 12 keeps every shipped URL answering) but it is not part of the published surface, so the
+        // generated client carries the new spelling and ONLY the new spelling. This assertion is the
+        // whole of that ticket's acceptance #2, and it is the reason `RouteVisibility::Deprecated`
+        // exists at all — the tier had no reader before it.
+        $this->assertArrayNotHasKey('widgets.op.recalculate', $manifest);
+        $mounted = array_map(fn ($route) => $route->uri(), Route::getRoutes()->getRoutes());
+        $this->assertContains('resources/widgets/{id}/op/recalculate', $mounted);
 
         // Resource entries are untouched by the widening.
         $this->assertSame('App.Data.WidgetData', $manifest['widgets.index']['returns']);
@@ -170,7 +179,7 @@ class GenerateClientSdkCommandTest extends TestCase
         Route::prefix('resources')->group(fn () => Particle::ops('widgets', 'widgets', 'recalculate'));
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
-        $entry = $manifest['widgets.op.recalculate'];
+        $entry = $manifest['widgets.recalculate'];
 
         // No per-route annotation: the op's own declaration is what types the generated hook.
         $this->assertSame('App.Data.WidgetTotalsData', $entry['returns']);
@@ -192,8 +201,8 @@ class GenerateClientSdkCommandTest extends TestCase
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
 
-        $this->assertArrayNotHasKey('returns', $manifest['widgets.op.poke']);
-        $this->assertTrue($manifest['widgets.op.poke']['unresolved']);
+        $this->assertArrayNotHasKey('returns', $manifest['widgets.poke']);
+        $this->assertTrue($manifest['widgets.poke']['unresolved']);
     }
 
     public function test_a_stream_operations_event_map_is_emitted_rather_than_a_single_return_type(): void
@@ -212,7 +221,7 @@ class GenerateClientSdkCommandTest extends TestCase
 
         Route::prefix('resources')->group(fn () => Particle::ops('widgets', 'widgets', 'watch'));
 
-        $entry = $this->app->make(ParticleRouteManifestSource::class)->toArray()['widgets.op.watch'];
+        $entry = $this->app->make(ParticleRouteManifestSource::class)->toArray()['widgets.watch'];
 
         // A stream declares a SEQUENCE of typed events, so it carries `streams`, never `returns` — and it is
         // a declaration, so it is not negative space.
@@ -235,7 +244,7 @@ class GenerateClientSdkCommandTest extends TestCase
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
 
-        foreach (['ghosts.index', 'ghosts.op.vanish'] as $name) {
+        foreach (['ghosts.index', 'ghosts.vanish'] as $name) {
             $this->assertArrayNotHasKey('returns', $manifest[$name], "[{$name}] must not fabricate a type.");
             $this->assertTrue($manifest[$name]['unresolved'], "[{$name}] must record its unresolved shape.");
         }
