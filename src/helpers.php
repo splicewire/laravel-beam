@@ -27,9 +27,27 @@ if (! function_exists('set_min_time_limit')) {
      * `src/helpers.php` (which the paragraph above says was deleted, and which is still there),
      * `splicewire-app/app/helpers.php`, `prahsys-gateway/app/helpers.php`, and
      * `prognosix-api/app/helpers.php`. Only the last differs textually, and ALL FOUR OTHERS carry the
-     * unlimited-ceiling defect fixed below. So "first definition wins" is not harmless at any host that
-     * defines its own: it wins with a body that lowers `0` to a finite ceiling. Fixing beam's copy does
-     * not reach them — each host copy has to be fixed where it lives, or deleted so this one loads.
+     * unlimited-ceiling defect fixed below.
+     *
+     * CORRECTED 2026-08-29 — an earlier version of this paragraph said "first definition wins" makes
+     * every one of those four dangerous, and that fixing beam does not reach them. That was wrong in
+     * two directions, and the load order is the reason. Composer emits a dependency's `files` BEFORE
+     * the root package's, so at a host installing beam this file loads first and its `function_exists`
+     * guard makes the host's own copy an inert no-op. Verified at `~/Herd/splicewire-app`:
+     * `vendor/composer/autoload_files.php` has beam at line 44, `splicewire/tower` at 68, and the app's
+     * own `app/helpers.php` at 78 of 79. So beam's FIXED body is already the live one there, and
+     * tower's and the flagship's copies are dead code — safe to delete, and harmless if left.
+     *
+     * The real exposure is the opposite shape: the two roots that do NOT install beam.
+     * `~/Herd/prahsys-gateway` and `~/Herd/prognosix-api` each define this function UNGUARDED (no
+     * `function_exists`), carry the defect, and have no `vendor/splicewire/laravel-beam` for this file
+     * to reach. Deleting their copies would fatal their call sites — 2 and 4 respectively — so those
+     * two must be patched where they sit. Both run Octane, i.e. the runtime that actually runs at `0`,
+     * which makes them the most exposed copies in the estate rather than the least.
+     *
+     * ⚠️ And `prognosix-api`'s copy is NOT the guarded exemplar it has twice been cited as. Its
+     * `|| $current == 0` is an OR clause on the SET-condition, so `'0'` makes it write the finite
+     * ceiling — the same lowering, just spelled out — and it lowers `max_input_time` too.
      *
      * NOTE for anyone landing this at a root: `composer dump-autoload` is NOT enough, which is the
      * obvious thing to reach for and was measured insufficient. `dump-autoload` regenerates
