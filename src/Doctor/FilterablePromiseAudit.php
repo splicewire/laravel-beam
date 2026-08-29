@@ -199,8 +199,12 @@ class FilterablePromiseAudit implements DoctorAudit
                         .'and the two arms differ: `ParticleController::index()` raises the lookup above, '
                         .'while the `filters` sub-surface answers 404 (measured at the flagship 2026-08-29 — '
                         .'`/api/operator/frame/resources/plans/filters` and `.../filters/schema` both 404). A '
-                        .'404 there is not harmless: `filters/schema` also feeds `resolveColumns` and '
-                        .'`sortableFields`, so the list silently loses column sorting. ',
+                        .'404 there is not harmless: `filters/schema` feeds `sortableFields` and the '
+                        .'row-cell editor\'s node typing (`ListShell::withEditableCells` reads '
+                        .'`schema.properties[field]`), so the list loses sorting and editable-cell typing '
+                        .'silently. It does NOT feed the column set — `resolveColumns` names that '
+                        .'parameter `_schema` and never reads it; the columns come from manifest '
+                        .'participation alone. ',
                     count($live),
                     implode('; ', $live)
                 ),
