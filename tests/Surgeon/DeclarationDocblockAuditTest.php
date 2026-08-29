@@ -345,8 +345,22 @@ class DeclarationDocblockAuditTest extends TestCase
      * The brief's acceptance test: *if it does not report the two `RouteContextEntry` cases, it is not the
      * audit.* Skipped rather than failed when the pair is not on disk, so the package suite stays runnable
      * from a checkout that does not carry the whole estate.
+     *
+     * ⚠️ **The `$redirect` half has been REPAIRED, so this assertion is inverted** (2026-08-29). The audit
+     * found it, the docblock was corrected in `schemastud/laravel-frame`, and this test — which reads LIVE
+     * source — would otherwise have failed for the best possible reason. A test that asserts a defect
+     * still exists is the thing this estate keeps finding holds defects in place, so it now asserts the
+     * repair holds instead.
+     *
+     * Nothing is lost by inverting: the audit's ability to FIND a phantom parameter is pinned by five
+     * fixture cases above (both directions), which is where a capability test belongs — a capability
+     * proven only against live source expires the moment someone fixes the source, and expires silently
+     * in the other direction if the source drifts.
+     *
+     * The `wider-than-typescript` half is untouched and still fires: `$mounts` is declared `string` in PHP
+     * against a closed union in TypeScript, which is a real and deliberate width difference, not a defect.
      */
-    public function test_it_reports_both_route_context_entry_cases_from_the_live_files(): void
+    public function test_it_reports_the_route_context_entry_width_case_and_no_longer_the_phantom(): void
     {
         $php = getenv('HOME').'/Workspaces/php/packages/schemastud/laravel-frame/src/Registry/RouteContextEntry.php';
         $ts = getenv('HOME').'/Workspaces/js/packages/schemastud/frame/src';
@@ -361,8 +375,11 @@ class DeclarationDocblockAuditTest extends TestCase
             $byCheck[$finding->check][] = $finding->detail;
         }
 
-        $this->assertArrayHasKey(DeclarationDocblockAudit::CHECK_PHANTOM, $byCheck, 'the $redirect case');
-        $this->assertStringContainsString('$redirect', $byCheck[DeclarationDocblockAudit::CHECK_PHANTOM][0]);
+        $this->assertArrayNotHasKey(
+            DeclarationDocblockAudit::CHECK_PHANTOM,
+            $byCheck,
+            'the $redirect phantom was repaired in laravel-frame; if it is back, the docblock regressed'
+        );
 
         $this->assertArrayHasKey(DeclarationDocblockAudit::CHECK_TS_NARROWER, $byCheck, 'the string-vs-closed-union case');
         $this->assertStringContainsString('$mounts', $byCheck[DeclarationDocblockAudit::CHECK_TS_NARROWER][0]);

@@ -98,6 +98,15 @@ class FilterablePromiseAudit implements DoctorAudit
 {
     public const CHECK = 'particle.filterable-promise';
 
+    /**
+     * Bucket key for reaching routes whose resource is a URI parameter rather than a frozen default.
+     * Not a resource key and cannot collide with one: a particle key is a slug, never bracketed.
+     */
+    private const WILDCARD = '{resource}';
+
+    /** The URI parameter a Frame-resource-root mount carries. Not `ParticleController::RESOURCE`. */
+    private const WILDCARD_PARAMETER = 'resource';
+
     public function __construct(
         private ParticleResourceRegistry $resources,
         private FilterResourceRegistry $filters,
@@ -148,9 +157,16 @@ class FilterablePromiseAudit implements DoctorAudit
         $live = [];
         $latent = [];
 
+        $wildcard = $throwing[self::WILDCARD] ?? [];
+
         foreach ($unregistered as $key) {
-            if (isset($throwing[$key])) {
-                $live[] = sprintf('%s (%s)', $key, implode(', ', $throwing[$key]));
+            // A wildcard `{resource}` mount reaches this key as surely as a frozen one does, so it
+            // counts as live. Its URIs are reported verbatim rather than substituted, so a reader can
+            // see WHY the key is reachable without hunting for the mount.
+            $uris = array_merge($throwing[$key] ?? [], $wildcard);
+
+            if ($uris !== []) {
+                $live[] = sprintf('%s (%s)', $key, implode(', ', $uris));
             } else {
                 $latent[] = $key;
             }
@@ -175,10 +191,19 @@ class FilterablePromiseAudit implements DoctorAudit
             count($unregistered) === 1 ? 's' : 've',
             count($unregistered) === 1 ? 'its' : 'their',
             $live === []
-                ? 'None is reachable on this host today: no route is bound to `ParticleController@index` '
-                    .'or to the `filters` sub-surface for any of them, so all are LATENT — each 500s the '
-                    .'moment anything mounts it. '
-                : sprintf('LIVE (%d) — a route already routes through the throwing lookup: %s. ', count($live), implode('; ', $live)),
+                ? 'None is reachable on this host today: no route — keyed OR wildcard `{resource}` — is '
+                    .'bound to `ParticleController@index` or to the `filters` sub-surface for any of them, '
+                    .'so all are LATENT. '
+                : sprintf(
+                    'LIVE (%d) — a route reaches these keys: %s. ⚠️ REACHABLE is not the same as RAISES, '
+                        .'and the two arms differ: `ParticleController::index()` raises the lookup above, '
+                        .'while the `filters` sub-surface answers 404 (measured at the flagship 2026-08-29 — '
+                        .'`/api/operator/frame/resources/plans/filters` and `.../filters/schema` both 404). A '
+                        .'404 there is not harmless: `filters/schema` also feeds `resolveColumns` and '
+                        .'`sortableFields`, so the list silently loses column sorting. ',
+                    count($live),
+                    implode('; ', $live)
+                ),
             $latent === [] ? '' : sprintf('LATENT (%d): %s. ', count($latent), implode(', ', $latent)),
         ))];
     }
@@ -199,16 +224,32 @@ class FilterablePromiseAudit implements DoctorAudit
         $found = [];
 
         foreach ($this->router->getRoutes() as $route) {
-            $key = BeamRouteAction::resourceKey($route);
-
-            if ($key === null) {
-                continue;
-            }
-
             $reaches = $route->getActionName() === ParticleController::class.'@index'
                 || SubSurface::of($route) === SubSurface::FILTERS;
 
             if (! $reaches) {
+                continue;
+            }
+
+            $key = BeamRouteAction::resourceKey($route);
+
+            if ($key === null) {
+                // ⚠️ A NULL key is not "this route reaches nothing" — it is the Frame-resource-root
+                // mount, where the resource is a URI PARAMETER rather than a frozen default
+                // (`Particle::filters(resource: null, at: 'resources/{resource}')`). One such route
+                // reaches EVERY key, so reading only the frozen `defaults()` key made this audit
+                // report a whole realm as latent. Measured at the flagship on 2026-08-29: `plans` was
+                // reported LATENT while `/api/operator/frame/resources/plans/filters` answered over
+                // exactly this mount.
+                //
+                // ⚠️ The parameter is literally `{resource}`. Do NOT reach for
+                // `ParticleController::RESOURCE` here — that constant is `'_particle'`, the DEFAULTS
+                // key, and building `'{'.self::RESOURCE.'}'` from it yields a string no URI contains,
+                // so the guard silently never fires. That mistake was made and caught here.
+                if (in_array(self::WILDCARD_PARAMETER, $route->parameterNames(), true)) {
+                    $found[self::WILDCARD][] = $route->uri();
+                }
+
                 continue;
             }
 

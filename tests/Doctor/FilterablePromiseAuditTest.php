@@ -188,7 +188,7 @@ class FilterablePromiseAuditTest extends TestCase
 
         $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
         $this->assertStringContainsString('2 of 3 filterable particle resources', $findings[0]->detail);
-        $this->assertStringContainsString('LIVE (1) — a route already routes through the throwing lookup', $findings[0]->detail);
+        $this->assertStringContainsString('LIVE (1) — a route reaches these keys', $findings[0]->detail);
         $this->assertStringContainsString('LATENT (1): gadgets', $findings[0]->detail);
         $this->assertStringNotContainsString('registered,', $findings[0]->detail);
     }
@@ -208,6 +208,65 @@ class FilterablePromiseAuditTest extends TestCase
         $this->assertCount(1, $mine, 'FilterablePromiseAudit is not registered in BeamDoctorManifest.');
         $this->assertFalse($mine[0]->gate, 'FilterablePromiseAudit must be advisory, never a gate.');
     }
+
+    /**
+     * ⚠️ A wildcard `{resource}` mount reaches EVERY key, and this audit could not see one.
+     *
+     * `Particle::filters(resource: null, at: 'resources/{resource}')` freezes NO resource in the route
+     * defaults — the resource is a URI PARAMETER, which is the whole point of the Frame-resource-root
+     * mount. `BeamRouteAction::resourceKey()` therefore returns null and the route was skipped, so the
+     * flagship's twelve unregistered keys all reported LATENT ("no route is bound") while
+     * `/api/operator/frame/resources/plans/filters` answered over exactly that mount.
+     *
+     * Trap worth keeping: the URI parameter is literally `{resource}`, NOT
+     * `ParticleController::RESOURCE`, which is `'_particle'` — the DEFAULTS key. Building the needle
+     * from that constant yields a string no URI contains, so the guard silently never fires. That was
+     * the first version of this fix: it changed the audit's output not at all.
+     */
+    public function test_a_wildcard_resource_mount_reaches_every_key(): void
+    {
+        $this->declare('widgets');
+        $this->declare('gadgets');
+
+        // No ->defaults(ParticleController::RESOURCE, ...) — that absence IS the case under test.
+        $this->router->get('api/operator/frame/resources/{resource}/filters', [ResourceFiltersController::class, 'index'])
+            ->defaults(ResourceFiltersController::CONFIG, ['resource' => null]);
+
+        $findings = $this->audit()->run();
+
+        $this->assertStringContainsString('LIVE (2)', $findings[0]->detail);
+        $this->assertStringNotContainsString('LATENT', $findings[0]->detail);
+        $this->assertStringContainsString('{resource}', $findings[0]->detail);
+    }
+
+    public function test_a_wildcard_mount_does_not_make_a_registered_resource_live(): void
+    {
+        // The wildcard widens REACHABILITY, never the population. A key with a data-filters
+        // registration is not a finding at all, and a wildcard route must not drag it into one.
+        $this->declare('registered');
+        $this->registerFilter('registered');
+        $this->router->get('api/operator/frame/resources/{resource}/filters', [ResourceFiltersController::class, 'index'])
+            ->defaults(ResourceFiltersController::CONFIG, ['resource' => null]);
+
+        $findings = $this->audit()->run();
+
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
+    }
+
+    public function test_reachable_is_not_reported_as_raising(): void
+    {
+        // The finding used to say every reachable key "500s the moment anything mounts it". Measured
+        // at the flagship: the filters sub-surface answers 404, not 500. A finding that overstates its
+        // own severity misleads exactly as much as one that understates it.
+        $this->declare('widgets');
+        $this->mountIndex('widgets', 'api/v1/widgets');
+
+        $detail = $this->audit()->run()[0]->detail;
+
+        $this->assertStringContainsString('REACHABLE is not the same as RAISES', $detail);
+        $this->assertStringContainsString('404', $detail);
+    }
+
 }
 
 /** A backing/Data stand-in — never instantiated; the audit reads keys and flags, never the class. */
