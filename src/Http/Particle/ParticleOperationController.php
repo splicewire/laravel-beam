@@ -18,6 +18,7 @@ use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
 use Splicewire\Beam\Particle\Subject\SubjectResolvers;
+use Splicewire\Beam\Rendering\DeclaresDelivery;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -136,6 +137,8 @@ class ParticleOperationController extends Controller
         // `null` is the residue {@see ParticleOperation::permissionName()} is scheduled to close.
         // {@see \Splicewire\Beam\Doctor\UngatedOperationAudit} is what keeps the residue counted.
 
+        $this->format($operation, $request);
+
         $this->validateInput($operation, $request);
 
         return match ($operation->kind) {
@@ -147,6 +150,56 @@ class ParticleOperationController extends Controller
                 $model,
             ),
         };
+    }
+
+    /**
+     * Enforce the operation's declared `delivery:` format enumeration before the handler runs, and hand
+     * back the requested format — `null` for "the delivery's own default", which is never substituted
+     * here.
+     *
+     * This is `RenderingsController::format()`, moved (particle-operation-surface 11 A6). It is the
+     * ENFORCEMENT half of `delivery:`, and it is why ticket 13 can retire the rendering subsystem
+     * without regressing format validation from enforced-and-published to per-rendering ad hoc: the set
+     * the wire refuses is {@see DeclaresDelivery::formats()}, and it is the
+     * same expression `ParticleOperationParameterStrategy` publishes.
+     *
+     * Two silences, both deliberate and both reproducing today's behaviour exactly:
+     *
+     *   - an operation declaring NO `delivery:` validates nothing. Every declaration in the estate is
+     *     in that state, so anything else would be a behaviour change dressed as an addition;
+     *   - a delivery enumerating NO formats validates nothing either. It has one representation and no
+     *     format axis, so there is nothing to validate against and no parameter documented. Rejecting a
+     *     parameter it has never read would be a new behaviour dressed as a fix. `media.download` is
+     *     exactly this case.
+     *
+     * The rejected value is NOT echoed back — a reflected-input smell, and the accepted set is the more
+     * useful half of the message anyway.
+     *
+     * ⚠️ Ordered BEFORE {@see validateInput()} on purpose. `?format` is beam's parameter, forgiven by
+     * {@see ParticleOperation::frameworkParameters()}, so an `input: false` op with a format axis would
+     * otherwise be answered by `rejectInput()` first — the caller would learn "this operation accepts no
+     * input" about a parameter the framework itself defines. Both orders are correct on a valid
+     * request; only this one gives the right message on an invalid one.
+     */
+    protected function format(ParticleOperation $operation, Request $request): ?string
+    {
+        $format = $request->input(ParticleOperation::FORMAT_PARAMETER);
+
+        if ($format === null) {
+            return null;
+        }
+
+        $format = (string) $format;
+        $accepted = $operation->formats();
+
+        if ($accepted !== [] && ! in_array($format, $accepted, true)) {
+            throw ValidationException::withMessages([
+                ParticleOperation::FORMAT_PARAMETER => 'Unsupported format. This operation delivers '
+                    .implode(', ', $accepted).'.',
+            ]);
+        }
+
+        return $format;
     }
 
     /**

@@ -36,8 +36,14 @@ class ResourceRenderingResponseStrategy extends Strategy
 {
     use ReadsRenderingStamp;
 
-    /** The endpoint `custom` key the document-assembly hook reads. */
-    public const STASH = 'renderingDelivery';
+    /**
+     * The endpoint `custom` key the document-assembly hook reads.
+     *
+     * An ALIAS since particle-operation-surface 14 — the key moved to
+     * {@see RenderingDeliveryGenerator::STASH}, which is the class that survives ticket 13's deletion of
+     * this one. Same value, so every existing reference keeps working.
+     */
+    public const STASH = RenderingDeliveryGenerator::STASH;
 
     public function __invoke(ExtractedEndpointData $endpointData, array $settings = []): ?array
     {

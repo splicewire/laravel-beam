@@ -8,6 +8,7 @@ use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\Subject\RecordSubject;
 use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
+use Splicewire\Beam\Rendering\DeclaresDelivery;
 use Splicewire\Beam\Routing\HttpMethod;
 use Splicewire\Beam\Routing\IdConstraint;
 
@@ -47,6 +48,13 @@ use Splicewire\Beam\Routing\IdConstraint;
  * `signed:`, `method:` and `idConstraint:` are the SCALAR slots (particle-operation-surface 14). All
  * three are plain constant expressions, all three default to the value that reproduces today's
  * behaviour, and every one of their rules lives on {@see ParticleOperation} — this twin adds none.
+ *
+ * `delivery:` is the WIRE slot (particle-operation-surface 11/14) — what this operation puts on the
+ * wire: media types, added response headers, the applied default format, and the format enumeration
+ * the controller enforces and the reference publishes. It takes the {@see DeclaresDelivery} port in the
+ * same instance / class-string / `null` shape as `subject:`, and `null` is byte-identical to the
+ * behaviour every declaration had before the slot existed. All of its rules — including what a
+ * non-match does and why `null` is silence rather than a stop — live on {@see ParticleOperation}.
  *
  * ⚠️ **`signed:` was absent here for two days for no stated reason, and the absence was invisible.**
  * `bae7a08` added the slot to the runtime object and to one imperative op, touched five files, and
@@ -95,6 +103,12 @@ class ParticleOp
      *                                   behaviour exactly — {@see HttpMethod}
      * @param  IdConstraint|null  $idConstraint  a NARROWING override of the resource's `{id}` shape for
      *                                           this op's mount; `null` ⇒ inherit — {@see IdConstraint}
+     * @param  DeclaresDelivery|class-string<DeclaresDelivery>|null  $delivery  what this op puts on the
+     *                                                                          wire; `null` ⇒ undeclared, which documents and behaves
+     *                                                                          exactly as before the slot existed. ⚠️ Spell it
+     *                                                                          `MyDelivery::class` or `new MyDelivery` — a static
+     *                                                                          factory call is not a constant expression and fatals at
+     *                                                                          parse, the same trap `subject:` carries
      */
     public function __construct(
         public string $resource,
@@ -109,5 +123,6 @@ class ParticleOp
         public bool $signed = false,
         public ?HttpMethod $method = null,
         public ?IdConstraint $idConstraint = null,
+        public DeclaresDelivery|string|null $delivery = null,
     ) {}
 }

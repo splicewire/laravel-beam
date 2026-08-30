@@ -9,8 +9,10 @@ use Rushing\LaravelDataSchemasScribe\Support\ScribeBodyParameters;
 use Schemastud\DataSchemas\Generators\Generator;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Particle\Delivery\DeliveryResolvers;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Scribe\OpenApi\RenderingDeliveryGenerator;
 
 /**
  * Document a particle OPERATION's query contract — the sibling of {@see ParticleListParameterStrategy} one
@@ -141,6 +143,7 @@ class ParticleOperationParameterStrategy extends Strategy
                     // drops out of the rendered example request — ticket 21's convention on the same axis.
                     'example' => null,
                 ],
+                ParticleOperation::FORMAT_PARAMETER => $this->format($operation),
                 default => [
                     'type' => 'string',
                     'description' => "The `{$parameter}` parameter.",
@@ -151,5 +154,47 @@ class ParticleOperationParameterStrategy extends Strategy
         }
 
         return $parameters;
+    }
+
+    /**
+     * The `?format` parameter of a `delivery:`-declaring operation, off the delivery's own live
+     * enumeration (particle-operation-surface 14).
+     *
+     * It reaches this method only because {@see ParticleOperation::frameworkParameters()} listed it,
+     * and that list is empty unless the delivery enumerates a format axis — so a delivery with one
+     * representation publishes NO parameter rather than a zero-member enum, which is the same call
+     * `ResourceRenderingParameterStrategy` makes and for the same reason: the absent parameter IS the
+     * accurate description.
+     *
+     * The enum published here is the same expression
+     * {@see ParticleOperationController::format()} refuses against,
+     * so the documented set and the enforced set cannot drift.
+     *
+     * The default rides `example` rather than a `default` keyword — Scribe's parameter model has no
+     * `default` slot, and the machine-readable `schema.default` is written at document assembly by
+     * {@see RenderingDeliveryGenerator}, which is where the rest of
+     * this endpoint's un-expressible spec lives too.
+     *
+     * @return array<string, mixed>
+     */
+    protected function format(ParticleOperation $operation): array
+    {
+        $formats = $operation->formats();
+        $default = DeliveryResolvers::contract($operation)['default'] ?? null;
+
+        $set = implode(', ', array_map(fn (string $format) => "`{$format}`", $formats));
+
+        $applied = $default === null
+            ? ' Omit it to get the operation\'s own default.'
+            : " Defaults to `{$default}`.";
+
+        return [
+            'type' => 'string',
+            'description' => "Which representation to deliver — one of {$set}.".$applied
+                .' A value outside that set comes back 422 on `format`, before the operation runs.',
+            'required' => false,
+            'enumValues' => $formats,
+            'example' => $default,
+        ];
     }
 }

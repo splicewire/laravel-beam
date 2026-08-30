@@ -4,14 +4,17 @@ namespace Splicewire\Beam\Scribe\OpenApi;
 
 use Knuckles\Camel\Output\OutputEndpointData;
 use Knuckles\Scribe\Writing\OpenApiSpecGenerators\OpenApiGenerator;
+use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
 use Splicewire\Beam\Scribe\Strategies\ResourceRenderingResponseStrategy;
 
 /**
- * Write a rendering route's real response contract into the document (api-surface-coherence ticket 32 §C).
+ * Write a DELIVERED route's real response contract into the document (api-surface-coherence ticket 32 §C).
  *
- * The document-assembly half of {@see ResourceRenderingResponseStrategy}, and it exists for the same
- * reason `DataSchemaGenerator` does: two things a rendering endpoint genuinely IS cannot be said in
- * Scribe's per-endpoint model.
+ * The document-assembly half of {@see ResourceRenderingResponseStrategy} and, since
+ * particle-operation-surface 14, of {@see ParticleOperationDeliveryStrategy} — one hook serving two
+ * declaration surfaces, because what it writes is a function of the DELIVERY CONTRACT and not of which
+ * registry produced it. It exists for the same reason `DataSchemaGenerator` does: two things a
+ * delivering endpoint genuinely IS cannot be said in Scribe's per-endpoint model.
  *
  *  - **A 200 in several media types.** Scribe keys responses by status and drops a second response for a
  *    status it already holds when the content type differs. A composition's export answers in six.
@@ -32,13 +35,35 @@ use Splicewire\Beam\Scribe\Strategies\ResourceRenderingResponseStrategy;
  * envelope is the host's `ValidationException` projection (`success:false`, `message`, `errors.format`),
  * which is framework-wide rather than per-rendering, so it is built here rather than stashed.
  *
- * A rendering with NO format axis gets no 422 from this hook: there is nothing it rejects.
+ * A delivery with NO format axis gets no 422 from this hook: there is nothing it rejects.
+ *
+ * ⚠️ **It still carries the rendering name, and that is a deliberate deferral rather than an oversight.**
+ * Renaming it to `DeliveryGenerator` would edit a class-string in `~/Herd/splicewire-app/config/scribe.php`
+ * — the only host in the estate that wires it — for no behavioural gain, while ticket 13 is the change
+ * that deletes the rendering half and is where the rename belongs. Read the name as historical.
+ *
+ * ⚠️ **The 200 it writes REPLACES whatever the response strategies put there.** An operation declaring
+ * both `output:` and `delivery:` publishes the delivery's media types, not the Data class's JSON
+ * envelope — which is correct (the delivery is the wire fact and `output:` is a payload shape), and is
+ * why the generator runs at assembly, after every strategy. An operation declaring no `delivery:`
+ * stashes nothing and is never touched here.
  */
 class RenderingDeliveryGenerator extends OpenApiGenerator
 {
+    /**
+     * The endpoint `custom` key every delivering strategy stashes on, and the one this hook reads.
+     *
+     * Homed on the GENERATOR rather than on either strategy since particle-operation-surface 14: two
+     * strategies now write it, and ticket 13 deletes one of them. A key owned by a class scheduled for
+     * deletion is how the operation surface would have silently stopped publishing media types.
+     * `ResourceRenderingResponseStrategy::STASH` remains as an alias of this constant, same value, so
+     * nothing that referenced it had to move.
+     */
+    public const STASH = 'renderingDelivery';
+
     public function pathItem(array $pathItem, array $groupedEndpoints, OutputEndpointData $endpoint): array
     {
-        $delivery = $endpoint->custom[ResourceRenderingResponseStrategy::STASH] ?? null;
+        $delivery = $endpoint->custom[self::STASH] ?? null;
 
         if (! is_array($delivery)) {
             return $pathItem;

@@ -227,6 +227,7 @@ class AttributedParticleDiscovery
             subject: $attribute->subject,
             method: $attribute->method,
             idConstraint: $attribute->idConstraint,
+            delivery: $attribute->delivery,
         ));
     }
 

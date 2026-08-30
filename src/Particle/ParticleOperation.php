@@ -12,12 +12,17 @@ use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Particle\Delivery\DeliveryResolvers;
 use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Particle\Subject\RecordSubject;
 use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
 use Splicewire\Beam\Particle\Subject\SubjectResolvers;
+use Splicewire\Beam\Rendering\DeclaresDelivery;
+use Splicewire\Beam\Rendering\ResourceRendering;
 use Splicewire\Beam\Routing\HttpMethod;
 use Splicewire\Beam\Routing\IdConstraint;
+use Splicewire\Beam\Scribe\OpenApi\RenderingDeliveryGenerator;
+use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
 
 /**
  * A named operation on a particle resource, mounted at `{$method} /{resource}/{id}/{name}` by
@@ -281,6 +286,39 @@ use Splicewire\Beam\Routing\IdConstraint;
  * host's signed login-as link into a POST — a 405 behind a green suite, on a signed URL nobody can
  * re-mint. The precedence is therefore *declaration first, option second, default third*, and the
  * option arm is what gets deleted when the last site moves.
+ *
+ * ## `delivery:` — what the operation puts on the wire
+ *
+ * particle-operation-surface 11 and 14. The third scalar-ish slot, and the only one of the three that
+ * is NOT a move: nothing anywhere could previously say what an operation delivers. An op's `output:`
+ * names a Data class, which answers *what JSON shape comes back* and is silent about the case that
+ * needs answering — an operation that returns a PDF, a calendar, a zip, a stream of bytes. Those
+ * documented as an untyped 200 with a guessed media type or none at all.
+ *
+ * The slot takes a {@see DeclaresDelivery} — the same four-method port a
+ * {@see ResourceRendering} states its wire facts through — normalised by
+ * {@see DeliveryResolvers} in the identical instance / class-string / `null` shape as `subject:`.
+ *
+ * **Three readers, and the slot is worth nothing without them.** This map's most-repeated defect is *a
+ * declaration nothing reads*, recorded eleven times before this landing, so each one is named:
+ *
+ *   1. {@see ParticleOperationController::format()} — 422s a `?format`
+ *      outside the declared enumeration, BEFORE `handle` runs. This is the ENFORCEMENT half, and it is
+ *      the clause `RenderingsController` owns today (11 A6). Without it ticket 13's dissolution
+ *      regresses format validation from enforced-and-published to per-rendering ad hoc.
+ *   2. {@see ParticleOperationDeliveryStrategy} +
+ *      {@see RenderingDeliveryGenerator} — the PUBLICATION half: one
+ *      `content` entry per declared media type at 200, the declared response headers, and the 422 the
+ *      enumeration implies. Scribe's own model is one-content-type-per-status and structurally cannot
+ *      say this, which is why the pair exists.
+ *   3. {@see frameworkParameters()} below, which is what makes `?format` beam's parameter rather than
+ *      caller input — see the warning there.
+ *
+ * ⚠️ **`null` is silence, not a stop, and the direction is deliberate.** An operation declaring no
+ * delivery documents and behaves EXACTLY as it did before the slot existed: no `?format`, nothing
+ * validated, no 422, the `output:`-derived 200 untouched. Every one of the estate's declarations is in
+ * that state today, so anything else would be a behaviour change dressed as an addition. A `delivery:`
+ * naming a class that is not the port DOES throw — that is grammar, not a fact about the host.
  */
 class ParticleOperation implements HasRegistryKey
 {
@@ -296,6 +334,20 @@ class ParticleOperation implements HasRegistryKey
      * @var list<string>
      */
     public const SIGNATURE_PARAMETERS = ['expires', 'signature'];
+
+    /**
+     * The query parameter that selects which representation a `delivery:`-declaring operation returns.
+     *
+     * Beam's, not the host's: {@see ParticleOperationController::format()} reads and validates it, so no
+     * `input:` could declare it and `rejectInput()` would otherwise read it as unexpected caller
+     * payload. Spelled once here and consumed through {@see frameworkParameters()}, so the branch that
+     * forgives it, the branch that enforces it, and the reference that publishes it cannot disagree
+     * about its name — the same coupling `SIGNATURE_PARAMETERS` above buys.
+     *
+     * The name matches `RenderingsController`'s `?format` exactly, because ticket 13 moves three live
+     * URLs from that controller onto this surface and a renamed parameter would break every one.
+     */
+    public const FORMAT_PARAMETER = 'format';
 
     /**
      * @param  string  $resource  the particle resource key this operation hangs off (for the route + auth)
@@ -344,6 +396,15 @@ class ParticleOperation implements HasRegistryKey
      * @param  IdConstraint|null  $idConstraint  a NARROWING override of the resource's `{id}` shape for
      *                                           this operation's mount; `null` ⇒ inherit the mount's own
      *                                           (see the class docblock and {@see IdConstraint})
+     * @param  DeclaresDelivery|class-string<DeclaresDelivery>|null  $delivery  WHAT this operation puts
+     *                                                                          on the wire — media types, added headers, the applied
+     *                                                                          default format, and the format enumeration it accepts.
+     *                                                                          `null` ⇒ undeclared, which is byte-identical to today
+     *                                                                          (see the class docblock). ⚠️ Spell it
+     *                                                                          `MyDelivery::class` or `new MyDelivery` — a static
+     *                                                                          factory call is not a constant expression and FATALS
+     *                                                                          inside the `#[ParticleOp]` twin. See
+     *                                                                          {@see DeliveryResolvers}
      */
     public function __construct(
         public string $resource,
@@ -360,6 +421,7 @@ class ParticleOperation implements HasRegistryKey
         public ResolvesOperationSubject|string|null $subject = null,
         public ?HttpMethod $method = null,
         public ?IdConstraint $idConstraint = null,
+        public DeclaresDelivery|string|null $delivery = null,
     ) {
         $this->assertOutputMatchesKind();
     }
@@ -458,12 +520,20 @@ class ParticleOperation implements HasRegistryKey
      * The parameters the FRAMEWORK accepts on THIS operation, as opposed to the ones the host declares
      * through `input:`.
      *
-     * Two sources, and both are properties of the operation rather than of any one of them:
-     * {@see OperationKind::frameworkParameters()} contributes the kind's (a Task's `?async`), and
-     * `signed:` contributes {@see SIGNATURE_PARAMETERS}. The union lives here rather than on the enum
-     * because the enum cannot see a declaration — which is exactly how ticket 95's second bite
-     * happened: `rejectInput()` asked the KIND what the framework accepts, the kind had no way to know
-     * the mount was signed, and `expires`/`signature` came back as caller input.
+     * Three sources, and all three are properties of the operation rather than of any one of them:
+     * {@see OperationKind::frameworkParameters()} contributes the kind's (a Task's `?async`), `signed:`
+     * contributes {@see SIGNATURE_PARAMETERS}, and `delivery:` contributes {@see FORMAT_PARAMETER} when
+     * it enumerates a format axis. The union lives here rather than on the enum because the enum cannot
+     * see a declaration — which is exactly how ticket 95's second bite happened: `rejectInput()` asked
+     * the KIND what the framework accepts, the kind had no way to know the mount was signed, and
+     * `expires`/`signature` came back as caller input.
+     *
+     * ⚠️ **`format` is here for that same reason, and it was found by looking rather than by being
+     * bitten.** `?format` is beam's parameter — the controller reads and validates it, no host `input:`
+     * declares it — so an operation declaring `input: false` alongside a format axis would have had
+     * every `?format=…` request 422'd by `rejectInput()` as unexpected caller payload. That is ticket
+     * 95's bite exactly, one slot over, and `media.download` (`input: false`) is the shape it would
+     * have landed on had its delivery enumerated formats.
      *
      * Read by {@see ParticleOperationController::rejectInput()} (what `input: false` forgives) and by
      * `ParticleOperationParameterStrategy` (what the reference publishes), so the branch that enforces
@@ -476,6 +546,22 @@ class ParticleOperation implements HasRegistryKey
         return [
             ...$this->kind->frameworkParameters(),
             ...($this->signed ? self::SIGNATURE_PARAMETERS : []),
+            ...($this->formats() === [] ? [] : [self::FORMAT_PARAMETER]),
         ];
+    }
+
+    /**
+     * The representations this operation accepts on `?format`, off its declared `delivery:`.
+     *
+     * Empty for an operation that declares no delivery AND for one whose delivery states no format
+     * axis — the two are the same on the wire (nothing is validated, nothing is published) and
+     * deliberately not distinguished here. {@see DeclaresDelivery::formats()} carries why an empty list
+     * is a stronger statement than a one-member one.
+     *
+     * @return list<string>
+     */
+    public function formats(): array
+    {
+        return DeliveryResolvers::contract($this)['formats'] ?? [];
     }
 }
