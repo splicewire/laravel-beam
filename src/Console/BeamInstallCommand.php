@@ -182,8 +182,11 @@ class BeamInstallCommand extends Command
         // 4c. Run the package-registered seed pass, so a fresh host boots with the data its packages
         //     need to serve anything at all — beam-ux's `site` realm root above all (ADR-0209 §9: the
         //     public renderer never writes, so its absence means "nothing to serve", and until now
-        //     nothing created it). Each seeder is already config-gated and per-seeder failures are
-        //     non-fatal inside `splicewire:beam:seed`, so this cannot fail an install.
+        //     nothing created it). Each seeder is config-gated, and a per-seeder failure still does not
+        //     ABORT the install — but it no longer passes unnoticed either. This comment used to end
+        //     "so this cannot fail an install", and that was the sentence three real key-type defects
+        //     hid behind (beam-facade 143): a seeder failed on every run at three hosts, inside an
+        //     install that printed "beam stack installed." and exited 0.
         $this->runSeeders();
 
         // 5. Verify the three fresh-host provisioning traps (beam-install-turnkey). Each fix lands as a
@@ -198,6 +201,15 @@ class BeamInstallCommand extends Command
         //    when present — idempotent + a no-op on npm/yarn hosts, so it's always safe to run.
         $this->ensurePnpmOverrides();
 
+        if ($this->seedingFailed) {
+            // Reported at the END, not where it happened: the seed pass runs mid-install and its warnings
+            // scroll away behind publishing, migrating and spec generation.
+            $this->error('beam stack installed, but SEEDING REPORTED FAILURES — re-run `splicewire:beam:seed` '
+                .'to see them. The host is installed; its package-owned data is incomplete.');
+
+            return self::FAILURE;
+        }
+
         if ($interactive) {
             outro('beam stack installed.');
         } else {
@@ -206,6 +218,9 @@ class BeamInstallCommand extends Command
 
         return self::SUCCESS;
     }
+
+    /** Whether the mid-install seed pass reported any failure; surfaced at the end, never swallowed. */
+    private bool $seedingFailed = false;
 
     /**
      * Resolve one answer: the option value if given (scriptable), else the prompt when interactive, else
@@ -685,8 +700,17 @@ class BeamInstallCommand extends Command
         $this->line('splicewire:beam:install → seed (splicewire:beam:seed)');
 
         try {
-            $this->call('splicewire:beam:seed', $this->option('force') ? ['--force' => true] : []);
+            // ⚠️ READ the exit code. `Command::call()` RETURNS it and does not throw on non-zero, so
+            // discarding it — which this line did until beam-docs-satellite ticket 46 — means a seed run
+            // that reported failures was indistinguishable from a clean one. The install still continues
+            // (a failed demo seeder should not strand a host mid-install); it just stops claiming success.
+            $code = $this->call('splicewire:beam:seed', $this->option('force') ? ['--force' => true] : []);
+
+            if ($code !== self::SUCCESS) {
+                $this->seedingFailed = true;
+            }
         } catch (\Throwable $e) {
+            $this->seedingFailed = true;
             $this->warn('  ↳ seeding failed (the rest of the install is unaffected): '.$e->getMessage());
         }
     }

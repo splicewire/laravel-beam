@@ -96,7 +96,17 @@ class BeamSeedManifestTest extends TestCase
         $this->assertContains(GatedStubSeeder::class, RanFlag::$ran);
     }
 
-    public function test_a_throwing_seeder_is_non_fatal_and_the_run_continues(): void
+    /**
+     * ⚠️ This test used to assert `->assertExitCode(0)` and that the run ended `beam stack seeded.`
+     * — i.e. it LOCKED IN the defect that beam-facade 143 and beam-docs-satellite 46 were caused by.
+     * Three real key-type mismatches sat behind `↳ … failed (continuing)` inside runs that returned
+     * success, at `~/Herd/beam`, `~/Herd/satellite` and `~/Herd/tower`, for weeks.
+     *
+     * The behaviour under test splits in two, and only one half was ever the point:
+     * the RUN is still non-fatal (the healthy seeder after the brittle one must still execute), and
+     * the EXIT CODE now reports the failure.
+     */
+    public function test_a_throwing_seeder_is_non_fatal_to_the_run_but_fails_the_exit_code(): void
     {
         $manifest = $this->app->make(BeamSeedManifest::class);
         // A brittle seeder registered BEFORE a healthy one; the run must reach the healthy one.
@@ -105,11 +115,40 @@ class BeamSeedManifestTest extends TestCase
 
         $this->artisan('splicewire:beam:seed')
             ->expectsOutputToContain('failed (continuing)')
-            ->expectsOutputToContain('beam stack seeded.')
-            ->assertExitCode(0);
+            ->expectsOutputToContain('1 FAILED')
+            ->expectsOutputToContain('beam stack seeding FAILED')
+            ->assertExitCode(1);
 
-        // The healthy seeder still ran despite the earlier throw.
+        // The healthy seeder still ran despite the earlier throw — the resilience half is unchanged.
         $this->assertContains(PassingStubSeeder::class, RanFlag::$ran);
+    }
+
+    public function test_tolerate_failures_restores_the_zero_exit_code_without_hiding_the_failure(): void
+    {
+        $manifest = $this->app->make(BeamSeedManifest::class);
+        $manifest->register('vendor/brittle', ThrowingStubSeeder::class, order: 10);
+
+        $this->artisan('splicewire:beam:seed', ['--tolerate-failures' => true])
+            ->expectsOutputToContain('1 FAILED')
+            ->expectsOutputToContain('exit code suppressed by --tolerate-failures')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * The summary is the operator-facing half: a mid-run `warn()` scrolls away behind a long
+     * `splicewire:beam:install`, which is exactly where these were being lost.
+     */
+    public function test_the_run_ends_with_a_counted_summary(): void
+    {
+        config(['test.seed_gate' => false]);
+
+        $manifest = $this->app->make(BeamSeedManifest::class);
+        $manifest->register('vendor/healthy', PassingStubSeeder::class, order: 10);
+        $manifest->register('vendor/gated', GatedStubSeeder::class, order: 20, configGate: 'test.seed_gate');
+
+        $this->artisan('splicewire:beam:seed')
+            ->expectsOutputToContain('1 seeded, 1 skipped (gate off), 0 FAILED')
+            ->assertExitCode(0);
     }
 
     public function test_the_command_reports_when_nothing_is_registered(): void
