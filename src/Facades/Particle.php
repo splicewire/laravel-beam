@@ -54,7 +54,6 @@ use Splicewire\Beam\Surgeon\BareParticleMountAudit;
  * @method static void relative(string $uri, string $model, string|\Closure $via, \Closure $routes, array $options = [])
  * @method static void relatives(string $parent, array|string|bool $relatives = true)
  * @method static void ops(string $uri, string $resourceKey, array|string $ops, array $options = [])
- * @method static void renderings(string $resource, string $subject, ?string $at = null, ?array $abilities = null, array $middleware = [], array $with = [], string $idConstraint = 'uuid')
  * @method static void filters(?string $resource, string $at = '', ?string $names = null, array $middleware = [], string $idConstraint = 'uuid')
  *
  * @see ParticleMountManager

@@ -8,6 +8,7 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Particle\Mount\ParticleMountManager;
+use Splicewire\Beam\Particle\Mount\PendingParticleMount;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -24,7 +25,7 @@ use Splicewire\Beam\Tests\TestCase;
  *     {@see ParticleMounter}, so the route table they produce is identical route-for-route. This is the
  *     ticket's "route table byte-identical to HEAD" acceptance criterion expressed as a test rather than
  *     as a one-off manifest diff, so it keeps holding after the session that ran the diff has ended.
- *  2. **Opt-in defaults.** A declared operation or rendering mounts NOTHING unless the host asks. This
+ *  2. **Opt-in defaults.** A declared operation or relative edge mounts NOTHING unless the host asks. This
  *     is the one rule the ticket said must not be relaxed for convenience — a package that adds a
  *     `#[ParticleOp]` must never be able to add routes to a host that did not ask.
  */
@@ -197,20 +198,26 @@ class ParticleMountFacadeTest extends TestCase
         ], $this->tableAt('sprockets'));
     }
 
-    public function test_renderings_are_off_unless_asked(): void
+    /**
+     * The rendering surface is GONE, not merely off (particle-operation-surface 13).
+     *
+     * These two used to be a pair — one asserting silence publishes nothing, one asserting the builder
+     * publishes the catalog when asked. 13 deleted `ResourceRenderingRegistry`, the mount, both
+     * controllers and the `renderings()` builder slot, so only the first half is still a statement
+     * anyone can make, and it is now a statement about a URL that no code path can produce.
+     *
+     * Kept rather than deleted with its twin, because the segment `{resource}/renderings` is a URL the
+     * estate published and a host could plausibly re-mint by hand; this pins that beam itself does not.
+     */
+    public function test_the_renderings_surface_is_no_longer_mountable_at_all(): void
     {
         Particle::mount('doodads')->only(['index']);
 
-        // The ticket-33 catalog route mounts even for zero renderings — but only once the host asks for
-        // the rendering surface at all. Silence must not publish it.
         $this->assertNull($this->named('doodads.renderings'));
-    }
-
-    public function test_renderings_mount_when_asked(): void
-    {
-        Particle::mount('doodads')->only(['index'])->renderings(subject: 'App\\Models\\Doodad', abilities: []);
-
-        $this->assertNotNull($this->named('doodads.renderings'));
+        $this->assertFalse(
+            method_exists(PendingParticleMount::class, 'renderings'),
+            'The builder slot went with the subsystem — a host asking for it should fail loudly.',
+        );
     }
 
     public function test_the_builder_mounts_at_its_own_statement_rather_than_at_request_time(): void

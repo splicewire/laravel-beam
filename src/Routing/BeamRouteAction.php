@@ -5,8 +5,7 @@ namespace Splicewire\Beam\Routing;
 use Illuminate\Routing\Route;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
-use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
-use Splicewire\Beam\Rendering\Http\RenderingsController;
+use Splicewire\Beam\Scribe\OpenApi\OperationIdGenerator;
 
 /**
  * The read side of the `->beam()` route-metadata namespace (api-surface-coherence ticket 15).
@@ -64,6 +63,22 @@ class BeamRouteAction
     }
 
     /**
+     * The OpenAPI `operationId` the MOUNT declared for this route, or null when it declared none — rung (E)
+     * of {@see OperationIdGenerator} (api-surface-coherence 36/78).
+     *
+     * One key, N declarers. The alternative — a generator with an arm per stamp family — needs a new arm
+     * every time a macro is added, and there were already five stamp shapes. An undeclared route falls to
+     * the generator's wire-shape rung and gets an ugly-but-unique id, so a missing declaration degrades
+     * rather than breaking.
+     */
+    public static function operationId(Route $route): ?string
+    {
+        $value = static::get($route, 'operationId');
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
      * The resource key this route belongs to — whether stamped by `Route::particleResource()` or declared
      * by `->beam()->inResource()`. Both write the same route default, so this reader cannot tell them
      * apart, which is the point (ticket 01).
@@ -75,23 +90,19 @@ class BeamRouteAction
      * reader falls through to it. Ticket 17 found this while wiring the group chain: the ticket's own note
      * claimed there was one stamp to read, and there are two.
      *
-     * There are THREE. `Route::resourceRenderings()` stamps its whole per-route config under a third key,
-     * and the resource is a field inside it — so `GET /disclosures/{id}/export` belongs to `disclosures`
-     * on exactly ticket 01's argument, and reading it here is what let the hand-placed
-     * "Renderings & Export" group be deleted rather than replaced (ticket 32 §F). A group of three
-     * endpoints whose only commonality is a shared controller method is a placement, not a taxonomy.
-     *
-     * FOUR, since ticket 33: the same macro's discovery route (`GET /disclosures/renderings`) stamps a
-     * fourth key of the same shape. It is a fourth STAMP, not a fourth kind of belonging — the reason it
-     * cannot share the rendering routes' key is that its config describes the whole resource rather than
-     * one rendering, and `RenderingsController` throws on a config without a `rendering` field.
+     * ⚠️ **There used to be FOUR.** The rendering mount and its catalog route stamped their whole
+     * per-route config under two further keys, with the resource as a field inside each — so
+     * `GET /disclosures/{id}/export` belonged to `disclosures` on exactly ticket 01's argument, and
+     * reading them here is what let the hand-placed "Renderings & Export" group be deleted rather than
+     * replaced (ticket 32 §F). particle-operation-surface 13 re-declared those three endpoints as
+     * OPERATIONS, so they now arrive on the second key above and the two rendering arms were deleted
+     * rather than left reading a config nothing writes.
      */
     public static function resourceKey(Route $route): ?string
     {
         $value = $route->defaults[ParticleController::RESOURCE]
             ?? $route->defaults[ParticleOperationController::RESOURCE]
-            ?? ($route->defaults[RenderingsController::CONFIG]['resource'] ?? null)
-            ?? ($route->defaults[RenderingCatalogController::CONFIG]['resource'] ?? null);
+            ?? null;
 
         return is_string($value) ? $value : null;
     }

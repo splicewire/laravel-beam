@@ -10,7 +10,6 @@ use Illuminate\Support\Str;
 use InvalidArgumentException;
 use ReflectionClass;
 use Rushing\DataFilters\Facades\DataFilter;
-use Schemastud\DataSchemas\Overlay\Lens\Fidelity;
 use Splicewire\Beam\Discovery\Data\ResourceDiscoveryData;
 use Splicewire\Beam\Discovery\Http\ResourceDiscoveryController;
 use Splicewire\Beam\Discovery\ResourceDiscoveryAutoMounter;
@@ -29,11 +28,6 @@ use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleRelative;
 use Splicewire\Beam\Particle\ParticleRelativeRegistry;
-use Splicewire\Beam\Rendering\Data\ResourceRenderingCatalogData;
-use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
-use Splicewire\Beam\Rendering\Http\RenderingsController;
-use Splicewire\Beam\Rendering\RenderingCertifier;
-use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
 use Splicewire\Beam\Routing\BeamRouteAction;
 use Splicewire\Beam\Routing\BeamRouteProxy;
 use Splicewire\Beam\Routing\IdConstraint;
@@ -54,7 +48,7 @@ use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
  *
  * - {@see Particle}`::mount()` — the sanctioned front door, a fluent builder
  *   ({@see PendingParticleMount}) whose widening calls are opt-in.
- * - The `Route::particle*()` / `Route::resourceRenderings()` / `Route::resourceFilters()` macros, which
+ * - The `Route::particle*()` / `Route::resourceFilters()` macros, which
  *   are now one-line delegations here.
  *
  * ⚠️ **This class is not the enforcement seam and cannot be one.** See {@see PendingParticleMount}'s
@@ -161,7 +155,8 @@ class ParticleMounter
         //
         // Gated on the registry rather than mounted blind, so a particle resource with no filter
         // declaration does not publish nine routes that all 404. `has()` is a read of an already-
-        // seeded registry, and `resourceRenderings` sets the precedent for reading one at mount time.
+        // seeded registry, and the (now dissolved) rendering mount set the precedent for reading one
+        // at mount time.
         //
         // `filters: false` opts out — for the one shape this cannot serve: an exposure whose route
         // group is narrower than the resource (a public/unauthenticated mount, say), where the
@@ -267,6 +262,18 @@ class ParticleMounter
      * and it is visible rather than silent because the alias is stamped
      * {@see RouteVisibility::Deprecated} and therefore vanishes from the generated client.
      *
+     * ## `alias: false` — an operation that was never AT `/op/` must not be given a legacy there
+     *
+     * The alias is a BACK-COMPAT affordance for the 61 URLs that shipped under `/op/`. An operation
+     * declared after that segment left never had one, so mounting the alias for it manufactures a
+     * deprecated URL nobody ever called, stamps it {@see RouteVisibility::Deprecated}, and hangs
+     * {@see LegacyOperationAlias}'s `Deprecation` header + per-call log line off a route that is not a
+     * migration from anything. particle-operation-surface 13 is the first caller: its three Exports
+     * answer at `{resource}/{id}/export` today and have never answered at `{resource}/{id}/op/export`.
+     *
+     * It is opt-OUT rather than opt-in because the default has to keep serving the sixty-one, and
+     * because a caller who forgets it gets a harmless extra route rather than a broken contract.
+     *
      * `$options['name']` overrides the PRIMARY name only. Zero call sites in the estate pass it — swept
      * the package `src` roots, every `~/Herd` `routes` and `app` tree, and the starters, with the globs
      * written literally rather than through a variable (zsh does not glob after parameter expansion). If
@@ -328,6 +335,12 @@ class ParticleMounter
         };
 
         $mount("{$uri}/{id}/{$op}", $name);
+
+        // See the docblock: `false` is for an operation that never answered at `/op/`, so there is no
+        // published URL to keep alive and an alias would be a legacy invented rather than preserved.
+        if (($options['alias'] ?? true) === false) {
+            return;
+        }
 
         if ($legacyName === $name) {
             return;
@@ -419,10 +432,10 @@ class ParticleMounter
      * ## A Closure `$via` makes the route table uncacheable
      *
      * `$via` lands in the route DEFAULTS, and `route:cache` serializes defaults. A relation-name string
-     * survives that; a Closure does not — `route:cache` dies on it. The sibling
-     * {@see resourceRenderings()} disciplines against exactly this in its own docblock ("per-route
-     * config rides `->defaults()` as a plain serializable array with NO closures, so the table survives
-     * `route:cache`"), and this macro was the one place that broke the rule.
+     * survives that; a Closure does not — `route:cache` dies on it. The sibling rendering mount
+     * (dissolved by particle-operation-surface 13) disciplined against exactly this in its own docblock
+     * ("per-route config rides `->defaults()` as a plain serializable array with NO closures, so the
+     * table survives `route:cache`"), and this macro was the one place that broke the rule.
      *
      * Ticket 51 §2 settled it against a green `route:cache` rather than against reasoning: **the
      * Closure form is a documented limitation, not a supported shape.** Prefer the relation-name
@@ -608,99 +621,6 @@ class ParticleMounter
     }
 
     /**
-     * Every rendering the {@see ResourceRenderingRegistry} holds for `$resource` — one read route each,
-     * plus a write route only where {@see RenderingCertifier} could prove reversibility, plus the
-     * catalog route (ticket 33), which mounts even for zero renderings.
-     *
-     * The body behind `Particle::renderings(…)`. Was `Route::macro('resourceRenderings', …)` until 93 deleted the macro.
-     */
-    public function resourceRenderings(
-        Router $router,
-        string $resource,
-        string $subject,
-        ?string $at = null,
-        ?array $abilities = null,
-        array $middleware = [],
-        array $with = [],
-        string $idConstraint = 'uuid',
-    ): void {
-        $at = $at ?? $resource;
-        $abilities = $abilities ?? ['view' => 'view', 'mutate' => 'update'];
-
-        $registry = app(ResourceRenderingRegistry::class);
-        $certifier = app(RenderingCertifier::class);
-
-        $grants = [];
-
-        foreach ($registry->for($resource) as $rendering) {
-            $fidelity = $certifier->certify($rendering);
-            $writable = $fidelity === Fidelity::LosslessEligible;
-
-            $config = [
-                'resource' => $resource,
-                'rendering' => $rendering->name(),
-                'subject' => $subject,
-                'with' => array_values($with),
-                'abilities' => $abilities,
-                'fidelity' => $fidelity->value,
-                'writable' => $writable,
-            ];
-
-            $uri = ($at === '' ? '' : $at.'/').'{id}/'.$rendering->name();
-            $name = ($at === '' ? '' : $at.'.').$rendering->name();
-
-            $mount = function (RouteInstance $route) use ($config, $middleware, $idConstraint): RouteInstance {
-                $route->defaults(RenderingsController::CONFIG, $config);
-
-                if ($idConstraint === 'uuid') {
-                    $route->whereUuid('id');
-                }
-
-                if ($middleware !== []) {
-                    $route->middleware($middleware);
-                }
-
-                return $route;
-            };
-
-            $mount($router->get($uri, [RenderingsController::class, 'show']))->name($name);
-
-            if ($writable) {
-                $mount($router->post($uri, [RenderingsController::class, 'store']))->name($name.'.ingest');
-            }
-
-            $grants[$rendering->name()] = [
-                'fidelity' => $fidelity->value,
-                'writable' => $writable,
-            ];
-        }
-
-        // The discovery route (api-surface-coherence ticket 33). OUTSIDE the loop deliberately: a
-        // resource that mounts this shape and has declared no rendering still answers, with an empty
-        // set. Absence of renderings is not absence of resource.
-        //
-        // It carries the mount-time grant map — the same certified verdict the read/write routes
-        // freeze — while leaving the format enumeration to be re-read per request.
-        //
-        // It does NOT inherit `$middleware`. That parameter gates the RENDERING (compositions pass
-        // `consume.engine`, which meters the dogfood loopback); metering a metadata read as engine
-        // consumption would be a new cost on an endpoint that touches no engine. The route group's
-        // own middleware still applies, which is where `abilities: []` says the gate lives.
-        $catalogUri = ($at === '' ? '' : $at.'/').'renderings';
-        $catalogName = ($at === '' ? '' : $at.'.').'renderings';
-
-        $router->get($catalogUri, [RenderingCatalogController::class, 'index'])
-            ->defaults(RenderingCatalogController::CONFIG, [
-                'resource' => $resource,
-                'subject' => $subject,
-                'abilities' => $abilities,
-                'renderings' => $grants,
-            ])
-            ->name($catalogName)
-            ->beam()->returns(ResourceRenderingCatalogData::class);
-    }
-
-    /**
      * The per-resource discovery listing: `GET {mount}/discovery` (api-surface-coherence 105, 41 D5).
      *
      * Takes a {@see ResourceMount} rather than a URI and a key, because the mount is exactly the unit
@@ -804,7 +724,7 @@ class ParticleMounter
             // ALSO stamp the ordinary particle resource default (ticket 01), so the group-resolution
             // chain sees a filter route exactly as it sees any other sub-operation of the resource
             // and the sub-surface inherits its resource's documentation group with nothing declared.
-            // This is the same trick `resourceRenderings()` leans on — the export routes' glob
+            // This is the same trick the dissolved rendering mount leaned on — the export routes' glob
             // was retired from the host's backlog because the route gained this stamp.
             //
             // Skipped for the frame-root mount, where the resource is a path parameter: there is no

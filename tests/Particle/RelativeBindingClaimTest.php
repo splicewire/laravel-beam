@@ -135,7 +135,7 @@ class RelativeBindingClaimTest extends TestCase
         $this->assertSame('lockers', $route->defaults[ParticleController::VIA]);
 
         // The property `route:cache` actually needs: the defaults array survives a round trip through
-        // PHP's own serializer. The sibling `resourceRenderings()` docblock states this rule for its own
+        // PHP's own serializer. The sibling rendering mount's docblock stated this rule for its own
         // per-route config; the relative mount is the one place that could break it.
         $this->assertSame($route->defaults, unserialize(serialize($route->defaults)));
     }

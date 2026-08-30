@@ -6,8 +6,6 @@ use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
-use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
-use Splicewire\Beam\Rendering\Http\RenderingsController;
 use Splicewire\Beam\Routing\BeamRouteAction;
 
 /**
@@ -114,16 +112,26 @@ class ResourceMountMap
         $defaults = $route->defaults;
 
         if (isset($defaults[ParticleOperationController::NAME])) {
-            $segments = $this->sliceBeforeLast($segments, 'op');
+            // Two spellings, because particle-operation-surface 12 dropped the `/op/` segment and left
+            // the old URL mounted as a deprecated alias. The alias still carries it and slices on the
+            // word; the PRIMARY is `{root}/{id}/{name}`, where the tail is the operation's own name and
+            // is dropped by identity rather than by position — `sliceBeforeLast` on a word that is no
+            // longer there returns the segments UNCHANGED, so the trailing-parameter strip below never
+            // reached `{id}` and the root came back as `{root}/{id}/{name}`.
+            //
+            // ⚠️ This was latent from 12 until particle-operation-surface 13. It only shows on a
+            // resource whose ONLY mounted route is an operation: every other resource has a CRUD or
+            // filter route computing the same root correctly, and `absorbNestedRoots()` folds the wrong
+            // one into it. 13 made `disclosures` exactly that resource — its export became an operation
+            // and it mounts nothing else — and `disclosures.discovery` moved from
+            // `api/v1/disclosures/discovery` to `api/v1/disclosures/{id}/export/discovery`.
+            $name = (string) $defaults[ParticleOperationController::NAME];
+
+            $segments = in_array('op', $segments, true)
+                ? $this->sliceBeforeLast($segments, 'op')
+                : $this->sliceBeforeLast($segments, $name);
         } elseif (SubSurface::of($route) === SubSurface::EVENTS) {
             $segments = $this->sliceBeforeLast($segments, 'hooks');
-        } elseif (isset($defaults[RenderingCatalogController::CONFIG])) {
-            $segments = $this->sliceBeforeLast($segments, 'renderings');
-        } elseif (isset($defaults[RenderingsController::CONFIG])) {
-            // A rendering route is `{root}/{id}/{renderingName}` and the rendering name is arbitrary
-            // host config — `export`, `pdf`, whatever the host registered — so it is dropped by
-            // position rather than recognised by word.
-            array_pop($segments);
         } elseif (isset($defaults[ResourceFiltersController::CONFIG])) {
             $segments = $this->sliceBeforeLast($segments, 'filters');
         }

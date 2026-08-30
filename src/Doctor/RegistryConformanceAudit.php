@@ -64,7 +64,7 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *     half of that check only a post-boot reader can hold. See {@see shadowedEntries()}.
  *   - {@see CHECK_ON_DUPLICATE} — `onDuplicate` written at the declaration site rather than silently
  *     inherited. The estate ships all three policies with argued docblocks (`LensRegistry` throws,
- *     `ResourceRenderingRegistry` admits, `ParticleResourceRegistry` overwrites), so an UNWRITTEN one is not a
+ *     `RealmOverlayRegistry` admits, `ParticleResourceRegistry` overwrites), so an UNWRITTEN one is not a
  *     considered default, it is a guess that reads as a decision. Measured before landing: every one of the
  *     ~50 declarations in the estate already writes it, so this check ratchets a good state rather than
  *     opening a backlog.

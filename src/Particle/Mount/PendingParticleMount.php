@@ -17,13 +17,13 @@ use Splicewire\Beam\Particle\ParticleRelative;
  * Particle::mount('fragments')
  *     ->only(['index', 'store'])
  *     ->ops(true)                    // widens the SAME mount — not a second act
- *     ->renderings(Fragment::class);
+ *     ->relatives(true);
  * ```
  *
  * ## Opt-in is the one rule that does not bend
  *
- * `ops()` and `renderings()` mount **nothing** unless asked. A package that adds a `#[ParticleOp]`
- * declaration or registers a rendering can therefore never silently add routes to a host that did not
+ * `ops()` and `relatives()` mount **nothing** unless asked. A package that adds a `#[ParticleOp]` or
+ * `#[ParticleRelative]` declaration can therefore never silently add routes to a host that did not
  * ask for them. The one exception predates this class and is argued in
  * {@see ParticleMounter::resource()}: the per-resource **filter** sub-surface mounts automatically,
  * because a filter vocabulary is a fact about the resource rather than an offer the host makes.
@@ -62,9 +62,6 @@ class PendingParticleMount
 
     /** @var array<int, array{0: array, 1: array}> queued op declarations, each with its own options */
     protected array $ops = [];
-
-    /** @var array<int, array> queued rendering mounts */
-    protected array $renderings = [];
 
     /** @var array<int, array<int, string|ParticleRelative>|bool> queued relative-edge mounts */
     protected array $relatives = [];
@@ -168,35 +165,6 @@ class PendingParticleMount
     }
 
     /**
-     * Widen this mount with the resource's declared renderings + the ticket-33 catalog route.
-     * **Off unless asked.**
-     *
-     * `$at` defaults to this mount's URI rather than to the resource key, which is the one place this
-     * builder is deliberately not a transcription of `Route::resourceRenderings()`: that macro defaults
-     * `$at` to `$resource`, and here the mount already knows where it lives. Pass `at: ''` to mount at
-     * the current group's root, as the macro spelling does.
-     */
-    public function renderings(
-        string $subject,
-        ?string $at = null,
-        ?array $abilities = null,
-        array $middleware = [],
-        array $with = [],
-        string $idConstraint = 'uuid',
-    ): static {
-        $this->renderings[] = [
-            'subject' => $subject,
-            'at' => $at ?? $this->uri,
-            'abilities' => $abilities,
-            'middleware' => $middleware,
-            'with' => $with,
-            'idConstraint' => $idConstraint,
-        ];
-
-        return $this;
-    }
-
-    /**
      * Widen this mount with the DECLARED relative edges hanging off this resource. **Off unless asked.**
      *
      * ```php
@@ -258,19 +226,6 @@ class PendingParticleMount
         // route-matching order, so this is behaviour rather than tidiness.
         foreach ($this->relatives as $relatives) {
             $this->mounter->relatives($this->router, $this->resourceKey, $relatives);
-        }
-
-        foreach ($this->renderings as $rendering) {
-            $this->mounter->resourceRenderings(
-                router: $this->router,
-                resource: $this->resourceKey,
-                subject: $rendering['subject'],
-                at: $rendering['at'],
-                abilities: $rendering['abilities'],
-                middleware: $rendering['middleware'],
-                with: $rendering['with'],
-                idConstraint: $rendering['idConstraint'],
-            );
         }
     }
 

@@ -7,7 +7,6 @@ use Rushing\Popcorn\Registries\Key;
 use Schemastud\Frame\Contracts\ResourceRegistry;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
-use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
 use Throwable;
 
 /**
@@ -21,16 +20,23 @@ use Throwable;
  *
  * Because the keys are scattered, and that is a fact about the estate rather than a defect this class
  * should paper over (api-surface-coherence ticket 14 §4). `ParticleResourceRegistry` holds the bulk;
- * `ResourceRenderingRegistry` holds resources that exist only as a rendering subject (`compositions` is
- * the live example — the `Composition` model registers in the particle registry under a *different*
- * key); Frame's read-only {@see ResourceRegistry} port is consulted because a host may bind a producer
- * beam does not own. Beam binds that port to its own particle registry by default, so the third source
- * is normally a no-op and is here for the host that replaces it.
+ * Frame's read-only {@see ResourceRegistry} port is consulted because a host may bind a producer beam
+ * does not own. Beam binds that port to its own particle registry by default, so the second source is
+ * normally a no-op and is here for the host that replaces it.
+ *
+ * ⚠️ **There used to be a THIRD source, `ResourceRenderingRegistry`, and its stated justification was
+ * already false when particle-operation-surface 13 deleted it.** The docblock claimed `compositions`
+ * existed *only* as a rendering subject because the `Composition` model registered under a different
+ * key; measured at the flagship on 2026-08-29, `compositions` is registered in
+ * `ParticleResourceRegistry` under exactly that key
+ * (`~/Herd/splicewire-app/app/Providers/ParticleServiceProvider.php:956`), so the rendering source
+ * contributed no key the particle source did not already hold. It is deleted rather than left as a
+ * no-op, which is 13's acceptance #4.
  *
  * ⚠️ **The ticket that chartered this named a `FrameResourceRegistry` as the home of `tenants`. There is
  * no such class** — Frame ships a `Contracts\ResourceRegistry` *port* and beam aliases it onto
  * {@see ParticleResourceRegistryAdapter}. `tenants` is in the particle registry,
- * which the same ticket also says two paragraphs later. The three-source sweep survives the correction;
+ * which the same ticket also says two paragraphs later. The multi-source sweep survives the correction;
  * only the name did not.
  *
  * ## Everything is resolved lazily and defensively
@@ -85,10 +91,6 @@ class ResourceKeyOracle
             $keys[$key] = true;
         }
 
-        foreach ($this->renderingKeys() as $key) {
-            $keys[$key] = true;
-        }
-
         foreach ($this->framePortKeys() as $key) {
             $keys[$key] = true;
         }
@@ -109,33 +111,6 @@ class ResourceKeyOracle
             fn ($resource) => (string) $resource->key,
             $registry->all(),
         ));
-    }
-
-    /**
-     * A rendering key is `{resource}.{rendering}`, so the RESOURCE is segment one — the same
-     * segment-one reading {@see EventType::resourceKey()} uses on an event name.
-     *
-     * @return list<string>
-     */
-    private function renderingKeys(): array
-    {
-        $registry = $this->source(ResourceRenderingRegistry::class);
-
-        if (! $registry instanceof ResourceRenderingRegistry) {
-            return [];
-        }
-
-        $keys = [];
-
-        foreach ($registry->resources() as $relative) {
-            $first = explode('.', $relative)[0] ?? '';
-
-            if ($first !== '') {
-                $keys[$first] = true;
-            }
-        }
-
-        return array_map('strval', array_keys($keys));
     }
 
     /** @return list<string> */

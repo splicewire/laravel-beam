@@ -25,7 +25,6 @@ use Splicewire\Beam\Filters\Data\SavedFilterUpdateInputData;
 use Splicewire\Beam\Http\Controller;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
-use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -42,9 +41,8 @@ use Symfony\Component\HttpFoundation\Response;
  * segment is the same check, done once, by construction.
  *
  * **The options leak closes.** `GET /filter-options/{key}` had *no resource to check against* and so
- * enumerated every silo, tag, agent and circuit name to any authenticated tenant user (ticket 10 §5 —
- * and {@see RenderingCatalogController} already names it as the reason
- * its own gate exists). Here every read and every write gates on the resource first.
+ * enumerated every silo, tag, agent and circuit name to any authenticated tenant user (ticket 10 §5).
+ * Here every read and every write gates on the resource first.
  *
  * **Mounting.** Never mount these by hand — {@see Particle::filters()} does it, and
  * `Route::particleResource()` calls that macro automatically, so the sub-surface follows a resource to
@@ -400,7 +398,8 @@ class ResourceFiltersController extends Controller
      *
      * There is no record here, so the per-record `view` the read routes authorize has nothing to
      * authorize against; `viewAny` is the ability that means "may see that these exist" — the same
-     * derivation {@see RenderingCatalogController} made one surface over.
+     * derivation the rendering catalog made one surface over, before
+     * particle-operation-surface 13 dissolved it.
      *
      * ASKS the Gate for whatever policy is bound rather than naming one, and skips when the model has no
      * policy or the policy declares no `viewAny`. That is not a hole being left open, it is the only

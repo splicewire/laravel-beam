@@ -17,7 +17,6 @@ use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
-use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
 use Splicewire\Beam\Schema\SchemaSources;
 use Splicewire\Beam\Seed\BeamSeedManifest;
 use Splicewire\Beam\Surface\GroupRegistry;
@@ -68,7 +67,6 @@ class BeamRegistryDeclarationTest extends TestCase
             RealmOverlayRegistry::class => 'beam.realm.overlays',
             RealmResourceRegistry::class => 'beam.realm.resource-overrides',
             CapabilityRegistry::class => 'beam.capabilities',
-            ResourceRenderingRegistry::class => 'beam.renderings',
             EventTypeRegistry::class => 'beam.events.types',
         ];
     }
@@ -118,12 +116,12 @@ class BeamRegistryDeclarationTest extends TestCase
         $this->assertSame([RegistryArity::PickOne], IsRegistry::of(RealmRegistry::class)?->arity);
         $this->assertSame([RegistryArity::ComposeMany], IsRegistry::of(RealmOverlayRegistry::class)?->arity);
         $this->assertSame([RegistryArity::RunAll], IsRegistry::of(BeamInstallManifest::class)?->arity);
-        // Two steps, outermost first: PickOne selects a resource, RunAll engages that resource's
-        // renderings. The bare RunAll it used to declare was ticket 47's second beneficiary.
-        $this->assertSame(
-            [RegistryArity::PickOne, RegistryArity::RunAll],
-            IsRegistry::of(ResourceRenderingRegistry::class)?->arity,
-        );
+        // ⚠️ `ResourceRenderingRegistry` — `beam.renderings`, the estate's one
+        // `[PickOne, RunAll]` two-step (PickOne selects a resource, RunAll engages that resource's
+        // renderings) and registry-kernel 47's second beneficiary — was DELETED by
+        // particle-operation-surface 13. Its rows are gone from both lists above rather than being
+        // left as an expectation nothing can satisfy. The two-step arity itself is unexercised in
+        // beam again; `rushing/laravel-popcorn`'s own suite is where that shape is pinned now.
     }
 
     public function test_a_non_default_duplicate_policy_is_declared_rather_than_inherited(): void

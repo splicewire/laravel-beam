@@ -18,7 +18,6 @@ use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Rushing\Popcorn\Concerns\ChainsTraitMethods;
 use Rushing\Popcorn\Contracts\ChainsTraitMethods as ChainsTraitMethodsContract;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
-use Rushing\Popcorn\Registries\Registrars\ConfigRegistrar;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Rushing\Surgeon\Audit\PackageGraph;
 use Rushing\Surgeon\Operation\CallbackConformanceManifest;
@@ -142,9 +141,6 @@ use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
-use Splicewire\Beam\Rendering\ResourceRenderingRegistry;
-use Splicewire\Beam\Rendering\Subjects\FindOrFailSubjectResolver;
-use Splicewire\Beam\Rendering\Subjects\ResolvesRenderingSubject;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
@@ -583,18 +579,6 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // instead of restating it. `bind`, not `singleton` — it is a stateless lookup over a registry
         // that is itself the singleton.
         $this->app->bind(ResourceModelResolver::class, ParticleResourceModelResolver::class);
-
-        // The per-resource rendering registry `Particle::renderings()` enumerates (moved from
-        // laravel-composition-engine into beam core). A SINGLETON for the same reason the particle
-        // registries are: the route macro (defined in packageBooted below) must see the same instance a
-        // package's own provider registered a rendering into. The default subject resolver is the
-        // duck-typed `findOrFail`/`with` pair; a host on anything else binds its own.
-        // Constructed EMPTY: `beam.core.renderings` reaches it through a ConfigRegistrar attached in
-        // beam's own boot() (registry-kernel ticket 53), not through the constructor. Seeding here would
-        // put the fill at FIRST RESOLVE — the lazy-on-first-read shape ticket 07 D9 rejected, and the
-        // one ticket 19 D3 says re-opens 19 if an owner is caught doing it.
-        $this->app->singleton(ResourceRenderingRegistry::class, fn () => new ResourceRenderingRegistry);
-        $this->app->bind(ResolvesRenderingSubject::class, FindOrFailSubjectResolver::class);
 
         // The publishable-event catalog (api-surface-coherence ticket 40). A SINGLETON for the same
         // reason the particle registries are: a package provider registering an event type must land in
@@ -1608,24 +1592,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // the model port it leaves empty resolves off the particle registry discovery has just filled.
         $this->declareFilterResources();
 
-        // The per-resource rendering registry's own registrar, attached in the OWNER's boot() for the
-        // reason its binding above states (registry-kernel ticket 53). `beam.core.renderings` is
-        // `resource => [class, class]`; the expansion of that list into one entry per rendering is the
-        // registry's own vocabulary, not the kernel's — see `ResourceRenderingRegistry::register()`.
-        $this->app->make(ResourceRenderingRegistry::class)->attach(new ConfigRegistrar(
-            (array) config('beam.core.renderings', []),
-            'beam.core.renderings',
-        ));
-
-        // The second act, per ticket 21 D1: declaring and indexing are two things, and these two
-        // registries are the first registrar-FED roots the index carries.
+        // The second act, per ticket 21 D1: declaring and indexing are two things.
         $this->app->make(RegistryIndex::class)->describe(
             $this->app->make(ParticleResourceRegistry::class),
-            by: self::class,
-        );
-
-        $this->app->make(RegistryIndex::class)->describe(
-            $this->app->make(ResourceRenderingRegistry::class),
             by: self::class,
         );
 

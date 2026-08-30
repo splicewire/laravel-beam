@@ -43,7 +43,7 @@ class BareParticleMountAuditTest extends TestCase
         $this->assertSame(4, $sites[0]['line']);
     }
 
-    public function test_all_six_macros_are_detected(): void
+    public function test_all_five_macros_are_detected(): void
     {
         $source = <<<'PHP'
         <?php
@@ -51,12 +51,11 @@ class BareParticleMountAuditTest extends TestCase
         Route::particleOp('fragments', 'fragment', 'reorder');
         Route::particleOps('fragments', 'fragment', ['reorder']);
         Route::particleRelative('fragments', Fragment::class, 'media', fn () => null);
-        Route::resourceRenderings('fragments', 'fragment');
         Route::resourceFilters('fragments');
         PHP;
 
         $this->assertSame(
-            ['particleResource', 'particleOp', 'particleOps', 'particleRelative', 'resourceRenderings', 'resourceFilters'],
+            ['particleResource', 'particleOp', 'particleOps', 'particleRelative', 'resourceFilters'],
             array_column($this->audit()->sitesIn($source), 'macro'),
         );
     }
@@ -189,7 +188,6 @@ class BareParticleMountAuditTest extends TestCase
             'particleOp' => 'ops',
             'particleOps' => 'ops',
             'particleRelative' => 'relative',
-            'resourceRenderings' => 'renderings',
             'resourceFilters' => 'filters',
         ], BareParticleMountAudit::MACRO_FRONT_DOORS);
     }

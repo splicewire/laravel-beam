@@ -21,7 +21,7 @@ use Splicewire\Beam\Rendering\DeclaresDelivery;
 use Splicewire\Beam\Rendering\ResourceRendering;
 use Splicewire\Beam\Routing\HttpMethod;
 use Splicewire\Beam\Routing\IdConstraint;
-use Splicewire\Beam\Scribe\OpenApi\RenderingDeliveryGenerator;
+use Splicewire\Beam\Scribe\OpenApi\DeliveryGenerator;
 use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
 
 /**
@@ -304,10 +304,10 @@ use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
  *
  *   1. {@see ParticleOperationController::format()} — 422s a `?format`
  *      outside the declared enumeration, BEFORE `handle` runs. This is the ENFORCEMENT half, and it is
- *      the clause `RenderingsController` owns today (11 A6). Without it ticket 13's dissolution
- *      regresses format validation from enforced-and-published to per-rendering ad hoc.
+ *      the clause `RenderingsController` owned until ticket 13 (11 A6). Without it 13's dissolution
+ *      would have regressed format validation from enforced-and-published to per-rendering ad hoc.
  *   2. {@see ParticleOperationDeliveryStrategy} +
- *      {@see RenderingDeliveryGenerator} — the PUBLICATION half: one
+ *      {@see DeliveryGenerator} — the PUBLICATION half: one
  *      `content` entry per declared media type at 200, the declared response headers, and the 422 the
  *      enumeration implies. Scribe's own model is one-content-type-per-status and structurally cannot
  *      say this, which is why the pair exists.
@@ -344,8 +344,9 @@ class ParticleOperation implements HasRegistryKey
      * forgives it, the branch that enforces it, and the reference that publishes it cannot disagree
      * about its name — the same coupling `SIGNATURE_PARAMETERS` above buys.
      *
-     * The name matches `RenderingsController`'s `?format` exactly, because ticket 13 moves three live
-     * URLs from that controller onto this surface and a renamed parameter would break every one.
+     * The name matches the deleted `RenderingsController`'s `?format` exactly, because ticket 13 moved
+     * three live URLs from that controller onto this surface and a renamed parameter would have broken
+     * every one.
      */
     public const FORMAT_PARAMETER = 'format';
 

@@ -20,17 +20,19 @@ use Splicewire\Beam\Scribe\Strategies\ParticleOperationParameterStrategy;
  * Hence the restatement. The way to keep the two from drifting is to make `render()` READ these methods
  * rather than repeat their values — `$format ?? $this->defaultFormat()` instead of `$format ?? 'html'`.
  *
- * A rendering that declines this interface still documents: its 200 is the wildcard media type, with no
+ * An operation that declines this interface still documents: its 200 is the wildcard media type, with no
  * default and no headers. That is honest — "this endpoint delivers something and has not said what" — and it is meant
  * to read as an absence worth closing rather than a lie worth trusting.
  *
  * ## It is now the OPERATION surface's delivery port too, and that is why it grew `formats()`
  *
  * particle-operation-surface 11 decided that `#[ParticleOp]` gains a `delivery:` slot typed on THIS
- * interface, and that the interface absorbs `formats()` from the dissolving {@see ResourceRendering}
- * — so a declared operation can state the same four wire facts a rendering states, and ticket 13 can
- * retire `ResourceRenderingRegistry` without regressing format validation from enforced-and-published
- * to per-rendering ad hoc.
+ * interface, and that the interface absorbs `formats()` from the dissolving {@see ResourceRendering} —
+ * so a declared operation can state the same four wire facts a rendering stated. Ticket 13 has since
+ * retired the rendering registry, its mount and its controllers, and this is why that was possible
+ * without regressing format validation from enforced-and-published to per-rendering ad hoc. **This
+ * interface is now the ONLY declaration of a wire contract in beam**, and its readers are all on the
+ * operation surface.
  *
  * ⚠️ **Adding a fourth method to a published interface is normally a break, and this one is MEASURED
  * INERT.** Every `DeclaresDelivery` implementor in the estate on 2026-08-29 — the three flagship
@@ -41,10 +43,13 @@ use Splicewire\Beam\Scribe\Strategies\ParticleOperationParameterStrategy;
  * not own. Re-take that sweep before adding a fifth method; the property is a fact about today's
  * population, not a guarantee.
  *
- * ⚠️ **This interface OUTLIVES `Splicewire\Beam\Rendering\`.** It is left in this namespace only
- * because moving it would edit the three flagship renderings' `use` lines, and 14 does not own
- * `~/Herd/splicewire-app/app/**`. Ticket 13, which deletes the rest of this directory, is the change
- * that should relocate it (`Splicewire\Beam\Particle\Delivery\` is where its readers now live).
+ * ⚠️ **This interface OUTLIVES the subsystem its namespace is named after, and it is STILL not moved.**
+ * 14 deferred the relocation to 13 on the theory that 13 empties this directory. It does not: 13 keeps
+ * {@see RenderingCertifier}, {@see ReversibleRendering}, {@see ReversibilityProof},
+ * {@see RenderedDocument} and {@see ResourceRendering} as the dormant reversibility seam (13 §3), so
+ * `Splicewire\Beam\Rendering\` survives either way and the move buys a tidier `use` line at the cost
+ * of editing three files in a host tree plus every consumer of a published interface. It stays until
+ * something other than aesthetics asks for it.
  */
 interface DeclaresDelivery
 {

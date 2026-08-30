@@ -7,8 +7,6 @@ use Splicewire\Beam\Discovery\Http\ResourceDiscoveryController;
 use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Mount\ParticleMounter;
-use Splicewire\Beam\Rendering\Http\RenderingCatalogController;
-use Splicewire\Beam\Rendering\Http\RenderingsController;
 use Splicewire\Beam\Routing\BeamRouteAction;
 use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
 
@@ -32,8 +30,6 @@ class SubSurface
 
     public const FILTERS = 'filters';
 
-    public const RENDERINGS = 'renderings';
-
     public const OPERATIONS = 'operations';
 
     public const EVENTS = 'events';
@@ -45,7 +41,6 @@ class SubSurface
         self::CRUD,
         self::OPERATIONS,
         self::FILTERS,
-        self::RENDERINGS,
         self::EVENTS,
         self::DISCOVERY,
     ];
@@ -58,8 +53,6 @@ class SubSurface
             isset($defaults[ResourceDiscoveryController::CONFIG]) => self::DISCOVERY,
             isset($defaults[ParticleOperationController::NAME]) => self::OPERATIONS,
             isset($defaults[ResourceFiltersController::CONFIG]) => self::FILTERS,
-            isset($defaults[RenderingsController::CONFIG]),
-            isset($defaults[RenderingCatalogController::CONFIG]) => self::RENDERINGS,
             self::servedBy($route, HookEventCatalogController::class) => self::EVENTS,
             default => self::CRUD,
         };

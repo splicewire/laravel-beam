@@ -30,8 +30,8 @@ use Splicewire\Beam\Particle\Mount\ParticleMounter;
  * NOT do is remove the second spelling; that is the visible-estate sweep (`surgeon:rewrite`), which
  * closes these findings repo by repo at each one's own pace.
  *
- * ## The six macros and what each becomes
- * All six macro bodies moved verbatim into {@see ParticleMounter}, so
+ * ## The five macros and what each becomes
+ * All of those macro bodies moved verbatim into {@see ParticleMounter}, so
  * both spellings already share ONE implementation — this is a coherence finding, never a correctness
  * one, and every mapping below is argument-for-argument identical:
  *
@@ -39,7 +39,6 @@ use Splicewire\Beam\Particle\Mount\ParticleMounter;
  *   Route::particleOp(…)           →  Particle::ops(…)      (`$ops` takes a bare name)
  *   Route::particleOps(…)          →  Particle::ops(…)
  *   Route::particleRelative(…)     →  Particle::relative(…)
- *   Route::resourceRenderings(…)   →  Particle::renderings(…)
  *   Route::resourceFilters(…)      →  Particle::filters(…)
  *
  * Note `particleOp` (singular) is the macro hosts actually still call, and its front door is the
@@ -82,7 +81,10 @@ class BareParticleMountAudit implements DoctorAudit
     public const CHECK = 'particle.bare-mount';
 
     /**
-     * The six macro names, each mapped to the `Particle::` verb that replaces it argument-for-argument.
+     * The macro names, each mapped to the `Particle::` verb that replaces it argument-for-argument.
+     *
+     * `resourceRenderings` left this map with the rendering subsystem it fronted (particle-operation-surface 13);
+     * a host still spelling it has a dead macro, not a bare mount, which is a different finding.
      *
      * @var array<string, string>
      */
@@ -91,7 +93,6 @@ class BareParticleMountAudit implements DoctorAudit
         'particleOp' => 'ops',
         'particleOps' => 'ops',
         'particleRelative' => 'relative',
-        'resourceRenderings' => 'renderings',
         'resourceFilters' => 'filters',
     ];
 

@@ -8,7 +8,6 @@ use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
-use Splicewire\Beam\Rendering\Http\RenderingsController;
 use Splicewire\Beam\Routing\BeamRouteAction;
 use Splicewire\Beam\Routing\RouteVisibility;
 
@@ -20,10 +19,13 @@ use Splicewire\Beam\Routing\RouteVisibility;
  * ticket's own framing was *renderings versus operations*; measured across twenty booted hosts, the slot
  * has **three** claimant classes, and only one instrument can see all three:
  *
- * - **Renderings** — `Route::resourceRenderings()` mounts `GET|POST {at}/{id}/{rendering}`, keyed under
- *   the popcorn root `beam.renderings`.
- * - **Operations** — keyed under `beam.particle.operations`. A *different* root, so `OnDuplicate` is
- *   structurally blind to a rendering with the same name, whatever either registry declares.
+ * - **Renderings** — `Particle::renderings()` mounted `GET|POST {at}/{id}/{rendering}`, keyed under the
+ *   popcorn root `beam.renderings`. ⚠️ **Dissolved by particle-operation-surface 13**, which re-declared
+ *   the estate's three renderings as operations; the class survives here as the reason the audit reads
+ *   the ROUTE TABLE rather than a registry, and because a host may still hand-write the same slot.
+ * - **Operations** — keyed under `beam.particle.operations`. A *different* root from the rendering one,
+ *   so `OnDuplicate` was structurally blind to a rendering with the same name, whatever either registry
+ *   declared.
  * - **Hand-written routes, in no registry at all.** This is the class the ticket does not name and the
  *   one that decides the design. At `~/Herd/splicewire-app`, `POST api/v1/circuits/{id}/intake` sits in
  *   the same slot as the `circuits.export` rendering and the `circuits.run` operation — three claimants,
@@ -195,14 +197,15 @@ class ParticleSlotCollisionAudit implements DoctorAudit
     }
 
     /**
-     * Which of the three claimant classes this route belongs to. `hand-written` is not a fallback for
-     * "unrecognised" — it is the third class, and naming it is half the finding's value.
+     * Which claimant class this route belongs to. `hand-written` is not a fallback for "unrecognised"
+     * — it is a real class, and naming it is half the finding's value. The `rendering` claimant went
+     * with the rendering subsystem (particle-operation-surface 13); such a route now reads as
+     * `operation` or, if hand-written, as itself.
      */
     private function claimant(Route $route): string
     {
         return match (true) {
             $this->isOperation($route) => 'operation',
-            isset($route->defaults[RenderingsController::CONFIG]) => 'rendering',
             isset($route->defaults[ParticleController::RESOURCE]) => 'particle CRUD',
             default => 'hand-written',
         };

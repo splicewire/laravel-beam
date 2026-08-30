@@ -78,6 +78,10 @@ class BootChainTest extends TestCase
     /**
      * The macros api-surface-coherence 93 deleted stay deleted. Enforcement-by-absence is the whole point
      * of having deleted them rather than deprecating them, so absence is what gets asserted.
+     *
+     * `resourceRenderings` is still listed although particle-operation-surface 13 has since deleted the
+     * SUBSYSTEM it fronted. The two are separate facts and this one has not changed: 93 deleted the
+     * macro, and a host re-adding it would be re-opening a door whose room is now gone as well.
      */
     public function test_the_retired_route_macros_are_gone(): void
     {

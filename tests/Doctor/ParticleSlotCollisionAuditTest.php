@@ -7,7 +7,6 @@ use Rushing\Doctor\DoctorStatus;
 use Splicewire\Beam\Doctor\ParticleSlotCollisionAudit;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
-use Splicewire\Beam\Rendering\Http\RenderingsController;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -19,6 +18,12 @@ use Splicewire\Beam\Tests\TestCase;
  * reason this is a route-table check rather than a registry merge: at `~/Herd/splicewire-app`,
  * `POST api/v1/circuits/{id}/intake` shares the `circuits` slot with a rendering and an operation while
  * being unknown to every registry in the estate.
+ *
+ * ⚠️ particle-operation-surface 13 deleted the rendering subsystem, so the `rendering` CLAIMANT no
+ * longer exists as a stamp. The rendering fixture below is now a HAND-WRITTEN route in the slot, which
+ * is what a host's own `GET {resource}/{id}/export` is once no registry owns it — and that is the
+ * audit's third class, the one this suite was written to prove it can see. The collision it detects is
+ * unchanged; only the label it reports moved.
  *
  * {@see test_two_non_operation_routes_sharing_a_slot_are_not_this_audits_business} is what keeps the
  * estate's normal reading empty — measured at zero across twenty booted hosts on 2026-08-27.
@@ -38,11 +43,13 @@ class ParticleSlotCollisionAuditTest extends TestCase
             ->name("{$resource}.op.{$name}");
     }
 
+    /**
+     * A route in the `{resource}/{id}/{segment}` slot that no registry owns — what a rendering became
+     * when particle-operation-surface 13 dissolved the registry that used to stamp it.
+     */
     private function rendering(string $uri, string $name, string $verb = 'get'): void
     {
-        app(Router::class)->{$verb}($uri, fn () => null)
-            ->defaults(RenderingsController::CONFIG, ['rendering' => $name])
-            ->name($name);
+        app(Router::class)->{$verb}($uri, fn () => null)->name($name);
     }
 
     public function test_a_host_with_no_mounted_operation_passes(): void
@@ -79,7 +86,7 @@ class ParticleSlotCollisionAuditTest extends TestCase
         $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
         $this->assertStringContainsString('URI [|POST /widgets/{id}/export]', $findings[0]->detail);
         $this->assertStringContainsString('(operation)', $findings[0]->detail);
-        $this->assertStringContainsString('(rendering)', $findings[0]->detail);
+        $this->assertStringContainsString('(hand-written)', $findings[0]->detail);
     }
 
     public function test_a_hand_written_route_in_the_slot_collides_too(): void

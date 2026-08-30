@@ -8,7 +8,7 @@ use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\Subject\SubjectResolvers;
 use Splicewire\Beam\Rendering\DeclaresDelivery;
-use Splicewire\Beam\Scribe\Strategies\ReadsRenderingStamp;
+use Splicewire\Beam\Scribe\OpenApi\DeliveryGenerator;
 
 /**
  * Turns whatever a declaration put in its `delivery:` slot into a {@see DeclaresDelivery}, or `null`.
@@ -77,9 +77,10 @@ class DeliveryResolvers
 
     /**
      * What the operation says it puts on the wire, with the not-declared case spelled out rather than
-     * guessed — the operation-surface twin of
-     * {@see ReadsRenderingStamp::delivery()}, and deliberately the
-     * same array shape, because one document-assembly hook consumes both.
+     * guessed — written as the operation-surface twin of the rendering surface's `ReadsRenderingStamp`,
+     * in deliberately the same array shape because one document-assembly hook consumed both. 13 deleted
+     * the other one; the shape is kept because {@see DeliveryGenerator}
+     * is written against it.
      *
      * A declared delivery with an EMPTY media-type list documents the WILDCARD media type — "delivers
      * something, has not said what" — rather than having `application/json` invented for it because

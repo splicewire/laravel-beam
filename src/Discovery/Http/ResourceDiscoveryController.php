@@ -14,6 +14,8 @@ use Splicewire\Beam\Discovery\ResourceMountMap;
 use Splicewire\Beam\Discovery\RouteReachability;
 use Splicewire\Beam\Discovery\SubSurface;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Particle\Delivery\DeliveryResolvers;
+use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Routing\BeamRouteAction;
 use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
 
@@ -63,8 +65,10 @@ class ResourceDiscoveryController extends Controller
      * What this caller can reach on this resource
      *
      * Every route mounted on this resource at this exposure — its CRUD surface, its named operations,
-     * its filter sub-surface, its renderings and its subscribable events — filtered to what the
-     * authenticated caller's own abilities admit.
+     * its filter sub-surface and its subscribable events — filtered to what the authenticated caller's
+     * own abilities admit. An operation that declares a `delivery:` also carries what it puts on the
+     * wire, which is where the dissolved `GET {resource}/renderings` catalog's facts now live
+     * (particle-operation-surface 13).
      *
      * The reference documents what exists; this documents what YOU can reach, which is the one question
      * a build-time artifact structurally cannot answer.
@@ -134,6 +138,7 @@ class ResourceDiscoveryController extends Controller
     protected function entry(Route $route): ResourceDiscoveryEntryData
     {
         $operation = $route->defaults[ParticleOperationController::NAME] ?? null;
+        $delivery = $this->delivery($route);
 
         return new ResourceDiscoveryEntryData(
             subSurface: SubSurface::of($route),
@@ -144,6 +149,40 @@ class ResourceDiscoveryController extends Controller
             operationId: BeamRouteAction::operationId($route),
             returns: BeamRouteAction::returns($route),
             returnsMany: BeamRouteAction::returnsMany($route),
+            declaresDelivery: $delivery !== null,
+            formats: $delivery['formats'] ?? [],
+            mediaTypes: $delivery['mediaTypes'] ?? [],
+            deliveryHeaders: $delivery['headers'] ?? [],
+            defaultFormat: $delivery['default'] ?? null,
         );
+    }
+
+    /**
+     * What an operation route says it puts on the wire, or null for anything that is not a declaring
+     * operation (particle-operation-surface 13).
+     *
+     * This is the rendering catalog's job, inherited: `GET {resource}/renderings` published the same
+     * four facts for the three endpoints that registry mounted, and 13 turned those three into
+     * operations. Resolved through {@see DeliveryResolvers} — the one reader of the slot — rather than
+     * by touching `DeclaresDelivery` here, so the enforced set, the published set and this listing are
+     * all the same `formats()` expression.
+     *
+     * `find()` rather than `get()`: an operation route mounted by bare name against a registry this
+     * host never filled is a listing entry with no delivery, not a 500 on a discovery read.
+     *
+     * @return array{mediaTypes: list<string>, headers: array<string, string>, default: ?string, formats: list<string>}|null
+     */
+    protected function delivery(Route $route): ?array
+    {
+        $resource = $route->defaults[ParticleOperationController::RESOURCE] ?? null;
+        $name = $route->defaults[ParticleOperationController::NAME] ?? null;
+
+        if (! is_string($resource) || ! is_string($name)) {
+            return null;
+        }
+
+        $operation = app(ParticleOperationRegistry::class)->find($resource, $name);
+
+        return $operation === null ? null : DeliveryResolvers::contract($operation);
     }
 }

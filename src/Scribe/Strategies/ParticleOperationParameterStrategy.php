@@ -12,7 +12,7 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Delivery\DeliveryResolvers;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
-use Splicewire\Beam\Scribe\OpenApi\RenderingDeliveryGenerator;
+use Splicewire\Beam\Scribe\OpenApi\DeliveryGenerator;
 
 /**
  * Document a particle OPERATION's query contract — the sibling of {@see ParticleListParameterStrategy} one
@@ -162,9 +162,9 @@ class ParticleOperationParameterStrategy extends Strategy
      *
      * It reaches this method only because {@see ParticleOperation::frameworkParameters()} listed it,
      * and that list is empty unless the delivery enumerates a format axis — so a delivery with one
-     * representation publishes NO parameter rather than a zero-member enum, which is the same call
-     * `ResourceRenderingParameterStrategy` makes and for the same reason: the absent parameter IS the
-     * accurate description.
+     * representation publishes NO parameter rather than a zero-member enum, which is the same call the
+     * rendering surface's parameter strategy made, for the same reason, until
+     * particle-operation-surface 13 deleted it: the absent parameter IS the accurate description.
      *
      * The enum published here is the same expression
      * {@see ParticleOperationController::format()} refuses against,
@@ -172,7 +172,7 @@ class ParticleOperationParameterStrategy extends Strategy
      *
      * The default rides `example` rather than a `default` keyword — Scribe's parameter model has no
      * `default` slot, and the machine-readable `schema.default` is written at document assembly by
-     * {@see RenderingDeliveryGenerator}, which is where the rest of
+     * {@see DeliveryGenerator}, which is where the rest of
      * this endpoint's un-expressible spec lives too.
      *
      * @return array<string, mixed>

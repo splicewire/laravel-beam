@@ -109,35 +109,6 @@ class ParticleMountManager
     }
 
     /**
-     * The rendering surface mounted on its own, for a resource whose CRUD is mounted elsewhere — or, with
-     * `at: ''`, for one already inside a route group that names it.
-     *
-     * Note `$at` defaults to the RESOURCE KEY here, matching `Route::resourceRenderings()`, where
-     * {@see PendingParticleMount::renderings()} defaults it to the mount's URI. That is not an
-     * inconsistency: the builder knows where it lives and this verb does not.
-     */
-    public function renderings(
-        string $resource,
-        string $subject,
-        ?string $at = null,
-        ?array $abilities = null,
-        array $middleware = [],
-        array $with = [],
-        string $idConstraint = 'uuid',
-    ): void {
-        $this->mounter->resourceRenderings(
-            router: $this->router,
-            resource: $resource,
-            subject: $subject,
-            at: $at,
-            abilities: $abilities,
-            middleware: $middleware,
-            with: $with,
-            idConstraint: $idConstraint,
-        );
-    }
-
-    /**
      * The per-resource hook-event catalog, mounted on its own (api-surface-coherence 106).
      *
      * Almost every caller gets this for free from {@see PendingParticleMount} — it rides the resource

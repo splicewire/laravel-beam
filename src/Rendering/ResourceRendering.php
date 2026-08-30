@@ -3,7 +3,20 @@
 namespace Splicewire\Beam\Rendering;
 
 /**
- * One named, derived projection of a resource — the thing `Route::resourceRenderings()` mounts.
+ * One named, derived projection of a resource.
+ *
+ * ⚠️ **Nothing in beam mounts, registers or calls this any more.** particle-operation-surface 13
+ * deleted `ResourceRenderingRegistry`, the `beam.renderings` root, the mount and both controllers; the
+ * estate's three implementors were re-declared as particle OPERATIONS whose handlers call `render()`
+ * directly and whose wire contract is stated through {@see DeclaresDelivery}, which is the port the
+ * operation surface reads.
+ *
+ * It survives for one reason, and it is the same reason {@see RenderingCertifier} survives: it is the
+ * supertype of {@see ReversibleRendering}, the seam a lens-backed rendering was deliberately built to
+ * register into (particle-doctrine-convergence 10/11 shaped the mount and built `LensRegistry`; the
+ * join was never built). Deleting it closes a bridge someone half-built on purpose. Its new landing
+ * site is the operation surface — proven reversibility deciding whether a WRITE twin mounts — and
+ * nothing wires that yet.
  *
  * A rendering is *derived truth* (see the exporter's standing line: "the compiled document is derived
  * truth"). The resource's own records remain the durable, editable source of record; a rendering reads
@@ -19,9 +32,10 @@ namespace Splicewire\Beam\Rendering;
  * **`formats()` is the validation contract** (api-surface-coherence ticket 32 §D). It used to be
  * decoration — documented here as existing "for documentation, discovery and manifests", with zero call
  * sites estate-wide, while each rendering rejected a bad format in whatever shape its own surface
- * happened to reject in. Those shapes were three and two were wrong (a 500, and a silent ignore).
- * {@see Http\RenderingsController} now validates against this method before calling `render()`, so it is
- * the set the wire ENFORCES and the set the reference publishes, and the three cannot drift apart.
+ * happened to reject in. Those shapes were three and two were wrong (a 500, and a silent ignore). The
+ * enforcement now lives one interface over: {@see DeclaresDelivery::formats()} absorbed this method,
+ * `ParticleOperationController::format()` 422s against it before the handler runs, and
+ * `ParticleOperationParameterStrategy` publishes the same expression.
  *
  * `render()` still receives `null` for "your default" — the controller does not substitute one — and a
  * rendering may still reject on a per-RECORD basis (the route accepts the union; a record's own profile
@@ -34,9 +48,10 @@ namespace Splicewire\Beam\Rendering;
 interface ResourceRendering
 {
     /**
-     * The rendering's name. This is the terminal URI segment AND the route-name segment the macro
-     * mounts (`{resource}/{id}/{name}`), so it must be a bare, slash-free, URL-safe token — `export`,
-     * `timeline`, `transcript`.
+     * The rendering's name. It WAS the terminal URI segment and the route-name segment the deleted
+     * rendering mount used (`{resource}/{id}/{name}`); that job now belongs to `#[ParticleOp]`'s
+     * `name:`, and this is read by nothing in beam. Keep it a bare, slash-free, URL-safe token —
+     * `export`, `timeline`, `transcript` — so a future mount can use it again.
      */
     public function name(): string;
 

@@ -7,16 +7,18 @@ use Knuckles\Scribe\Extracting\Strategies\Strategy;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Delivery\DeliveryResolvers;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
-use Splicewire\Beam\Scribe\OpenApi\RenderingDeliveryGenerator;
+use Splicewire\Beam\Scribe\OpenApi\DeliveryGenerator;
 
 /**
- * Stash what a particle OPERATION actually puts on the wire, for {@see RenderingDeliveryGenerator} to
+ * Stash what a particle OPERATION actually puts on the wire, for {@see DeliveryGenerator} to
  * write at document assembly (particle-operation-surface 14).
  *
- * The sibling of {@see ResourceRenderingResponseStrategy} one declaration site over, and deliberately
- * the same shape down to the stash key: the two surfaces produce the identical contract — media types,
- * added headers, the applied default format, the format enumeration — so they share one
- * document-assembly hook rather than growing a second copy of it that drifts.
+ * Written as the sibling of the rendering surface's `ResourceRenderingResponseStrategy`, deliberately
+ * the same shape down to the stash key, because the two surfaces produced the identical contract —
+ * media types, added headers, the applied default format, the format enumeration — and shared one
+ * document-assembly hook rather than growing a second copy of it that drifts. particle-operation-surface
+ * 13 then deleted that sibling; this is the surviving writer, and the shared hook is why its deletion
+ * changed no published media type.
  *
  * ## Why this exists at all, rather than falling out of `output:`
  *
@@ -66,7 +68,7 @@ class ParticleOperationDeliveryStrategy extends Strategy
             return []; // Declares no delivery. Handled, nothing stashed — see the class docblock.
         }
 
-        $endpointData->custom[RenderingDeliveryGenerator::STASH] = [
+        $endpointData->custom[DeliveryGenerator::STASH] = [
             ...$delivery,
             'resource' => $operation->resource,
             'rendering' => $operation->name,

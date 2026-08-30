@@ -157,11 +157,11 @@ class ParticleOperationController extends Controller
      * back the requested format — `null` for "the delivery's own default", which is never substituted
      * here.
      *
-     * This is `RenderingsController::format()`, moved (particle-operation-surface 11 A6). It is the
-     * ENFORCEMENT half of `delivery:`, and it is why ticket 13 can retire the rendering subsystem
-     * without regressing format validation from enforced-and-published to per-rendering ad hoc: the set
-     * the wire refuses is {@see DeclaresDelivery::formats()}, and it is the
-     * same expression `ParticleOperationParameterStrategy` publishes.
+     * This is the deleted `RenderingsController::format()`, moved (particle-operation-surface 11 A6).
+     * It is the ENFORCEMENT half of `delivery:`, and it is why ticket 13 could retire the rendering
+     * subsystem without regressing format validation from enforced-and-published to per-rendering ad
+     * hoc: the set the wire refuses is {@see DeclaresDelivery::formats()},
+     * and it is the same expression `ParticleOperationParameterStrategy` publishes.
      *
      * Two silences, both deliberate and both reproducing today's behaviour exactly:
      *

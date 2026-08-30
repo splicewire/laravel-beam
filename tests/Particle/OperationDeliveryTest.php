@@ -22,7 +22,7 @@ use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Rendering\DeclaresDelivery;
-use Splicewire\Beam\Scribe\OpenApi\RenderingDeliveryGenerator;
+use Splicewire\Beam\Scribe\OpenApi\DeliveryGenerator;
 use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
 use Splicewire\Beam\Scribe\Strategies\ParticleOperationParameterStrategy;
 use Splicewire\Beam\Tests\TestCase;
@@ -43,11 +43,11 @@ use Splicewire\Beam\Tests\TestCase;
  * So the slot lands with both halves of what reads it, and both are asserted here:
  *
  *  - **enforcement** — {@see ParticleOperationController::format()} refuses an unlisted `?format` with
- *    a 422 before the handler runs. This is the clause `RenderingsController` owns today, moved (11
+ *    a 422 before the handler runs. This is the clause `RenderingsController` owned until ticket 13, moved (11
  *    A6). Ticket 13 dissolves that controller and regresses format validation from
  *    enforced-and-published to per-rendering ad hoc without it;
  *  - **publication** — {@see ParticleOperationDeliveryStrategy} stashes the contract and
- *    {@see RenderingDeliveryGenerator} writes it into the document, which is the only way to say "200,
+ *    {@see DeliveryGenerator} writes it into the document, which is the only way to say "200,
  *    in these media types" at all: Scribe's own model is one-content-type-per-status and silently drops
  *    the second.
  *
@@ -148,7 +148,7 @@ class OperationDeliveryTest extends TestCase
             [],
             $this->operation('f', delivery: FixtureDocumentDelivery::class)->frameworkParameters(),
             'A delivery with one representation has no format axis, so there is no parameter to forgive '
-                .'and none to publish — the same call the rendering surface already makes.',
+                .'and none to publish — the same call the rendering surface made before ticket 13 deleted it.',
         );
     }
 
@@ -276,10 +276,10 @@ class OperationDeliveryTest extends TestCase
         $endpoint = $this->endpoint();
 
         $this->assertSame([], (new ParticleOperationDeliveryStrategy(new DocumentationConfig([])))($endpoint));
-        $this->assertArrayNotHasKey(RenderingDeliveryGenerator::STASH, $endpoint->custom);
+        $this->assertArrayNotHasKey(DeliveryGenerator::STASH, $endpoint->custom);
 
         $pathItem = ['responses' => new \stdClass];
-        $this->assertSame($pathItem, (new RenderingDeliveryGenerator(new DocumentationConfig([])))->pathItem(
+        $this->assertSame($pathItem, (new DeliveryGenerator(new DocumentationConfig([])))->pathItem(
             $pathItem,
             [],
             OutputEndpointData::fromExtractedEndpointArray($endpoint->toArray()),
@@ -362,7 +362,7 @@ class OperationDeliveryTest extends TestCase
 
         (new ParticleOperationDeliveryStrategy(new DocumentationConfig([])))($endpoint);
 
-        return (new RenderingDeliveryGenerator(new DocumentationConfig([])))->pathItem(
+        return (new DeliveryGenerator(new DocumentationConfig([])))->pathItem(
             ['parameters' => $parameters, 'responses' => new \stdClass],
             [],
             OutputEndpointData::fromExtractedEndpointArray($endpoint->toArray()),
