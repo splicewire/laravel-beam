@@ -31,12 +31,22 @@ use Splicewire\Beam\Particle\ParticleOperation;
  * default has to be the behaviour they already had — one record, from the URL.
  *
  * ⚠️ That sentence used to read in the present tense and no longer holds: the slot has a consumer.
- * `splicewire/tower`'s `Tenancy\Invitations\InvitationTokenSubject` — declared by
- * `tenant-invitations.accept`, which resolves its `{id}` segment as a bearer TOKEN — is the first
- * implementation of this port outside beam, and the first declaration anywhere to name `subject:`. The
- * case it answers is the one the port exists for and no resource-wide slot can express: `revoke`/`resend`
- * address that resource by id while `accept` addresses it by token, so `ParticleResource::$routeKey`
- * ("one public identifier per resource, never two") would have to break two verbs to serve a third.
+ * `splicewire/tower`'s `tenant-invitations.accept` resolves its `{id}` segment as a bearer TOKEN, and was
+ * the first declaration anywhere to name `subject:`. The case it answers is the one the port exists for
+ * and no resource-wide slot can express: `revoke`/`resend` address that resource by id while `accept`
+ * addresses it by token, so `ParticleResource::$routeKey` ("one public identifier per resource, never
+ * two") would have to break two verbs to serve a third. That one-off has since been generalised into
+ * {@see ColumnSubject} and ships here.
+ *
+ * ## ⚠️ A parameterised resolver is declared as an INSTANCE, and that is not a lesser path
+ *
+ * The class-string row is the ergonomics every existing declaration uses, and it is genuinely better
+ * when a resolver's whole configuration is its dependencies — {@see RecordSubject} takes the resource
+ * registry that way. It cannot express a resolver configured by VALUE: `ColumnSubject::class` has
+ * nowhere to put `'token'`. So such a resolver is spelled `new ColumnSubject('token')`, which is a
+ * constant expression under PHP 8.1's new-in-initializers and therefore legal inside the `#[ParticleOp]`
+ * twin as well as at `Particle::op()` — the instance row exists precisely so the two declaration sites
+ * can say the same thing. A static factory could not; see the warning on `ParticleOperation::$subject`.
  */
 class SubjectResolvers
 {

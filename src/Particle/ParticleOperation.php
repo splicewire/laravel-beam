@@ -174,9 +174,16 @@ use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
  *
  * particle-operation-surface ticket 02. Subject means the CONTEXT an operation runs in, not what it
  * hands back, and it is a polymorphic slot rather than an enum — see
- * {@see ResolvesOperationSubject}. Three implementations ship; `null` means {@see RecordSubject},
+ * {@see ResolvesOperationSubject}. Four implementations ship; `null` means {@see RecordSubject},
  * which is what every declaration had implicitly, so the slot is a pure addition and no declaration
  * site moved.
+ *
+ * The fourth, {@see ColumnSubject}, is the one that has to be declared as an INSTANCE
+ * (`subject: new ColumnSubject('token')`) rather than a class-string, because it is parameterised by
+ * value — the column its `{id}` resolves against — and a class-string has nowhere to carry that. It
+ * resolves ONE operation by a token / slug / external ref while its siblings on the same resource keep
+ * resolving by id, which is a disagreement `ParticleResource::$routeKey` cannot hold: that slot is
+ * resource-wide and says so.
  *
  * What the default now does differently is the point: it resolves through the RESOURCE's backing and
  * applies the resource's declared `scope` / `includes` / `routeKey`, rather than running a bare

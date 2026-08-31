@@ -17,18 +17,21 @@ use Splicewire\Beam\Particle\ParticleOperation;
  *
  * ## A polymorphic slot, not an enum
  *
- * Three implementations ship — {@see RecordSubject} (one record, from the URL), {@see ActorSubject}
- * (the acting principal), {@see NoSubject} (none, a collection-level operation) — and the estate
- * already carries cases outside any three-case enum: a `{type}/{id}` polymorphic transition, 21
- * nested `{id}/…/{id}` mounts, and `particleRelative`'s `Closure $via`. So the discriminator is the
- * TYPE, exactly as `ParticleResource::$backing` discriminates by type rather than by a `sourceKind`
- * string nothing ever branched on.
+ * Four implementations ship — {@see RecordSubject} (one record, from the URL), {@see ColumnSubject}
+ * (one record, from the URL read as a named column), {@see ActorSubject} (the acting principal),
+ * {@see NoSubject} (none, a collection-level operation) — and the estate already carries cases outside
+ * any small enum: a `{type}/{id}` polymorphic transition, 21 nested `{id}/…/{id}` mounts, and
+ * `particleRelative`'s `Closure $via`. So the discriminator is the TYPE, exactly as
+ * `ParticleResource::$backing` discriminates by type rather than by a `sourceKind` string nothing ever
+ * branched on.
  *
- * ✅ **That argument stopped being hypothetical.** `splicewire/tower` ships a fourth implementation —
- * `Tenancy\Invitations\InvitationTokenSubject`, which resolves an invitation from its bearer TOKEN, for
- * an operation whose sibling verbs on the same resource resolve by id. Three ship here, the population is
- * four, and the one that is not here lives in a package beam has never heard of. That is what the
- * polymorphic slot bought over an enum, measured rather than predicted.
+ * ✅ **That argument stopped being hypothetical, and then it round-tripped.** `splicewire/tower` wrote
+ * the first implementation of this port outside beam — an invitation resolved from its bearer TOKEN,
+ * for an operation whose sibling verbs on the same resource resolve by id. Nothing about it was
+ * tower-specific once the model and the column were pulled out of its body, so it came back here as
+ * {@see ColumnSubject}. The polymorphic slot is what let a host answer a case beam had not enumerated
+ * *and* what let the answer be adopted without a new slot — measured rather than predicted, in both
+ * directions.
  *
  * ## ⚠️ It takes parameters and an actor, and NEVER a `Request`
  *

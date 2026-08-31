@@ -44,9 +44,17 @@ class ResourceRecordLookup
     /**
      * Apply the resource's `scope`, `includes` and `routeKey` to a base query and resolve `$id`.
      *
+     * `$column` OVERRIDES step 3 for one caller only — {@see ColumnSubject}, whose whole point is that
+     * a single operation addresses the resource by a different identifier than its siblings do. It
+     * overrides `routeKey` rather than adding to it, for the same reason `routeKey` displaces the
+     * primary key: one public identifier per lookup, never two. Steps 1 and 2 are untouched by it, so
+     * the row gate and the declared eager loads still apply.
+     *
      * @param  Builder<Model>  $query
+     * @param  string|null  $column  the identifier column to match, replacing the resource's `routeKey`;
+     *                               `null` ⇒ the resource's own declaration, which is every other caller
      */
-    public function within(ParticleResource $resource, Builder $query, string $id): Model
+    public function within(ParticleResource $resource, Builder $query, string $id, ?string $column = null): Model
     {
         if ($resource->scope !== null) {
             $query = ($resource->scope)($query) ?? $query;
@@ -56,8 +64,10 @@ class ResourceRecordLookup
             $query->with($resource->includes);
         }
 
-        if ($resource->routeKey !== null) {
-            return $query->where($resource->routeKey, $id)->firstOrFail();
+        $key = $column ?? $resource->routeKey;
+
+        if ($key !== null) {
+            return $query->where($key, $id)->firstOrFail();
         }
 
         return $query->findOrFail($id);
