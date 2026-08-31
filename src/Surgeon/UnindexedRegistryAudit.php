@@ -7,6 +7,7 @@ use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
+use Rushing\Popcorn\Registries\Exceptions\UnbakedRegistryIndex;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Laddered;
 use Rushing\Popcorn\Registries\Registry;
@@ -180,7 +181,17 @@ class UnindexedRegistryAudit implements DoctorAudit
                 .'registry is indexed.')];
         }
 
-        $described = $this->describedRoots();
+        // ⚠️ An unbaked index RAISES on every membership read (registry-kernel 73 D3.2), so this audit
+        // must catch it and report its own blindness rather than dying inside `surgeon:audit` — the
+        // third of the three readers D3.2 promised. A doctor audit that crashes reports nothing, which
+        // for the one condition where nothing is described is the worst possible outcome.
+        try {
+            $described = $this->describedRoots();
+        } catch (UnbakedRegistryIndex $unbaked) {
+            return [new Finding(DoctorStatus::Fail, self::CHECK, 'The registry index has no baked '
+                .'membership list, so NOTHING is described at this host and nothing is authorized. '
+                .$unbaked->getMessage(), conclusive: false)];
+        }
 
         if ($described === ['']) {
             return [new Finding(DoctorStatus::Warn, self::CHECK, 'The registry index holds nothing but its '
