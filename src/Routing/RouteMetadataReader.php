@@ -70,7 +70,7 @@ interface RouteMetadataReader
     public function operationId(Route $route): ?string;
 
     /**
-     * The resource key this route belongs to — whether stamped by `Route::particleResource()` or declared
+     * The resource key this route belongs to — whether stamped by `Particle::mount()` or declared
      * by `->beam()->inResource()`. Both write the same route default, so this reader cannot tell them
      * apart, which is the point (ticket 01).
      *

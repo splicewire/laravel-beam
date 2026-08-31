@@ -234,7 +234,7 @@ class ParticleOperationController extends Controller
      * Refuse a request that carries input to an operation declared to accept none.
      *
      * Only the op's OWN axis is examined, and which axis that is belongs to the mount rather than the
-     * declaration: `Route::particleOp()` chooses the HTTP method, so a GET op's input arrives as a query
+     * declaration: the mount chooses the HTTP method, so a GET op's input arrives as a query
      * string and every other op's as a body. Reading both would make `?async` — which is beam's parameter,
      * not the caller's payload — look like a violation on the very kind that defines it.
      *

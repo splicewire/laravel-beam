@@ -32,10 +32,18 @@ use Splicewire\Beam\Routing\RouteMetadataReader;
  *
  * A mount is not stored anywhere — `Particle::mount('circuits')` leaves no artifact behind but its
  * routes — so the root is RECOVERED from each route by removing its own sub-surface tail. That step is
- * sub-surface-aware rather than a longest-common-prefix over the key's URIs, and it has to be: every
- * one of `market-products`' four routes is
- * `api/operator/beam-market/review/market-products/{id}/{name}`, whose longest common prefix ends at
- * `…/{id}`. Knowing the route is an OPERATION is what recovers `…/market-products`.
+ * sub-surface-aware rather than a longest-common-prefix over the key's URIs, and it has to be. The
+ * clearest case is the one it was built against, BEFORE particle-operation-surface 12: every one of
+ * `market-products`' four routes was
+ * `api/operator/beam-market/review/market-products/{id}/op/{name}`, whose longest common prefix ends at
+ * `…/{id}/op` — and `op` is a LITERAL, which the trailing-parameter strip cannot remove. Knowing the
+ * route is an OPERATION is what recovers `…/market-products`.
+ *
+ * ⚠️ The drop did not retire that need, it MOVED it, so do not read the example above as today's URL.
+ * The primary spelling is now `…/market-products/{id}/{name}` (the deprecated alias still carries the
+ * old one, and {@see rootOf()} branches on both). There the tail is the operation's own name and is
+ * dropped by IDENTITY rather than by position — see the ⚠️ in `rootOf()`, where a resource whose ONLY
+ * mounted route is an operation is precisely the case a prefix-and-strip gets wrong.
  *
  * Roots that nest then absorb into their shortest ancestor, which is what folds `api/v1/beam/schemas`,
  * `…/schemas/freeze` and `…/schemas/{stem}/latest` into one mount instead of four — and leaves

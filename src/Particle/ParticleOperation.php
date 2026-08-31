@@ -60,7 +60,7 @@ use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
  *   - **`null`** — UNDECLARED, which today means "accept anything, validate nothing". This is the residue,
  *     not a design: it is the state an op is in because nobody has looked at it yet.
  *
- * The axis `input` describes is the ROUTE's, not the declaration's: `Route::particleOp()` chooses the HTTP
+ * The axis `input` describes is the ROUTE's, not the declaration's: the mount chooses the HTTP
  * method, so the same declared class publishes as a request body on a write op and as query parameters on a
  * GET one. A declaration says WHAT is accepted; the mount says where it arrives.
  *
