@@ -201,6 +201,14 @@ class BeamInstallCommand extends Command
         //    when present — idempotent + a no-op on npm/yarn hosts, so it's always safe to run.
         $this->ensurePnpmOverrides();
 
+        // 7. Compile-toolchain provisioning (the PATH trap): beam-ux's compile-on-save shells out to a
+        //    bare `node`, and php-fpm has no PATH — so a browser save compiles nothing and returns 200
+        //    while every CLI measurement stays green (beam-docs-satellite 51). Delegated to
+        //    laravel-beam-ux's `splicewire:beam:ux:pin-node` when present, which resolves the path
+        //    against THIS process's PATH (the CLI's, i.e. the side that works) and writes it to `.env`.
+        //    Machine-specific by nature, which is why it is resolved at install rather than committed.
+        $this->pinNodeBinary();
+
         if ($this->seedingFailed) {
             // Reported at the END, not where it happened: the seed pass runs mid-install and its warnings
             // scroll away behind publishing, migrating and spec generation.
@@ -885,6 +893,28 @@ class BeamInstallCommand extends Command
 
         $this->line('splicewire:beam:install → frontend surfaces (pnpm overrides)');
         $this->call('splicewire:beam:ux:pnpm-overrides', $this->option('force') ? ['--force' => true] : []);
+    }
+
+    /**
+     * Compile-toolchain provisioning (beam-docs-satellite 53): pin `BEAM_UX_NODE_BINARY` to an absolute
+     * path so entry bodies compile under php-fpm and not only from a shell. Skipped silently when
+     * laravel-beam-ux isn't installed (the command isn't registered), so beam-core never hard-depends
+     * on it — the same shape as {@see self::ensurePnpmOverrides()}.
+     *
+     * ⚠️ `--force` is NOT forwarded. Here it would mean *repoint a binary the operator chose*, which is
+     * a different act from the publish-overwrite `--force` governs everywhere else in this command; an
+     * operator repointing a pinned Node runs the command themselves.
+     */
+    private function pinNodeBinary(): void
+    {
+        $app = $this->getApplication();
+
+        if ($app === null || ! $app->has('splicewire:beam:ux:pin-node')) {
+            return;
+        }
+
+        $this->line('splicewire:beam:install → compile toolchain (node binary)');
+        $this->call('splicewire:beam:ux:pin-node');
     }
 
     /**
