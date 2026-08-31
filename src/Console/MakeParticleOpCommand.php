@@ -215,7 +215,7 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             ['kind', null, InputOption::VALUE_REQUIRED, 'read | write | task | stream — decides the handler signature AND the shape of the output slot', OperationKind::Write->value],
             ['resource', 'r', InputOption::VALUE_REQUIRED, 'The particle resource key this op hangs off (default: the kebab-cased plural of <Name>)'],
             ['op', 'o', InputOption::VALUE_REQUIRED, 'The operation slug in the URL, …/{id}/{name} (default: the kebab-cased <Name>)'],
-            ['model', 'm', InputOption::VALUE_REQUIRED, 'The Eloquent model the {id} resolves to (default: derived from the resource key)'],
+            ['model', 'm', InputOption::VALUE_REQUIRED, 'The Eloquent model to TYPE-HINT `handle()` with (default: derived from the resource key). It no longer emits a `model:` slot — particle-operation-surface 18 retired that, and the subject is resolved from the resource'],
             ['ability', 'a', InputOption::VALUE_REQUIRED, 'The ability checked before the op runs (default: view for read/stream, update for write/task)'],
             ['event', 'e', InputOption::VALUE_REQUIRED, 'Stream only: the wire event name the output map is keyed by (default: <name>_status)'],
             ['data-namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the emitted input/output Data classes (default: App\Data)'],

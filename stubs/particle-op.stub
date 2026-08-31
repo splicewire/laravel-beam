@@ -34,7 +34,6 @@ use Splicewire\Beam\Particle\OperationKind;
     resource: '{{ resource }}',
     name: '{{ opName }}',
     kind: OperationKind::{{ kind }},
-    model: {{ model }}::class,
     ability: '{{ ability }}',
     input: {{ inputClass }}::class,
     output: {{ outputClass }}::class,

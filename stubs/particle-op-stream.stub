@@ -35,7 +35,6 @@ use Splicewire\Beam\Particle\OperationKind;
     resource: '{{ resource }}',
     name: '{{ opName }}',
     kind: OperationKind::Stream,
-    model: {{ model }}::class,
     ability: '{{ ability }}',
     input: {{ inputClass }}::class,
     output: ['{{ event }}' => [{{ outputClass }}::class]],

@@ -8,6 +8,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Particle\Backing\ResourceBacking;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -71,6 +72,52 @@ class OperationSubjectModelTest extends TestCase
             OtherSubjectModelWidget::class,
             $this->models()->for($this->op(model: OtherSubjectModelWidget::class)),
         );
+    }
+
+    public function test_a_registered_resource_whose_backing_is_not_a_backsmodel_falls_back(): void
+    {
+        // ⚠️ The one documented hazard of this fold, and it was the last thing left untested. A
+        // `backing:` need not name a model at all — `BackingResolver` accepts any `ResourceBacking`,
+        // and three ship in the estate that legitimately cannot answer `modelClass()` (rows spanning
+        // two record types, or pivot rows no single model identifies). For those the resource has no
+        // model to give and the declared `$model` is still the only answer.
+        //
+        // This is exactly why `laravel-beam-rank`'s three `Resources::attachTo()` ops KEEP their
+        // `model:`: that factory yields its resource to a host that already claimed the key, and the
+        // host's backing may be one of these.
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'subject-model-widgets',
+            backing: ModellessBacking::class,
+            // Capability is the ceiling: a backing with no `WritesRecords` may open no write
+            // affordance, and `BackingResolver::assertAffordancesWithinCapability()` throws at
+            // REGISTRATION if it does. The estate's real modelless backings are declared exactly
+            // this way.
+            readOnly: true,
+            editable: false,
+            deletable: false,
+        ));
+
+        $this->assertSame(
+            OtherSubjectModelWidget::class,
+            $this->models()->for($this->op(model: OtherSubjectModelWidget::class)),
+        );
+    }
+
+    public function test_a_registered_resource_with_no_model_and_no_declaration_is_null(): void
+    {
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'subject-model-widgets',
+            backing: ModellessBacking::class,
+            // Capability is the ceiling: a backing with no `WritesRecords` may open no write
+            // affordance, and `BackingResolver::assertAffordancesWithinCapability()` throws at
+            // REGISTRATION if it does. The estate's real modelless backings are declared exactly
+            // this way.
+            readOnly: true,
+            editable: false,
+            deletable: false,
+        ));
+
+        $this->assertNull($this->models()->for($this->op()));
     }
 
     public function test_unresolvable_is_a_null_and_not_a_throw(): void
@@ -157,6 +204,12 @@ class SubjectModelWidget extends Model
 
     protected $guarded = [];
 }
+
+/**
+ * A backing that legitimately answers no single model — the population `BacksModel`'s docblock names
+ * (tower's `MembershipSource` and `ReviewQueueUnionSource`, beam-accounts' `MembershipSource`).
+ */
+class ModellessBacking implements ResourceBacking {}
 
 class OtherSubjectModelWidget extends Model
 {

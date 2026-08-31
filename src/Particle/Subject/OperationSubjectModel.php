@@ -58,11 +58,14 @@ class OperationSubjectModel
         $resources = $this->resources ?? app(ParticleResourceRegistry::class);
 
         if ($resources->has($operation->resource)) {
-            $backing = $resources->get($operation->resource)->backing();
-
-            if ($backing instanceof BacksModel) {
-                return $backing->modelClass();
-            }
+            // {@see ParticleResource::modelClass()} and NOT `backing()` + `instanceof BacksModel`.
+            // Same answer, but it reads the RAW `backing:` slot through
+            // {@see \Splicewire\Beam\Particle\Backing\BackingResolver::modelFor()}, which
+            // short-circuits a plain model class-string and never touches the container for the
+            // ordinary case. Its docblock already names *"subject resolution"* as its first intended
+            // caller, so re-deriving the read here would be this ticket's own defect one tier up: a
+            // second reader of a fact that already had one place to be read.
+            return $resources->get($operation->resource)->modelClass() ?? $operation->model;
         }
 
         return $operation->model;

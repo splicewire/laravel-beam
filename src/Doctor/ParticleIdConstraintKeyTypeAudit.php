@@ -88,7 +88,18 @@ class ParticleIdConstraintKeyTypeAudit implements DoctorAudit
         $models = $this->models ?? new OperationSubjectModel;
 
         foreach ($declared as $op) {
-            $model = $models->for($op);
+            // ⚠️ Guarded, and the guard is the point. Reading the model now goes through the
+            // RESOURCE, and a `ResourceBacking` class-string is container-resolved to answer
+            // `modelClass()` — so a backing whose constructor wants a tenant connection would turn
+            // `surgeon:audit` into a stack trace instead of a finding. An audit's answer depends on
+            // the host by definition; it reports, it does not throw. Same shape as `keyTypeOf()`'s
+            // own `catch (Throwable)` below, and for the same reason.
+            try {
+                $model = $models->for($op);
+            } catch (Throwable) {
+                $model = null;
+            }
+
             $actual = $model === null ? null : $this->keyTypeOf($model);
 
             // `null` = the model could not be resolved or keys on something none of the three cases

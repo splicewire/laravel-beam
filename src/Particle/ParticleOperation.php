@@ -417,15 +417,6 @@ class ParticleOperation implements HasRegistryKey
      * @param  string  $resource  the particle resource key this operation hangs off (for the route + auth)
      * @param  string  $name  the operation slug in the URL (`…/{id}/{name}`)
      * @param  OperationKind  $kind  read | write | task | stream — sync-call vs queueable-dispatch vs held-stream
-     * @param  class-string|null  $model  ⚠️ **DEPRECATED, and last in the signature for that reason**
-     *                                    (ticket 18) — declare a `#[ParticleResource]` for `$resource` whose
-     *                                    `backing:` names the model, and omit this. It was documented as the
-     *                                    fallback subject class for a resource key naming no registered
-     *                                    resource, *"live at 13+ sites"*; that counted declaration sites in
-     *                                    source, and the booted population across all 21 `~/Herd` roots is
-     *                                    **0 of 107 registered operations** (2026-08-31). It is read only
-     *                                    when the resource is unregistered or its backing is not a
-     *                                    `BacksModel` — see the class docblock
      * @param  Closure  $handle  host code. Task ⇒ returns a `ShouldQueue` job built from
      *                           `($model, $request, $actor)`; Read/Write ⇒ returns a response envelope;
      *                           Stream ⇒ `($model, $request, $actor, Emitter $emit)`, pushes framed events.
@@ -470,6 +461,15 @@ class ParticleOperation implements HasRegistryKey
      *                                                                          factory call is not a constant expression and FATALS
      *                                                                          inside the `#[ParticleOp]` twin. See
      *                                                                          {@see DeliveryResolvers}
+     * @param  class-string|null  $model  ⚠️ **DEPRECATED, and last in the signature for that reason**
+     *                                    (ticket 18) — declare a `#[ParticleResource]` for `$resource` whose
+     *                                    `backing:` names the model, and omit this. It was documented as the
+     *                                    fallback subject class for a resource key naming no registered
+     *                                    resource, *"live at 13+ sites"*; that counted declaration sites in
+     *                                    source, and the booted population across all 21 `~/Herd` roots is
+     *                                    **0 of 107 registered operations** (2026-08-31). It is read only
+     *                                    when the resource is unregistered or its backing is not a
+     *                                    `BacksModel` — see the class docblock
      */
     public function __construct(
         public string $resource,
