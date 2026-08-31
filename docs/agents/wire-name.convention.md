@@ -61,6 +61,25 @@ So the audit reads the host's own `data.name_mapping_strategy`. That makes its p
 fact, which is why it is **advisory permanently** — a check whose answer depends on the host must
 not throw. A class that cannot be reflected is a skipped row, not a fatal, for the same reason.
 
+## ⚠️ The audit cannot see an undeclared ARRAY, and that is its blind spot by construction
+
+It inspects declared properties. A DTO field typed `array<string, mixed>` and filled by a
+hand-rolled builder has **no properties to inspect**, so it is invisible — to this audit, to codegen,
+and to the schema projection. It still crosses the wire.
+
+Found 2026-08-28 in `AuthUserData`: `$tenants` was `array<int, array<string, mixed>>`, built by a
+`tenantRow()` helper returning four keys. It shipped on every authenticated request, and
+`ui/src/stores/user.ts` hand-wrote the TypeScript for it because there was nothing to generate. Fixed
+by declaring `TenantRefData` — same keys, now visible to every instrument.
+
+⚠️ **The name hid it.** "row" reads like raw SQL, so nobody looked twice at a *published projection*.
+If a method returns an array that ends up inside a DTO property, it is a wire shape whatever it is
+called.
+
+**The tell:** any `array<…>`-typed property on a Data class whose contents are built by hand. Grep
+`@var array<` on your DTOs. Each one is either a genuinely open bag (rare, and the doctrine's
+`meta`-style exception) or an undeclared shape.
+
 ## ⚠️ Quote a finding count as a delta, never as a number
 
 The audit's total moves under you on a live estate, because its population is *"every Data class this
