@@ -1721,6 +1721,37 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             by: self::class,
         );
 
+        // The second act for the five rows registry-kernel 38's beam pass CONFORMED and never described
+        // (`d3b2fd3`, `1a127aa`, 2026-08-28). All five carry `#[IsRegistry]` and implement the contract,
+        // so `splicewire:beam:registry-conformance` counted them `conforming` and `UndescribedRegistryAudit`
+        // — which asks the DECLARATION question, per its own docblock — passed over them. Neither gate asks
+        // the second question, so `beam.capabilities`, `beam.doctor.audits`, `beam.install.steps`,
+        // `beam.seed.steps` and `schemas.sources` were absent from `popcorn:registries` and unreachable
+        // through `RegistryIndex::routeTo()` for three days while every instrument read green. That is the
+        // sweep brief's spine step 8, and its own warning about the b rows that "were declared and green
+        // for days over an index they had never been described into".
+        //
+        // On `booted()`, not here: every one of the five is an ACCUMULATOR whose registrants are other
+        // packages' providers (tower seeds `beam.capabilities`; beam-* packages push install, doctor and
+        // seed steps; a package contributes a schema tier). Beam cannot know whether a contributor's
+        // provider boots before or after its own, so `booted()` is the only point at which "what this
+        // registry holds" is a settled question — the same reasoning the event catalog and the discovery
+        // auto-mount above take, and the reason `popcorn:registries` reports these populated rather than
+        // empty.
+        $this->app->booted(function () {
+            $index = $this->app->make(RegistryIndex::class);
+
+            foreach ([
+                CapabilityRegistry::class,
+                BeamDoctorManifest::class,
+                BeamInstallManifest::class,
+                BeamSeedManifest::class,
+                SchemaSources::class,
+            ] as $registry) {
+                $index->describe($this->app->make($registry), by: self::class);
+            }
+        });
+
         // Frame OS ticket 08 (ADR-0013 §2): beam is the authority that unifies the two authorization
         // planes. Register a Laravel Gate ability per KNOWN feature key (`entitlement:{key}`) delegating to
         // the entitlement gate (which consults the bound kernel EntitlementResolver) — so the feature plane
