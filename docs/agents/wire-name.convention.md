@@ -61,6 +61,21 @@ So the audit reads the host's own `data.name_mapping_strategy`. That makes its p
 fact, which is why it is **advisory permanently** — a check whose answer depends on the host must
 not throw. A class that cannot be reflected is a skipped row, not a fatal, for the same reason.
 
+## ⚠️ Quote a finding count as a delta, never as a number
+
+The audit's total moves under you on a live estate, because its population is *"every Data class this
+host declares"* and neighbouring sessions add classes continuously. Measured 2026-08-28 within one
+afternoon: **20 → 22 → 25 → 27** with no change to the audit and no defect introduced — new classes
+simply reached the registry.
+
+So `AuthUserData`'s fix was verified as **its own two findings going to zero**, not as a total
+dropping by two. A brief that carried "the baseline is 22" was already stale by the time it was read,
+and the executor correctly re-measured rather than trusting it.
+
+**Take your own before-reading, immediately before the change, and assert the delta on the rows you
+touched.** This is the same discipline the estate applies to test counts (quote a spread, and treat a
+spread as a thing with a cause), for the same reason.
+
 ## ⚠️ Renaming: by SUBJECT TYPE, never by text
 
 A DTO property is camelCase. An **Eloquent column is not.** Both are read with `->`, and a mis-cased
