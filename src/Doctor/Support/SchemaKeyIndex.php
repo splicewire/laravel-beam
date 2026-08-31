@@ -356,7 +356,11 @@ class SchemaKeyIndex
                 continue;
             }
 
-            $this->indexModel($source);
+            // ⚠️ The model pass reads CODE, so it is fed source with every comment lexed away — see
+            // {@see withoutComments()}. The migration passes keep the RAW source, because
+            // {@see indexAlterations()} orders alterations by byte offset within the file and a
+            // rewritten string would move them.
+            $this->indexModel($this->withoutComments($source));
             $this->indexMigration($source, $file);
             $this->indexAlterations($source, $file);
         }
@@ -366,13 +370,80 @@ class SchemaKeyIndex
     }
 
     /**
+     * Every comment and docblock lexed out of a PHP source, leaving the code.
+     *
+     * ## Why a lexer and not a better regex (realm-and-floor-reconciliation, defect 1)
+     * `preg_match` returns the FIRST match in the file, and a docblock is source too. `TenantMembership`
+     * carries a warning in its class docblock — *"{@see TenantUser} is NOT this table. It maps `users`
+     * (`protected $table = 'users'`)"* — written precisely to stop a reader confusing two adjacently-named
+     * models. The `$table` regex bound `TenantMembership` to `users`, and the audit then reported an
+     * int-keyed model on `users` that does not exist. The prose was right; the reader was wrong.
+     *
+     * Two cheaper repairs were rejected because they only **reorder** the failure:
+     *
+     *  - *Prefer the LAST match.* A `@deprecated` note, a `down()`-style aside, or any docblock placed
+     *    after the property re-breaks it, and the failure is then harder to see because the tool looks
+     *    like it is reading the end of the class deliberately.
+     *  - *A smarter regex ("not preceded by a comment marker").* Handles docblocks and misses `//`, `#`,
+     *    heredocs, and a docblock on a later member; it is a lexer written badly.
+     *
+     * `token_get_all()` is PHP's own lexer, in core, with no dependency to add — the estate's other
+     * source readers that need real structure (see `Splicewire\Beam\Surgeon\CentralPinJustificationAudit`)
+     * reach for `nikic/php-parser`, which is beam's **require-dev**, not a runtime dependency. This index
+     * backs a shipped audit that must run at any host, so a full AST is not available to it here. A lex is
+     * the strongest reading it can take without adding a runtime dependency, and it is strictly enough:
+     * every declaration this class reads is a token-level fact, not a syntax-tree one.
+     *
+     * Comments become a single space, so nothing on either side of a stripped comment fuses into a new
+     * token that was never written.
+     */
+    private function withoutComments(string $source): string
+    {
+        if (! str_contains($source, '/*') && ! str_contains($source, '//') && ! str_contains($source, '#')) {
+            return $source;
+        }
+
+        try {
+            $tokens = @token_get_all($source);
+        } catch (\Throwable) {
+            // An unlexable file is not a model. Handing back the raw source keeps the old behaviour for it
+            // rather than dropping it silently — a reader that goes blind on a bad file is the worse bug.
+            return $source;
+        }
+
+        $out = '';
+
+        foreach ($tokens as $token) {
+            if (is_array($token)) {
+                $out .= ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) ? ' ' : $token[1];
+
+                continue;
+            }
+
+            $out .= $token;
+        }
+
+        return $out;
+    }
+
+    /**
      * A model's declared key type, or null when the class declares nothing about it.
      *
      * `HasUuids`/`HasUlids` are the estate's normal form; `$keyType` + `$incrementing = false` is the
-     * longhand. **A model that declares nothing is reported as `int`, not as unknown** — that is not a
+     * longhand. `$incrementing` is read as a **veto, not a type**: on its own it says only "not the
+     * auto-incrementing integer default", which is a denial with no replacement, so it yields `null` —
+     * unknown, skipped — rather than a guess. `$keyType` is what names the replacement, and it is read
+     * first. (Until realm-and-floor-reconciliation this docblock and
+     * {@see KeyTypeConformanceAudit}'s predicate list both claimed `$incrementing` was read, and no line
+     * of code read it; the code is what changed.)
+     *
+     * **A model that declares nothing is reported as `int`, not as unknown** — that is not a
      * guess, it is Eloquent's documented default and the exact state that produced the `~/Herd/splicewire`
      * defect. Treating silence as "unknown" would have made this audit blind to the only instance of the
      * bug the estate actually had.
+     *
+     * ⚠️ Takes source with comments already lexed away ({@see withoutComments()}). Every pattern below
+     * would otherwise match prose ABOUT a declaration as readily as the declaration.
      */
     private function indexModel(string $source): void
     {
@@ -397,6 +468,16 @@ class SchemaKeyIndex
             $keyType = 'ulid';
         } elseif (preg_match('/\$keyType\s*=\s*[\'"](\w+)[\'"]/', $source, $m)) {
             $keyType = $m[1] === 'string' ? 'uuid' : 'int';
+        } elseif (preg_match('/\$incrementing\s*=\s*false\b/', $source)) {
+            // `$incrementing = false` with no `$keyType` and no uuid/ulid trait: the model has explicitly
+            // DENIED the auto-incrementing integer default without saying what it keys by instead. So the
+            // one thing this reader must not do is fall through to `int` — that is the reading that turned
+            // `TenantMembership` (a composite-key pivot on `tenant_users`) into a reported int-keyed model.
+            //
+            // Left as `null` — unknown, therefore skipped by every predicate — on this file's standing
+            // rule that what it cannot read, it un-knows. A composite primary key has no single type to
+            // compare, so there is nothing here to be right about.
+            $keyType = null;
         } elseif (preg_match('/class\s+\w+\s+extends\s+(?:Model|Authenticatable|Pivot)/', $source)) {
             // Declares nothing: Eloquent's default is an auto-incrementing integer key.
             $keyType = 'int';

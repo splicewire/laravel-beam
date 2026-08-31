@@ -39,14 +39,7 @@ class KeyTypeConformanceAuditTest extends TestCase
     /** @param  array<string, string>  $files  relative path => contents */
     private function site(array $files): KeyTypeConformanceAudit
     {
-        $this->root = sys_get_temp_dir().'/beam-keytype-'.uniqid();
-
-        foreach ($files as $rel => $contents) {
-            @mkdir(dirname($this->root.'/'.$rel), 0777, true);
-            file_put_contents($this->root.'/'.$rel, $contents);
-        }
-
-        return new KeyTypeConformanceAudit(new SchemaKeyIndex([$this->root]), ['users']);
+        return new KeyTypeConformanceAudit(new SchemaKeyIndex([$this->rootWith($files)]), ['users']);
     }
 
     private function usersMigration(string $key): string
@@ -805,6 +798,137 @@ class KeyTypeConformanceAuditTest extends TestCase
 
         $this->assertCount(1, $findings);
         $this->assertStringContainsString('0 create(s) skipped', $findings[0]->detail);
+    }
+
+    // ---- The reader must read code, not prose about code --------------------------
+
+    /**
+     * ⛔ realm-and-floor-reconciliation, defect 1 — the regression this file exists to hold shut.
+     *
+     * `splicewire/laravel-beam-tenancy`'s `TenantMembership` opens with a warning in its class docblock:
+     * *"{@see TenantUser} is NOT this table. It maps `users` (`protected $table = 'users'`)"* — written to
+     * stop the next reader confusing two models one word apart. `preg_match` takes the FIRST match in the
+     * file, so the index bound the model to `users` and the audit reported a defect on a table the class
+     * never touches. The sentence was true; the tool could not tell prose from a declaration.
+     *
+     * The fixture below is that shape exactly: a truthful docblock naming another model's table, then the
+     * real declaration further down. The claim is that the index reads the declaration.
+     */
+    public function test_a_docblock_quoting_another_models_table_does_not_fool_the_index(): void
+    {
+        $source = <<<'PHP'
+        <?php
+
+        namespace App\Models;
+
+        use Illuminate\Database\Eloquent\Model;
+
+        /**
+         * The `tenant_users` pivot.
+         *
+         * ## ⚠️ Name it right or the next reader picks the wrong one
+         * {@see TenantUser} is NOT this table. It maps `users` (`protected $table = 'users'`) and is the
+         * tenant-side synced user model. This is the tenant↔user PIVOT.
+         */
+        class TenantMembership extends Model
+        {
+            protected $table = 'tenant_users';
+
+            public $incrementing = false;
+        }
+        PHP;
+
+        $index = new SchemaKeyIndex([$this->rootWith([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/TenantMembership.php' => $source,
+        ])]);
+
+        $classes = array_column($index->modelsFor('users'), 'class');
+
+        $this->assertNotContains(
+            'TenantMembership',
+            $classes,
+            'A docblock containing a literal `protected $table = \'users\'` was read as a declaration.',
+        );
+    }
+
+    /**
+     * The same file, read for the OTHER half of the same defect. `$incrementing = false` with no `$keyType`
+     * and no uuid/ulid trait denies the auto-incrementing integer default without naming a replacement, so
+     * the index un-knows the key type instead of falling through to `int`. Reported `int` is what made the
+     * pivot look like a defect on `users`; reported `null` is a skip in every predicate.
+     *
+     * Until this change no line of code read `$incrementing` at all, while two docblocks said it did.
+     */
+    public function test_a_model_denying_auto_increment_indexes_as_unknown_not_as_int(): void
+    {
+        $source = "<?php\n\nnamespace App\\Models;\n\nuse Illuminate\\Database\\Eloquent\\Model;\n\n"
+            ."class User extends Model\n{\n    protected \$table = 'users';\n\n    public \$incrementing = false;\n}\n";
+
+        $index = new SchemaKeyIndex([$this->rootWith([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $source,
+        ])]);
+
+        $models = $index->modelsFor('users');
+
+        $this->assertCount(1, $models);
+        $this->assertNull($models[0]['key_type']);
+
+        // And the audit therefore skips it rather than reporting a disagreement it cannot substantiate.
+        $rows = (new KeyTypeConformanceAudit($index, []))->disagreements();
+        $this->assertSame([], array_values(array_filter(
+            $rows,
+            static fn (array $row): bool => $row['kind'] === 'pk-model-disagreement',
+        )));
+    }
+
+    /**
+     * The comment strip must not eat the code around it. A `//` line comment sitting between the property
+     * and its value's line, and a `#` comment, both disappear; the declarations on either side survive and
+     * stay separate tokens.
+     */
+    public function test_stripping_comments_leaves_the_declarations_on_either_side_intact(): void
+    {
+        $source = "<?php\n\nnamespace App\\Models;\n\nuse Illuminate\\Database\\Eloquent\\Model;\n"
+            ."use Illuminate\\Database\\Eloquent\\Concerns\\HasUuids;\n\n"
+            ."class User extends Model\n{\n"
+            ."    // maps `posts` one day, not today\n"
+            ."    use HasUuids;\n"
+            ."    # protected \$table = 'posts';\n"
+            ."    protected \$table = 'users';\n}\n";
+
+        $index = new SchemaKeyIndex([$this->rootWith([
+            'database/migrations/0001_01_01_000000_create_users_table.php' => $this->usersMigration("\$table->uuid('id')->primary();"),
+            'app/Models/User.php' => $source,
+        ])]);
+
+        $models = $index->modelsFor('users');
+
+        $this->assertCount(1, $models);
+        $this->assertSame('uuid', $models[0]['key_type']);
+        $this->assertSame([], $index->modelsFor('posts'));
+    }
+
+    /**
+     * Materialize `relative path => contents` into a fresh scan root and return the root.
+     *
+     * ⚠️ Pid- and randomness-keyed, not `uniqid()`: concurrent sessions in this estate have already
+     * collided on a fixed `sys_get_temp_dir()` name once, and the wreckage read as a migration-ordering
+     * bug for 29 of a 35-failure delta.
+     *
+     * @param  array<string, string>  $files
+     */
+    private function rootWith(array $files): string
+    {
+        $this->root = sys_get_temp_dir().'/beam-keytype-'.getmypid().'-'.bin2hex(random_bytes(6));
+
+        foreach ($files as $rel => $contents) {
+            @mkdir(dirname($this->root.'/'.$rel), 0777, true);
+            file_put_contents($this->root.'/'.$rel, $contents);
+        }
+
+        return $this->root;
     }
 }
 

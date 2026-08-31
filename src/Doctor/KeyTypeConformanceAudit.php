@@ -36,7 +36,11 @@ use Splicewire\Beam\Doctor\Support\SchemaKeyIndex;
  *
  * ## Predicates
  *  - **`pk-model-disagreement`** — a `Schema::create` declares the table's primary key one way and the
- *    model bound to that table declares it another (`HasUuids`/`HasUlids`/`$keyType`/`$incrementing`).
+ *    model bound to that table declares it another (`HasUuids`/`HasUlids`/`$keyType`, plus
+ *    `$incrementing = false`, which is read as a **veto** on the integer default and not as a type of its
+ *    own — a model that only denies auto-increment indexes as unknown, therefore skipped. See
+ *    {@see SchemaKeyIndex}'s `indexModel()`, and note that this line described a check nothing ran until
+ *    realm-and-floor-reconciliation.
  *  - **`fk-target-disagreement`** — a column declared `foreignId(...)` (integer by definition) points at
  *    a table whose primary key is a uuid/ulid/string, or the reverse.
  *  - **`third-party-key-binding`** — an estate-published migration keys a table by uuid while the model
