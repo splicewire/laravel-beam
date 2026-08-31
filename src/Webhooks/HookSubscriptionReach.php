@@ -257,11 +257,42 @@ class HookSubscriptionReach
         // class-string — rather than returning null.
         //
         // ⚠️ This is NOT an endorsement of it. `Gate::authorize('viewAny', MembershipSource::class)`
-        // finds no policy and DENIES, so a hook spanning those events cannot be created; that is very
-        // likely its own bug. But the caller's `null` branch is `continue` (`:88-90`), i.e. NO check at
-        // all — so "fixing" this to null would silently turn a deny into an allow on an authorization
-        // path. That is a security decision with its own evidence to gather, not a tidy-up to fold into
-        // a backing rename. Left exactly as it was; flagged for its own ticket.
+        // finds no policy and DENIES. But the caller's `null` branch is `continue` (`:88-90`), i.e. NO
+        // check at all — so "fixing" this to null would silently turn a deny into an allow on an
+        // authorization path. That is a security decision with its own evidence to gather, not a
+        // tidy-up to fold into a backing rename. Left exactly as it was.
+        //
+        // ✅ The evidence was gathered — particle-write-surface ticket 06, measured 2026-08-30 with the
+        // gate CLOSED. Two corrections to what this note used to say.
+        //
+        // **This deny is UNREACHABLE, so it is not "very likely its own bug".** A no-model resource
+        // never enters the event catalog at all: `ParticlePersistedEventRegistrar` skips
+        // `modelClass() === null` by an explicit, reasoned decision, and there are zero `#[BeamEvent]`
+        // declarations family-wide, so no `members.*` / `review-queue.*` name exists to subscribe to.
+        // `requireCatalogNames()` 422s one step before `authorize()` ever runs. The functional
+        // exclusion is deliberate and lives in the registrar; this line only agrees with it, by
+        // accident, and does no work.
+        //
+        // **The reachable hazard is the `continue`, not this fallback.** A resource key the registry
+        // cannot resolve gets no authorization check whatsoever — measured directly, gate closed, in
+        // `HookReachBackingModelTest`. It requires a catalog entry whose prefix is dead, which is
+        // possible because that check is advisory by decision (`EventCatalogPrefixAudit`, demoted from
+        // a boot-fatal throw after it took `~/Herd/tower` off the air). Population today is ZERO —
+        // the audit reads no dead prefixes at `~/Herd/tower` (47 types) or `~/Herd/splicewire-app`
+        // (58) — and that audit is its standing meter. Whether `continue` should be a deny is 06's
+        // open question, and is the owner's to answer.
+        //
+        // ⚠️ That last figure is a DATED HOST-TIER reading sitting in a package-tier comment, so it is
+        // the line here most likely to go stale — a host can grow a dead prefix without this package
+        // changing at all. Re-measure rather than cite:
+        //
+        //     herd php artisan splicewire:beam:doctor | grep events.catalog-prefix
+        //
+        // and enumerate the hosts from `~/Herd/*` on disk, not from `symlinks.json`, which cannot see
+        // `beam`, `satellite` or `tower`.
+        //
+        // All three behaviours are now pinned by tests, so a later refactor cannot flip either
+        // direction silently.
         return class_exists($resource->backing) ? $resource->backing : null;
     }
 }
