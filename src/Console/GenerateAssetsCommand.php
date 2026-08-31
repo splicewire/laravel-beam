@@ -38,6 +38,11 @@ class GenerateAssetsCommand extends Command
         // Derives from `typescript:transform`'s output and verifies against it, so it runs directly
         // after — the order is a dependency, not a preference (particle-contribution-seam #22).
         'splicewire:beam:generate:contributed-types',
+        // The same emit-or-fail guarantee widened from contribution slices to the WHOLE declared particle
+        // surface: every DTO a `#[ParticleResource]`/`#[ParticleOp]` names that also carries `#[TypeScript]`
+        // must be in the tree `typescript:transform` just wrote. Writes nothing — a check that changed what
+        // emits would silently retype the frontend.
+        'splicewire:beam:verify:declared-types',
         'schemas:generate',
         'splicewire:beam:generate:client',
     ];

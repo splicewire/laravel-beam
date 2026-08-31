@@ -57,6 +57,7 @@ use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
+use Splicewire\Beam\Console\VerifyDeclaredTypesCommand;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Discovery\ResourceDiscoveryAutoMounter;
 use Splicewire\Beam\Discovery\ResourceMountMap;
@@ -1443,6 +1444,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 // with every contributed slice (particle-contribution-seam #22). Unconditional and inert
                 // — a host with no contributions generates an artifact that declares nothing.
                 GenerateContributedTypesCommand::class,
+                // The same emit-or-fail guarantee, widened from contribution slices to the WHOLE declared
+                // particle surface. Writes nothing — it is a check, and a check that changed what emits
+                // would silently retype the frontend.
+                VerifyDeclaredTypesCommand::class,
                 GenerateAssetsCommand::class,
                 UndeclaredSurfaceCommand::class,
                 // The registry ratchet's write/check/json surface (registry-kernel ticket 35 §3). Sits
@@ -1636,26 +1641,6 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // ADDITIVE onto the three imperative base realms (last-wins by key). Vocabulary lives in beam.
         $this->registerRealms();
 
-        // DECLARING and INDEXING are two acts (registry-kernel 21 D1): the `#[IsRegistry]` on
-        // RealmRegistry names `beam.realm`, and this is where that root actually becomes reachable
-        // through `RegistryIndex::routeTo()`. Described from the OWNER's own boot — the index never
-        // reaches up — and AFTER registerRealms(), so `popcorn:registries` reports a populated registry
-        // rather than an empty one. The host's `App\Frame\RealmRegistry` subclass is what resolves
-        // here; it inherits the declaration through IsRegistry's parent walk (ticket 42), so there is
-        // one described root, not two.
-        $this->app->make(RegistryIndex::class)->describe(
-            $this->app->make(RealmRegistry::class),
-            by: self::class,
-        );
-
-        // The same second act for the config-fed adapter ticket 25 landed. Described here rather than
-        // beside its binding because a describe belongs in boot(), after the config merges every
-        // registrant writes through have run — the property ConfigRegistry's docblock argues for.
-        $this->app->make(RegistryIndex::class)->describe(
-            $this->app->make(RouteManifestSourceRegistry::class),
-            by: self::class,
-        );
-
         // Resource DECLARATION discovery (ADR-0156). Reflect the configured #[ParticleResource] classes +
         // scan the configured discover-paths into beam's singleton ParticleResourceRegistry, which frame's
         // manifest machinery reads through the ResourceRegistry port (via ParticleResourceRegistryAdapter). This
@@ -1674,40 +1659,6 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // AFTER discovery, deliberately: the guard below asks data-filters what it already holds, and
         // the model port it leaves empty resolves off the particle registry discovery has just filled.
         $this->declareFilterResources();
-
-        // The second act, per ticket 21 D1: declaring and indexing are two things.
-        $this->app->make(RegistryIndex::class)->describe(
-            $this->app->make(ParticleResourceRegistry::class),
-            by: self::class,
-        );
-
-        // The relative-edge registry (api-surface-coherence ticket 50). Described from beam's own boot
-        // per the register-down rule, and AFTER discoverParticleAttributes() so `popcorn:registries`
-        // reports a populated root rather than an empty one — the same sequencing the two registries
-        // above take. Both axes the vocabulary note asks for ride on its `#[IsRegistry]`: the SEAM (what
-        // gets in — declared relative edges, contributed by the coupling owner) and the ARITY (PickOne
-        // over a flat `<parent>.<child>` keyspace).
-        $this->app->make(RegistryIndex::class)->describe(
-            $this->app->make(ParticleRelativeRegistry::class),
-            by: self::class,
-        );
-
-        // The operation registry (particle-operation-surface ticket 01). It was the one particle root
-        // that never described itself — five sibling registries have reported from this boot for months
-        // and `beam.particle.operations` was absent from `popcorn:registries` the whole time, which is
-        // exactly the negative space `UndescribedRegistryAudit` calls "vacuous until owners start
-        // describing". AFTER discoverParticleAttributes(), for the reason the relative registry above
-        // states: a described-but-empty root is a worse answer than a described-and-populated one.
-        //
-        // Its `registerHint` matters more here than for most: the whole point of ticket 01 is that a
-        // package registers an operation on a resource it does not own, and the index is where a
-        // contributor finds out that is legal. ⚠️ 08 found `UndescribedRegistryAudit` gates that a
-        // registry IS described, never that the description is TRUE — a lying hint passed for months —
-        // so the hint on the `#[IsRegistry]` is a claim to keep honest, not a formality.
-        $this->app->make(RegistryIndex::class)->describe(
-            $this->app->make(ParticleOperationRegistry::class),
-            by: self::class,
-        );
 
         // The event catalog's own registrars, attached on `booted()` rather than here — measured, not
         // cautious. Every `register()` validates the event name's prefix against the LIVE resource keys,
@@ -1729,12 +1680,6 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $this->app->booted(fn () => $this->app->make(ResourceDiscoveryAutoMounter::class)->mount());
         }
 
-        // The second act (registry-kernel ticket 21 D1) for the event catalog.
-        $this->app->make(RegistryIndex::class)->describe(
-            $this->app->make(EventTypeRegistry::class),
-            by: self::class,
-        );
-
         // The second act for the five rows registry-kernel 38's beam pass CONFORMED and never described
         // (`d3b2fd3`, `1a127aa`, 2026-08-28). All five carry `#[IsRegistry]` and implement the contract,
         // so `splicewire:beam:registry-conformance` counted them `conforming` and `UndescribedRegistryAudit`
@@ -1753,7 +1698,6 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // auto-mount above take, and the reason `popcorn:registries` reports these populated rather than
         // empty.
         $this->app->booted(function () {
-            $index = $this->app->make(RegistryIndex::class);
 
             foreach ([
                 CapabilityRegistry::class,
@@ -1781,7 +1725,6 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 AuditScanPaths::class,
                 FacadeConformanceScope::class,
             ] as $registry) {
-                $index->describe($this->app->make($registry), by: self::class);
             }
         });
 

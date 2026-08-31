@@ -86,11 +86,16 @@ return [
     |
     | `generate:contributed-types` sits directly after `typescript:transform` because it DERIVES from
     | that command's output and verifies against it — the order is a dependency, not a preference.
+    | `verify:declared-types` follows for the same reason and writes nothing: it checks that every DTO a
+    | particle declaration names AND which carries `#[TypeScript]` is present in the tree just written.
+    | Absence there means a host-rooted `#[TypeScript]` scan that cannot see a package's `src/Data` root —
+    | the estate's most-repeated codegen defect, and previously visible only for contribution slices.
     */
     'assets' => [
         'generators' => [
             'typescript:transform',
             'splicewire:beam:generate:contributed-types',
+            'splicewire:beam:verify:declared-types',
             'schemas:generate',
             'splicewire:beam:generate:client',
         ],
