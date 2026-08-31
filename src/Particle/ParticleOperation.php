@@ -14,6 +14,7 @@ use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Delivery\DeliveryResolvers;
 use Splicewire\Beam\Particle\Mount\ParticleMounter;
+use Splicewire\Beam\Particle\Subject\OperationSubjectModel;
 use Splicewire\Beam\Particle\Subject\RecordSubject;
 use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
 use Splicewire\Beam\Particle\Subject\SubjectResolvers;
@@ -205,8 +206,29 @@ use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
  * `Sharing::attachTo()` has one, on a key its host registers normally. {@see RecordSubject}'s docblock
  * carries the full amendment.
  *
- * What that leaves `$model` for is particle-operation-surface ticket 18's question, and this docblock
- * deliberately does not pre-empt it.
+ * ## ⚠️ `$model` is DEPRECATED — the model is a property of the RESOURCE, not of the operation
+ *
+ * particle-operation-surface ticket 18's ruling, given the reading above. An op names a `resource:`;
+ * the resource names its `backing:`; the model is a fact about that backing. Stating it per-OPERATION
+ * states a per-RESOURCE fact in a place where nothing checks the two agree — `market-products` named
+ * `MarketProduct` four times, `beam-ux`'s two entry ops named `BeamUxEntry` twice.
+ *
+ * The precedent is shipped and one tier out: {@see ParticleResourceModelResolver} already exists so a
+ * `#[ResourceFilter]` can omit `model:` and have it resolved *"from the `ParticleResource` already
+ * declared under the same key"*. {@see OperationSubjectModel} is
+ * the identical move for this declaration, and it is now the ONE read of "which model" — the two
+ * subject resolvers and `ParticleIdConstraintKeyTypeAudit` all go through it.
+ *
+ * The slot is **nullable, defaulted, and last in the signature** rather than deleted, because these
+ * packages are path-symlinked into one another through the co-dev overlay: a change here is live in
+ * every consumer immediately, with no version boundary to migrate behind. So the estate moves a
+ * declaration site at a time and the parameter deletes once the last one has. It moved to the END of
+ * the constructor — safe because a sweep of every op declaration in the estate found **99 of 99 pass
+ * it by NAME**, zero positionally.
+ *
+ * ⚠️ **The resource's backing WINS over a declared `$model`**, rather than the other way round. A
+ * disagreement between the two is the duplication defect this ruling removes, and the resource is the
+ * side that owns the fact; preferring the op's copy would preserve the drift it exists to end.
  *
  * ## `signed:` — a validly-signed request is itself a credential
  *
@@ -371,16 +393,15 @@ class ParticleOperation implements HasRegistryKey
      * @param  string  $resource  the particle resource key this operation hangs off (for the route + auth)
      * @param  string  $name  the operation slug in the URL (`…/{id}/{name}`)
      * @param  OperationKind  $kind  read | write | task | stream — sync-call vs queueable-dispatch vs held-stream
-     * @param  class-string  $model  the FALLBACK subject class — the model the `{id}` resolves to when
-     *                               `$resource` names no REGISTERED particle resource. When the
-     *                               resource IS registered, the subject resolves through ITS backing
-     *                               and declared gate instead — see `$subject` and {@see RecordSubject}.
-     *                               ⚠️ This used to add that the fallback case is *"live at 13+ sites
-     *                               (`beam-accounts`' `Sharing::attachTo()`, `beam-rank`'s
-     *                               `Resources::attachTo()`, `beam-market`'s four `market-products.*`)"*.
-     *                               It is not. That counted declaration sites in source; the booted
-     *                               population across all 21 `~/Herd` roots is **0 of 107 registered
-     *                               operations** (2026-08-31) — see the class docblock
+     * @param  class-string|null  $model  ⚠️ **DEPRECATED, and last in the signature for that reason**
+     *                                    (ticket 18) — declare a `#[ParticleResource]` for `$resource` whose
+     *                                    `backing:` names the model, and omit this. It was documented as the
+     *                                    fallback subject class for a resource key naming no registered
+     *                                    resource, *"live at 13+ sites"*; that counted declaration sites in
+     *                                    source, and the booted population across all 21 `~/Herd` roots is
+     *                                    **0 of 107 registered operations** (2026-08-31). It is read only
+     *                                    when the resource is unregistered or its backing is not a
+     *                                    `BacksModel` — see the class docblock
      * @param  Closure  $handle  host code. Task ⇒ returns a `ShouldQueue` job built from
      *                           `($model, $request, $actor)`; Read/Write ⇒ returns a response envelope;
      *                           Stream ⇒ `($model, $request, $actor, Emitter $emit)`, pushes framed events.
@@ -430,7 +451,6 @@ class ParticleOperation implements HasRegistryKey
         public string $resource,
         public string $name,
         public OperationKind $kind,
-        public string $model,
         public Closure $handle,
         public string|false|null $ability = null,
         public string|false|null $abilityModel = null,
@@ -442,6 +462,7 @@ class ParticleOperation implements HasRegistryKey
         public ?HttpMethod $method = null,
         public ?IdConstraint $idConstraint = null,
         public DeclaresDelivery|string|null $delivery = null,
+        public ?string $model = null,
     ) {
         $this->assertOutputMatchesKind();
     }

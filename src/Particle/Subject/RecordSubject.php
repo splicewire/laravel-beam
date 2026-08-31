@@ -66,6 +66,7 @@ class RecordSubject implements ResolvesOperationSubject
     public function __construct(
         protected ?ParticleResourceRegistry $resources = null,
         protected ?ResourceRecordLookup $lookup = null,
+        protected ?OperationSubjectModel $models = null,
     ) {}
 
     /** @return list<string> */
@@ -99,6 +100,8 @@ class RecordSubject implements ResolvesOperationSubject
             }
         }
 
-        return $operation->model::query()->findOrFail($id);
+        $model = ($this->models ?? new OperationSubjectModel($resources))->require($operation);
+
+        return $model::query()->findOrFail($id);
     }
 }

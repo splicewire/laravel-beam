@@ -76,14 +76,15 @@ class ParticleOp
      * @param  string  $resource  the particle resource key this op hangs off (route + auth)
      * @param  string  $name  the operation slug in the URL (`…/{id}/{name}`)
      * @param  OperationKind  $kind  read | write | task | stream
-     * @param  class-string  $model  the FALLBACK subject class — what the `{id}` resolves to when
-     *                               `$resource` names no registered particle resource. A registered
-     *                               resource resolves through its own backing and gate instead —
-     *                               {@see ParticleOperation}. ⚠️ This used to call that fallback *"the
-     *                               live `Sharing::attachTo()` / `Resources::attachTo()` /
-     *                               `market-products.*` shape"*. Booted-registry probe of all 21
-     *                               `~/Herd` roots, 2026-08-31: **0 of 107 registered operations** hit
-     *                               it — {@see ParticleOperation} carries the amendment
+     * @param  class-string|null  $model  ⚠️ **DEPRECATED** (particle-operation-surface ticket 18) — an op
+     *                                    names a `resource:`, the resource names its `backing:`, and the
+     *                                    model is a fact about the backing. Omit it; declare a
+     *                                    `#[ParticleResource]` for the key instead. It was documented as the
+     *                                    fallback for *"the live `Sharing::attachTo()` /
+     *                                    `Resources::attachTo()` / `market-products.*` shape"* — a count of
+     *                                    declaration sites in source, whose booted population is **0 of 107
+     *                                    registered operations** (2026-08-31). {@see ParticleOperation}
+     *                                    carries the ruling and the migration's shape
      * @param  string|false|null  $ability  the authorization token checked before the op runs
      *                                      (deny-default); `false` declares the op ungated DELIBERATELY;
      *                                      `null` is undeclared — {@see ParticleOperation}'s docblock
@@ -117,7 +118,7 @@ class ParticleOp
         public string $resource,
         public string $name,
         public OperationKind $kind,
-        public string $model,
+        public ?string $model = null,
         public string|false|null $ability = null,
         public string|false|null $abilityModel = null,
         public string|false|null $input = null,

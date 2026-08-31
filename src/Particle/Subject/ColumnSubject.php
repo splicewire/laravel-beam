@@ -53,12 +53,19 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * {@see RecordSubject}; only `routeKey` is overridden, by the column declared here. That is the safe
  * default and it should stay the answer for nearly every resource.
  *
- * `throughResource: false` resolves against {@see ParticleOperation::$model} instead. It exists for the
- * measured case where the resource's scope CANNOT be satisfied at the mount: tower's invitation `accept`
- * is a central route with no tenancy middleware, so the resource's `tenant_id` scope — correct on every
- * other verb — would 404 every legitimate accept. The opt-out is deliberately a declaration rather than
- * a silent fallback, because "this operation resolves past the resource's row gate" is a sentence whose
- * author should have to write it down.
+ * `throughResource: false` resolves against the bare model instead. It exists for the measured case
+ * where the resource's scope CANNOT be satisfied at the mount: tower's invitation `accept` is a central
+ * route with no tenancy middleware, so the resource's `tenant_id` scope — correct on every other verb —
+ * would 404 every legitimate accept. The opt-out is deliberately a declaration rather than a silent
+ * fallback, because "this operation resolves past the resource's row gate" is a sentence whose author
+ * should have to write it down.
+ *
+ * ⚠️ **Which model that is no longer comes from the operation.** This used to read *"resolves against
+ * {@see ParticleOperation::$model}"*, and it was the one path that made that deprecated slot look
+ * unavoidable — the opt-out is about skipping the resource's SCOPE, not about disowning the resource.
+ * So it now reads the model off the same backing, through
+ * {@see OperationSubjectModel}, and skips only the gate. The opt-out keeps its exact
+ * meaning and stops being a reason to declare `model:`.
  *
  * ## ⚠️ It takes NO extra predicate, and that is a decision
  *
@@ -78,14 +85,15 @@ class ColumnSubject implements ResolvesOperationSubject
     /**
      * @param  string  $column  the column the `{id}` segment is matched against
      * @param  bool  $throughResource  whether to resolve through the registered resource's backing and
-     *                                 its declared `scope`/`includes`; `false` resolves against the
-     *                                 operation's `$model` directly, past the resource's row gate
+     *                                 its declared `scope`/`includes`; `false` resolves against the bare
+     *                                 model (still read from the resource's backing), past the row gate
      */
     public function __construct(
         public string $column = '',
         public bool $throughResource = true,
         protected ?ParticleResourceRegistry $resources = null,
         protected ?ResourceRecordLookup $lookup = null,
+        protected ?OperationSubjectModel $models = null,
     ) {
         if ($this->column === '') {
             throw new InvalidArgumentException(
@@ -128,7 +136,9 @@ class ColumnSubject implements ResolvesOperationSubject
             }
         }
 
-        return $operation->model::query()->where($this->column, $id)->firstOrFail();
+        $model = ($this->models ?? new OperationSubjectModel($this->resources))->require($operation);
+
+        return $model::query()->where($this->column, $id)->firstOrFail();
     }
 
     /**

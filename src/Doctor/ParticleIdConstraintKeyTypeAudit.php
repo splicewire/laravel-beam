@@ -10,6 +10,7 @@ use Rushing\Doctor\Finding;
 use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\Subject\OperationSubjectModel;
 use Splicewire\Beam\Routing\IdConstraint;
 use Throwable;
 
@@ -65,7 +66,10 @@ class ParticleIdConstraintKeyTypeAudit implements DoctorAudit
 {
     public const CHECK = 'particle.id-constraint-key-type';
 
-    public function __construct(protected ParticleOperationRegistry $operations) {}
+    public function __construct(
+        protected ParticleOperationRegistry $operations,
+        protected ?OperationSubjectModel $models = null,
+    ) {}
 
     /** @return list<Finding> */
     public function run(): array
@@ -81,8 +85,11 @@ class ParticleIdConstraintKeyTypeAudit implements DoctorAudit
 
         $mismatched = [];
 
+        $models = $this->models ?? new OperationSubjectModel;
+
         foreach ($declared as $op) {
-            $actual = $this->keyTypeOf($op->model);
+            $model = $models->for($op);
+            $actual = $model === null ? null : $this->keyTypeOf($model);
 
             // `null` = the model could not be resolved or keys on something none of the three cases
             // names (a compound key, a string slug). Reporting that as a mismatch would be reporting
@@ -101,7 +108,7 @@ class ParticleIdConstraintKeyTypeAudit implements DoctorAudit
                 '  %-40s declares %-5s but %s keys on %s',
                 $op->key(),
                 $op->idConstraint->value,
-                $op->model,
+                $model,
                 $actual->value,
             );
         }
