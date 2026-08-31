@@ -24,6 +24,12 @@ use Splicewire\Beam\Particle\ParticleOperation;
  * TYPE, exactly as `ParticleResource::$backing` discriminates by type rather than by a `sourceKind`
  * string nothing ever branched on.
  *
+ * ✅ **That argument stopped being hypothetical.** `splicewire/tower` ships a fourth implementation —
+ * `Tenancy\Invitations\InvitationTokenSubject`, which resolves an invitation from its bearer TOKEN, for
+ * an operation whose sibling verbs on the same resource resolve by id. Three ship here, the population is
+ * four, and the one that is not here lives in a package beam has never heard of. That is what the
+ * polymorphic slot bought over an enum, measured rather than predicted.
+ *
  * ## ⚠️ It takes parameters and an actor, and NEVER a `Request`
  *
  * This is the whole reason the port has this signature and not a convenient one.

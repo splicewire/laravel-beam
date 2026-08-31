@@ -27,8 +27,16 @@ use Splicewire\Beam\Particle\ParticleOperation;
  *
  * ## The `null` default is what keeps the slot a pure addition
  *
- * Every one of the estate's 44 declaration sites predates the slot and none of them names it, so the
+ * Every one of the estate's 44 declaration sites predated the slot and none of them named it, so the
  * default has to be the behaviour they already had — one record, from the URL.
+ *
+ * ⚠️ That sentence used to read in the present tense and no longer holds: the slot has a consumer.
+ * `splicewire/tower`'s `Tenancy\Invitations\InvitationTokenSubject` — declared by
+ * `tenant-invitations.accept`, which resolves its `{id}` segment as a bearer TOKEN — is the first
+ * implementation of this port outside beam, and the first declaration anywhere to name `subject:`. The
+ * case it answers is the one the port exists for and no resource-wide slot can express: `revoke`/`resend`
+ * address that resource by id while `accept` addresses it by token, so `ParticleResource::$routeKey`
+ * ("one public identifier per resource, never two") would have to break two verbs to serve a third.
  */
 class SubjectResolvers
 {
