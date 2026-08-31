@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Doctor;
 
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 
@@ -34,6 +35,27 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
  * routes. The finding names the permission name the operation WOULD get, so the fix is a line to paste
  * rather than a decision to re-derive.
  *
+ * ## ⚠️ `kind: Write` MOVED OUT of this audit, and it gates
+ *
+ * As of particle-write-surface ticket 02 this audit counts every kind EXCEPT `Write`.
+ * {@see UngatedWriteOperationAudit} owns that one, registered `gate: true`, and a null-ability write
+ * operation now FAILS `splicewire:beam:doctor`. Two reasons the split is a split rather than a
+ * severity branch inside this class:
+ *
+ *   1. **The gate flag is per REGISTRATION, not per finding.** On a gating registration a `warn` still
+ *      fails the runner at a lowered `--floor` ({@see RegistryConformanceAudit::gates()} states the
+ *      same mechanical fact). Promoting this class wholesale would drag the legitimate `kind: Read`
+ *      residue into a failure the moment anyone ran `--floor=warn`.
+ *   2. **The two questions have different answers.** A `Write` with no ability is a defect with a fix.
+ *      A `Read` with no ability may be entirely correct — {@see OperationKind}'s docblock says a Read's
+ *      gate IS its query scope — so it is a work-list line, not a build break. All four survivors at
+ *      the flagship (2026-08-31) are Reads, which is the measurement that made the distinction rather
+ *      than an argument that predicted it.
+ *
+ * So the count this audit keeps is now the **non-write** residue, and its emptiness is no longer the
+ * whole gate on {@see ParticleOperation::$ability}'s `null` → derived-name flip — it is the remaining
+ * half of it.
+ *
  * ⚠️ It reads the BOOTED registry, so it sees what this host actually registered — a package's
  * declaration that no host installs is correctly invisible here, and a host that registers its own
  * operations inline is correctly included. That is the opposite trade from a static scan and it is the
@@ -51,34 +73,53 @@ class UngatedOperationAudit implements DoctorAudit
     {
         $all = $this->operations->unfiltered()->matches('beam.particle.operations');
 
-        $undeclared = array_values(array_filter(
+        // `kind: Write` is UngatedWriteOperationAudit's population, not this one's — see the class
+        // docblock for why the split is a split. Excluded from the denominator too: a "4 of 36" that
+        // counted operations this audit would never report on reads as a coverage figure and is not one.
+        $population = array_values(array_filter(
             $all,
+            fn (ParticleOperation $op): bool => $op->kind !== OperationKind::Write,
+        ));
+
+        $undeclared = array_values(array_filter(
+            $population,
             fn (ParticleOperation $op): bool => $op->gateUndeclared(),
         ));
 
-        $declared = count($all) - count($undeclared);
+        $declared = count($population) - count($undeclared);
 
         if ($all === []) {
-            return [Finding::pass(self::CHECK, 'No particle operations are registered in this host.')];
+            return [Finding::inconclusive(self::CHECK, 'No particle operations are registered in this host.')];
+        }
+
+        if ($population === []) {
+            return [Finding::inconclusive(self::CHECK, sprintf(
+                'All %d registered particle operations are `kind: Write`, which %s gates; this audit had '
+                .'no population to measure.',
+                count($all),
+                UngatedWriteOperationAudit::class,
+            ))];
         }
 
         if ($undeclared === []) {
             return [Finding::pass(self::CHECK, sprintf(
-                '%d/%d particle operations declare their authorization. The `null` residue is empty, '
-                .'which is the gate ParticleOperation::$ability\'s null → derived flip is waiting on.',
+                '%d/%d non-write particle operations declare their authorization. The `null` residue is '
+                .'empty on this half; `kind: Write` is gated separately by %s. Both halves empty is the '
+                .'gate ParticleOperation::$ability\'s null → derived flip is waiting on.',
                 $declared,
-                count($all),
+                count($population),
+                UngatedWriteOperationAudit::class,
             ))];
         }
 
         return [Finding::warn(self::CHECK, sprintf(
-            '%d of %d particle operations declare no `ability:` — neither a token nor an explicit '
+            '%d of %d non-write particle operations declare no `ability:` — neither a token nor an explicit '
             .'`false`. Each is gated only by whatever middleware its mount carries, and the declaration '
             ."cannot be read to find out which.\n\nDeclare a token, or `ability: false` with a docblock "
             .'saying why (the shape `Splicewire\\Beam\\Accounts\\Ops\\StopImpersonating` argues). The '
             ."derived permission name each would take is shown beside it:\n%s",
             count($undeclared),
-            count($all),
+            count($population),
             implode("\n", array_map(
                 fn (ParticleOperation $op): string => sprintf(
                     '  %-44s → ability: \'%s\'',

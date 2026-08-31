@@ -88,6 +88,7 @@ use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
+use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Doctor\UnrehearsableStubAudit;
 use Splicewire\Beam\Doctor\UnverifiedOnPopulatedTableAudit;
@@ -922,6 +923,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host
         // mounted, and the count is the gate the `null` → derived-permission-name flip waits on.
         $manifest->register('splicewire/laravel-beam', UngatedOperationAudit::class);
+        // The `kind: Write` half of the audit above, split out and GATING (particle-write-surface 02).
+        // A write operation naming no `ability:` is the one member of that residue with no legitimate
+        // reading — a Read's gate is its query scope, a Write's is nothing — and "did this declaration
+        // name an ability" is answerable without knowing which host would load it, which is exactly the
+        // class AGENTS.md licenses to be fatal. It gates here rather than throwing at registration
+        // because a boot throw over a registry fact is what took `~/Herd/tower` off the air; measured
+        // 2026-08-31, all 15 `~/Herd/*` roots that resolve this registry read zero, so the promotion
+        // refuses the next one and fails nothing that exists. Split from its sibling rather than
+        // branching on severity inside it: the gate flag is per REGISTRATION, so one class would fail
+        // the legitimate `kind: Read` residue at `--floor=warn`.
+        $manifest->register('splicewire/laravel-beam', UngatedWriteOperationAudit::class, gate: true);
         // The `input:` twin of the audit above (api-surface-coherence 117). Two checks from one class,
         // because the axes are decoupled: the RESOURCE axis counts REACHABLE write mounts, derived from
         // the router every run — a declaration count reports the 22-route saved-filters sub-surface and

@@ -11,7 +11,9 @@ use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
+use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Particle\Attributes\UngatedWriteDeclarations;
 use Splicewire\Beam\Particle\Delivery\DeliveryResolvers;
 use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Particle\Subject\OperationSubjectModel;
@@ -144,6 +146,28 @@ use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
  * `null`s reaching zero — which {@see UngatedOperationAudit} measures, so the
  * count is a check rather than a memory. This is the identical schedule `input:`'s own `null` → `false`
  * flip is under.
+ *
+ * ### ⚠️ On `kind: Write` that count IS zero, and the residue is now held there by a GATE
+ *
+ * Two things changed on 2026-08-31 (particle-write-surface ticket 02) and the paragraph above no longer
+ * describes the whole slot:
+ *
+ *   - **The count.** Nine `kind: Write` operations declaring `null` at the flagship went to **zero**,
+ *     each closed with its own gate-CLOSED regression test. The residue left behind was **four, and
+ *     every one was `kind: Read`** (a concurrent session closed those four later the same day).
+ *     Estate-wide, all 15 `~/Herd/*` roots that resolve this registry read `kind: Write` null = 0.
+ *   - **The enforcement.** A new `kind: Write` operation declaring `null` no longer lands green:
+ *     {@see UngatedWriteOperationAudit} reports `Fail` and is registered `gate: true`, so
+ *     `splicewire:beam:doctor` exits non-zero; and {@see UngatedWriteDeclarations} answers the same
+ *     question from SOURCE for a declaring package that has no host to boot.
+ *
+ * What that means for the flip itself, precisely, because it is easy to over-read: **the flip is still
+ * not made, and on `kind: Write` it is now unnecessary.** A write op cannot reach `null` any more
+ * without failing a gate, so `null` → `permissionName()` would be a change with no population. The flip
+ * remains genuinely open for `Read`/`Task`/`Stream`, and for those it is still gated on
+ * {@see UngatedOperationAudit}'s count — with the caveat the four survivors raise: a Read's gate is its
+ * QUERY SCOPE ({@see OperationKind}), so `null` on a Read may be a correct declaration rather than
+ * residue, and the flip cannot be made for Reads until that is settled one way or the other.
  *
  * ## Which authorization PLANE a declared ability is checked on
  *

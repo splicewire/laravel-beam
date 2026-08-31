@@ -7,6 +7,7 @@ use Rushing\Doctor\DoctorStatus;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
+use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -153,12 +154,18 @@ class ParticleOperationKeyTest extends TestCase
         $this->assertFalse($this->op('users', 'c', ability: 'update')->gateUndeclared());
     }
 
+    /**
+     * ⚠️ **These fixtures are `kind: Read` on purpose** (particle-write-surface 02). `UngatedOperationAudit`
+     * no longer sees `kind: Write` — that half moved to {@see UngatedWriteOperationAudit}, where a null
+     * ability is a Fail on a gating registration rather than a counted warn. `media.download` is the real
+     * op this fixture is named after and it genuinely IS a Read, which is why the residue survives there.
+     */
     public function test_the_audit_counts_the_residue_and_names_the_line_that_closes_it(): void
     {
         $registry = $this->registry();
-        $registry->register($this->op('media', 'download'));
-        $registry->register($this->op('users', 'stop-impersonating', ability: false));
-        $registry->register($this->op('open-api-specs', 'inventory', ability: 'view'));
+        $registry->register($this->op('media', 'download', kind: OperationKind::Read));
+        $registry->register($this->op('users', 'stop-impersonating', ability: false, kind: OperationKind::Read));
+        $registry->register($this->op('open-api-specs', 'inventory', ability: 'view', kind: OperationKind::Read));
 
         $findings = (new UngatedOperationAudit($registry))->run();
 
@@ -177,8 +184,8 @@ class ParticleOperationKeyTest extends TestCase
     public function test_the_audit_passes_once_the_residue_is_empty(): void
     {
         $registry = $this->registry();
-        $registry->register($this->op('users', 'stop-impersonating', ability: false));
-        $registry->register($this->op('open-api-specs', 'inventory', ability: 'view'));
+        $registry->register($this->op('users', 'stop-impersonating', ability: false, kind: OperationKind::Read));
+        $registry->register($this->op('open-api-specs', 'inventory', ability: 'view', kind: OperationKind::Read));
 
         $findings = (new UngatedOperationAudit($registry))->run();
 
@@ -198,11 +205,12 @@ class ParticleOperationKeyTest extends TestCase
         string $name,
         string|false|null $ability = null,
         string|false|null $abilityModel = null,
+        OperationKind $kind = OperationKind::Write,
     ): ParticleOperation {
         return new ParticleOperation(
             resource: $resource,
             name: $name,
-            kind: OperationKind::Write,
+            kind: $kind,
             model: KeyedWidget::class,
             handle: fn () => ['ran' => true],
             ability: $ability,
