@@ -80,6 +80,21 @@ called.
 `@var array<` on your DTOs. Each one is either a genuinely open bag (rare, and the doctrine's
 `meta`-style exception) or an undeclared shape.
 
+## ⚠️ `{@see}` a class in another package and pint will import it for you
+
+Writing `{@see \Some\Other\Package\Thing}` in a docblock is not inert. **pint's
+`fully_qualified_strict_types` fixer resolves it and adds the `use` line**, manufacturing a real
+import — and therefore a real dependency edge — out of prose.
+
+Measured 2026-08-31 while declaring `SellerRepoData` in `laravel-beam-market`: a `{@see}` pointing at
+`beam-accounts` gained a `use` statement unprompted. `beam-accounts` is `require-dev` there, so it
+resolves locally and in tests and would have been a **runtime** edge the manifest does not carry.
+Caught before commit; the reference is prose now, and pint leaves prose alone.
+
+**Name a cross-package class in prose, never `{@see}`, unless the package genuinely requires it.**
+This bites hardest exactly where declaring a shape is most useful — a nested DTO in one package
+naturally wants to cite its twin in another.
+
 ## ⚠️ Quote a finding count as a delta, never as a number
 
 The audit's total moves under you on a live estate, because its population is *"every Data class this
