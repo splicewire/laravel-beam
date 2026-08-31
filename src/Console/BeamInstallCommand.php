@@ -901,9 +901,17 @@ class BeamInstallCommand extends Command
      * laravel-beam-ux isn't installed (the command isn't registered), so beam-core never hard-depends
      * on it — the same shape as {@see self::ensurePnpmOverrides()}.
      *
-     * ⚠️ `--force` is NOT forwarded. Here it would mean *repoint a binary the operator chose*, which is
-     * a different act from the publish-overwrite `--force` governs everywhere else in this command; an
-     * operator repointing a pinned Node runs the command themselves.
+     * ⚠️ `--force` is NOT forwarded, and the reason is narrower than it first looks. It would mean
+     * *repoint a binary the operator chose* — a different act from the publish-overwrite `--force`
+     * governs everywhere else here. It does NOT mean a broken pin survives an install: the command
+     * re-verifies an incumbent value with `--version` and replaces one that does not run, so the only
+     * thing `--force` protects is a Node that works.
+     *
+     * ⚠️ **Non-fatal by construction, which is a rule and not a convenience.** Whether a machine has a
+     * working Node is a fact about the HOST, and this file's own convention is that install warns on a
+     * host condition rather than refusing. The command already returns SUCCESS for an unresolvable or
+     * non-running RESOLVED binary; the code is read and downgraded here anyway, so that an exit status
+     * added to that command later cannot silently start failing installs.
      */
     private function pinNodeBinary(): void
     {
@@ -914,7 +922,11 @@ class BeamInstallCommand extends Command
         }
 
         $this->line('splicewire:beam:install → compile toolchain (node binary)');
-        $this->call('splicewire:beam:ux:pin-node');
+
+        if ($this->call('splicewire:beam:ux:pin-node') !== self::SUCCESS) {
+            $this->warn('splicewire:beam:install — the node binary was not pinned; entry bodies will '.
+                'compile from the CLI and NOT from a browser save until BEAM_UX_NODE_BINARY is set.');
+        }
     }
 
     /**
