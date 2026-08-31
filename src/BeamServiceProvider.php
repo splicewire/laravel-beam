@@ -165,6 +165,7 @@ use Splicewire\Beam\Surgeon\ClientRuntimeContractAudit;
 use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\DeclarationDocblockAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
+use Splicewire\Beam\Surgeon\DuplicateRouteNameAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
 use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
@@ -1117,6 +1118,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bind(RealmGateCoverageAudit::class, fn ($app) => new RealmGateCoverageAudit(
             $app->make(RealmRegistry::class),
         ));
+        // Reads the assembled route table and nothing else — no host path to scope, no registry to
+        // consult, because a route name is only a defect in the company of the whole table. A plain
+        // `bind` for the same reason `ResourceMountMap` is one: this is a READ over the live router, and
+        // memoising it would hand a run the table as it stood at first resolve.
+        $this->app->bind(DuplicateRouteNameAudit::class, fn ($app) => new DuplicateRouteNameAudit(
+            $app->make(Router::class),
+        ));
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkEndpointDriftAudit::class);
@@ -1204,6 +1212,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // starters' `os` gates, against a realm RealmRegistry has never shipped, were deleted hours
         // earlier. A zero reading is the argument for the instrument, not against it.
         $manifest->register('splicewire/laravel-beam', RealmGateCoverageAudit::class);
+        // Advisory, and this is the one registration here where "advisory" understates the finding rather
+        // than overstating it: a duplicate route name makes `route:cache` throw, so a host carrying one
+        // cannot deploy a cached table at all. It is still not a gate, because which routes are assembled
+        // is the definitive fact about the HOST — the same beam mount collides at `~/Herd/audiostud`
+        // (an Inertia page route and a particle listing both claiming `songs.index`) and not at the
+        // flagship, and neither package could have known. Measured 2026-08-30: the flagship's 883 named
+        // routes collide zero times and cache cleanly, while audiostud, prahsys-gateway (80) and
+        // prognosix-api (2) all fail `route:cache` outright. A gate would fail those roots on day one
+        // over route files beam does not own. A host that wants it to gate registers this class in its
+        // own manifest with `gate: true` — and given the deploy consequence, most should.
+        $manifest->register('splicewire/laravel-beam', DuplicateRouteNameAudit::class);
     }
 
     /**
