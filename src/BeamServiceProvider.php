@@ -1761,6 +1761,25 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 BeamInstallManifest::class,
                 BeamSeedManifest::class,
                 SchemaSources::class,
+
+                // ⚠️ SIX MORE, added 2026-08-31 by registry-kernel 73 phase A, and they are the same
+                // defect as the five above — found by the instrument that did not exist when the five
+                // were repaired. `a699757` (2026-08-28, titled "registry-kernel 38 CLOSES beam") landed
+                // all six, and the sweep LEDGER records all six as VERIFIED. They were never in the
+                // index at any host: `UnindexedRegistryAudit` measured every one of them unindexed at
+                // **14 of 14** `~/Herd` roots. The sweep's verification standard could not see it,
+                // because every instrument it had asks the DECLARATION question.
+                //
+                // All six are unconditional singletons bound in this provider's register(), and all six
+                // are accumulators other packages contribute into (a realm overlay, a resource
+                // contribution, a surface group, an audit scan path), so `booted()` is right for the
+                // reason the block above states rather than by copying it.
+                RealmOverlayRegistry::class,
+                RealmResourceRegistry::class,
+                ResourceContributionRegistry::class,
+                GroupRegistry::class,
+                AuditScanPaths::class,
+                FacadeConformanceScope::class,
             ] as $registry) {
                 $index->describe($this->app->make($registry), by: self::class);
             }
