@@ -138,6 +138,31 @@ class ResponseBodyEncodesDefensivelyTest extends TestCase
         );
     }
 
+    /**
+     * The half the defence used to miss. `toResponseArray()` is spatie's `toArray()` — a transformer
+     * pipeline over live property values, so it can throw for the same reasons the ENCODER can, and
+     * it used to be evaluated at the call site, outside the try. Stage 0 pulls it inside: the
+     * projection is handed in as a closure, and when it throws the object's own declared state is
+     * recovered instead. The message still reaches whoever has to read it.
+     */
+    public function test_a_projection_that_throws_does_not_replace_the_error(): void
+    {
+        $body = new ProjectionThatThrows(
+            success: false,
+            statusCode: ResponseBody::HTTP_SERVER_ERROR,
+            message: 'SQLSTATE[42P01]: relation "beam_hooks" does not exist',
+        );
+
+        $response = $body->toResponse(null);
+        $payload = json_decode($response->getContent(), true);
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertSame(
+            'SQLSTATE[42P01]: relation "beam_hooks" does not exist',
+            $payload['message'] ?? null,
+        );
+    }
+
     public function test_an_ordinary_payload_is_untouched(): void
     {
         $body = ResponseBody::from(['data' => ['id' => 7, 'name' => 'ok']]);
@@ -169,5 +194,22 @@ class ThrowingTraceArgument implements \JsonSerializable
     public function jsonSerialize(): mixed
     {
         throw new RuntimeException('nope');
+    }
+}
+
+/**
+ * A ResponseBody whose PROJECTION fails, rather than whose payload does.
+ *
+ * `toResponseArray()` wraps spatie's `toArray()` — a transformer pipeline over live property values,
+ * which can throw for the same reasons the encoder can. Before stage 0 it was evaluated at the call
+ * site, so this failure escaped the guarantee entirely: the envelope built to report an error died
+ * producing itself, and the ORIGINAL message never reached anyone. Throwing outright is the blunt
+ * form of what a real transformer failure does mid-pipeline.
+ */
+class ProjectionThatThrows extends ResponseBody
+{
+    public function toResponseArray(?string $route = null): array
+    {
+        throw new RuntimeException('the projection itself failed');
     }
 }

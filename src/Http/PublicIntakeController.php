@@ -119,8 +119,16 @@ class PublicIntakeController
                 errors: $errors,
             );
 
+            // Render the DTO's OWN defended response (RendersJsonSafely) rather than reaching past
+            // it. This is beam's one hostile-input door: unauthenticated, and `errors` is keyed by
+            // JSON pointer into the SUBMITTED document, so the keys are the caller's field names.
+            // Reaching past the DTO meant one invalid UTF-8 byte in a field name threw from
+            // JsonResponse's constructor BEFORE the wrapping HttpResponseException existed, so
+            // nothing on the path caught it and the submitter got a 500 naming JSON instead of a
+            // 422 naming their field. HttpResponseException needs a Response, not a Responsable, so
+            // the body is rendered here and re-statused instead of being returned as the DTO.
             throw new HttpResponseException(
-                new JsonResponse($body->toArray(), Response::HTTP_UNPROCESSABLE_ENTITY)
+                $body->toResponse($request)->setStatusCode(Response::HTTP_UNPROCESSABLE_ENTITY)
             );
         }
 
@@ -146,7 +154,9 @@ class PublicIntakeController
             schemaRef: (string) $written->schema_ref,
         );
 
-        return new JsonResponse($body->toArray(), 201);
+        // Same reach-past as the 422 above, benign payload or not — fixed together so it cannot
+        // regrow by copy from the neighbouring branch.
+        return $body->toResponse($request)->setStatusCode(201);
     }
 
     /** Prefer the schema's own absolute `$id` as the binding; fall back to the route ref. */

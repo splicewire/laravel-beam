@@ -69,7 +69,7 @@ class ResponseBody extends Data
     public function toResponse($request): JsonResponse
     {
         return $this->jsonResponseThatCannotThrow(
-            $this->toResponseArray(),
+            fn () => $this->toResponseArray(),
             $this->statusCode
         );
     }

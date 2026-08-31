@@ -6,6 +6,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Http\JsonResponse;
+use Splicewire\Beam\Data\RendersJsonSafely;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -50,12 +51,19 @@ class ArrayResponseEnvelope implements ResponseEnvelope
     {
         return new class($body, $status) implements Responsable
         {
+            // The default envelope must be no less safe than the opt-in one. `normalize()` calls
+            // `->toArray()` on a projected record, so this body is DB columns — a bytea, a latin-1
+            // text predating a charset migration, JSON written by a non-PHP writer. Its richer
+            // sibling ResponseBodyEnvelope goes through ResponseBody and inherits this defence for
+            // free; a host taking beam's BOUND DEFAULT was getting a bare `new JsonResponse`.
+            use RendersJsonSafely;
+
             /** @param  array<string, mixed>  $body */
             public function __construct(private array $body, private int $status) {}
 
             public function toResponse($request): JsonResponse
             {
-                return new JsonResponse($this->body, $this->status);
+                return $this->jsonResponseThatCannotThrow($this->body, $this->status);
             }
         };
     }

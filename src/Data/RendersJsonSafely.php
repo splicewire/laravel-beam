@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Data;
 
 use BackedEnum;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Throwable;
 use UnitEnum;
@@ -20,8 +21,17 @@ use UnitEnum;
  * Non-backed enums are one instance of a class, not the class itself: closures, resources,
  * recursive structures, invalid UTF-8 byte strings and objects with a throwing `jsonSerialize()`
  * all break `json_encode` identically. A fix that special-cases enums leaves the trap armed, so
- * this one is indifferent to argument type. Three stages, each strictly weaker than the last:
+ * this one is indifferent to argument type. Four stages, each strictly weaker than the last:
  *
+ *  0. **Project, when handed a projection rather than an array.** `toResponseArray()` is spatie's
+ *     `toArray()` — a transformer pipeline over live property values, which can throw for the SAME
+ *     reasons the encoder can (an unserializable property reached during transformation). Evaluating
+ *     it at the CALL SITE, outside this method, put the projection outside the guarantee: the
+ *     defence covered the encode and not the step that produced what it encodes. Callers therefore
+ *     hand in a {@see Closure}, and a projection that throws falls back to the object's own declared
+ *     state via `get_object_vars()` — properties read directly, without re-entering the pipeline
+ *     that just failed — sanitised through {@see self::toJsonSafeValue()}, which cannot throw. An
+ *     array may still be passed for a payload that was never a projection.
  *  1. **Encode as-is.** The happy path is byte-identical to `new JsonResponse($payload, $status)`,
  *     so nothing that already worked changes shape or cost. Sanitising unconditionally would have
  *     meant rewriting every well-formed response to repair a payload that is almost never broken.
@@ -33,8 +43,8 @@ use UnitEnum;
  *  3. **Fall back to a minimal envelope** carrying the status and a scrubbed message. Reached only
  *     if stage 2 somehow fails too; it touches nothing but scalars, so it cannot throw.
  *
- * The invariant the tests pin is the whole point: whatever is in the payload, the ORIGINAL message
- * survives to the client.
+ * The invariant the tests pin is the whole point: whatever is in the payload — and whatever happens
+ * while the payload is being PROJECTED — the ORIGINAL message survives to the client.
  */
 trait RendersJsonSafely
 {
@@ -45,10 +55,21 @@ trait RendersJsonSafely
     private const SAFE_ENCODE_MAX_DEPTH = 24;
 
     /**
-     * @param  array<array-key, mixed>  $payload
+     * @param  array<array-key, mixed>|Closure(): array<array-key, mixed>  $payload
      */
-    protected function jsonResponseThatCannotThrow(array $payload, int $status): JsonResponse
+    protected function jsonResponseThatCannotThrow(array|Closure $payload, int $status): JsonResponse
     {
+        if ($payload instanceof Closure) {
+            try {
+                $payload = $payload();
+            } catch (Throwable) {
+                // Stage 0 failed: there is no payload to encode at all. Recover the object's own
+                // declared state and sanitise it; the message survives, the projection does not.
+                $recovered = $this->toJsonSafeValue(get_object_vars($this));
+                $payload = is_array($recovered) ? $recovered : [];
+            }
+        }
+
         try {
             return new JsonResponse($payload, $status);
         } catch (Throwable) {
@@ -121,7 +142,7 @@ trait RendersJsonSafely
             return $value::class.'::'.$value->name;
         }
 
-        if ($value instanceof \Closure) {
+        if ($value instanceof Closure) {
             return '{closure}';
         }
 

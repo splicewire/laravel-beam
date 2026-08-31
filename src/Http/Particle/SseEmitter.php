@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Http\Particle;
 
+use Splicewire\Beam\Data\RendersJsonSafely;
 use Splicewire\Beam\Particle\Emitter;
 use Splicewire\Beam\Particle\OperationKind;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -19,6 +20,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class SseEmitter implements Emitter
 {
+    use RendersJsonSafely;
+
     /**
      * Build a `text/event-stream` `StreamedResponse` whose body is produced by `$producer`, handed a fresh
      * SSE {@see Emitter} bound to the open connection. The one home for the SSE headers + response wrapper.
@@ -52,10 +55,27 @@ class SseEmitter implements Emitter
      * The one `text/event-stream` frame for an event — the wire contract, kept pure (and testable) apart
      * from the flush that pushes it down the connection.
      *
+     * The encode is defended the same way every other beam response body is
+     * ({@see RendersJsonSafely}), for a failure mode that is quieter here than anywhere else on the
+     * wire: bare `json_encode()` returns `false` rather than throwing, and `false` interpolates to
+     * the EMPTY STRING — so an unencodable frame shipped as a well-formed SSE frame with no body.
+     * The client's `JSON.parse` failed and the server logged nothing at all. The two-stage shape is
+     * the trait's: encode as-is first, so a well-formed frame is byte-identical to what it always
+     * was, and substitute a projection only once that has actually failed.
+     *
      * @param  array<string, mixed>  $data
      */
     public function frame(string $event, array $data): string
     {
-        return "event: {$event}\n".'data: '.json_encode($data)."\n\n";
+        $json = json_encode($data);
+
+        if (! is_string($json)) {
+            $json = json_encode(
+                $this->toJsonSafeValue($data),
+                JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR,
+            );
+        }
+
+        return "event: {$event}\n".'data: '.(is_string($json) ? $json : '{}')."\n\n";
     }
 }
