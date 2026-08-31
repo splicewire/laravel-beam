@@ -142,12 +142,13 @@ class UnrealmedResourceAudit implements DoctorAudit
                 sprintf(
                     '[%s] (%s) is a framed resource belonging to no realm, so definitions($realm) filters '
                     .'it out of every one of this host\'s realms (%s) — it is registered and unreachable '
-                    .'through the manifest, silently. Add the key to a realm in config(\'frame.realms\'), '
-                    .'or name its realms where it registers: register($resource, [\'%s\']).',
+                    .'through the manifest, silently. Add the key under whichever of those realms it '
+                    .'belongs to in config(\'frame.realms\'), or name them where it registers: '
+                    .'register($resource, [<realm>, …]). If it belongs to none of them, it is REST-only '
+                    .'and should not be framed.',
                     $key,
                     $this->dataClassFor($key),
                     implode(', ', $realms),
-                    $realms[0] ?? 'tenant',
                 ),
             );
         }
