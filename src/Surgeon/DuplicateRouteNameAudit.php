@@ -47,13 +47,17 @@ use Splicewire\Beam\Particle\Mount\PendingParticleMount;
  *
  * ```
  * host                routes   named   collisions   route:cache
- * splicewire-app         908     883            0   ✅ cached successfully
+ * splicewire-app         915     890            0   ✅ cached successfully
  * audiostud              204     196            1   ❌ LogicException [songs.index]
  * prahsys-gateway        231     205           80   ❌ LogicException [n1.status]
  * prognosix-api          164     148            2   ❌ LogicException [dicom.proxy]
  * fable-legacy           448     144            3   (beam not installed)
- * 16 other roots           —       —            0   —
+ * 15 other roots           —       —            0   —
  * ```
+ *
+ * (`numero-legacy` is the twenty-first root and does not boot, independently of anything here.) The
+ * `routes` and `named` columns are `route:list` readings and this audit's own census agrees with them
+ * host for host — verified at the flagship, which reports `890 named routes across 915 assembled`.
  *
  * **The flagship is clean and the estate is not**, which is the exact shape this package keeps relearning.
  * A route-table audit verified only at `~/Herd/splicewire-app` would have measured zero and shipped.
