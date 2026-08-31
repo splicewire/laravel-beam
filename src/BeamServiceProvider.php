@@ -86,6 +86,7 @@ use Splicewire\Beam\Doctor\Support\FamilyTailwindScan;
 use Splicewire\Beam\Doctor\Support\TrackerTicketStatus;
 use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
+use Splicewire\Beam\Doctor\UndeclaredOutputAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
@@ -940,6 +941,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // cries wolf — while the OPERATION axis is registry-side, since every mounted op reads its
         // declaration unconditionally. Warn on both; the `null` → `false` flip is what they gate.
         $manifest->register('splicewire/laravel-beam', UndeclaredInputAudit::class);
+        // The `output:` twin of the audit above (api-surface-coherence 127). Two checks again, but here
+        // the split is two DIRECTIONS of one axis rather than two axes, and they scope to different kinds:
+        // `respond:` with no `output:` is universal (`finish()` consults the projector on all four kinds),
+        // while `output:` with no `respond:` is TASK-only (only a Task has a `{ queued: … }` default that
+        // contradicts the declaration — 18 of the flagship's 20 Read/Write/Stream ops declare `output:`
+        // with no projector and are correct to). Warn, and registry-side only: both live offenders are
+        // provider CLOSURES a static scan structurally cannot see, and all five respond-bearing attributed
+        // op classes estate-wide already declare, so the static twin has no population to read.
+        $manifest->register('splicewire/laravel-beam', UndeclaredOutputAudit::class);
         // A declared `IdConstraint` measured against the model's REAL key type
         // (particle-operation-surface 14 gate 1). Advisory, because a key type is a fact about the
         // HOST and not grammar a package's declaration could have gotten right blind — and registry-
