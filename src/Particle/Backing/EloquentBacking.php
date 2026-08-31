@@ -29,6 +29,14 @@ use Illuminate\Database\Eloquent\Model;
  * ({@see BacksModel}) — so an ordinary resource may open any affordance, and the
  * capability-is-the-ceiling check never fires for it.
  *
+ * ## The write capability is persistence-agnostic; this backing's answers are not
+ *
+ * Since particle-write-surface ticket 07, {@see WritesRecords} traffics in {@see WritableRecord} rather
+ * than naming `Model` directly. Nothing about THIS backing changed behaviourally — the same model class
+ * is queried, the same fresh instance is constructed — only the return is wrapped, and
+ * {@see WritableRecord::model()} unwraps it. The envelope exists so a backing over an external system can
+ * implement the capability at all; the ordinary case pays one allocation for it.
+ *
  * ⚠️ It does NOT implement {@see ResolvesRecord}. That capability yields a projected
  * {@see ResolvedRecord} for a union-style detail read; a model-backed detail runs through the
  * declaration's own read projection (`data:` / `project:`), which is a Data-class concern and stays
@@ -66,13 +74,15 @@ class EloquentBacking implements BacksModel, QueriesRecords, StreamsRecords, Wri
     /**
      * @param  array<string, mixed>  $filters
      */
-    public function resolveForWrite(string $id, array $filters): ?Model
+    public function resolveForWrite(string $id, array $filters): ?WritableRecord
     {
-        return $this->model::query()->find($id);
+        $model = $this->model::query()->find($id);
+
+        return $model === null ? null : new WritableRecord($model);
     }
 
-    public function newRecord(): Model
+    public function newRecord(): WritableRecord
     {
-        return new $this->model;
+        return new WritableRecord(new $this->model);
     }
 }

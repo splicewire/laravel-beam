@@ -11,6 +11,7 @@ use Splicewire\Beam\Particle\Backing\BacksModel;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\ResolvedRecord;
 use Splicewire\Beam\Particle\Backing\ResolvesRecord;
+use Splicewire\Beam\Particle\Backing\WritableRecord;
 use Splicewire\Beam\Particle\Backing\WritesRecords;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -127,14 +128,14 @@ class BothCapabilitiesBacking implements BacksModel, QueriesRecords, WritesRecor
         return GuardProbeModel::query();
     }
 
-    public function resolveForWrite(string $id, array $filters): ?Model
+    public function resolveForWrite(string $id, array $filters): ?WritableRecord
     {
         return null;
     }
 
-    public function newRecord(): Model
+    public function newRecord(): WritableRecord
     {
-        return new GuardProbeModel;
+        return new WritableRecord(new GuardProbeModel);
     }
 }
 
@@ -158,14 +159,22 @@ class WritesButModellessBacking implements ResolvesRecord, WritesRecords
         return null;
     }
 
-    public function resolveForWrite(string $id, array $filters): ?Model
+    public function resolveForWrite(string $id, array $filters): ?WritableRecord
     {
         return null;
     }
 
-    public function newRecord(): Model
+    /**
+     * ⚠️ particle-write-surface 07: this double is the population the ticket freed, and it now says so.
+     * Before 07, `newRecord(): Model` forced a MODELLESS backing to manufacture a `GuardProbeModel` it
+     * does not back — the signature was unsatisfiable honestly, which is exactly why the estate's three
+     * real non-Eloquent backings implement only `ResolvesRecord, StreamsRecords`. It returns a non-model
+     * subject now. The write PIPELINE still cannot persist that (07 scopes it out); this test never
+     * persists, it only exercises the catalog guard.
+     */
+    public function newRecord(): WritableRecord
     {
-        return new GuardProbeModel;
+        return new WritableRecord(new \stdClass);
     }
 }
 

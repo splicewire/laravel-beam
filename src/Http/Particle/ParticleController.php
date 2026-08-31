@@ -223,7 +223,14 @@ class ParticleController extends Controller
         // auto-associate, so it falls back to a plain `new` and pairs with the resource's own prepare hook.
         // Absent a relative, this is the backing's own fresh record — today's exact code path for an
         // EloquentBacking, which is `new $model`.
-        $model = $this->newRelativeModel($request) ?? $this->writableBacking($resource)->newRecord();
+        //
+        // ⚠️ particle-write-surface 07: `newRecord()` now returns a `WritableRecord` envelope so the write
+        // CAPABILITY stops naming Eloquent (a backing over an external system could not implement it at
+        // all before). `->model()` is the single named seam where the PIPELINE's remaining Eloquent
+        // requirement is asserted — everything from `$resource->prepare` down through `ParticleWriter`,
+        // the write gate and `BeamParticlePersisted` is still Model-typed, and 07 scopes that migration
+        // out as a map. It refuses with `WriteSubjectNotEloquent`, not a TypeError, so the gap is legible.
+        $model = $this->newRelativeModel($request) ?? $this->writableBacking($resource)->newRecord()->model();
         if ($resource->prepare !== null) {
             ($resource->prepare)($model, $input, $request->user());
         }

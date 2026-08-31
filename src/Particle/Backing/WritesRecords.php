@@ -2,7 +2,9 @@
 
 namespace Splicewire\Beam\Particle\Backing;
 
-use Illuminate\Database\Eloquent\Model;
+use Splicewire\Beam\Events\BeamParticlePersisted;
+use Splicewire\Beam\Write\WriteContext;
+use Splicewire\Beam\Write\WriteSubjectNotEloquent;
 
 /**
  * Capability: this backing can create, update and delete records.
@@ -25,6 +27,21 @@ use Illuminate\Database\Eloquent\Model;
  * A write needs the mutable record, not a projection of it, which is why this carries its own
  * {@see resolveForWrite()} rather than reusing {@see ResolvesRecord::resolve()} (whose job is a
  * projected detail READ). The two are genuinely different reads of the same id.
+ *
+ * ## Persistence-agnostic, as of particle-write-surface ticket 07
+ *
+ * Both methods used to return `Illuminate\Database\Eloquent\Model`, which made this capability
+ * **unsatisfiable** for a backing over an external system — and so the estate's three non-Eloquent
+ * backings all implement exactly `ResolvesRecord, StreamsRecords`, the only combination the signatures
+ * permitted. They now traffic in {@see WritableRecord}, mirroring what {@see ResolvedRecord} already did
+ * for the read side, so *"data can be written to any number of places"* is expressible here.
+ *
+ * ⚠️ **Expressible at this boundary is not yet persistable below it.** The pipeline
+ * ({@see WriteContext}, `PersistStage`, the write gate,
+ * {@see BeamParticlePersisted}) still requires an Eloquent model, asserted in
+ * ONE named place — {@see WritableRecord::model()}, which refuses with
+ * {@see WriteSubjectNotEloquent}. Ticket 07 scopes that migration out as a map
+ * with the measured reasons; do not read these signatures as a claim that it is done.
  */
 interface WritesRecords extends ResourceBacking
 {
@@ -33,11 +50,13 @@ interface WritesRecords extends ResourceBacking
      *
      * @param  array<string, mixed>  $filters  the request's opaque bag — the SAME argument shape every
      *                                         other capability takes
+     *
+     * ⚠️ A null return is "no such record", NOT a {@see WritableRecord} wrapping null.
      */
-    public function resolveForWrite(string $id, array $filters): ?Model;
+    public function resolveForWrite(string $id, array $filters): ?WritableRecord;
 
     /**
      * A fresh, unpersisted record for a create.
      */
-    public function newRecord(): Model;
+    public function newRecord(): WritableRecord;
 }
