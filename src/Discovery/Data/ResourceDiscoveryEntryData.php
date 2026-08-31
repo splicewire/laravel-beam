@@ -46,7 +46,7 @@ class ResourceDiscoveryEntryData extends BeamData
         #[Description('HTTP methods, HEAD omitted.')]
         public array $methods,
 
-        #[Description('The route URI, parameters included — `api/v1/circuits/{id}/op/run`.')]
+        #[Description('The route URI, parameters included — `api/v1/circuits/{id}/run`.')]
         public string $uri,
 
         #[Description('The Laravel route name, or null for the handful of hand-written routes that never took one.')]

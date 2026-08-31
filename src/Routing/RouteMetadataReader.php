@@ -74,10 +74,10 @@ interface RouteMetadataReader
      * by `->beam()->inResource()`. Both write the same route default, so this reader cannot tell them
      * apart, which is the point (ticket 01).
      *
-     * An OPERATION route (`Route::particleOp()`/`particleOps()`) stamps its resource under a second key,
+     * An OPERATION route (mounted by `Particle::ops()`) stamps its resource under a second key,
      * because the operation controller resolves the op by (resource, name) rather than serving the
      * resource's own CRUD. That is an implementation detail of the mount, not a second kind of belonging —
-     * `POST /circuits/{id}/op/duplicate` belongs to `circuits` exactly as `GET /circuits` does — so this
+     * `POST /circuits/{id}/duplicate` belongs to `circuits` exactly as `GET /circuits` does — so this
      * reader falls through to it. Ticket 17 found this while wiring the group chain: the ticket's own note
      * claimed there was one stamp to read, and there are two.
      *

@@ -22,9 +22,10 @@ use Splicewire\Beam\Rendering\DeclaresDelivery;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Runs a declared {@see ParticleOperation} mounted by `Route::particleOp()` at
- * `POST /{resource}/{id}/op/{name}`. It supplies the cross-cutting plumbing so the host's `handle`
- * closure stays ordinary code:
+ * Runs a declared {@see ParticleOperation} mounted by `Particle::ops()` at
+ * `{$method} /{resource}/{id}/{name}`, plus the deprecated `…/{id}/op/{name}` alias that keeps shipped
+ * callers working (particle-operation-surface 12 — see `ParticleMounter::op()`). It supplies the
+ * cross-cutting plumbing so the host's `handle` closure stays ordinary code:
  *
  *   1. resolve the operation (from the route defaults) + its SUBJECT, through the operation's declared
  *      {@see ResolvesOperationSubject} — by default the `{id}` record

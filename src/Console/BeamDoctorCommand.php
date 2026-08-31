@@ -182,7 +182,8 @@ class BeamDoctorCommand extends Command
                 false,
                 fn (ParticleRouteResourceAudit $audit) => $audit->run(),
             ),
-            // The gate particle-operation-surface 05 has to pass before it may drop the `/op/` segment.
+            // The gate particle-operation-surface 05 had to pass before the `/op/` segment could be dropped;
+            // 12 dropped it on 2026-08-29, so a finding here is now a live collision, not a work-list line.
             // Advisory for the third time in a row and for the same reason: whether a rendering and an
             // operation are exposed at the same `at` is a decision the HOST makes, and the two live in
             // different popcorn roots, so no registry can refuse the pair.

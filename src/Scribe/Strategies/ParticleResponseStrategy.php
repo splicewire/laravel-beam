@@ -38,7 +38,7 @@ class ParticleResponseStrategy extends Strategy
     {
         $defaults = $endpointData->route?->defaults ?? [];
 
-        // Operation routes (…/op/{name}): document the operation's DECLARED `output:` slot — the same
+        // Operation routes (…/{id}/{name}): document the operation's DECLARED `output:` slot — the same
         // declaration the TypeScript route manifest resolves its hook type from, so the spec and the client
         // cannot disagree about what an operation returns (particle-doctrine-convergence ticket 04).
         if (isset($defaults[ParticleOperationController::RESOURCE], $defaults[ParticleOperationController::NAME])) {

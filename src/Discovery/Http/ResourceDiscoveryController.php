@@ -39,7 +39,7 @@ use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
  * ## ⚠️ Existence, not invocability
  *
  * An entry says the operation is THERE and that this caller passes the route's own gate. It does not
- * say the caller may run it against any particular record. `/circuits/{id}/op/run` authorizes against a
+ * say the caller may run it against any particular record. `/circuits/{id}/run` authorizes against a
  * specific circuit and this listing has no `{id}`, so an instance-scoped refusal still happens at
  * invoke time, as a 403. 41 D6 made that the stated contract rather than a surprise.
  *

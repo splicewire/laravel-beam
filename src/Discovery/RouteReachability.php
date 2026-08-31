@@ -22,7 +22,7 @@ use Splicewire\Beam\Discovery\Data\ResourceDiscoveryData;
  *
  * ## Existence, not invocability — the caveat is the contract
  *
- * `POST /circuits/{id}/op/run` authorizes against a specific circuit, and a listing mounted at
+ * `POST /circuits/{id}/run` authorizes against a specific circuit, and a listing mounted at
  * `/circuits/discovery` has no `{id}` to authorize against. So an instance-scoped gate — `can:update,
  * circuit`, a policy behind a bound model — is NOT evaluated here and the route is listed. A caller may
  * therefore see an operation listed and still be refused on invoke. That is stated on the endpoint and

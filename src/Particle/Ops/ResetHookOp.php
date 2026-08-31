@@ -11,7 +11,7 @@ use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Routing\IdConstraint;
 
 /**
- * `POST /hooks/{hook}/op/reset` — the ONLY path out of auto-disable (api-surface-coherence ticket 38,
+ * `POST /hooks/{hook}/reset` — the ONLY path out of auto-disable (api-surface-coherence ticket 38,
  * decided by ticket 12 §4).
  *
  * Zeroes `consecutive_failures`, drops `last_failure_request_log_id`, clears `disabled_at`.

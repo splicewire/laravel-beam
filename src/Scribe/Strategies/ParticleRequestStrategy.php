@@ -26,7 +26,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * host-configured {@see Generator} chain and stashes it under the SAME `custom['dataRequestSchema']` key — so the
  * package's `DataSchemaGenerator` assembly hook needs zero changes.
  *
- * Both legal declaration sites are read, not just the resource's: an OPERATION route (`…/op/{name}`) carries
+ * Both legal declaration sites are read, not just the resource's: an OPERATION route (`…/{id}/{name}`) carries
  * its own stamp and its own `input:`, so it documents through the same path (api-surface-coherence ticket 30).
  * The one asymmetry is the axis — an op's mount chooses the HTTP method, so a GET op's declared input is a
  * query contract and belongs to {@see ParticleOperationParameterStrategy} instead.
@@ -43,7 +43,7 @@ class ParticleRequestStrategy extends Strategy
     {
         $defaults = $endpointData->route?->defaults ?? [];
 
-        // Operation routes (…/op/{name}) declare their payload the same way a resource does — the second
+        // Operation routes (…/{id}/{name}) declare their payload the same way a resource does — the second
         // legal declaration site — so they document the same way (api-surface-coherence ticket 30).
         if (isset($defaults[ParticleOperationController::RESOURCE], $defaults[ParticleOperationController::NAME])) {
             // ASK, don't demand (api-surface-coherence 102): a route mounted for an operation that is not

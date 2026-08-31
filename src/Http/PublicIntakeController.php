@@ -61,7 +61,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * doctrine's invariant is that every boundary-crossing shape is a declared Data class at one of three
  * legal declaration sites — and this surface reaches for the third,
  * `#[RequestFromData]`/`#[ResponseFromData]`, on purpose. It cannot be a `#[ParticleOp]`: every op
- * mounts at `{resource}/{id}/op/{name}` and binds an existing record, while intake CREATES one; no op
+ * mounts at `{resource}/{id}/{name}` and binds an existing record, while intake CREATES one; no op
  * in the estate is mounted outside `auth:sanctum`; and decisively, an op's `input:` is a PHP
  * class-string resolved at boot, where this door's input is a JSON Schema resolved per request from a
  * slug. Requiring a compile-time Data class per intake surface would REVERSE the capability stated two

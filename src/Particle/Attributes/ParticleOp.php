@@ -74,7 +74,7 @@ class ParticleOp
 {
     /**
      * @param  string  $resource  the particle resource key this op hangs off (route + auth)
-     * @param  string  $name  the operation slug in the URL (`…/op/{name}`)
+     * @param  string  $name  the operation slug in the URL (`…/{id}/{name}`)
      * @param  OperationKind  $kind  read | write | task | stream
      * @param  class-string  $model  the FALLBACK subject class — what the `{id}` resolves to when
      *                               `$resource` names no registered particle resource (the live

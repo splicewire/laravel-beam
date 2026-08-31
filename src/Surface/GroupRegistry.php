@@ -26,7 +26,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * URI segment. Both are string-parsing a URL for a fact the route already carries — every particle route
  * is stamped with its resource key at mount time, and nothing read it. The visible cost was that a
  * sub-operation OF a resource documented itself under whatever its URL happened to start with:
- * `GET /fragments/{fragment}/media` filed under Fragments, `POST /context-scopes/{id}/op/embeddings`
+ * `GET /fragments/{fragment}/media` filed under Fragments, `POST /context-scopes/{id}/embeddings`
  * swallowed by whichever glob reached it first.
  *
  * So: **the group is a property of the RESOURCE, not of the URI.**

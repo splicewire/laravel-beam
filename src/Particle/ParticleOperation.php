@@ -352,7 +352,7 @@ class ParticleOperation implements HasRegistryKey
 
     /**
      * @param  string  $resource  the particle resource key this operation hangs off (for the route + auth)
-     * @param  string  $name  the operation slug in the URL (`…/op/{name}`)
+     * @param  string  $name  the operation slug in the URL (`…/{id}/{name}`)
      * @param  OperationKind  $kind  read | write | task | stream — sync-call vs queueable-dispatch vs held-stream
      * @param  class-string  $model  the FALLBACK subject class — the model the `{id}` resolves to when
      *                               `$resource` names no REGISTERED particle resource. That case is

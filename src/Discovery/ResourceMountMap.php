@@ -34,8 +34,8 @@ use Splicewire\Beam\Routing\RouteMetadataReader;
  * routes — so the root is RECOVERED from each route by removing its own sub-surface tail. That step is
  * sub-surface-aware rather than a longest-common-prefix over the key's URIs, and it has to be: every
  * one of `market-products`' four routes is
- * `api/operator/beam-market/review/market-products/{id}/op/{name}`, whose longest common prefix ends at
- * `…/{id}/op`. Knowing the route is an OPERATION is what recovers `…/market-products`.
+ * `api/operator/beam-market/review/market-products/{id}/{name}`, whose longest common prefix ends at
+ * `…/{id}`. Knowing the route is an OPERATION is what recovers `…/market-products`.
  *
  * Roots that nest then absorb into their shortest ancestor, which is what folds `api/v1/beam/schemas`,
  * `…/schemas/freeze` and `…/schemas/{stem}/latest` into one mount instead of four — and leaves

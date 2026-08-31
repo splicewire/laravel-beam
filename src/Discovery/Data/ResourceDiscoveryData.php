@@ -43,7 +43,7 @@ class ResourceDiscoveryData extends BeamData
         #[Description(
             'Every route on this mount the CALLER can reach, gated by each route\'s own middleware — never a union or '
             .'an intersection of the sub-surfaces\' abilities. ⚠️ An entry publishes an operation\'s EXISTENCE. A route '
-            .'that authorizes against a specific record (`/circuits/{id}/op/run`) cannot be judged from a listing that '
+            .'that authorizes against a specific record (`/circuits/{id}/run`) cannot be judged from a listing that '
             .'has no `{id}`, so it is listed and the invoke may still answer 403.'
         )]
         public array $entries,
