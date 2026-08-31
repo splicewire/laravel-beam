@@ -181,28 +181,50 @@ app(RealmResourceRegistry::class)->override('tokens', 'user', new RealmResourceO
 INERT by default: with no overlay configured for a `(realm, key)`, every realm gets the identical
 projection — a simple spin-up is untouched.
 
-## Particle route macros
+## Mounting the particle surface
 
 The generic particle surface ({@see ParticleController} / {@see ParticleOperationController}) is mounted
-declaratively through a family of `Route::` macros registered by `BeamServiceProvider`. A host writes no
-controller — it declares the resource/op and mounts it, keeping its **own** middleware/prefix `group()`.
+declaratively through the **`Particle` facade**. A host writes no controller — it declares the resource/op
+and mounts it, keeping its **own** middleware/prefix `group()`.
 
-| Macro | Mounts | Notes |
+> ⚠️ **The six `Route::particle*` macros were DELETED** (`api-surface-coherence` 93). `Particle` is the
+> only door. Older prose and docblocks across the estate still say `Route::particleResource(…)` — that
+> spelling is historical and does not resolve.
+
+| Facade call | Mounts | Notes |
 | --- | --- | --- |
-| `Route::particleResource($uri, $key, $opts)` | the CRUD verbs (`index`/`show`/`store`/`update`/`destroy`) | `only`, `names`, `legacyPostUpdate`, `idConstraint` options |
-| `Route::particleOp($uri, $key, $op, $opts)` | one named op at `POST {uri}/{id}/op/{op}` | `method`, `name`, `idConstraint` |
-| `Route::particleOps($uri, $key, $ops, $opts)` | **a LIST** of ops (loop-collapse) | see below |
-| `Route::particleRelative($uri, $model, $via, $routes, $opts)` | a bound-relative mount (nested URL) | see below |
+| `Particle::mount($uri, $key)` | the CRUD verbs (`index`/`show`/`store`/`update`/`destroy`) | fluent: `->only()`, `->names()`, `->legacyPostUpdate()`, `->idConstraint()`, `->ops()`, `->relatives()` |
+| `Particle::ops($uri, $key, $ops, $opts)` | **a LIST** of ops (loop-collapse) | `method`, `name`, `idConstraint`; see below |
+| `Particle::relative($uri, $model, $via, $routes, $opts)` | a bound-relative mount (nested URL) | see below |
+| `Particle::relatives($parent, $relatives)` | the declared edges of a parent | `#[ParticleRelative]`-driven |
+| `Particle::filters($resource, …)` | the saved-filter sub-surface | — |
 
-### `Route::particleOps` — the plural loop-collapse (HTTP-02)
+### Where an operation lands — `/op/` is gone, and the old URL still answers
 
-The sibling of `particleOp` that takes a **list** and registers + mounts each in one call — collapsing the
-hand-rolled `foreach ([...]) { Route::particleOp(...); }` boilerplate. Each `$ops` entry is one of three
-forms, the op **name derived from the declaration** (you pass the list, not a restated name per route):
+⚠️ **`particle-operation-surface` 12 (landed 2026-08-29) dropped the `/op/` segment.** Each operation now
+mounts **twice**, and the two spellings split the route name, because two routes cannot share one:
+
+| | URL | route name | |
+|---|---|---|---|
+| primary | `{uri}/{id}/{op}` | `{key}.{op}` | write new code against this |
+| alias | `{uri}/{id}/op/{op}` | `{key}.op.{op}` | **deprecated**, still answers |
+
+The alias deliberately keeps the **old** name, so every existing `route('users.op.login-as')` kept
+resolving — meaning **a `.op.` route name is not stale code**, it is the supported name of the deprecated
+mount. The alias is not decoration either: eight files across five roots hand-write `…/op/…` as a
+template literal and reach no generated client, so nothing in PHP, type-checking or the doctor audits can
+see them. `Http\Particle\LegacyOperationAlias` rides the alias to answer *"is anything still calling
+it?"* — the only evidence that can ever retire it.
+
+### `Particle::ops` — the plural loop-collapse (HTTP-02)
+
+Takes a **list** and registers + mounts each in one call — collapsing hand-rolled `foreach` boilerplate.
+Each `$ops` entry is one of three forms, the op **name derived from the declaration** (you pass the list,
+not a restated name per route):
 
 ```php
 Route::middleware(['web', 'auth'])->prefix('resources')->group(function () use ($ops) {
-    Route::particleOps('songs', 'songs', [
+    Particle::ops('songs', 'songs', [
         new ParticleOperation(name: 'share', …),   // an inline object — registered here + mounted
         DownloadMedia::class,                       // a #[ParticleOp] class-string — discovered + mounted
         'reorder',                                  // a bare name — already registered elsewhere; mounted
@@ -210,7 +232,7 @@ Route::middleware(['web', 'auth'])->prefix('resources')->group(function () use (
 });
 ```
 
-### `Route::particleRelative` — the bound-relative mount (HTTP-02)
+### `Particle::relative` — the bound-relative mount (HTTP-02)
 
 Mounts a particle **through** a route-model-bound **relative** — the related model an operation is
 scoped/associated through (parent is the common flavor; `hasManyThrough`, pivot, or an arbitrary scope are
@@ -218,8 +240,8 @@ all relatives). The SAME particle class can mount both **standalone** (`/media/{
 (`/albums/{album}/photos`) — the relative mount is *additive*, not a competing shape.
 
 ```php
-Route::particleRelative('albums', Album::class, via: 'photos', routes: function () {
-    Route::particleResource('photos', 'photos', ['only' => ['index', 'store']]);
+Particle::relative('albums', Album::class, via: 'photos', routes: function () {
+    Particle::mount('photos', 'photos')->only(['index', 'store']);
 });
 ```
 

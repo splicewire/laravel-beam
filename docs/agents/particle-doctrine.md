@@ -29,7 +29,45 @@ Three legal declaration sites — no fourth:
 
 Don't hand-roll: `splicewire:beam:make:particle-resource` and `splicewire:beam:make:particle-op`
 emit the attribute with every slot filled, the classes those slots name, and the
-`Route::particleResource` / `Route::particleOp` mount line to paste into the host's route file.
+`Particle::mount()` / `Particle::ops()` mount line to paste into the host's route file.
+
+## Where an operation MOUNTS — `/op/` is gone, and the old spelling still answers
+
+⚠️ **This section exists because the URL keeps being mis-stated from memory.** Two changes landed
+separately and each invalidated a spelling that is still in circulation.
+
+**1. The macros are deleted.** `api-surface-coherence` 93 removed all six —
+`Route::particleResource`, `particleOp`, `particleOps`, `particleRelative`, `resourceRenderings`,
+`resourceFilters`. **The `Particle` facade is the only door**: `Particle::mount()`, `::ops()`,
+`::relative()`, `::relatives()`, `::filters()` (`src/Facades/Particle.php:53-57`). Any `Route::particle*`
+you meet in prose is historical; do not write new prose in it.
+
+**2. The `/op/` segment left** (`particle-operation-surface` 12, landed 2026-08-29). An operation now
+mounts **twice** — the primary and a deprecated alias — and they split the two names, because two routes
+cannot share one and `RouteCollection::addLookups()` overwrites silently while Laravel only refuses the
+pair at `route:cache`:
+
+| | URL | route name | |
+|---|---|---|---|
+| primary | `{uri}/{id}/{op}` | `{resourceKey}.{op}` | write new code against this |
+| alias | `{uri}/{id}/op/{op}` | `{resourceKey}.op.{op}` | **deprecated**, still answers |
+
+**The alias deliberately keeps the OLD name.** That is what made the drop a non-event for PHP callers:
+every `route('users.op.login-as')` and `URL::temporarySignedRoute('sigils.op.assume', …)` in the estate
+kept resolving. So *a route name containing `.op.` is not evidence of stale code* — it is the supported
+spelling of the deprecated mount, and grepping for `.op.` to find callers to migrate will mostly find
+correct ones.
+
+⚠️ **Do not delete the alias on the grounds that the suite is green.** Eight files across five roots
+hand-write `…/op/…` as a **template literal** and reach no generated client at all — `~/Herd/audiostud`,
+`~/Herd/splicewire`, and `resources/js/editor/transport.ts` in all three starters. Nothing in PHP, no
+type-check and no doctor audit can see them; deleting the segment would leave live 404s that every
+instrument reports as green. `Http\Particle\LegacyOperationAlias` is the middleware that rides the alias
+specifically to answer *"is anything still calling it?"*, which is the only evidence that can retire it.
+
+`Doctor\ParticleSlotCollisionAudit` watches the slot the drop lands in — `{uri}/{id}/{segment}`, shared
+with renderings, CRUD, and hand-written routes in no registry. Simulated across 21 route tables before
+the drop, on both the URI and route-name axes: zero collisions.
 
 ## What BACKS a resource — one polymorphic slot, and a capability is allowed to be absent
 
