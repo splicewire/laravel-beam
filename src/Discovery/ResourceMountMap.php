@@ -6,7 +6,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
-use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 
 /**
  * **The route table is the join** (api-surface-coherence 41, built by 105).
@@ -15,7 +15,7 @@ use Splicewire\Beam\Routing\BeamRouteAction;
  * it blocked by the registry kernel's no-wildcard-root constraint (`beam.particle.*.ops` does not
  * exist). That priced the WRONG join. Every sub-surface already stamps its resource onto its own
  * routes, so the route table is a join that has already happened: one existing function
- * ({@see BeamRouteAction::resourceKey()}), in memory, no cross-registry union anywhere.
+ * ({@see RouteMetadataReader::resourceKey()}), in memory, no cross-registry union anywhere.
  *
  * The population that falls out is not the same set as "the declared resources", and both directions of
  * the difference are load-bearing (measured on the flagship, 2026-08-28):
@@ -43,7 +43,10 @@ use Splicewire\Beam\Routing\BeamRouteAction;
  */
 class ResourceMountMap
 {
-    public function __construct(protected Router $router) {}
+    public function __construct(
+        protected Router $router,
+        protected RouteMetadataReader $meta,
+    ) {}
 
     /**
      * Every mount with at least one stamped route, keyed by nothing — a flat list, because a resource
@@ -56,7 +59,7 @@ class ResourceMountMap
         $byResource = [];
 
         foreach ($this->router->getRoutes() as $route) {
-            $resource = BeamRouteAction::resourceKey($route);
+            $resource = $this->meta->resourceKey($route);
 
             if ($resource === null) {
                 continue;

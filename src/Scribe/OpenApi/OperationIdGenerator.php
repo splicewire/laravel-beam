@@ -6,8 +6,9 @@ use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as RouteFacade;
 use Illuminate\Support\Str;
 use Knuckles\Camel\Output\OutputEndpointData;
+use Knuckles\Scribe\Tools\DocumentationConfig;
 use Knuckles\Scribe\Writing\OpenApiSpecGenerators\OpenApiGenerator;
-use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 
 /**
  * An `operationId` is a function of the ROUTE, never of the sidebar title (api-surface-coherence 36/78).
@@ -15,7 +16,7 @@ use Splicewire\Beam\Routing\BeamRouteAction;
  * Two rungs, in order, and the title is not consulted at either:
  *
  *  1. **(E) the declaration** — `action['beam']['operationId']`, written by the mount that registered the
- *     route and read back through {@see BeamRouteAction::operationId()}. ONE key, N declarers: a generator
+ *     route and read back through {@see RouteMetadataReader::operationId()}. ONE key, N declarers: a generator
  *     with an arm per stamp family (`_particle`, `_renderings`, `_renderings_catalog`, `_versions`, …)
  *     needs a new arm every time a macro is added, so the reading was inverted instead.
  *  2. **(B) the wire shape** — verb + the FULL uri, params included as segments, nothing stripped.
@@ -59,6 +60,17 @@ class OperationIdGenerator extends OpenApiGenerator
     /** @var array<string, list<Route>>|null */
     protected ?array $routes = null;
 
+    /**
+     * Scribe resolves GENERATORS through the container — `app()->makeWith($generatorClass,
+     * ['config' => $this->config])`, `knuckleswtf/scribe/src/Writing/OpenAPISpecWriter.php:38` — unlike the
+     * extraction STRATEGIES beside them, which it bare-`new`s. So this one can take a required dependency
+     * and autowire it (api-surface-coherence 126).
+     */
+    public function __construct(DocumentationConfig $config, protected RouteMetadataReader $meta)
+    {
+        parent::__construct($config);
+    }
+
     public function pathItem(array $pathItem, array $groupedEndpoints, OutputEndpointData $endpoint): array
     {
         $pathItem['operationId'] = $this->operationId($endpoint);
@@ -88,7 +100,7 @@ class OperationIdGenerator extends OpenApiGenerator
 
         $matches = $this->routes[static::wireKey($verb, $uri)] ?? [];
 
-        return count($matches) === 1 ? BeamRouteAction::operationId($matches[0]) : null;
+        return count($matches) === 1 ? $this->meta->operationId($matches[0]) : null;
     }
 
     /**

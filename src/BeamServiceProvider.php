@@ -141,6 +141,8 @@ use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
+use Splicewire\Beam\Routing\RouteActionMetadataReader;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
@@ -170,6 +172,7 @@ use Splicewire\Beam\Surgeon\MorphAliasCoverageAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
 use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
+use Splicewire\Beam\Surgeon\RealmGateCoverageAudit;
 use Splicewire\Beam\Surgeon\SchemaProjectionDriftAudit;
 use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
 use Splicewire\Beam\Surgeon\SdkHookMigrationAudit;
@@ -592,11 +595,25 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $app->make(ResourceKeyOracle::class),
         ));
 
+        // The route-metadata read seam (api-surface-coherence 126). The `…If` suffix is load-bearing: a
+        // host that has already bound its own reader wins, which is the whole point of turning six
+        // statics into a substitutable contract. `singleton` rather than `bind` because the default
+        // implementation is pure and stateless — it takes a Route as an argument and holds nothing — so
+        // one instance is as correct as N and cheaper. (Unlike the three binds below, which must NOT
+        // memoise, because they read the live route table.)
+        //
+        // `BeamRouteAction`'s statics resolve THIS binding, so rebinding it also substitutes the front
+        // door the two sibling repos (`splicewire/tower`, the flagship) still call.
+        $this->app->singletonIf(RouteMetadataReader::class, RouteActionMetadataReader::class);
+
         // The converged per-resource discovery listing (api-surface-coherence 105, decided by 41 D1/D5/D6).
         // All three are plain binds, not singletons: the map is a READ over the live route table and
         // memoising it would hand a request the table as it stood at first resolve — which is precisely
         // the staleness a runtime listing exists to avoid.
-        $this->app->bind(ResourceMountMap::class, fn ($app) => new ResourceMountMap($app->make('router')));
+        $this->app->bind(ResourceMountMap::class, fn ($app) => new ResourceMountMap(
+            $app->make('router'),
+            $app->make(RouteMetadataReader::class),
+        ));
         $this->app->bind(RouteReachability::class, fn ($app) => new RouteReachability(
             $app,
             $app->make(Gate::class),
@@ -617,6 +634,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $app->make('router'),
             $app->make(ParticleResourceRegistry::class),
             $app->make(ParticleOperationRegistry::class),
+            $app->make(RouteMetadataReader::class),
         ));
 
         // The declaration `config('beam.client.sources')` never had. `RouteManifestSource` is an
@@ -1093,6 +1111,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bind(UnrealmedResourceAudit::class, fn ($app) => new UnrealmedResourceAudit(
             $app->make(ParticleResourceRegistry::class),
         ));
+        // The realm registry's sibling meter, and deliberately a `bind` rather than a `singleton`: the
+        // registry it holds is the boot singleton, but the audit itself must re-read `all()` on every
+        // run so a realm contributed after beam's own boot clears its gate's finding.
+        $this->app->bind(RealmGateCoverageAudit::class, fn ($app) => new RealmGateCoverageAudit(
+            $app->make(RealmRegistry::class),
+        ));
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkEndpointDriftAudit::class);
@@ -1170,6 +1194,16 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // false at tower, and tower could not boot until it was downgraded. A host that wants it to gate
         // registers this class in its own manifest with `gate: true`.
         $manifest->register('splicewire/laravel-beam', UnrealmedResourceAudit::class);
+        // Advisory, non-negotiably, and for the sharper half of the same reason as the audit above:
+        // whether a realm is REGISTERED is a fact about which capability packages a host composes and
+        // when their providers boot, so a host may legitimately register a realm after config is loaded
+        // and a throw here would assert load order as correctness. That is exactly the shape that took
+        // `~/Herd/tower` off the air. Swept 2026-08-30: four of the sixteen beam-installing Herd roots
+        // declare realm gates at all (audiostud gates operator+tenant; the beam/satellite/tower starters
+        // gate operator), twelve declare none including the flagship, and ZERO orphans remain — the three
+        // starters' `os` gates, against a realm RealmRegistry has never shipped, were deleted hours
+        // earlier. A zero reading is the argument for the instrument, not against it.
+        $manifest->register('splicewire/laravel-beam', RealmGateCoverageAudit::class);
     }
 
     /**

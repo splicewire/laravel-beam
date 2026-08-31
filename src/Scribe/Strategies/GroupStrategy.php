@@ -4,7 +4,9 @@ namespace Splicewire\Beam\Scribe\Strategies;
 
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
+use Knuckles\Scribe\Tools\DocumentationConfig;
 use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Surface\GroupRegistry;
 
 /**
@@ -32,17 +34,35 @@ use Splicewire\Beam\Surface\GroupRegistry;
  */
 class GroupStrategy extends Strategy
 {
+    protected RouteMetadataReader $meta;
+
+    /**
+     * Scribe constructs strategies itself — `new $strategyClass($this->config)`
+     * (`knuckleswtf/scribe/src/Extracting/Extractor.php:470`), bypassing the container — so the arity is
+     * fixed by a third party and the reader arrives as a DEFAULTED parameter rather than a required one
+     * (api-surface-coherence 126). Defaulted, not resolved inline with `app()`: a test can hand this
+     * object a reader directly, which service location does not allow.
+     */
+    public function __construct(DocumentationConfig $config, ?RouteMetadataReader $meta = null)
+    {
+        parent::__construct($config);
+
+        $this->meta = $meta ?? BeamRouteAction::reader();
+    }
+
     public function __invoke(ExtractedEndpointData $endpointData, array $settings = []): ?array
     {
         // Scribe constructs strategies itself (`new $strategyClass($this->config)`), so the registry is
         // resolved here rather than injected — the same container reach every other particle strategy makes.
+        // The route-metadata reader takes the other route out of the same constraint (a defaulted ctor
+        // parameter, see above); the registry could follow if it ever needs to be substituted.
         $registry = app(GroupRegistry::class);
 
         $route = $endpointData->route;
         $uri = $endpointData->uri ?? '';
 
         $group = $registry->resolveRoute(
-            $route !== null ? BeamRouteAction::resourceKey($route) : null,
+            $route !== null ? $this->meta->resourceKey($route) : null,
             $uri,
         );
 

@@ -7,6 +7,7 @@ use Rushing\Doctor\DoctorStatus;
 use Splicewire\Beam\Doctor\ParticleSlotCollisionAudit;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Routing\RouteActionMetadataReader;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -32,7 +33,7 @@ class ParticleSlotCollisionAuditTest extends TestCase
 {
     private function audit(): ParticleSlotCollisionAudit
     {
-        return new ParticleSlotCollisionAudit(app(Router::class));
+        return new ParticleSlotCollisionAudit(app(Router::class), new RouteActionMetadataReader);
     }
 
     private function operation(string $uri, string $resource, string $name, string $verb = 'post'): void

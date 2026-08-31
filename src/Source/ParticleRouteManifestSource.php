@@ -8,7 +8,7 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
-use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Routing\RouteVisibility;
 
 /**
@@ -46,6 +46,7 @@ class ParticleRouteManifestSource implements RouteManifestSource
         private Router $router,
         private ParticleResourceRegistry $registry,
         private ParticleOperationRegistry $operations,
+        private RouteMetadataReader $meta,
     ) {}
 
     public function toArray(): array
@@ -119,7 +120,7 @@ class ParticleRouteManifestSource implements RouteManifestSource
         // ⚠️ This is `RouteVisibility`'s FIRST consumer anywhere. The enum shipped with `Public` and
         // `Internal` and tower's own manifest docblock recorded that it had none — so 12 could not
         // "add a case and rely on the seam", it had to add the case and the reader together.
-        if (BeamRouteAction::visibility($route) === RouteVisibility::Deprecated) {
+        if ($this->meta->visibility($route) === RouteVisibility::Deprecated) {
             return false;
         }
 

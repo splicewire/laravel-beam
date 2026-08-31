@@ -16,7 +16,7 @@ use Splicewire\Beam\Discovery\SubSurface;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Delivery\DeliveryResolvers;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
-use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
 
 /**
@@ -59,6 +59,7 @@ class ResourceDiscoveryController extends Controller
     public function __construct(
         protected ResourceMountMap $map,
         protected RouteReachability $reachability,
+        protected RouteMetadataReader $meta,
     ) {}
 
     /**
@@ -146,9 +147,9 @@ class ResourceDiscoveryController extends Controller
             uri: $route->uri(),
             name: $route->getName(),
             operation: is_string($operation) ? $operation : null,
-            operationId: BeamRouteAction::operationId($route),
-            returns: BeamRouteAction::returns($route),
-            returnsMany: BeamRouteAction::returnsMany($route),
+            operationId: $this->meta->operationId($route),
+            returns: $this->meta->returns($route),
+            returnsMany: $this->meta->returnsMany($route),
             declaresDelivery: $delivery !== null,
             formats: $delivery['formats'] ?? [],
             mediaTypes: $delivery['mediaTypes'] ?? [],

@@ -13,7 +13,7 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
-use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 
 /**
  * **A `filterable` resource with no data-filters resource behind it** — the promise made by *not opting
@@ -111,6 +111,7 @@ class FilterablePromiseAudit implements DoctorAudit
         private ParticleResourceRegistry $resources,
         private FilterResourceRegistry $filters,
         private Router $router,
+        private RouteMetadataReader $meta,
     ) {}
 
     /** @return list<Finding> */
@@ -235,7 +236,7 @@ class FilterablePromiseAudit implements DoctorAudit
                 continue;
             }
 
-            $key = BeamRouteAction::resourceKey($route);
+            $key = $this->meta->resourceKey($route);
 
             if ($key === null) {
                 // ⚠️ A NULL key is not "this route reaches nothing" — it is the Frame-resource-root

@@ -13,6 +13,7 @@ use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Routing\RouteActionMetadataReader;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -52,7 +53,7 @@ class FilterablePromiseAuditTest extends TestCase
 
     private function audit(): FilterablePromiseAudit
     {
-        return new FilterablePromiseAudit($this->resources, $this->filters, $this->router);
+        return new FilterablePromiseAudit($this->resources, $this->filters, $this->router, new RouteActionMetadataReader);
     }
 
     private function declare(string $key, ?bool $filterable = null): void

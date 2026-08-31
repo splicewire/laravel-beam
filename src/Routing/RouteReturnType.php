@@ -66,10 +66,23 @@ class RouteReturnType
 
     private int $reflectionCount = 0;
 
+    private RouteMetadataReader $meta;
+
+    /**
+     * The reader is DEFAULTED rather than required (api-surface-coherence 126). This class is
+     * hand-`new`'d with a fixed positional argument list in another repo's suite —
+     * `splicewire/tower`'s `tests/Unit/Routing/RouteManifestStreamsTest.php:69,106` and
+     * `tests/Unit/Routing/RouteReturnTypeTest.php:44` — so a required third parameter would make a
+     * behaviour-preserving refactor a cross-repo breaking change. Container-resolved callers still get
+     * the bound reader injected; a bare `new` falls through to whatever is bound, or to the default.
+     */
     public function __construct(
         private ParticleResourceRegistry $particles,
         private ParticleOperationRegistry $operations,
-    ) {}
+        ?RouteMetadataReader $meta = null,
+    ) {
+        $this->meta = $meta ?? BeamRouteAction::reader();
+    }
 
     /**
      * @return array{type: string, many: bool}|null the TS type + whether the endpoint returns a list
@@ -77,10 +90,10 @@ class RouteReturnType
     public function for(Route $route): ?array
     {
         // (1) Explicit annotation wins; its cardinality is declared (`->beam()->returns(X::class, many: true)`).
-        if ($explicit = BeamRouteAction::returns($route)) {
+        if ($explicit = $this->meta->returns($route)) {
             return [
                 'type' => ClientTypeName::for($explicit),
-                'many' => BeamRouteAction::returnsMany($route),
+                'many' => $this->meta->returnsMany($route),
             ];
         }
 
@@ -116,7 +129,7 @@ class RouteReturnType
     public function streamsFor(Route $route): ?array
     {
         // (1) The explicit route macro wins.
-        if (($declared = BeamRouteAction::streams($route)) !== []) {
+        if (($declared = $this->meta->streams($route)) !== []) {
             return $this->qualify($declared);
         }
 

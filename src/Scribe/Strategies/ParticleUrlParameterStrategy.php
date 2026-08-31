@@ -8,11 +8,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
+use Knuckles\Scribe\Tools\DocumentationConfig;
 use RuntimeException;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 
 /**
  * Document a path parameter's TYPE, EXAMPLE and DESCRIPTION from the resource the segment names.
@@ -69,6 +71,22 @@ class ParticleUrlParameterStrategy extends Strategy
     /** A `where` constraint that spells a uuid, whatever the author's preferred hex class. */
     protected const UUID_CONSTRAINT = '/^\[?[^\]]*a-f[^\]]*\]?\{8\}-/i';
 
+    protected RouteMetadataReader $meta;
+
+    /**
+     * Scribe constructs strategies itself — `new $strategyClass($this->config)`
+     * (`knuckleswtf/scribe/src/Extracting/Extractor.php:470`), bypassing the container — so the arity is
+     * fixed by a third party and the reader arrives as a DEFAULTED parameter rather than a required one
+     * (api-surface-coherence 126). Defaulted, not resolved inline with `app()`: a test can hand this
+     * object a reader directly, which service location does not allow.
+     */
+    public function __construct(DocumentationConfig $config, ?RouteMetadataReader $meta = null)
+    {
+        parent::__construct($config);
+
+        $this->meta = $meta ?? BeamRouteAction::reader();
+    }
+
     public function __invoke(ExtractedEndpointData $endpointData, array $settings = []): ?array
     {
         $route = $endpointData->route;
@@ -77,7 +95,7 @@ class ParticleUrlParameterStrategy extends Strategy
             return null;
         }
 
-        $stamped = BeamRouteAction::resourceKey($route);
+        $stamped = $this->meta->resourceKey($route);
         $parameters = [];
 
         preg_match_all('/\{(.*?)\}/', $endpointData->uri, $matches);

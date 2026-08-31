@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Scribe\Strategies;
 
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
+use Knuckles\Scribe\Tools\DocumentationConfig;
 use ReflectionClass;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Keywords;
@@ -15,6 +16,7 @@ use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Routing\BeamRouteAction;
 use Splicewire\Beam\Routing\BeamRouteProxy;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Routing\RouteReturnType;
 
 /**
@@ -49,6 +51,22 @@ use Splicewire\Beam\Routing\RouteReturnType;
  */
 class ParticleListParameterStrategy extends Strategy
 {
+    protected RouteMetadataReader $meta;
+
+    /**
+     * Scribe constructs strategies itself — `new $strategyClass($this->config)`
+     * (`knuckleswtf/scribe/src/Extracting/Extractor.php:470`), bypassing the container — so the arity is
+     * fixed by a third party and the reader arrives as a DEFAULTED parameter rather than a required one
+     * (api-surface-coherence 126). Defaulted, not resolved inline with `app()`: a test can hand this
+     * object a reader directly, which service location does not allow.
+     */
+    public function __construct(DocumentationConfig $config, ?RouteMetadataReader $meta = null)
+    {
+        parent::__construct($config);
+
+        $this->meta = $meta ?? BeamRouteAction::reader();
+    }
+
     public function __invoke(ExtractedEndpointData $endpointData, array $settings = []): ?array
     {
         $key = $endpointData->route?->defaults[ParticleController::RESOURCE] ?? null;
@@ -136,7 +154,7 @@ class ParticleListParameterStrategy extends Strategy
      * so this is a lookup rather than a parse. **Which action** is asked declaration-first:
      *
      *  1. `->beam()->returns(X::class, many: true)` — an explicitly declared cardinality
-     *     ({@see BeamRouteAction::returnsMany()}). 3 routes at the flagship.
+     *     ({@see RouteMetadataReader::returnsMany()}). 3 routes at the flagship.
      *  2. {@see BeamRouteProxy::FILTERS_PROMISE} — `->beam()->inResource($key, filters: true)`, whose own
      *     docblock defines the flag as *"this route is the resource's INDEX at this exposure"*. 12 routes,
      *     and the one that lets `indexAll` in.
@@ -160,7 +178,7 @@ class ParticleListParameterStrategy extends Strategy
             return false;
         }
 
-        return BeamRouteAction::returnsMany($route)
+        return $this->meta->returnsMany($route)
             || isset($route->defaults[BeamRouteProxy::FILTERS_PROMISE])
             || $endpointData->method?->getName() === 'index';
     }

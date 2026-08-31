@@ -8,7 +8,7 @@ use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
-use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Routing\RouteVisibility;
 
 /**
@@ -83,7 +83,10 @@ class ParticleSlotCollisionAudit implements DoctorAudit
 {
     public const CHECK = 'particle.slot-collision';
 
-    public function __construct(private Router $router) {}
+    public function __construct(
+        private Router $router,
+        private RouteMetadataReader $meta,
+    ) {}
 
     /** @return list<Finding> */
     public function run(): array
@@ -102,7 +105,7 @@ class ParticleSlotCollisionAudit implements DoctorAudit
             // without this skip every operation in the estate would report as colliding with itself, on
             // both axes at once. That is not the collision this audit is for: an alias is one operation
             // spelled twice on purpose, not two claimants to one slot.
-            if (BeamRouteAction::visibility($route) === RouteVisibility::Deprecated) {
+            if ($this->meta->visibility($route) === RouteVisibility::Deprecated) {
                 continue;
             }
 

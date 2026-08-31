@@ -7,7 +7,7 @@ use Illuminate\Routing\Controller;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Splicewire\Beam\Data\ResponseBody;
 use Splicewire\Beam\Events\EventTypeRegistry;
-use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Webhooks\Data\EventCatalogData;
 use Splicewire\Beam\Webhooks\Data\EventTypeDescriptorData;
 
@@ -25,7 +25,7 @@ use Splicewire\Beam\Webhooks\Data\EventTypeDescriptorData;
  *
  * The scoped exposure used to be a single wildcard `GET /{resource}/hooks/events` reading its resource
  * off a request-time path parameter. That made the route unanswerable to
- * {@see BeamRouteAction::resourceKey()} — a route-LEVEL reader that grouping and doc extraction consume
+ * {@see RouteMetadataReader::resourceKey()} — a route-LEVEL reader that grouping and doc extraction consume
  * — and unfixably so: a wildcard route has no single key by construction, it has 39. Ticket 41 D7 split
  * it into concrete per-resource mounts off the same `_particle` stamp the filter sub-surface uses, so
  * the resource is a fact about the ROUTE and this reads it the same way every other particle surface
@@ -66,7 +66,10 @@ class HookEventCatalogController extends Controller
      */
     public const CONFIG = '_hook_event_catalog';
 
-    public function __construct(private EventTypeRegistry $registry) {}
+    public function __construct(
+        private EventTypeRegistry $registry,
+        private RouteMetadataReader $meta,
+    ) {}
 
     /**
      * Subscribable event types
@@ -104,6 +107,6 @@ class HookEventCatalogController extends Controller
     {
         $route = $request->route();
 
-        return $route === null ? null : BeamRouteAction::resourceKey($route);
+        return $route === null ? null : $this->meta->resourceKey($route);
     }
 }
