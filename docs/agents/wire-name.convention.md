@@ -80,6 +80,28 @@ called.
 `@var array<` on your DTOs. Each one is either a genuinely open bag (rare, and the doctrine's
 `meta`-style exception) or an undeclared shape.
 
+## A FOREIGN key is not ours to rename, and that is not an exception to house style
+
+House style governs the shapes this estate **authors**. A field arriving from a third party and being
+relayed is a different thing: renaming it makes our copy disagree with the upstream every operator
+reads, for no gain, and the disagreement surfaces at the worst moment — comparing our payload against
+the vendor's docs during an incident.
+
+`SellerRepoData::$fullName` is the worked case: `full_name` is **GitHub's** field, arriving verbatim
+in the `installation` webhook and stored verbatim in a JSON column that keys its merge on it. It
+stays `full_name` on the wire.
+
+⚠️ **This is not a carve-out from the convention — it is the convention working.** *Declare the wire,
+then the PHP spelling is free* means exactly this: the property is house-style camelCase
+(`$fullName`), and `#[MapName('full_name')]` pins the foreign key. Both halves are right. The failure
+would be spelling the PHP property `$full_name` to "match", which publishes the same key at this host
+**and** raises an `undeclared-wire-name` finding, because a global camel input mapper rewrites it.
+
+**Ask where the name comes from before deciding whether it may change.** Ours → house style applies.
+Theirs → relay it, declare it, and say so in the docblock, because the next reader's instinct will be
+to tidy it. "It already shipped" is a real reason too, but it is the weaker one and it invites the
+argument that a breaking change is acceptable if done early enough. Provenance does not.
+
 ## ⚠️ `{@see}` a class in another package and pint will import it for you
 
 Writing `{@see \Some\Other\Package\Thing}` in a docblock is not inert. **pint's
