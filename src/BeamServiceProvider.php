@@ -185,6 +185,7 @@ use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
 use Splicewire\Beam\Surgeon\UndeclaredWriteMapAudit;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
+use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
 use Splicewire\Beam\Surgeon\WireNameDeclarationAudit;
 use Splicewire\Beam\Webhooks\HookSubjectPruner;
 use Splicewire\Beam\Write\Contracts\WriteGate;
@@ -1086,6 +1087,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // PHP roots (each package's structural JS sibling) plus whatever the host declares, so nothing
         // per-machine is committed anywhere.
         $this->app->bind(DeclarationDocblockAudit::class, fn () => DeclarationDocblockAudit::forApp());
+        // Reads the resource registry only — membership is a registered value, not a syntactic one, so
+        // there is nothing for a parser to do and no host path to scope. Its skip branch is what keeps
+        // it quiet in the 19 of 20 bootable Herd roots that declare no realms at all.
+        $this->app->bind(UnrealmedResourceAudit::class, fn ($app) => new UnrealmedResourceAudit(
+            $app->make(ParticleResourceRegistry::class),
+        ));
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', HouseStyleAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkEndpointDriftAudit::class);
@@ -1154,6 +1161,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // which packages it composes them with — so by the estate's rule this reports rather than throws,
         // and the ordering is left exactly as ticket 19 D1 settled it.
         $manifest->register('splicewire/laravel-beam', ListedResourceDisplacementAudit::class);
+        // Advisory, permanently, and NOT as a burn-down posture that could later be promoted: whether a
+        // resource is realmed is a fact about the HOST, and the same declaration is unrealmed at
+        // `~/Herd/splicewire-app` and UNREALMABLE at `~/Herd/tower`, which declares no realms to join.
+        // Swept 2026-08-30: the flagship is the only one of the 20 bootable Herd roots that declares
+        // `frame.realms` at all, so a gate here would fail every other host on a configuration they
+        // deliberately do not use. That is the shape of the event-catalog outage — true at the flagship,
+        // false at tower, and tower could not boot until it was downgraded. A host that wants it to gate
+        // registers this class in its own manifest with `gate: true`.
+        $manifest->register('splicewire/laravel-beam', UnrealmedResourceAudit::class);
     }
 
     /**
