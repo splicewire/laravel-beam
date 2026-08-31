@@ -163,6 +163,37 @@ class ResponseBodyEncodesDefensivelyTest extends TestCase
         );
     }
 
+    /**
+     * The recovery must respect the projection's FILTER, not just its transformation.
+     *
+     * `debug` holds the stack trace and the SQL, and `toResponseArray()` drops it unless
+     * `app.debug`. The first cut of stage 0 recovered state with `get_object_vars($this)`, which
+     * runs in object scope and returns every property regardless — so a projection failure would
+     * have published that slot in production, on the error path, which is the exact payload and the
+     * exact moment this trait exists to protect. Found in review, before it shipped anywhere.
+     */
+    public function test_a_failed_projection_does_not_leak_debug_when_debug_is_off(): void
+    {
+        config()->set('app.debug', false);
+
+        $body = new ProjectionThatThrows(
+            success: false,
+            statusCode: ResponseBody::HTTP_SERVER_ERROR,
+            message: 'SQLSTATE[42P01]: relation "beam_hooks" does not exist',
+        );
+        $body->debug = ['sql' => 'select * from users where token = ?', 'trace' => 'SENSITIVE'];
+
+        $payload = json_decode($body->toResponse(null)->getContent(), true);
+
+        $this->assertArrayNotHasKey('debug', $payload);
+        $this->assertArrayNotHasKey('_additional', $payload);
+        $this->assertArrayNotHasKey('_dataContext', $payload);
+        $this->assertSame(
+            'SQLSTATE[42P01]: relation "beam_hooks" does not exist',
+            $payload['message'] ?? null,
+        );
+    }
+
     public function test_an_ordinary_payload_is_untouched(): void
     {
         $body = ResponseBody::from(['data' => ['id' => 7, 'name' => 'ok']]);

@@ -55,6 +55,37 @@ trait RendersJsonSafely
     private const SAFE_ENCODE_MAX_DEPTH = 24;
 
     /**
+     * The last-resort body when the PROJECTION itself threw — the object's own state, read without
+     * re-entering the pipeline that just failed.
+     *
+     * **Public properties only, and no `_`-prefixed keys.** `get_object_vars($this)` runs in object
+     * scope, so it returns protected and private state too, and that is a disclosure rather than a
+     * recovery: a projection is not just a transformation, it is also a FILTER. `ResponseBody`'s
+     * strips `debug` unless `config('app.debug')` — so a raw read would have published the stack
+     * trace and SQL that slot is designed to hold, in production, on the error path, which is
+     * precisely the payload and precisely the moment this trait exists to protect. It would also
+     * have leaked spatie's `_additional` / `_dataContext` internals into every recovered body.
+     *
+     * A consumer whose projection filters MORE than visibility does should override this and repeat
+     * the strip — see {@see ResponseBody::recoveredState()}. Overrides must not call the projection.
+     *
+     * @return array<array-key, mixed>
+     */
+    protected function recoveredState(): array
+    {
+        $state = [];
+        foreach ((new \ReflectionObject($this))->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $name = $prop->getName();
+            if (str_starts_with($name, '_') || ! $prop->isInitialized($this)) {
+                continue;
+            }
+            $state[$name] = $prop->getValue($this);
+        }
+
+        return $state;
+    }
+
+    /**
      * @param  array<array-key, mixed>|Closure(): array<array-key, mixed>  $payload
      */
     protected function jsonResponseThatCannotThrow(array|Closure $payload, int $status): JsonResponse
@@ -65,7 +96,7 @@ trait RendersJsonSafely
             } catch (Throwable) {
                 // Stage 0 failed: there is no payload to encode at all. Recover the object's own
                 // declared state and sanitise it; the message survives, the projection does not.
-                $recovered = $this->toJsonSafeValue(get_object_vars($this));
+                $recovered = $this->toJsonSafeValue($this->recoveredState());
                 $payload = is_array($recovered) ? $recovered : [];
             }
         }

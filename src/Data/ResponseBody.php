@@ -12,7 +12,12 @@ use Splicewire\Beam\Write\Dedupe\DuplicateRejected;
 #[TypeScript]
 class ResponseBody extends Data
 {
-    use RendersJsonSafely;
+    // Aliased because this class OVERRIDES `recoveredState()` and still needs the trait's version to
+    // build on. A class method silently wins over a trait method of the same name, and `parent::`
+    // reaches spatie's Data, not the trait — so without the alias the override has no way back in.
+    use RendersJsonSafely {
+        recoveredState as private publicStateOnly;
+    }
 
     public const HTTP_SUCCESS = Response::HTTP_OK;
 
@@ -41,6 +46,38 @@ class ResponseBody extends Data
         /** @var array<string, mixed> */
         public array $debug = [],
     ) {}
+
+    /**
+     * The recovery body when {@see toResponseArray()} itself threw.
+     *
+     * This class's projection is also a FILTER — it drops `statusCode`, empty `errors`/`meta`, and
+     * `debug` unless `config('app.debug')`. Visibility alone does not express that: every one of
+     * those is a public property, so the trait's default read would publish `debug` — the stack
+     * trace and SQL slot — in production, on the error path. So the strip is repeated here against
+     * raw state rather than inherited.
+     *
+     * Deliberately does NOT call `toResponseArray()`: it just threw, and calling it again is how a
+     * recovery becomes a second failure.
+     *
+     * @return array<array-key, mixed>
+     */
+    protected function recoveredState(): array
+    {
+        $state = $this->publicStateOnly();
+
+        unset($state['statusCode']);
+        if (empty($state['errors'])) {
+            unset($state['errors']);
+        }
+        if (empty($state['meta'])) {
+            unset($state['meta']);
+        }
+        if (! config('app.debug') || empty($this->debug)) {
+            unset($state['debug']);
+        }
+
+        return $state;
+    }
 
     public function toResponseArray(?string $route = null): array
     {
