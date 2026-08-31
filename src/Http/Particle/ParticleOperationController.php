@@ -83,8 +83,12 @@ class ParticleOperationController extends Controller
         // closure (ADR-0156 §83's row-level gate), its `includes` and its `routeKey`, and the operation
         // path applied none of them. So an op on a `whereVisible()`-scoped resource, declaring no ability,
         // reached rows the read path correctly hid. The default resolver closes that by resolving through
-        // the resource — and falls back to the old line verbatim when the resource key is not registered,
-        // which is the live `Sharing::attachTo()` / `market-products.*` shape.
+        // the resource — and falls back to the old line verbatim when the resource key is not registered.
+        //
+        // ⚠️ That last clause used to end "…which is the live `Sharing::attachTo()` / `market-products.*`
+        // shape." It is not live. Booted-registry probe of all 21 `~/Herd` roots, 2026-08-31: 107
+        // registered operations, 0 whose resource key is unregistered. The fallback is dead code kept
+        // only while declaration sites migrate off the deprecated `$model` — see {@see ParticleOperation}.
         //
         // ⚠️ The resolver is handed PARAMETERS and an ACTOR, never this `Request`. Same reason
         // {@see AbilityResolver} refuses ambient auth: MCP over stdio has no HTTP request and no ambient

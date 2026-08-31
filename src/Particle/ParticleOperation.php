@@ -191,12 +191,22 @@ use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
  * (ADR-0156 §83) instead of the gate being CRUD-only — which it was, measurably: an operation on a
  * `whereVisible()`-scoped resource, declaring no ability, reached rows the read path correctly hid.
  *
- * ⚠️ **`$model` therefore did NOT delete**, and this is a correction to the plan rather than a
- * deferral. It has a real remaining job: it is the fallback subject class for an operation registered
- * against a resource key that is not a registered particle resource — the shape `beam-accounts`'
- * `Sharing::attachTo($resourceKey, $model)`, `beam-rank`'s `Resources::attachTo()` and
- * `beam-market`'s `market-products.*` all use, 13+ live sites. For those there is no resource to
- * resolve through, and the declaration's model is the only thing that knows what to load.
+ * ⚠️ **`$model` did not delete at ticket 02, and the reason given here was false.** The paragraph that
+ * stood in this slot read: *"It has a real remaining job: it is the fallback subject class for an
+ * operation registered against a resource key that is not a registered particle resource — the shape
+ * `beam-accounts`' `Sharing::attachTo($resourceKey, $model)`, `beam-rank`'s `Resources::attachTo()` and
+ * `beam-market`'s `market-products.*` all use, 13+ live sites."*
+ *
+ * **The 13+ was a count of DECLARATION SITES IN SOURCE, quoted as LIVE REGISTRATIONS**, and beam is
+ * where it was written, so it propagated outward — `beam-market`, `beam-rank` and `beam-accounts` each
+ * cite this file for it. Re-measured 2026-08-31 from booted registries at every `~/Herd` root (21
+ * roots by realpath, 15 boot with beam): **107 registered operations, 0 anchors.** Ticket 19 declared
+ * the three shapes as real resources; `Resources::attachTo()` has zero call sites estate-wide and
+ * `Sharing::attachTo()` has one, on a key its host registers normally. {@see RecordSubject}'s docblock
+ * carries the full amendment.
+ *
+ * What that leaves `$model` for is particle-operation-surface ticket 18's question, and this docblock
+ * deliberately does not pre-empt it.
  *
  * ## `signed:` — a validly-signed request is itself a credential
  *
@@ -362,13 +372,15 @@ class ParticleOperation implements HasRegistryKey
      * @param  string  $name  the operation slug in the URL (`…/{id}/{name}`)
      * @param  OperationKind  $kind  read | write | task | stream — sync-call vs queueable-dispatch vs held-stream
      * @param  class-string  $model  the FALLBACK subject class — the model the `{id}` resolves to when
-     *                               `$resource` names no REGISTERED particle resource. That case is
-     *                               live at 13+ sites (`beam-accounts`' `Sharing::attachTo()`,
-     *                               `beam-rank`'s `Resources::attachTo()`, `beam-market`'s four
-     *                               `market-products.*`), which register against arbitrary host
-     *                               resource keys. When the resource IS registered, the subject
-     *                               resolves through ITS backing and declared gate instead — see
-     *                               `$subject` and {@see RecordSubject}
+     *                               `$resource` names no REGISTERED particle resource. When the
+     *                               resource IS registered, the subject resolves through ITS backing
+     *                               and declared gate instead — see `$subject` and {@see RecordSubject}.
+     *                               ⚠️ This used to add that the fallback case is *"live at 13+ sites
+     *                               (`beam-accounts`' `Sharing::attachTo()`, `beam-rank`'s
+     *                               `Resources::attachTo()`, `beam-market`'s four `market-products.*`)"*.
+     *                               It is not. That counted declaration sites in source; the booted
+     *                               population across all 21 `~/Herd` roots is **0 of 107 registered
+     *                               operations** (2026-08-31) — see the class docblock
      * @param  Closure  $handle  host code. Task ⇒ returns a `ShouldQueue` job built from
      *                           `($model, $request, $actor)`; Read/Write ⇒ returns a response envelope;
      *                           Stream ⇒ `($model, $request, $actor, Emitter $emit)`, pushes framed events.

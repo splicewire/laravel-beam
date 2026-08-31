@@ -133,8 +133,13 @@ class ColumnSubject implements ResolvesOperationSubject
 
     /**
      * The registry is consulted NON-throwingly: an operation registered against a key that is not a
-     * registered particle resource is an ordinary declaration, not an error — the same 13+ live sites
-     * {@see RecordSubject} documents.
+     * registered particle resource is an ordinary declaration, not an error.
+     *
+     * ⚠️ This used to end *"— the same 13+ live sites {@see RecordSubject} documents."* That figure was
+     * a count of declaration sites in source quoted as live registrations; a booted-registry probe of
+     * all 21 `~/Herd` roots on 2026-08-31 puts the live population at **0 of 107** registered
+     * operations. The non-throwing read stays — it is right on its own terms — but nothing in the
+     * estate exercises the branch it guards.
      */
     protected function registeredResource(ParticleOperation $operation): ?ParticleResource
     {

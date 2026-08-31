@@ -77,10 +77,13 @@ class ParticleOp
      * @param  string  $name  the operation slug in the URL (`…/{id}/{name}`)
      * @param  OperationKind  $kind  read | write | task | stream
      * @param  class-string  $model  the FALLBACK subject class — what the `{id}` resolves to when
-     *                               `$resource` names no registered particle resource (the live
-     *                               `Sharing::attachTo()` / `Resources::attachTo()` /
-     *                               `market-products.*` shape). A registered resource resolves
-     *                               through its own backing and gate instead — {@see ParticleOperation}
+     *                               `$resource` names no registered particle resource. A registered
+     *                               resource resolves through its own backing and gate instead —
+     *                               {@see ParticleOperation}. ⚠️ This used to call that fallback *"the
+     *                               live `Sharing::attachTo()` / `Resources::attachTo()` /
+     *                               `market-products.*` shape"*. Booted-registry probe of all 21
+     *                               `~/Herd` roots, 2026-08-31: **0 of 107 registered operations** hit
+     *                               it — {@see ParticleOperation} carries the amendment
      * @param  string|false|null  $ability  the authorization token checked before the op runs
      *                                      (deny-default); `false` declares the op ungated DELIBERATELY;
      *                                      `null` is undeclared — {@see ParticleOperation}'s docblock
