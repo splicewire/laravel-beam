@@ -55,13 +55,17 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *     registry that owns the keyspace rather than a branch of it (ticket 20 D4).
  *   - {@see CHECK_ROOT_COLLISION} — no two declared registries on one root. Two registries on one root make
  *     that branch unroutable, which is different in kind from a duplicate ENTRY (the estate ships three
- *     argued policies for those). The runtime half throws at `describe()` time under `OnDuplicate::Reject`;
- *     this is the static half ticket 20 D7 handed here, and it fires before a boot rather than during one.
+ *     argued policies for those). The runtime half no longer throws — registry-kernel 34, landed by 48, flipped
+ *     `RegistryIndex` to `OnDuplicate::Supersede`, so a duplicate root is a recorded supersession — which
+ *     makes this static half, handed here by ticket 20 D7, the only thing that fires BEFORE a boot rather
+ *     than reporting after one.
  *   - {@see CHECK_ARITY} — `arity` written at the declaration site.
  *   - {@see CHECK_SHADOW} — no described registry holds an entry at an address a NESTED described registry
- *     owns. The kernel refuses this at `describe()` time, but a registry is filled by its registrars after
- *     it is described, so the entry that collides usually does not exist yet at that moment. This is the
- *     half of that check only a post-boot reader can hold. See {@see shadowedEntries()}.
+ *     owns. The kernel RECORDS this at `describe()` time and no longer throws (registry-kernel 73 §1,
+ *     php-popcorn ADR-0001), and a registry is filled by its registrars after it is described, so the
+ *     entry that collides usually does not exist yet at that moment. This is the half of that check only
+ *     a post-boot reader can hold — and since the kernel stopped being fatal, it is the ONLY half that
+ *     gates. See {@see shadowedEntries()}.
  *   - {@see CHECK_ON_DUPLICATE} — `onDuplicate` written at the declaration site rather than silently
  *     inherited. The estate ships all three policies with argued docblocks (`LensRegistry` throws,
  *     `RealmOverlayRegistry` admits, `ParticleResourceRegistry` overwrites), so an UNWRITTEN one is not a
@@ -547,9 +551,11 @@ class RegistryConformanceAudit implements DoctorAudit
      *
      * ## The window this closes, and why it could only ever close here
      *
-     * `RegistryIndex::assertUnshadowed()` (registry-kernel 26 D6) already refuses this at **describe**
-     * time. It cannot catch all of it, deliberately: a registry is usually described in a provider's
-     * `register()` and filled by registrars in `boot()`, so at the moment the index checks, the colliding
+     * `RegistryIndex::recordShadowing()` (registry-kernel 26 D6, made non-fatal by 73 §1) already
+     * RECORDS this at **describe** time — it used to throw, and stopped, because whether two described
+     * registries overlap is a fact about which providers a host loaded and this estate does not make
+     * those fatal. It cannot catch all of it either way, deliberately: a registry is usually described
+     * in a provider's `register()` and filled by registrars in `boot()`, so at the index's moment the colliding
      * entry does not exist yet. Closing that inside the kernel would mean `BasicRegistry::register()`
      * consulting the index on every write, inverting a dependency the kernel keeps one-way — the store
      * knows nothing about the index, and that is what lets a registry be used without one.
@@ -569,7 +575,7 @@ class RegistryConformanceAudit implements DoctorAudit
      * widening rather than beside it.
      *
      * **The index's own zero-segment root is never a party to this**, on the same category error
-     * `assertUnshadowed()` names: it prefixes every key in the estate and its entries are *roots*, so
+     * `recordShadowing()` names: it prefixes every key in the estate and its entries are *roots*, so
      * including it would report every registry there is.
      *
      * @return list<array{key: string, shallow: string, shallow_root: string, deep: string, deep_root: string}>
