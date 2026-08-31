@@ -189,6 +189,7 @@ use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
 use Splicewire\Beam\Surgeon\UndeclaredWriteMapAudit;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
+use Splicewire\Beam\Surgeon\UnindexedRegistryAudit;
 use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
 use Splicewire\Beam\Surgeon\WireNameDeclarationAudit;
 use Splicewire\Beam\Webhooks\HookSubjectPruner;
@@ -1295,6 +1296,19 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // a judgement call that fails the build is a judgement someone else made for you. It ratchets via
         // its committed artifact and `splicewire:beam:registry-conformance --check`, not via the gate.
         $manifest->register('splicewire/laravel-beam', UndeclaredRegistryShapeAudit::class);
+
+        // Advisory, and it CANNOT be anything else: index membership is a composition fact, so the same
+        // declaration is a finding at a host that does not install its owning package and correct at one
+        // that does. Registry-kernel 73 step 1 — the check for the hole that produced that ticket, where
+        // five beam registries declared, conformed, and sat outside the index for three days while five
+        // instruments read green over them because every one of them was asking the DECLARATION question.
+        // Host-scoped rather than ratcheted onto index membership: a package whose registries all missed
+        // the index is exactly what this looks for, and the ratchet would scope it out.
+        $this->app->bind(UnindexedRegistryAudit::class, fn ($app) => UnindexedRegistryAudit::forHost(
+            $app->make(RegistryIndex::class),
+        ));
+
+        $manifest->register('splicewire/laravel-beam', UnindexedRegistryAudit::class);
     }
 
     /**
