@@ -34,10 +34,16 @@ use Splicewire\Beam\Surgeon\Support\HostScanRoots;
  * ## ⚠️ Interim state — registry-kernel ticket 21 moved the goalposts, ticket 35 rebuilds this
  *
  * The obligation used to be *"call `describe(new ManifestDescriptor(...))` from your provider"*, and it was
- * checked against a live index's membership. Ticket 21 deleted that vocabulary: a registry now DECLARES
- * itself with `#[IsRegistry]` on the class, and separately gets INDEXED once it conforms to the `Registry`
+ * checked against a live index's membership. Ticket 21 deleted that vocabulary: a registry DECLARES itself
+ * with `#[IsRegistry]` on the class, and separately got INDEXED once it conformed to the `Registry`
  * contract — two acts, deliberately, because declaration lands before conformance across a 79-row migration
  * (ticket 14 D10's three-valued disposition exists precisely for the gap).
+ *
+ * ✅ **That split is GONE, and this audit's name is now accurate for the first time.** Registry-kernel
+ * ticket 73 collapsed the two acts: the attribute IS the description. Membership is baked from a static
+ * source scan by `popcorn:registries:cache` and resolved lazily on first `routeTo()`, and the 60
+ * hand-written `describe()` call sites across 38 files are deleted. So *"undescribed"* and
+ * *"undeclared"* are one condition again, which is exactly what this class checks.
  *
  * So this audit now asks the DECLARATION question, which is the half that is answerable today, and it is
  * strictly better at it: matching moved off the descriptor's short `name` onto the attribute itself, which
@@ -48,10 +54,17 @@ use Splicewire\Beam\Surgeon\Support\HostScanRoots;
  * favour of provider-tier seeding. The defect was never fixed by either change; it was fixed by matching
  * on the attribute, and would return the day two classes shared a name again.)
  *
- * **The membership ratchet below is vacuous until owners start describing into `RegistryIndex`.** Roots are
- * derived from index membership, and the index fills as ticket 37/38's migrations land — so a PASS from this
- * audit today means "nothing is governed yet", not "the estate is clean". Do not read it as the latter, and
- * do not paper over it here: {@see Doctor} gets
+ * ⚠️ **This paragraph used to open: *"The membership ratchet below is vacuous until owners start
+ * describing into `RegistryIndex`"*, and that condition EXPIRED without anything noticing — which is how
+ * ticket 73 got filed.** Roots are derived from index membership; the index filled as tickets 37/38's
+ * migrations landed, and the sentence went on warning about a state the estate had already left. Measured
+ * 2026-08-31: the ratchet governs **83 roots** at `~/Herd/splicewire-app` and 30–75 at every other host.
+ *
+ * The ratchet is no longer vacuous, and a PASS here now means what it says — for the DECLARATION question.
+ * It still does not mean the estate is clean on membership: that is
+ * {@see UnindexedRegistryAudit}'s question (*declared on disk, absent from this host's index*), which is
+ * the check that found eleven rows this audit had passed over, six of them recorded as verified by the
+ * sweep's own ledger. Do not read either as the other, and do not paper over it here: {@see Doctor} gets
  * {@see RegistryConformanceAudit} (gating, population = classes carrying the
  * attribute) and {@see UndeclaredRegistryShapeAudit} (advisory, carrying every
  * judgement call) from registry-kernel ticket 35, which supersedes this class's scoping question rather than

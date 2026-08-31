@@ -204,16 +204,21 @@ class UnindexedRegistryAudit implements DoctorAudit
         $findings = [];
 
         foreach ($this->unindexed() as $root => $class) {
+            // ⚠️ The remedy used to read *"add `$index->describe($this->app->make(X::class), by: self::class)`
+            // to the owning provider's boot()"*. Registry-kernel 73's cutover DELETED that act, so the old
+            // text now instructs an operator to re-introduce the very line the ticket removed — a finding
+            // whose fix is a regression. Membership is baked and lazily resolved; there is nothing to add
+            // to a provider, and the three real causes are staleness, reach, and composition.
             $findings[] = Finding::warn(self::CHECK, sprintf(
                 '`%s` declares the registry root `%s` and is NOT in this host\'s index, so `popcorn:registries` '
-                    .'cannot show it and `RegistryIndex::routeTo(\'%s\')` returns null. Declaring is one act and '
-                    .'describing is a second: add `$this->app->make(RegistryIndex::class)->describe($this->app'
-                    .'->make(%s::class), by: self::class);` to the owning provider\'s `boot()`. Advisory — if the '
-                    .'owning package is not meant to be composed here, this row is correct and expected.',
+                    .'cannot show it and `RegistryIndex::routeTo(\'%s\')` returns null. There is nothing to add to '
+                    .'a provider — the `#[IsRegistry]` IS the description. Either the baked membership list is '
+                    .'stale (run `popcorn:registries:cache`), or the class sits in a path no bake scan root '
+                    .'names, or this host cannot resolve it (see `RegistryIndex::unresolvable()`). Advisory — if '
+                    .'the owning package is not meant to be composed here, this row is correct and expected.',
                 $class,
                 $root,
                 $root,
-                (new ReflectionClass($class))->getShortName(),
             ));
         }
 
