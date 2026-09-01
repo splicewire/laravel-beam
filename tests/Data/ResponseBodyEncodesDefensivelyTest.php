@@ -194,6 +194,33 @@ class ResponseBodyEncodesDefensivelyTest extends TestCase
         );
     }
 
+    /**
+     * The lifted `exception()` factory (api-surface-coherence 130) is the one member of this class
+     * whose ARGUMENT is a throwable, so it is the member most likely to be handed the thing this
+     * whole trait exists to survive. Nine hosts are about to route their error path through it.
+     */
+    public function test_the_exception_factory_survives_an_unencodable_trace_argument(): void
+    {
+        $thrown = new RuntimeException('SQLSTATE[42P01]: relation "beam_hooks" does not exist');
+
+        $body = ResponseBody::exception($thrown)
+            ->withDebug(['trace' => [['function' => 'handle', 'args' => [NonBackedTraceEnum::Alpha]]]]);
+
+        $response = $body->toResponse(null);
+        $payload = json_decode($response->getContent(), true);
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertFalse($payload['success']);
+        $this->assertSame(
+            'SQLSTATE[42P01]: relation "beam_hooks" does not exist',
+            $payload['message'] ?? null,
+        );
+        $this->assertSame(
+            NonBackedTraceEnum::class.'::Alpha',
+            $payload['debug']['trace'][0]['args'][0] ?? null,
+        );
+    }
+
     public function test_an_ordinary_payload_is_untouched(): void
     {
         $body = ResponseBody::from(['data' => ['id' => 7, 'name' => 'ok']]);

@@ -8,7 +8,36 @@ use Illuminate\Http\Response;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Write\Dedupe\DuplicateRejected;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Throwable;
 
+/**
+ * The one JSON envelope every beam-hosted endpoint returns.
+ *
+ * ## The role rule — static PRODUCES, fluent ADJUSTS
+ *
+ * Every member on this class is one of two things, and which one it is decides whether it is
+ * `static` or `$this`-returning:
+ *
+ * - **Static — produces an envelope from source material.** {@see from} (spatie's),
+ *   {@see success}, {@see paginated}, {@see exception}. There is no envelope yet; the argument is
+ *   the material it is built out of.
+ * - **Fluent — adjusts an envelope that already exists.** {@see created}, {@see accepted},
+ *   {@see updated}, {@see deleted}, {@see invalid}, {@see badRequest}, {@see failure},
+ *   {@see notFound}, {@see forbidden}, {@see conflict}, {@see unauthorized}, {@see withData},
+ *   {@see withMessage}, {@see withMeta}, {@see withDebug}. The envelope is the receiver; these move one facet of it.
+ *
+ * The rule is not cosmetic — it is the thing whose absence made this class copyable. Nine hosts
+ * carried their own `App\Data\ResponseBody` in which `created($data)` / `invalid($errors)` /
+ * `failure($message)` were STATIC constructors, conflating the two roles. A host that then tried
+ * to extend this class got two independently fatal errors — `Cannot make non static method
+ * ::created() static` and an incompatible `toResponseArray()` signature — so the copy was the only
+ * way forward, and the drift compounded. Stating the rule here is what makes the next divergence
+ * mechanically checkable rather than re-discoverable (api-surface-coherence 110, 130, 131).
+ *
+ * A member added below must be placeable under one of the two headings. If it cannot be, the
+ * question is which role it actually has — not which keyword is convenient at its call site.
+ */
 #[TypeScript]
 class ResponseBody extends Data
 {
@@ -25,7 +54,20 @@ class ResponseBody extends Data
 
     public const HTTP_ACCEPTED = Response::HTTP_ACCEPTED;
 
-    public const HTTP_VALIDATION_ERROR = Response::HTTP_BAD_REQUEST;
+    /**
+     * 422, not 400. It was `HTTP_BAD_REQUEST` until api-surface-coherence 130 measured the estate:
+     * all eight non-`thingsontv` beam hosts answered validation failures 422 in their own copy of
+     * this class, against five in-package sites reading it as 400 — and 422 is what Laravel's own
+     * `ValidationException` returns, so a host that mixes framework validation with this envelope
+     * was emitting two different codes for one condition. The five in-package sites are all
+     * "a required parameter is missing", which is 400-shaped; they were re-pointed at
+     * {@see badRequest()} rather than dragged to 422.
+     */
+    public const HTTP_VALIDATION_ERROR = Response::HTTP_UNPROCESSABLE_ENTITY;
+
+    public const HTTP_BAD_REQUEST = Response::HTTP_BAD_REQUEST;
+
+    public const HTTP_FORBIDDEN = Response::HTTP_FORBIDDEN;
 
     public const HTTP_SERVER_ERROR = Response::HTTP_INTERNAL_SERVER_ERROR;
 
@@ -155,6 +197,31 @@ class ResponseBody extends Data
         return $this;
     }
 
+    /**
+     * Fluent — ADJUSTS. 400 — the request itself is malformed: a required parameter is absent or
+     * unparseable, so there was never a value to validate. Distinct from {@see invalid()}, which is
+     * 422: the request was well-formed and its VALUES were refused.
+     */
+    public function badRequest(): static
+    {
+        $this->success = false;
+        $this->statusCode = static::HTTP_BAD_REQUEST;
+
+        return $this;
+    }
+
+    /**
+     * Fluent — ADJUSTS. 403 — the caller was identified and is still refused. Distinct from
+     * {@see unauthorized()} (401), which says the caller was never identified at all.
+     */
+    public function forbidden(): static
+    {
+        $this->success = false;
+        $this->statusCode = static::HTTP_FORBIDDEN;
+
+        return $this;
+    }
+
     public function notFound(): static
     {
         $this->success = false;
@@ -183,6 +250,85 @@ class ResponseBody extends Data
         $this->statusCode = static::HTTP_UNAUTHORIZED;
 
         return $this;
+    }
+
+    /**
+     * Fluent — ADJUSTS. Replaces the payload.
+     */
+    public function withData(mixed $data): static
+    {
+        $this->data = $data;
+
+        return $this;
+    }
+
+    /**
+     * Fluent — ADJUSTS. Replaces the message.
+     */
+    public function withMessage(?string $message): static
+    {
+        $this->message = $message;
+
+        return $this;
+    }
+
+    /**
+     * Fluent — ADJUSTS. MERGES into `meta` rather than replacing it, so two callers each adding
+     * their own key down one chain do not silently erase each other.
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    public function withMeta(array $meta): static
+    {
+        $this->meta = [...$this->meta, ...$meta];
+
+        return $this;
+    }
+
+    /**
+     * Fluent — ADJUSTS. Merges into `debug`, which the projection publishes only when
+     * `config('app.debug')` is on.
+     *
+     * @param  array<string, mixed>  $debug
+     */
+    public function withDebug(array $debug): static
+    {
+        $this->debug = [...$this->debug, ...$debug];
+
+        return $this;
+    }
+
+    /**
+     * Static — PRODUCES. The ordinary 200 envelope, built from the payload it carries.
+     */
+    public static function success(mixed $data = null, ?string $message = null): static
+    {
+        return new static(data: $data, message: $message);
+    }
+
+    /**
+     * Static — PRODUCES. The error envelope, built from the throwable it reports.
+     *
+     * The class detail and file:line ride in `errors` and only when `config('app.debug')` is on —
+     * the diagnostic slot a client is allowed to see. The stack trace deliberately does NOT come
+     * along: it is what carries unencodable ARGUMENTS, and an envelope built here still renders
+     * through {@see RendersJsonSafely}, but not carrying the trace is cheaper than surviving it.
+     * A caller that wants the trace puts it in `debug` explicitly, where the projection gates it.
+     */
+    public static function exception(Throwable $e): static
+    {
+        $status = $e instanceof HttpExceptionInterface
+            ? $e->getStatusCode()
+            : Response::HTTP_INTERNAL_SERVER_ERROR;
+
+        return new static(
+            success: false,
+            statusCode: $status,
+            message: $e->getMessage() ?: 'Server error.',
+            errors: config('app.debug')
+                ? ['exception' => $e::class, 'file' => $e->getFile().':'.$e->getLine()]
+                : [],
+        );
     }
 
     public static function paginated(LengthAwarePaginator $paginator): static
