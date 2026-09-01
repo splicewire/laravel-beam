@@ -15,10 +15,13 @@ date: 2026-08-27
 ## What it is here
 
 The **declaration vocabulary and the emitted artifact** beam's codegen is built around — not a runtime
-beam drives. Beam declares the framework-agnostic core (`^2.0|^3.0`, resolving **3.3.0**), never
+beam drives. Beam declares the framework-agnostic core (`^3.0`, resolving **3.3.0**), never
 `spatie/laravel-typescript-transformer`: the host owns the provider, the discovery config and the
-`typescript:transform` command. Beam only *annotates* (`#[TypeScript]` on 17 Data classes under
-`src/Surface/Data/`, `src/Intake/Data/`, `src/Webhooks/Data/`, `src/Rendering/Data/`, `src/Data/`) and
+`typescript:transform` command. Beam only *annotates* — `#[TypeScript]` on the Data classes in each
+domain's own `Data/` directory (`src/Surface/`, `src/Webhooks/`, `src/Intake/`, `src/Discovery/`,
+plus `src/Data/` itself). Domain-nested is the rule rather than a list to maintain: directories come
+and go with the domains, and there is no `src/Rendering/Data/` any more — this doc named one until
+its DTOs left beam. And
 then *reads the result back* — `src/Codegen/AmbientTypeIndex.php` parses what the global-namespace
 writer emitted, `src/Codegen/ContributedTypesGenerator.php` intersects it, and two `src/Surgeon/`
 audits encode its failure modes. So the surface that matters is the **attributes**, the **writer's

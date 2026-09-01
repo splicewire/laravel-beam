@@ -79,9 +79,12 @@ no fourth: `#[ParticleResource]` and `#[ParticleOp]` (`src/Particle/Attributes/`
 lives in `vendor/rushing/laravel-data-schemas-scribe/src/Attributes/` for non-particle surfaces.
 Full statement: `docs/agents/particle-doctrine.md`.
 
-**Extend `Splicewire\Beam\Data\Data`, not spatie's.** `src/Data/Data.php` adds the response helpers
-and sits in beam-base so downstream packages reach it by a legal DOWN edge — a sibling package
-reaching UP for a shared DTO parent is the thing it exists to prevent.
+**Extend `Splicewire\Beam\Data\BeamData`, not spatie's.** `src/Data/BeamData.php` adds the response
+helpers and sits in beam-base so downstream packages reach it by a legal DOWN edge — a sibling
+package reaching UP for a shared DTO parent is the thing it exists to prevent. It was called `Data`
+until the 15-root sweep renamed it: the short name collided with `Spatie\LaravelData\Data`, so
+anything wanting both had to alias, and the estate had already invented `BeamData` as that alias in
+two packages before the rename made it real.
 
 **Don't hand-write the attributes.** `MakeParticleResourceCommand` / `MakeParticleOpCommand`
 (`src/Console/`) emit every slot plus the route mount line.

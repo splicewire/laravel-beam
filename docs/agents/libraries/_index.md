@@ -12,7 +12,7 @@ the code. When a doc points at `vendor/…`, go read that — the pointer is the
 | library | why it's here | version |
 | --- | --- | --- |
 | [`spatie/laravel-data`](spatie.laravel-data.md) | the substrate the particle doctrine extends | 4.23.0 (`^4.0\|^5.0`) |
-| [`spatie/typescript-transformer`](spatie.typescript-transformer.md) | the emitted `.d.ts` beam's codegen reads back; beam annotates, the host transforms | 3.3.0 (`^2.0\|^3.0`) |
+| [`spatie/typescript-transformer`](spatie.typescript-transformer.md) | the emitted `.d.ts` beam's codegen reads back; beam annotates, the host transforms | 3.3.0 (`^3.0`) |
 | [`nette/php-generator`](nette.php-generator.md) | beam **generates PHP** with it — the SDK and Saloon connectors | v4.2.2 (`^3.4\|^4.0`) |
 | [`spatie/laravel-package-tools`](spatie.laravel-package-tools.md) | the provider skeleton, and where publishing meets migration ordering | 1.93.1 (`^1.16`) |
 | [`orchestra/testbench`](orchestra.testbench.md) | how a package gets a Laravel app to test against at all | v11.1.0 (`^9.0\|^10.0\|^11.0`) |
@@ -21,7 +21,7 @@ the code. When a doc points at `vendor/…`, go read that — the pointer is the
 Run `pnpm deps --docs` from `~/Workspaces/splicewire-ecosystem` for the live version of this table,
 including whether any doc has gone stale against the lock.
 
-**Three of these span two or more majors** (`^4.0|^5.0`, `^2.0|^3.0`, `^9.0|^10.0|^11.0`). That is a
+**Two of these span more than one major** (`^4.0|^5.0`, `^9.0|^10.0|^11.0`). That is a
 package-tier obligation the hosts do not carry: beam's code must hold on every major it permits, so
 an affordance you read about upstream is not automatically available here.
 
