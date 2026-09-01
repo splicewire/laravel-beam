@@ -7,7 +7,7 @@ use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Contracts\ResourceRegistry;
-use Schemastud\Frame\Registry\InMemoryResourceRegistry;
+use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
@@ -43,10 +43,27 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * So this class declares **no `#[IsRegistry]`**. It owns no keyspace: every entry it can answer for is
  * already addressable at `beam.particle.resources`, and a second root over the same entries would be
  * two registries claiming one set of keys — the root collision the attribute exists to make
- * detectable, manufactured on purpose. Frame's own default concrete
- * ({@see InMemoryResourceRegistry}, root `frame.resources`) is what declares
- * for a host that binds no producer; at a beam host that root simply stands empty, which is the honest
- * reading — beam's resources are beam's.
+ * detectable, manufactured on purpose.
+ *
+ * ## ⚠️ …and the LAST sentence of that paragraph was wrong, which is registry-kernel 77
+ *
+ * It used to end: *"at a beam host that root simply stands empty, which is the honest reading — beam's
+ * resources are beam's."* Measured at `~/Herd/splicewire-app`, `frame.resources` stood at **0** while
+ * this adapter answered for **53**, and `ownerOf('frame.resources') === app(port)` was **false** — the
+ * root was not reporting *"nothing here"*, it was reporting *"ask somewhere else"*, and the index
+ * cannot tell those two apart. It only read as honest to someone who had found this docblock.
+ *
+ * The reasoning above is still right about what it was choosing between — adapter-declares-a-root vs
+ * adapter-declares-nothing — and it never considered the third shape, under which its own objection
+ * dissolves. {@see CompositeResourceRegistry} makes `frame.resources` an
+ * INDEX whose entries are resource REGISTRIES, so `frame.resources.beam` names *this object* and
+ * collides with no resource key at all. Beam therefore still declares no root, and instead ATTACHES
+ * itself as a member from `BeamServiceProvider` — which is why the `alias()` that used to sit under
+ * this class's `singleton()` is gone.
+ *
+ * **Nothing about the projection moved, and it must not.** The index ROUTES; this class PROJECTS. A
+ * REST-only particle resource is still `has() === false` here and `true` through {@see unfiltered()},
+ * read directly or through the index, and `FrameResourcesIndexMembershipTest` pins both paths.
  */
 class ParticleResourceRegistryAdapter implements Gated, ResourceRegistry
 {

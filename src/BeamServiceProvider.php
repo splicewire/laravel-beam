@@ -32,7 +32,7 @@ use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameFilterProvider;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
-use Schemastud\Frame\Contracts\ResourceRegistry;
+use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -460,7 +460,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // over the same ParticleHydrator port (port-in-base / binding-in-host).
         $this->app->bind(ParticleHydrator::class, PayloadParticleReader::class);
 
-        // Frame's agnostic ResourceRegistry port (ADR-0156: "frame has no concept of admin") is bound onto
+        // Frame's agnostic ResourceRegistry port (ADR-0156: "frame has no concept of admin") is served by
         // the genuinely stateless {@see ParticleResourceRegistryAdapter} forwarder — it exists only because
         // PHP has no overloading (ParticleResourceRegistry's REST-facing `get(): ParticleResource` and the
         // port's `get(): ResourceDefinition` can't share a method name on one class), so every call passes
@@ -468,7 +468,25 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // so boot-time #[ParticleResource] discovery (packageBooted) persists across the request. Frame's
         // manifest machinery reads the port; it never imports this beam type (arrow points DOWN, beam → frame).
         $this->app->singleton(ParticleResourceRegistryAdapter::class);
-        $this->app->alias(ParticleResourceRegistryAdapter::class, ResourceRegistry::class);
+
+        // ⚠️ It is ATTACHED as a member of `frame.resources`, not ALIASED onto the port (registry-kernel
+        // 77). The alias made the container's answer for the port and the index's answer for the root two
+        // different objects — the adapter holding 53 resources at `~/Herd/splicewire-app` beside a
+        // freshly-constructed, empty `InMemoryResourceRegistry` owning the root — and it expressed "beam
+        // supplies frame's resources" as a container binding that `popcorn:registries` and `routeTo()`
+        // could not see. As a member the relationship is addressable at `frame.resources.beam`, a second
+        // producer is expressible instead of silently overwriting this one, and the projection semantics
+        // stay exactly where they belong: the index routes, the adapter projects.
+        //
+        // The closure is over the container SINGLETON above, deliberately — the index does not memoise
+        // members, so a closure that constructs would hand out a fresh adapter per read.
+        // `callAfterResolving`, not `afterResolving`: the latter only fires on FUTURE resolutions, so a
+        // composite already built by an earlier provider would never learn about beam — the silent
+        // half-wiring this file's own history is full of. This one fires immediately when the binding is
+        // already resolved and registers the hook otherwise.
+        $this->callAfterResolving(CompositeResourceRegistry::class, function (CompositeResourceRegistry $resources, $app): void {
+            $resources->attach('beam', fn (): ParticleResourceRegistryAdapter => $app->make(ParticleResourceRegistryAdapter::class), by: self::class);
+        });
 
         // The build-time #[ParticleResource] manifest cache (mirrors bootstrap/cache/packages.php). When it
         // exists, discoverResources() reads the cached class-strings instead of re-walking the filesystem
