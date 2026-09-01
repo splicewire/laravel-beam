@@ -124,6 +124,8 @@ class SupersededDeclarationAudit implements DoctorAudit
         $findings = [];
         $redundant = [];
         $sole = 0;
+        $divergent = 0;
+        $unresolved = 0;
 
         foreach ($keys as $key) {
             $address = (string) $key;
@@ -138,8 +140,18 @@ class SupersededDeclarationAudit implements DoctorAudit
             $winner = $registry->tryResolve($key);
 
             if ($winner === null) {
-                // A key whose entry is gated away or forgotten while its history survives. Not this
-                // audit's subject, and inventing a verdict for it would be inventing a population.
+                // A key whose history survives its entry. Believed UNREACHABLE today and kept anyway:
+                // popcorn's Authorizer filters `keys()` on the same rule as `tryResolve()`, so a gated
+                // entry never reaches this loop, and `forget()` clears the supersession record with the
+                // entry precisely to avoid the leak. Both of those are somebody else's invariants.
+                //
+                // ⚠️ It is counted rather than dropped because the census used to derive `divergent` by
+                // subtracting sole and redundant from the key count — so had this branch ever fired, the
+                // comment refusing to invent a verdict would have been followed by arithmetic inventing
+                // one, and the audit would have reported a phantom contest. Count what you saw; never
+                // reconstruct a class by subtraction.
+                $unresolved++;
+
                 continue;
             }
 
@@ -151,6 +163,7 @@ class SupersededDeclarationAudit implements DoctorAudit
                 continue;
             }
 
+            $divergent++;
             $findings[] = Finding::warn(
                 "{$check}.superseded.divergent",
                 sprintf(
@@ -185,14 +198,18 @@ class SupersededDeclarationAudit implements DoctorAudit
             "{$check}.superseded",
             sprintf(
                 '%d %s key%s: %d sole registration%s, %d redundantly re-registered, %d divergent (a real '
-                .'contest decided by provider boot order).',
+                .'contest decided by provider boot order)%s.',
                 count($keys),
                 $noun,
                 count($keys) === 1 ? '' : 's',
                 $sole,
                 $sole === 1 ? '' : 's',
                 count($redundant),
-                count($keys) - $sole - count($redundant),
+                $divergent,
+                $unresolved === 0
+                    ? ''
+                    : sprintf(', %d displaced with no resolvable winner (gated or forgotten) and left '
+                        .'unclassified', $unresolved),
             )
         );
 
@@ -213,7 +230,13 @@ class SupersededDeclarationAudit implements DoctorAudit
     protected function divergentFields(mixed $winner, array $displaced): array
     {
         if (! is_object($winner)) {
-            return [];
+            // ⚠️ This returned `[]` — i.e. "no fields differ" — which the caller reads as REDUNDANT and
+            // reports as "the losing line can be deleted", having compared nothing at all. That is the
+            // wrong-direction failure this class's docblock warns about, produced by the audit itself:
+            // an unreadable winner is the LEAST safe key to authorise a deletion on. Unreachable today
+            // (both registries store objects and reject anything else at `register()`), and reported
+            // rather than trusted, because the cost of being wrong is asymmetric.
+            return ['<winner is not a declaration object>'];
         }
 
         $fields = [];
@@ -258,7 +281,13 @@ class SupersededDeclarationAudit implements DoctorAudit
     {
         return array_values(array_map(
             fn (ReflectionProperty $property) => $property->getName(),
-            (new ReflectionObject($declaration))->getProperties(ReflectionProperty::IS_PUBLIC),
+            array_filter(
+                (new ReflectionObject($declaration))->getProperties(ReflectionProperty::IS_PUBLIC),
+                // Statics are class state, not declaration state: two entries at one key share them by
+                // construction, so comparing them can only ever report "identical" — and reading one
+                // through `$instance->{$name}` is an error in PHP 8.
+                fn (ReflectionProperty $property) => ! $property->isStatic(),
+            ),
         ));
     }
 

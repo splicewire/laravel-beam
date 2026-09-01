@@ -211,6 +211,25 @@ class SupersededDeclarationAuditTest extends TestCase
         );
     }
 
+    /**
+     * ⚠️ Found by review, and it is the audit committing its own signature error: `divergentFields()`
+     * returned `[]` for a winner it could not read, the caller reads `[]` as "nothing differs", and the
+     * key was reported as redundant — "the losing line can be deleted" — on a comparison that never
+     * happened. An unreadable winner is the least safe key to authorise a deletion on.
+     */
+    public function test_a_winner_the_audit_cannot_read_is_never_reported_as_deletable(): void
+    {
+        $audit = new class(new ParticleResourceRegistry, new ParticleOperationRegistry) extends SupersededDeclarationAudit
+        {
+            public function probe(): array
+            {
+                return $this->divergentFields('not-an-object', []);
+            }
+        };
+
+        $this->assertNotSame([], $audit->probe());
+    }
+
     // ── the census ──────────────────────────────────────────────────────────────────────────────────
 
     public function test_an_empty_registry_is_inconclusive_rather_than_clean(): void
