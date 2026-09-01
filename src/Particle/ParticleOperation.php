@@ -254,6 +254,18 @@ use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
  * disagreement between the two is the duplication defect this ruling removes, and the resource is the
  * side that owns the fact; preferring the op's copy would preserve the drift it exists to end.
  *
+ * ⚠️ **The remaining population is a per-HOST figure and it is currently GROWING — do not read a low
+ * census as evidence the flip is nearly free.** {@see ParticleOp}'s `$model` docblock used to quote
+ * *"0 of 107 registered operations (2026-08-31)"*, and the shape of that error outlives the number: a
+ * `model:` census is a fact about a host — how many ops it registered and how many declare the slot —
+ * so a single figure in a package docblock is a category error whether or not it is accurate today.
+ * Re-measured off the booted registries 2026-09-01: **11 of 36 at `~/Herd/splicewire-app`, 1 of 16 at
+ * `~/Herd/tower`.** Ten of the flagship's eleven are NEW since that reading — particle-manifest-
+ * repatriation 08 converted ten inline `new ParticleOperation(...)` registrations into `#[ParticleOp]`
+ * classes and preserved `model:` at each, deliberately, for field-identity against the registration it
+ * replaced. So the migration that is meant to retire this slot is currently FEEDING it: a faithful
+ * conversion carries the deprecated declaration across. Re-measure per host before quoting.
+ *
  * ## `signed:` — a validly-signed request is itself a credential
  *
  * api-surface-coherence ticket 95. Before this slot existed, beam had NO notion of a signed request,

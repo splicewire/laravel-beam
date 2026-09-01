@@ -83,21 +83,10 @@ class ParticleOp
      *                                    fallback for *"the live `Sharing::attachTo()` /
      *                                    `Resources::attachTo()` / `market-products.*` shape"* — a count of
      *                                    declaration sites in source rather than of registered operations.
-     *                                    ⚠️ **The "0 of 107 registered operations (2026-08-31)" this line
-     *                                    used to claim was wrong, and the shape of the error matters more
-     *                                    than the number: a `model:` census is a fact about a HOST, and
-     *                                    this docblock stated one host's reading as if it were the
-     *                                    attribute's. Re-measured off the booted registries 2026-09-01:
-     *                                    **11 of 36 at `~/Herd/splicewire-app`, 1 of 16 at `~/Herd/tower`.**
-     *                                    Ten of the flagship's eleven are NEW since that reading —
-     *                                    particle-manifest-repatriation 08 converted ten inline
-     *                                    `new ParticleOperation(...)` registrations into `#[ParticleOp]`
-     *                                    classes and preserved `model:` at each one deliberately, for
-     *                                    field-identity against the registration it replaced. So the
-     *                                    deprecated slot's population is currently GROWING, and it grows
-     *                                    every time an inline op is converted faithfully. Re-measure before
-     *                                    quoting; do not quote a single host. {@see ParticleOperation}
-     *                                    carries the ruling and the migration's shape
+     *                                    ⚠️ The "0 of 107 registered operations" census this line used to
+     *                                    quote was **stale and mis-scoped** — see {@see ParticleOperation},
+     *                                    which carries the ruling, the migration's shape, and the
+     *                                    re-measured per-host figures
      * @param  string|false|null  $ability  the authorization token checked before the op runs
      *                                      (deny-default); `false` declares the op ungated DELIBERATELY;
      *                                      `null` is undeclared — {@see ParticleOperation}'s docblock
