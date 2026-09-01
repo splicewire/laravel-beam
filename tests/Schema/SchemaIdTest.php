@@ -42,10 +42,10 @@ class SchemaIdTest extends TestCase
 
     public function test_extracts_the_name_as_the_stem_sans_the_base_authority(): void
     {
-        $id = SchemaId::from('https://schemas.example.test/compliance/merchant-declaration/1');
+        $id = SchemaId::from('https://schemas.example.test/determination/merchant-declaration/1');
 
-        $this->assertSame('https://schemas.example.test/compliance/merchant-declaration', $id->stem());
-        $this->assertSame('compliance/merchant-declaration', $id->name('https://schemas.example.test'));
+        $this->assertSame('https://schemas.example.test/determination/merchant-declaration', $id->stem());
+        $this->assertSame('determination/merchant-declaration', $id->name('https://schemas.example.test'));
         $this->assertSame(1, $id->version());
     }
 
