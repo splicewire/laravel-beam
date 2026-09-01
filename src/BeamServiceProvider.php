@@ -175,6 +175,7 @@ use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
 use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
 use Splicewire\Beam\Surgeon\MorphAliasCoverageAudit;
+use Splicewire\Beam\Surgeon\MorphTokenBypassAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
 use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
@@ -1301,6 +1302,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // every host on 92 findings. Decision 6 moved enforcement's HOME to this audit, not its severity.
         // A host wanting it to block registers it in its own manifest with `gate: true` + `--floor=warn`.
         $manifest->register('splicewire/laravel-beam', MorphAliasCoverageAudit::class);
+        // The other half of the same question, and the reason one audit could not do it. Coverage asks
+        // "does this model have an alias" and reports it PRESENT — which it is. It has no view of whether
+        // any writer asks for it. Measured 2026-09-01: `tenant_sync_lineages.syncable_type` held 5,871
+        // rows of fully-qualified class names while coverage reported those models correctly aliased,
+        // because one writer hand-assembled the row and six readers queried by `::class`.
+        //
+        // Advisory for the same reason as its sibling: the population is `installed.json` plus the host's
+        // own `app/`, i.e. what THIS host composes, which is a host fact and never a throw.
+        $manifest->register('splicewire/laravel-beam', MorphTokenBypassAudit::class);
         // Advisory, permanently. The explicit `beam.core.resources.classes` / `frame.resources` list is
         // registered FIRST — before beam's own manifest/scan and before every other package's provider
         // boots — so under `OnDuplicate::Supersede` a host's listed override is the entry that LOSES,
