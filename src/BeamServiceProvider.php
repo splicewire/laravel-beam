@@ -177,6 +177,7 @@ use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
 use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
 use Splicewire\Beam\Surgeon\RealmGateCoverageAudit;
+use Splicewire\Beam\Surgeon\ResponseEnvelopeAudit;
 use Splicewire\Beam\Surgeon\SchemaProjectionDriftAudit;
 use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
 use Splicewire\Beam\Surgeon\SdkHookMigrationAudit;
@@ -624,7 +625,27 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->singleton(GroupRegistry::class, fn ($app) => new GroupRegistry(
             $app->make(ParticleResourceRegistry::class),
         ));
-        $this->app->bind(ResponseEnvelope::class, ArrayResponseEnvelope::class);
+        // The wire envelope, resolved from `beam.core.http.envelope` (particle-manifest-repatriation
+        // ticket 04). It used to be a bare `bind(ResponseEnvelope::class, ArrayResponseEnvelope::class)`,
+        // with the richer shape reachable only by a HOST re-binding the port — and exactly one host in the
+        // estate did, so the flagship answered `{ success, message, data }` and `~/Herd/tower` answered
+        // `{ data }` off the same package and the same routes. A container bind is not auditable; a config
+        // key is, which is what ResponseEnvelopeAudit now reports per host.
+        //
+        // Read INSIDE the closure, so the value is resolved at make() time rather than stamped at
+        // register(). That is load-bearing for a package composing beam: `TowerServiceProvider` sets this
+        // key from its own register phase, which runs AFTER beam's, and provider order must not be what
+        // decides a wire contract — that is the defect this replaces, not a shape to reproduce.
+        //
+        // A bad class-string falls back rather than 500ing the whole particle surface; the audit is where
+        // it is REPORTED. `bind`, not `singleton` — every envelope here is stateless.
+        $this->app->bind(ResponseEnvelope::class, function ($app) {
+            $envelope = config('beam.core.http.envelope', ArrayResponseEnvelope::class);
+
+            return is_string($envelope) && is_a($envelope, ResponseEnvelope::class, true)
+                ? $app->make($envelope)
+                : $app->make(ArrayResponseEnvelope::class);
+        });
 
         // data-filters' model-resolver port (its ADR-0008). The foundation package declares the seam
         // and deliberately binds it NOWHERE — beam is the tier that knows ParticleResourceRegistry
@@ -1278,6 +1299,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // ONE resource key and zero operations at `~/Herd/tower`. Which packages a host composes, and in
         // what provider order, is the definition of a host fact, so this reports and never throws.
         $manifest->register('splicewire/laravel-beam', SupersededDeclarationAudit::class);
+        // Advisory, permanently — and it is the reason `beam.core.http.envelope` is a config key rather
+        // than the container bind it replaced (particle-manifest-repatriation ticket 04). A bind has no
+        // declaration site any instrument can read, so "which wire shape does this host answer" could
+        // only be learned by booting the host and resolving the port; measured that way across
+        // `~/Herd/*`, exactly one host bound it and two hosts served divergent contracts off the same
+        // routes with nothing able to say so. Which envelope a host SHOULD serve is a host fact — beam's
+        // neutral default is right for a headless host and wrong for a tower-backed one — so this
+        // reports the resolved shape and only warns on the misconfigurations.
+        $manifest->register('splicewire/laravel-beam', ResponseEnvelopeAudit::class);
         // Advisory, permanently, and NOT as a burn-down posture that could later be promoted: whether a
         // resource is realmed is a fact about the HOST, and the same declaration is unrealmed at
         // `~/Herd/splicewire-app` and UNREALMABLE at `~/Herd/tower`, which declares no realms to join.

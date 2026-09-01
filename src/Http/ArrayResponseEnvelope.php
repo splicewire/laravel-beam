@@ -11,9 +11,12 @@ use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * The neutral, host-free {@see ResponseEnvelope} beam-core binds by default: a plain `{ data: … }` (or
- * `{ data, limit, offset, total }` for a page) `JsonResponse`. A headless beam app gets working particle
- * responses out of the box; a richer host BINDS its own adapter over its response DTO to override this.
+ * The neutral, host-free {@see ResponseEnvelope} beam-core ships as the default value of
+ * `beam.core.http.envelope`: a plain `{ data: … }` (or `{ data, limit, offset, total }` for a page)
+ * `JsonResponse`. A headless beam app gets working particle responses out of the box with no host wiring
+ * at all, which is the whole argument for this being the default and for it STAYING the default — a
+ * richer host (or a package composing beam, as `splicewire/tower` does) points that key at
+ * {@see ResponseBodyEnvelope}, or binds an adapter of its own over its response DTO.
  *
  * The shape mirrors the common `{ data: … }` list/detail envelope so a host that adopts the default and a
  * host that binds its own DTO agree on the wire contract for the fields beam-core itself sets.

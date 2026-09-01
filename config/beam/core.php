@@ -1,5 +1,6 @@
 <?php
 
+use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Models\BeamParticle;
 
 return [
@@ -107,6 +108,33 @@ return [
         // artifact cannot leak from this route. A host that wants the spec behind auth lists middleware
         // here (e.g. ['auth'] or a signed-url guard).
         'middleware' => [],
+    ],
+
+    /*
+    | The HTTP wire surface the generic particle controllers answer through.
+    |
+    | `envelope` names the {@see \Splicewire\Beam\Http\Contracts\ResponseEnvelope} implementation beam
+    | resolves — the OUTERMOST layer of the wire contract, and therefore of the generated TypeScript, the
+    | OpenAPI spec and the client SDK that are all built on it. Beam ships TWO:
+    |
+    |   · ArrayResponseEnvelope  — a plain `{ data: … }` / `{ data, limit, offset, total }`. THE DEFAULT,
+    |     and it stays the default: a headless beam host must get working particle responses with no host
+    |     wiring at all.
+    |   · ResponseBodyEnvelope   — the richer `{ success, message, data, … }` over beam's `ResponseBody`.
+    |
+    | ⚠️ This is a CONFIG key rather than the container bind it replaces (particle-manifest-repatriation
+    | ticket 04), and the difference is auditability. Measured across `~/Herd/*` on 2026-09-01: exactly one
+    | host bound the port, so `~/Herd/splicewire-app` answered `{ success, message, data }` and
+    | `~/Herd/tower` answered `{ data }` — same package, same routes, divergent wire contracts, decided by
+    | which provider a host happened to run, with nothing able to say so. A bind cannot be reported on
+    | without booting and resolving; a key can, and `ResponseEnvelopeAudit` reads this one.
+    |
+    | Read at RESOLVE time, not stamped at register(), so a package composing beam (tower does exactly
+    | this) can set it from its own register phase whatever the provider order. A host that genuinely
+    | wants a THIRD shape may still bind the port directly — an explicit bind outranks this key.
+    */
+    'http' => [
+        'envelope' => ArrayResponseEnvelope::class,
     ],
 
     /*
