@@ -164,6 +164,7 @@ use Splicewire\Beam\Surface\RuntimeCorroborator;
 use Splicewire\Beam\Surgeon\AuditScanPaths;
 use Splicewire\Beam\Surgeon\BareParticleMountAudit;
 use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
+use Splicewire\Beam\Surgeon\CentralPinRelationIdentityAudit;
 use Splicewire\Beam\Surgeon\CentralPinResolvabilityAudit;
 use Splicewire\Beam\Surgeon\ClientRuntimeContractAudit;
 use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
@@ -1197,6 +1198,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bind(CentralPinResolvabilityAudit::class, fn ($app) => CentralPinResolvabilityAudit::forApp(
             $app->make(CentralPinJustificationAudit::class),
         ));
+        // The third audit over that one census. Justification asks whether a pin is EARNED, resolvability
+        // whether its connection EXISTS, and this one whether the pin changes which physical relation is
+        // touched — `to_regclass()` under the pinned frame against every tenant frame. Same rows in all
+        // three, so a pin cannot be visible to one and invisible to another.
+        $this->app->bind(CentralPinRelationIdentityAudit::class, fn ($app) => CentralPinRelationIdentityAudit::forApp(
+            $app->make(CentralPinJustificationAudit::class),
+        ));
         // The one audit in the estate that compares a declaration against its OWN docblock rather than
         // against another declaration across a seam. Its TypeScript roots are DERIVED from the resolved
         // PHP roots (each package's structural JS sibling) plus whatever the host declares, so nothing
@@ -1266,6 +1274,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // case, and because ticket 88 ruled a foundation package may not decide what fails a root's build.
         // A host that wants it to gate registers this class in its own manifest with `gate: true`.
         $manifest->register('splicewire/laravel-beam', CentralPinResolvabilityAudit::class);
+        // Advisory, permanently, and `warn` is its ceiling at every verdict. Whether a relation resolves —
+        // and to WHICH pg_class OID — is a fact about the host's database at this instant, which is
+        // `gate-or-advisory.convention.md`'s textbook advisory case and the exact shape that took
+        // `~/Herd/tower` off the air when it was got backwards. It is also a snapshot rather than a
+        // property of the code: a convergent pin becomes divergent the moment a tenant migration lands.
+        // Nothing it reports is a claim that a pin is unnecessary, wrong, or removable.
+        $manifest->register('splicewire/laravel-beam', CentralPinRelationIdentityAudit::class);
         // Advisory, and the split inside it is the point: `docblock.phantom-parameter` is a Fail, because
         // whether a docblock names a parameter the constructor beneath it declares is grammar its own
         // author could have gotten right without knowing which host would load it. The other two are Warns,
