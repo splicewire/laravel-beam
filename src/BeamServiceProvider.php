@@ -453,11 +453,23 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         ));
 
         // The READ seam mirroring the write pipeline (ticket 13, DESIGN §9). The DEFAULT hydrator is the
-        // degenerate payload reader — NO data-filters dependency. It resolves a record → its projection
-        // Data class straight off beam's own ParticleResourceRegistry (ADR-0156: the SchemaDataResolver port
-        // was retired; beam owns the registry, so it reads it directly rather than deferring to a host
-        // binding). A host that wants query-composing list reads binds its own DataFilterRecordHydrator
-        // over the same ParticleHydrator port (port-in-base / binding-in-host).
+        // payload reader: it resolves a record → its projection Data class straight off beam's own
+        // ParticleResourceRegistry (ADR-0156: the SchemaDataResolver port was retired; beam owns the
+        // registry, so it reads it directly rather than deferring to a host binding), AND composes the
+        // data-filters list query for any key with filter wiring behind it.
+        //
+        // ⚠️ That second half descended into the default on 2026-08-31
+        // (particle-manifest-repatriation ticket 10) — see PayloadParticleReader's own docblock for the
+        // argument. A host still binds over this port for a genuinely different read concern; the flagship
+        // binds beam's own SourcedParticleHydrator router to send FOREIGN refs to a federated arm
+        // (port-in-base / binding-in-host).
+        //
+        // Deliberately UNGUARDED, where tower wraps two of its bindings in `if (! $this->app->bound(…))`.
+        // That idiom is for a LOWER tier laying a floor under a binding a higher tier may already have
+        // made — "this adds a floor, it does not override". Beam is the bottom of this stack and its
+        // `register()` is the floor, so a guard here would test a condition that is false by
+        // construction. The two hosts were not adding a floor under beam; they were replacing a default
+        // that was wrong, which a guard cannot express and cannot fix.
         $this->app->bind(ParticleHydrator::class, PayloadParticleReader::class);
 
         // Frame's agnostic ResourceRegistry port (ADR-0156: "frame has no concept of admin") is served by

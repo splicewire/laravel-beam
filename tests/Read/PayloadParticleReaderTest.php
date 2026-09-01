@@ -8,8 +8,11 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use RuntimeException;
+use Rushing\DataFilters\Facades\DataFilter;
+use Rushing\DataFilters\Query\ResourceQuery;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Lazy;
+use Spatie\QueryBuilder\QueryBuilder;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -24,10 +27,13 @@ use Splicewire\Beam\Tests\TestCase;
 /**
  * The degenerate read seam (beam-write-pipeline ticket 13): beam-core's payload reader resolves a
  * record's Data class straight off beam's {@see ParticleResourceRegistry} (ADR-0156 retired the
- * SchemaDataResolver port) and builds a typed Data from the record's reconciled payload — with NO
- * data-filters dependency. It proves the payoff at the seam: ONE `ReadContext::includes` list compiles to
- * the spatie serialization partial (a Lazy prop appears only when included), and that list queries are
- * (deliberately) the query-composing host binding's job.
+ * SchemaDataResolver port) and builds a typed Data from the record's reconciled payload. It proves the
+ * payoff at the seam: ONE `ReadContext::includes` list compiles to BOTH the spatie serialization partial
+ * (a Lazy prop appears only when included) AND the eager-load axis of the composed data-filters builder.
+ *
+ * ⚠️ This docblock used to end "list queries are (deliberately) the query-composing host binding's job".
+ * They are not, since particle-manifest-repatriation ticket 10 — see
+ * {@see PayloadParticleReader::query()} for why the default was wrong and what stayed the same.
  */
 class PayloadParticleReaderTest extends TestCase
 {
@@ -86,7 +92,38 @@ class PayloadParticleReaderTest extends TestCase
         $this->assertEqualsCanonicalizing(['title' => 'Hello', 'extra' => 'lazy-Hello'], $data->toArray());
     }
 
-    public function test_list_queries_are_the_host_bindings_job(): void
+    /**
+     * The reader COMPOSES a list query now (particle-manifest-repatriation ticket 10). Two unrelated
+     * hosts — `~/Herd/splicewire-app` (through tower's `DataFilterRecordHydrator`) and `~/Herd/audiostud`
+     * (through a six-line subclass of this class) — had independently replaced the default with the same
+     * six lines, and the reason the default did not carry them ("needs NO data-filters dependency") was
+     * stale: `rushing/laravel-data-filters` is a hard `require` of beam, and beam's own
+     * `declareFilterResources()` registers a data-filters resource for its own `hooks` particle.
+     */
+    public function test_it_composes_the_data_filters_builder_for_a_registered_resource(): void
+    {
+        DataFilter::resource('reader-fixture', [
+            'data' => ReaderFixtureData::class,
+            'query' => ReaderFixtureResourceQuery::class,
+            'model' => ReaderFixtureModel::class,
+        ]);
+
+        $builder = $this->reader(ReaderFixtureData::class)
+            ->query('reader-fixture', ReadContext::list(['extra']));
+
+        $this->assertInstanceOf(QueryBuilder::class, $builder);
+        // The ONE includes list drove the EAGER-LOAD axis here, exactly as it drives the
+        // serialization partial in project() — that is the whole payoff of the seam.
+        $this->assertArrayHasKey('extra', $builder->getEagerLoads());
+    }
+
+    /**
+     * The degradation contract is UNCHANGED: a key with no data-filters resource behind it still raises
+     * `BadMethodCallException`, which is what `ParticleFrameResourceHandler::indexQuery()` catches to fall
+     * back to the plain query. Only the *reason* moved — from "this reader never composes" to "there is
+     * nothing registered under this key", which is the condition tower's binding already stated.
+     */
+    public function test_it_raises_when_no_data_filters_resource_is_registered(): void
     {
         $this->expectException(BadMethodCallException::class);
 
@@ -159,6 +196,12 @@ class ReaderFixtureModel extends Model
 
     protected $guarded = [];
 }
+
+/**
+ * The data-filters wiring behind `reader-fixture` — a bare {@see ResourceQuery}, which is what a host
+ * registers when it wants the declared filter/sort/include surface and no extra row-level scoping.
+ */
+class ReaderFixtureResourceQuery extends ResourceQuery {}
 
 class ReaderFixtureData extends Data
 {

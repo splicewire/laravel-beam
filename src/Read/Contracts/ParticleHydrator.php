@@ -15,12 +15,14 @@ use Splicewire\Beam\Write\ParticleWriter;
  * compiles ONE {@see ReadContext::$includes} list into BOTH the eager-load axis AND the serialization
  * partial, killing the double-declaration.
  *
- * Two implementations, port-in-base / binding-in-host (DESIGN §9d):
- *  - the degenerate {@see PayloadParticleReader} in beam-core — direct-from-source
- *    (`Data::from(reconcile($payload))`), needing NO `rushing/laravel-data-filters` dependency;
- *  - the query-composing `DataFilterRecordHydrator` bound in a host where data-filters IS available —
- *    its {@see self::query()} returns the composed data-filters builder so pagination / saved filters /
- *    further `filter[...]` ride it.
+ * The DEFAULT is {@see PayloadParticleReader} in beam-core and it serves both halves — direct-from-source
+ * projection AND a composed `rushing/laravel-data-filters` list query, with no host wiring. Read that
+ * class's docblock for why `query()` stopped throwing (particle-manifest-repatriation ticket 10).
+ *
+ * A host still swaps the whole port (port-in-base / binding-in-host, DESIGN §9d) when it has a genuinely
+ * different read concern to compose — `~/Herd/splicewire-app` binds beam's own `SourcedParticleHydrator`
+ * router to send FOREIGN refs to a federated arm. That is composition over the port, not a contest with
+ * the default.
  */
 interface ParticleHydrator
 {
@@ -31,9 +33,12 @@ interface ParticleHydrator
     public function hydrate(Model|array|string $source, ReadContext $ctx): Data;
 
     /**
-     * A list read: return the composed query builder for `$recordType` (the data-filters `QueryBuilder`
-     * in the host binding — an Eloquent builder pagination + `DataFilter::applySaved` + further
-     * `filter[...]` ride). The degenerate reader does not compose queries and throws.
+     * A list read: return the composed query builder for `$recordType` — the data-filters `QueryBuilder`
+     * that pagination + `DataFilter::applySaved` + further `filter[...]` ride.
+     *
+     * Raises `BadMethodCallException` when NO data-filters resource is registered under `$recordType`.
+     * That is a legitimate state, not a bug — a particle resource may have no filter wiring — and it is
+     * the signal `ParticleFrameResourceHandler::indexQuery()` catches to fall back to the plain query.
      */
     public function query(string $recordType, ReadContext $ctx): object;
 
