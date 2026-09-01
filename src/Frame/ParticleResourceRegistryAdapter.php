@@ -2,7 +2,12 @@
 
 namespace Splicewire\Beam\Frame;
 
+use Rushing\Popcorn\Registries\Authorizer;
+use Rushing\Popcorn\Registries\Gated;
+use Rushing\Popcorn\Registries\Registry;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Contracts\ResourceRegistry;
+use Schemastud\Frame\Registry\InMemoryResourceRegistry;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
@@ -21,19 +26,99 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *
  * Named `Adapter`, not `Port`, per ADR-0213 — which this docblock had already argued for two releases
  * before the class was renamed to match it: the port is `ResourceRegistry`, and this is what plugs in.
+ *
+ * ## The seven kernel methods, and why they forward RAW
+ *
+ * Frame's port now extends `Rushing\Popcorn\Registries\Registry` (registry-kernel 34 D4), so this class
+ * owes the kernel contract as well as the port's sugar. Both halves stay one-line forwards, and the
+ * split between them is the whole reason the port declares `Registry<mixed>` rather than
+ * `Registry<ResourceDefinition>`:
+ *
+ * - The **kernel** half is the STORE — `beam.particle.resources`, whose entries are `ParticleResource`
+ *   declarations. `resolve()` hands back what is stored, exactly as it does when beam's own registry is
+ *   read directly; two objects answering one key must not disagree about what is under it.
+ * - The **port** half is the PROJECTION — `get()`/`find()`/`all()` run each stored declaration through
+ *   `definition()`/`definitions()`, which is where the realm seam and the framed/REST-only filter live.
+ *
+ * So this class declares **no `#[IsRegistry]`**. It owns no keyspace: every entry it can answer for is
+ * already addressable at `beam.particle.resources`, and a second root over the same entries would be
+ * two registries claiming one set of keys — the root collision the attribute exists to make
+ * detectable, manufactured on purpose. Frame's own default concrete
+ * ({@see InMemoryResourceRegistry}, root `frame.resources`) is what declares
+ * for a host that binds no producer; at a beam host that root simply stands empty, which is the honest
+ * reading — beam's resources are beam's.
  */
-class ParticleResourceRegistryAdapter implements ResourceRegistry
+class ParticleResourceRegistryAdapter implements Gated, ResourceRegistry
 {
     public function __construct(private ParticleResourceRegistry $registry) {}
 
-    public function has(string $key): bool
+    /**
+     * Whether `$key` is a FRAMED resource — narrower than the kernel's `has()` on purpose, and
+     * unchanged: a REST-only particle resource exists in the store and has no frame projection, so the
+     * port must answer `false` for it. Read `unfiltered()->has()` for the store's own answer.
+     */
+    public function has(RegistryKey|string $key): bool
     {
-        return $this->registry->hasFramedResource($key);
+        return $this->registry->hasFramedResource((string) $key);
+    }
+
+    public function register(RegistryKey|string $key, mixed $entry = null, ?string $by = null, ?string $ability = null): static
+    {
+        $this->registry->register($key, $entry, $by, $ability);
+
+        return $this;
+    }
+
+    public function resolve(RegistryKey|string $key): mixed
+    {
+        return $this->registry->resolve($key);
+    }
+
+    public function tryResolve(RegistryKey|string $key): mixed
+    {
+        return $this->registry->tryResolve($key);
+    }
+
+    /** @return list<mixed> */
+    public function matches(RegistryKey|string $key): array
+    {
+        return $this->registry->matches($key);
+    }
+
+    /** @return list<RegistryKey> */
+    public function keys(): array
+    {
+        return $this->registry->keys();
+    }
+
+    public function unfiltered(): Registry
+    {
+        return $this->registry->unfiltered();
+    }
+
+    public function authorizeWith(?Authorizer $authorizer): static
+    {
+        $this->registry->authorizeWith($authorizer);
+
+        return $this;
     }
 
     public function get(string $key): ResourceDefinition
     {
         return $this->registry->definition($key);
+    }
+
+    /**
+     * The nullable twin the port gained with the kernel (registry-kernel 38). `definition()` throws
+     * `InvalidArgumentException` for BOTH an unknown key and a REST-only resource, and `get()` keeps
+     * that unchanged; this half answers `null` for either, which is what a caller holding a key it took
+     * off a URL wants.
+     */
+    public function find(string $key): ?ResourceDefinition
+    {
+        return $this->registry->hasFramedResource($key)
+            ? $this->registry->definition($key)
+            : null;
     }
 
     /**
