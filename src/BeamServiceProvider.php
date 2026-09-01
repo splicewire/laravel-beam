@@ -32,8 +32,8 @@ use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameFilterProvider;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
-use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Schemastud\Frame\Realm\RealmDefinition;
+use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Authorization\AbilityResolver;
@@ -105,6 +105,7 @@ use Splicewire\Beam\Frame\FrameResourceManifest;
 use Splicewire\Beam\Frame\NullFrameFilterProvider;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
+use Splicewire\Beam\Http\ConfiguredResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
 use Splicewire\Beam\Http\OpenApiSpecController;
@@ -639,13 +640,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         //
         // A bad class-string falls back rather than 500ing the whole particle surface; the audit is where
         // it is REPORTED. `bind`, not `singleton` — every envelope here is stateless.
-        $this->app->bind(ResponseEnvelope::class, function ($app) {
-            $envelope = config('beam.core.http.envelope', ArrayResponseEnvelope::class);
-
-            return is_string($envelope) && is_a($envelope, ResponseEnvelope::class, true)
-                ? $app->make($envelope)
-                : $app->make(ArrayResponseEnvelope::class);
-        });
+        $this->app->bind(
+            ResponseEnvelope::class,
+            fn ($app) => $app->make(ConfiguredResponseEnvelope::resolve()),
+        );
 
         // data-filters' model-resolver port (its ADR-0008). The foundation package declares the seam
         // and deliberately binds it NOWHERE — beam is the tier that knows ParticleResourceRegistry

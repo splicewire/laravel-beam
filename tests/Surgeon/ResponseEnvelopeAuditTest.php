@@ -16,7 +16,7 @@ class ResponseEnvelopeAuditTest extends TestCase
     {
         $finding = $this->only();
 
-        $this->assertSame(DoctorStatus::Pass, $this->verdict($finding));
+        $this->assertSame(DoctorStatus::Pass, $finding->status);
         $this->assertStringContainsString('ArrayResponseEnvelope', $finding->detail);
         $this->assertStringContainsString('shipped default', $finding->detail);
     }
@@ -27,7 +27,7 @@ class ResponseEnvelopeAuditTest extends TestCase
 
         $finding = $this->only();
 
-        $this->assertSame(DoctorStatus::Pass, $this->verdict($finding));
+        $this->assertSame(DoctorStatus::Pass, $finding->status);
         $this->assertStringContainsString('ResponseBodyEnvelope', $finding->detail);
     }
 
@@ -35,13 +35,13 @@ class ResponseEnvelopeAuditTest extends TestCase
      * The fallback is the dangerous direction — a mistyped key silently DOWNGRADES the wire shape on a
      * host whose clients expect the rich one, behind working responses.
      */
-    public function test_an_unusable_class_string_warns_and_says_which_shape_is_actually_served(): void
+    public function test_an_unusable_class_string_fails_and_says_which_shape_is_actually_served(): void
     {
         config(['beam.core.http.envelope' => 'Splicewire\\Beam\\Http\\NoSuchEnvelope']);
 
         $finding = $this->only();
 
-        $this->assertSame(DoctorStatus::Warn, $this->verdict($finding));
+        $this->assertSame(DoctorStatus::Fail, $finding->status);
         $this->assertStringContainsString('NoSuchEnvelope', $finding->detail);
         $this->assertStringContainsString('ArrayResponseEnvelope', $finding->detail);
     }
@@ -52,7 +52,7 @@ class ResponseEnvelopeAuditTest extends TestCase
 
         $finding = $this->only();
 
-        $this->assertSame(DoctorStatus::Warn, $this->verdict($finding));
+        $this->assertSame(DoctorStatus::Warn, $finding->status);
         $this->assertStringContainsString('ResponseBodyEnvelope', $finding->detail);
         $this->assertStringContainsString('ArrayResponseEnvelope', $finding->detail);
     }
@@ -65,11 +65,6 @@ class ResponseEnvelopeAuditTest extends TestCase
         $this->assertSame(ResponseEnvelopeAudit::CHECK, $findings[0]->check);
 
         return $findings[0];
-    }
-
-    protected function verdict(Finding $finding): DoctorStatus
-    {
-        return $finding->status;
     }
 
     public function test_the_default_is_still_the_neutral_envelope(): void

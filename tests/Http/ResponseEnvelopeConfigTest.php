@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Http;
 
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
+use Splicewire\Beam\Http\ConfiguredResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\ResponseBodyEnvelope;
 use Splicewire\Beam\Surgeon\ResponseEnvelopeAudit;
@@ -70,11 +71,53 @@ class ResponseEnvelopeConfigTest extends TestCase
      * A host that genuinely wants a third shape binds the port directly, and that still wins — a config
      * default must never take an explicit bind away from a host.
      */
+    /**
+     * The binding and {@see ResponseEnvelopeAudit} read the key through ONE
+     * class, so the audit can never report a shape the runtime does not serve.
+     */
+    public function test_the_config_key_has_exactly_one_reader(): void
+    {
+        $this->assertSame('beam.core.http.envelope', ConfiguredResponseEnvelope::KEY);
+        $this->assertSame(ArrayResponseEnvelope::class, ConfiguredResponseEnvelope::DEFAULT);
+        $this->assertSame(ArrayResponseEnvelope::class, ConfiguredResponseEnvelope::resolve());
+
+        config(['beam.core.http.envelope' => 'not-a-class']);
+
+        $this->assertFalse(ConfiguredResponseEnvelope::usable(config('beam.core.http.envelope')));
+        $this->assertSame(ArrayResponseEnvelope::class, ConfiguredResponseEnvelope::resolve());
+        $this->assertInstanceOf(ArrayResponseEnvelope::class, $this->app->make(ResponseEnvelope::class));
+    }
+
     public function test_a_direct_host_bind_still_overrides_the_config(): void
     {
         $this->app->bind(ResponseEnvelope::class, ResponseBodyEnvelope::class);
 
         $this->assertInstanceOf(ResponseBodyEnvelope::class, $this->app->make(ResponseEnvelope::class));
+    }
+
+    /**
+     * The key decides a WIRE SHAPE, not just a class, so one test asserts the shape a controller would
+     * actually hand back — the level the flagship's contract is stated at.
+     *
+     * The two envelopes are the two published contracts: neutral `{ data: … }` and rich
+     * `{ success, message, data }`. A test that only compared classes would pass against a refactor that
+     * quietly changed what either one emits.
+     */
+    public function test_each_configured_envelope_emits_its_published_body(): void
+    {
+        $body = fn () => json_decode(
+            $this->app->make(ResponseEnvelope::class)->item(['id' => 'x'])->toResponse(request())->getContent(),
+            true,
+        );
+
+        $this->assertSame(['data' => ['id' => 'x']], $body());
+
+        config(['beam.core.http.envelope' => ResponseBodyEnvelope::class]);
+
+        $rich = $body();
+        $this->assertArrayHasKey('success', $rich);
+        $this->assertArrayHasKey('message', $rich);
+        $this->assertSame(['id' => 'x'], $rich['data']);
     }
 
     /**

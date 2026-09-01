@@ -6,6 +6,7 @@ use Illuminate\Contracts\Container\Container;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
+use Splicewire\Beam\Http\ConfiguredResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 
 /**
@@ -31,16 +32,23 @@ use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
  *    wanting a third shape binds the port), but it means the config file no longer describes the wire.
  *    Reported so the discrepancy is visible rather than discovered from a payload.
  *  - **an unusable class-string** — the runtime falls back to {@see ArrayResponseEnvelope} rather than
- *    500ing the whole particle surface, so a mistyped key would otherwise present as a silently
- *    *downgraded* envelope on a host whose clients expect the rich one. That is the estate's recurring
- *    defect class (an instrument that reports success by not running), so it is a WARN.
+ *    500ing the whole particle surface, so a mistyped key presents as a silently *downgraded* envelope
+ *    on a host whose clients expect the rich one, behind working 200s. That is the estate's recurring
+ *    defect class (an instrument that reports success by not running), and it is why this branch is a
+ *    **FAIL** rather than a warn — see below.
  *
- * ## Advisory, permanently
+ * ## Advisory registration, and one branch that is nonetheless a FAIL
  *
  * Which envelope a host should serve is the definition of a host fact — beam's neutral default is
  * correct for a headless beam host and wrong for a tower-backed one, and neither is a grammar error the
- * declaration's author could have gotten right. So this reports and never throws. The one branch that
- * even warns is the misconfiguration, not the choice.
+ * declaration's author could have gotten right. So this is registered advisory and never throws.
+ *
+ * The unusable-class-string branch is the exception, and the distinction is the estate's own rule rather
+ * than an inconsistency: whether a string names a `ResponseEnvelope` implementation is grammar, decided
+ * entirely by the declaration and not at all by the host. It cannot be a throw, because the runtime has
+ * already chosen availability over failing loudly — which leaves this audit as the ONLY instrument that
+ * can see the mistake. A `Warn` there would be an instrument whispering about the one thing it alone
+ * knows.
  */
 class ResponseEnvelopeAudit implements DoctorAudit
 {
@@ -53,7 +61,7 @@ class ResponseEnvelopeAudit implements DoctorAudit
      */
     public function run(): array
     {
-        $configured = config('beam.core.http.envelope');
+        $configured = ConfiguredResponseEnvelope::configured();
         $resolved = $this->resolved();
 
         if ($resolved === null) {
@@ -64,13 +72,19 @@ class ResponseEnvelopeAudit implements DoctorAudit
             )];
         }
 
-        if (! is_string($configured) || ! is_a($configured, ResponseEnvelope::class, true)) {
-            return [Finding::warn(
+        if (! ConfiguredResponseEnvelope::usable($configured)) {
+            // FAIL, not warn, and it is the one branch here that is not a host judgement: whether a
+            // class-string names a ResponseEnvelope is grammar the declaration's author could have
+            // gotten right without knowing which host would load it. The runtime deliberately falls
+            // back rather than 500ing a public API surface, which means this audit is the ONLY place
+            // the mistake is visible — so it says so at full volume.
+            return [Finding::fail(
                 self::CHECK,
                 sprintf(
                     '`beam.core.http.envelope` is %s, which is not a ResponseEnvelope implementation. The '
                     .'runtime fell back to %s rather than fail the particle surface — so this host is '
-                    .'serving the NEUTRAL `{ data: … }` shape whatever the key intended.',
+                    .'serving the NEUTRAL `{ data: … }` shape whatever the key intended, behind '
+                    .'working 200s.',
                     $this->render($configured),
                     $this->shortly($resolved),
                 )
