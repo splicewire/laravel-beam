@@ -2,7 +2,9 @@
 
 namespace Splicewire\Beam\Realm;
 
+use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
+use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnDuplicate;
@@ -50,7 +52,7 @@ use Splicewire\Beam\BeamServiceProvider;
 /**
  * @implements Registry<RealmOverlay>
  */
-class RealmOverlayRegistry implements Registry
+class RealmOverlayRegistry implements Gated, Registry
 {
     /** @var BasicRegistry<RealmOverlay> realm key => the overlays targeting it, in registration order. */
     private BasicRegistry $store;
@@ -154,5 +156,12 @@ class RealmOverlayRegistry implements Registry
     public function unfiltered(): Registry
     {
         return $this->store->unfiltered();
+    }
+
+    public function authorizeWith(?Authorizer $authorizer): static
+    {
+        $this->store->authorizeWith($authorizer);
+
+        return $this;
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Surgeon;
 
+use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
@@ -29,6 +30,19 @@ use Splicewire\Beam\Schema\SchemaSources;
  * is NOT installed in the app under audit contributes nothing there — its surface is audited
  * only from hosts that compose it (or by its own package-local tooling). The seam widens
  * visibility to whatever the host composes; it is not a fleet-wide census.
+ *
+ * ## `Gated` is deliberately absent — nothing reads this on a request
+ *
+ * The scan roots are read by surgeon audits walking the filesystem. Gating them would mean an audit
+ * silently scanning FEWER paths and still reporting a pass — this estate's signature defect, built
+ * in on purpose. An audit's reach must not depend on who is looking.
+ *
+ * `Gated` is therefore NOT implemented, and the absence is information rather than an omission
+ * (registry-kernel ticket 74). {@see Authorizer} already states the
+ * policy this rests on: tooling reads through the registry's explicit unfiltered accessor under the
+ * estate's trusted shell. A console run has no actor to gate against, so an authorizer pushed here
+ * would either sit null forever — dead wiring that reads as a working door — or, worse, narrow a
+ * maintenance run by whoever happened to be authenticated when it started.
  */
 #[IsRegistry(
     root: 'beam.surgeon.scan-paths',

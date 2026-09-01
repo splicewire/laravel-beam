@@ -3,7 +3,9 @@
 namespace Splicewire\Beam\Schema;
 
 use Closure;
+use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
+use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\Registry;
@@ -45,7 +47,7 @@ use Splicewire\Beam\Install\BeamInstallManifest;
 /**
  * @implements Registry<Closure(): SchemaRegistry>
  */
-class SchemaSources implements Registry
+class SchemaSources implements Gated, Registry
 {
     /** @var BasicRegistry<Closure(): SchemaRegistry> key → lazy tier factory, in registration order */
     protected BasicRegistry $store;
@@ -164,5 +166,12 @@ class SchemaSources implements Registry
     public function orderedSources(array $configured): array
     {
         return array_values(array_unique([...$configured, ...array_keys($this->factories())]));
+    }
+
+    public function authorizeWith(?Authorizer $authorizer): static
+    {
+        $this->store->authorizeWith($authorizer);
+
+        return $this;
     }
 }

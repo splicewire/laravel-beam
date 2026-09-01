@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Doctor;
 
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\DoctorRegistration;
+use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\ClassKey;
 use Rushing\Popcorn\Registries\IsRegistry;
@@ -32,6 +33,20 @@ use Splicewire\Beam\Install\BeamInstallManifest;
  * manifest carries the consumer tail, which renders after the hardcoded checks (order ascending; `usort`
  * is stable). Each registration carries a gate/advisory flag so a consumer decides whether its own Fail
  * blocks the exit code, honouring the same gate-vs-advisory split beam-core already draws.
+ *
+ * ## `Gated` is deliberately absent — nothing reads this on a request
+ *
+ * Every read site in the estate is a service provider registering DOWN into it, or
+ * {@see BeamDoctorCommand} iterating it at the console. A readiness audit is not something an actor
+ * sees; it is something an operator runs, and an operator who may not run an audit is refused at the
+ * command, not by having audits vanish from the manifest under them.
+ *
+ * `Gated` is therefore NOT implemented, and the absence is information rather than an omission
+ * (registry-kernel ticket 74). {@see Authorizer} already states the
+ * policy this rests on: tooling reads through the registry's explicit unfiltered accessor under the
+ * estate's trusted shell. A console run has no actor to gate against, so an authorizer pushed here
+ * would either sit null forever — dead wiring that reads as a working door — or, worse, narrow a
+ * maintenance run by whoever happened to be authenticated when it started.
  */
 #[IsRegistry(
     root: 'beam.doctor.audits',

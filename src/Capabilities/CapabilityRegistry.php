@@ -2,7 +2,9 @@
 
 namespace Splicewire\Beam\Capabilities;
 
+use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
+use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnDuplicate;
@@ -63,7 +65,7 @@ use Rushing\Popcorn\Registries\RegistryKey;
         .'the standing evidence that a restated argument is a place to drift (41 D11 found it).',
     order: 15,
 )]
-class CapabilityRegistry implements Registry
+class CapabilityRegistry implements Gated, Registry
 {
     /**
      * The stored declarations, keyed by {@see GatedCapability::key()}.
@@ -187,5 +189,12 @@ class CapabilityRegistry implements Registry
         $unfiltered->store = $this->store->unfiltered();
 
         return $unfiltered;
+    }
+
+    public function authorizeWith(?Authorizer $authorizer): static
+    {
+        $this->store->authorizeWith($authorizer);
+
+        return $this;
     }
 }

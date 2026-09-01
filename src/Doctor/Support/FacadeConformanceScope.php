@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Doctor\Support;
 
 use Rushing\Popcorn\Registries\AbsoluteUriKey;
+use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
@@ -14,6 +15,7 @@ use Rushing\Popcorn\Registries\RelativeUriKey;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Surgeon\AuditScanPaths;
 use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\ParticleWriteBypassAudit;
@@ -75,6 +77,19 @@ use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
  * census — `ParticleWriter` reached by constructor DI — was 9 naive hits and 9 false positives, which is
  * 04's `SchemaTargetResolver` rejection made mechanical. The audits key on resolution verbs and call
  * positions instead, which is why three of them are AST-side.
+ *
+ * ## `Gated` is deliberately absent — nothing reads this on a request
+ *
+ * Identical in kind to {@see AuditScanPaths}: this is the scope a
+ * conformance check measures against, read only by the audits that cite it. A gated scope is an
+ * audit that narrows its own reach without saying so.
+ *
+ * `Gated` is therefore NOT implemented, and the absence is information rather than an omission
+ * (registry-kernel ticket 74). {@see Authorizer} already states the
+ * policy this rests on: tooling reads through the registry's explicit unfiltered accessor under the
+ * estate's trusted shell. A console run has no actor to gate against, so an authorizer pushed here
+ * would either sit null forever — dead wiring that reads as a working door — or, worse, narrow a
+ * maintenance run by whoever happened to be authenticated when it started.
  */
 #[IsRegistry(
     root: 'beam.doctor.facade-scope',

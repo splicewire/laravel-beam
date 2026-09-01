@@ -5,7 +5,9 @@ namespace Splicewire\Beam\Particle\Contribution;
 use ReflectionAttribute;
 use ReflectionClass;
 use RuntimeException;
+use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
+use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\Registry;
@@ -68,7 +70,7 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
 /**
  * @implements Registry<ResourceContribution>
  */
-class ResourceContributionRegistry implements Registry
+class ResourceContributionRegistry implements Gated, Registry
 {
     /**
      * Contributions at `<owner key>.<as>` — the two DIMENSIONS the docblock describes, expressed as one
@@ -299,5 +301,12 @@ class ResourceContributionRegistry implements Registry
     public function unfiltered(): Registry
     {
         return $this->store->unfiltered();
+    }
+
+    public function authorizeWith(?Authorizer $authorizer): static
+    {
+        $this->store->authorizeWith($authorizer);
+
+        return $this;
     }
 }

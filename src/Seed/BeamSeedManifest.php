@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Seed;
 
+use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
@@ -27,6 +28,19 @@ use Splicewire\Beam\Install\BeamInstallManifest;
  * Each step may carry a `$configGate` — a config key that must be truthy for the step to run — so a demo-only
  * seeder registers unconditionally yet fires only where its gate is on (e.g. non-production). The command reports
  * a gated skip rather than silently omitting it.
+ *
+ * ## `Gated` is deliberately absent — nothing reads this on a request
+ *
+ * The same argument as {@see BeamInstallManifest}, and for the same reason: seed steps are ordered
+ * and interdependent, read by `splicewire:beam:seed` and by seeders. A filtered seed run would
+ * silently produce a half-populated estate and report success.
+ *
+ * `Gated` is therefore NOT implemented, and the absence is information rather than an omission
+ * (registry-kernel ticket 74). {@see Authorizer} already states the
+ * policy this rests on: tooling reads through the registry's explicit unfiltered accessor under the
+ * estate's trusted shell. A console run has no actor to gate against, so an authorizer pushed here
+ * would either sit null forever — dead wiring that reads as a working door — or, worse, narrow a
+ * maintenance run by whoever happened to be authenticated when it started.
  */
 #[IsRegistry(
     root: 'beam.seed.steps',

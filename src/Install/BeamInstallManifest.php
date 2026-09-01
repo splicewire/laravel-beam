@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Install;
 
+use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
@@ -30,6 +31,20 @@ use Rushing\Popcorn\Registries\RelativeUriKey;
  * The rule, the current order tiers, and the two things that are NOT the fix live in ONE place —
  * `docs/agents/migration-publish-ordering.convention.md`. Deliberately not restated here: a rule
  * written in two places is a rule that drifts.
+ *
+ * ## `Gated` is deliberately absent — nothing reads this on a request
+ *
+ * The steps are registered by service providers and read by `splicewire:beam:install`. A partially
+ * filtered install manifest is not a narrower install, it is a BROKEN one: the steps are a sequence
+ * whose later members assume the earlier ones ran. Filtering a plan is categorically different from
+ * filtering a list, and this registry holds a plan.
+ *
+ * `Gated` is therefore NOT implemented, and the absence is information rather than an omission
+ * (registry-kernel ticket 74). {@see Authorizer} already states the
+ * policy this rests on: tooling reads through the registry's explicit unfiltered accessor under the
+ * estate's trusted shell. A console run has no actor to gate against, so an authorizer pushed here
+ * would either sit null forever — dead wiring that reads as a working door — or, worse, narrow a
+ * maintenance run by whoever happened to be authenticated when it started.
  */
 #[IsRegistry(
     root: 'beam.install.steps',

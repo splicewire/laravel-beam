@@ -4,7 +4,9 @@ namespace Splicewire\Beam\Surface;
 
 use Illuminate\Support\Str;
 use RuntimeException;
+use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
+use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnDuplicate;
@@ -75,7 +77,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 /**
  * @implements Registry<ApiGroup>
  */
-class GroupRegistry implements Registry
+class GroupRegistry implements Gated, Registry
 {
     /**
      * The one keyspace — the group tree. `$assignments` and `$globs` below are a resolution LADDER over
@@ -462,5 +464,12 @@ class GroupRegistry implements Registry
     public function unfiltered(): Registry
     {
         return $this->store->unfiltered();
+    }
+
+    public function authorizeWith(?Authorizer $authorizer): static
+    {
+        $this->store->authorizeWith($authorizer);
+
+        return $this;
     }
 }
