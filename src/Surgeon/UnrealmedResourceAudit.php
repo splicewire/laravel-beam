@@ -143,7 +143,8 @@ class UnrealmedResourceAudit implements DoctorAudit
                     '[%s] (%s) is a framed resource belonging to no realm, so definitions($realm) filters '
                     .'it out of every one of this host\'s realms (%s) — it is registered and unreachable '
                     .'through the manifest, silently. Add the key under whichever of those realms it '
-                    .'belongs to in config(\'frame.realms\'), or name them where it registers: '
+                    .'belongs to in config(\'frame.realms\') or config(\'beam.core.resources.realm_map\'), '
+                    .'or name them where it registers: '
                     .'register($resource, [<realm>, …]). If it belongs to none of them, it is REST-only '
                     .'and should not be framed.',
                     $key,
@@ -158,12 +159,13 @@ class UnrealmedResourceAudit implements DoctorAudit
                 $findings[] = Finding::warn(
                     self::CHECK_UNREGISTERED,
                     sprintf(
-                        'config(\'frame.realms.%s\') names [%s], which no registered particle resource '
-                        .'claims. keysForRealm() returns the intersection with what is registered, so the '
-                        .'entry is dropped with no error — this line either has a typo or outlived the '
-                        .'resource it named.',
-                        $realm,
+                        'The realm map puts [%s] in realm [%s], and no registered particle resource claims '
+                        .'that key. keysForRealm() returns the intersection with what is registered, so '
+                        .'the entry is dropped with no error — whichever seed named it (config '
+                        .'`frame.realms`, config `beam.core.resources.realm_map`, or a host loadRealmMap() '
+                        .'call) either has a typo or outlived the resource it named.',
                         $key,
+                        $realm,
                     ),
                 );
             }
@@ -241,18 +243,21 @@ class UnrealmedResourceAudit implements DoctorAudit
     }
 
     /**
-     * The `realm-map` rung's source. Read from config because the registry does not expose the map it
-     * was seeded with, and this is its ONE seed —
-     * `BeamServiceProvider` binds the singleton as
-     * `(new ParticleResourceRegistry(...))->loadRealmMap((array) config('frame.realms', []))`.
+     * The `realm-map` rung's source, read off the REGISTRY rather than off config.
+     *
+     * ⚠️ This used to read `config('frame.realms')` directly, and said so on the explicit premise that
+     * "the registry does not expose the map it was seeded with, and this is its ONE seed". That premise
+     * died with particle-manifest-repatriation ticket 02, which added `beam.core.resources.realm_map` as
+     * an additive second source and a host `boot()` seam as a third. Left alone, this method would have
+     * gone silently blind to every resource realmed through either — reporting a correctly realmed
+     * resource as belonging to no realm, and a legitimately mapped key as a phantom. The registry is the
+     * declared authority for its own seeds; the number of them is not this audit's business.
      *
      * @return array<string, mixed>
      */
     protected function realmMap(): array
     {
-        $map = config('frame.realms', []);
-
-        return is_array($map) ? $map : [];
+        return $this->registry->realmMap();
     }
 
     /** The Data class a key projects from — the address a reader needs to go fix it. */

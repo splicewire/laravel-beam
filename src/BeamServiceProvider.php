@@ -549,10 +549,22 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $app->make(ResourceContributionRegistry::class),
         ));
 
+        // ⚠️ TWO realm-map seeds, and the second one exists so a host never re-binds this singleton
+        // (particle-manifest-repatriation ticket 02). `frame.realms` is FRAME's config file: a host with
+        // one membership fact to add had to publish and restate the whole map, which is restating in
+        // order to extend — so `beam.core.resources.realm_map` is a purely ADDITIVE second source, unioned
+        // in by the same idempotent method. Absent at 20 of the 21 `~/Herd` roots and inert when absent,
+        // so membership is byte-for-byte unchanged wherever it is not declared. The imperative twin is
+        // `app(ParticleResourceRegistry::class)->loadRealmMap([...])` from the host's own boot(); both
+        // reach the SHARED instance, which is the point — a host that overrides this binding to change one
+        // collaborator drops the ones added later, and the flagship is the live proof (it passes one
+        // argument where this passes two, so its registry runs with `contributions: NULL`).
         $this->app->singleton(ParticleResourceRegistry::class, fn ($app) => (new ParticleResourceRegistry(
             $app->make(RealmResourceRegistry::class),
             $app->make(ResourceContributionRegistry::class),
-        ))->loadRealmMap((array) config('frame.realms', [])));
+        ))
+            ->loadRealmMap((array) config('frame.realms', []))
+            ->loadRealmMap((array) config('beam.core.resources.realm_map', [])));
         $this->app->singleton(ParticleOperationRegistry::class);
         // The relative-edge registry (api-surface-coherence ticket 50) — the op registry's twin in shape
         // as well as in role, so the two migrate as one archetype when registry-kernel's

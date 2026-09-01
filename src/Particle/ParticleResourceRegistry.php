@@ -31,6 +31,7 @@ use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
 use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
+use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
 
 /**
  * The container-singleton registry of {@see ParticleResource} declarations, keyed by resource key — the
@@ -472,7 +473,30 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
      * Bulk-seed the realm-membership fallback map — `realm => [keys]` (today's `config('frame.realms')`
      * shape). Consulted only for a key with no EXPLICIT realms named at its own {@see register()} call, so
      * a resource can migrate to declaring its own realms without a config edit, and one not yet migrated
-     * keeps working off this map exactly as it does today. Additive across calls (last-wins per realm).
+     * keeps working off this map exactly as it does today.
+     *
+     * ## This is THE seam a host adds membership through, and it is why a host never constructs this
+     * registry
+     *
+     * Additive and idempotent, per realm and by construction: each call unions its keys into whatever is
+     * already there, so calling it twice — or after beam's own seed, or after every resource has already
+     * registered — is a no-op on anything it did not add. Membership is computed on READ
+     * ({@see realmsFor()}), never stamped at registration, so a late seed is visible to resources that
+     * registered before it. Together those two properties are what make
+     * `app(ParticleResourceRegistry::class)->loadRealmMap([...])` from a host's `boot()` a complete
+     * answer to "this host needs one more realm membership fact".
+     *
+     * ⚠️ **A host that re-binds this singleton to seed the map is doing the thing this method exists to
+     * make unnecessary, and it does not stay correct.** `~/Herd/splicewire-app` bound its own
+     * `singleton(ParticleResourceRegistry::class, …)` purely to repeat the seed — its own comment says so
+     * — and when this constructor grew its second collaborator the host's copy kept passing one, leaving
+     * the flagship with `contributions: NULL` and every cross-package contribution silently unfolded,
+     * behind a green suite. A host that overrides a package binding to change one collaborator will always
+     * drop the ones added later. Seed through here; never through the constructor.
+     *
+     * The declarative twin is `beam.core.resources.realm_map`, which `BeamServiceProvider` feeds through
+     * this same method after `config('frame.realms')` — a purely additive second source, so a host
+     * declares its delta instead of publishing and restating frame's whole map.
      *
      * @param  array<string, array<int, string>>  $membership
      */
@@ -483,6 +507,29 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
         }
 
         return $this;
+    }
+
+    /**
+     * The bulk-seeded membership map as it now stands — the UNION of every {@see loadRealmMap()} call,
+     * whatever fed it.
+     *
+     * Public because there are now two seeds and there will be more.
+     * {@see UnrealmedResourceAudit} used to read `config('frame.realms')` raw,
+     * on the stated premise that "the registry does not expose the map it was seeded with, and this is
+     * its ONE seed". The moment `beam.core.resources.realm_map` landed that premise was false, and the
+     * audit would have reported a resource realmed only through the new key as belonging to no realm at
+     * all — an instrument confidently wrong about the thing it exists to measure. Reading the map off the
+     * registry keeps the declared authority the authority, and makes the next seed free.
+     *
+     * ⚠️ This is the RAW map, not membership. It can name a key nothing ever registered (that is the
+     * phantom the audit reports) and it does not include the `explicit` rung. {@see realmsFor()} is the
+     * question "which realms is this key in"; this is the question "what was this registry told".
+     *
+     * @return array<string, list<string>>
+     */
+    public function realmMap(): array
+    {
+        return $this->realmMap;
     }
 
     private function registerRealms(string $key, array $realms): void

@@ -236,7 +236,9 @@ class UnrealmedResourceAuditTest extends TestCase
         $this->assertCount(1, $phantom);
         $this->assertSame(DoctorStatus::Warn, $phantom[0]->status);
         $this->assertStringContainsString('[sngs]', $phantom[0]->detail);
-        $this->assertStringContainsString('frame.realms.tenant', $phantom[0]->detail);
+        // The realm map now has more than one seed (particle-manifest-repatriation 02), so the finding
+        // names the realm and the key rather than one config path that may not be where it came from.
+        $this->assertStringContainsString('realm [tenant]', $phantom[0]->detail);
         $this->assertSame([], $this->of($findings, UnrealmedResourceAudit::CHECK_UNREALMED));
     }
 

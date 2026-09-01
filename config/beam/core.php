@@ -303,6 +303,54 @@ return [
         'file_cap' => 4000,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | particle resources
+    |--------------------------------------------------------------------------
+    | What this host says about the particle resource surface, read by
+    | `BeamServiceProvider::discoverResources()` and the registry binding beside it.
+    |
+    | ⚠️ TWO keys of this section are DELIBERATELY NOT DECLARED HERE, and adding them would be a
+    | regression rather than a tidy-up. `classes` and `discover_paths` are read as
+    | `config('beam.core.resources.classes', config('frame.resources', []))` — the second argument is
+    | a FALLBACK TO FRAME'S CONFIG, and a `config()` default fires only when the key is ABSENT.
+    | Writing `'classes' => []` here would make the key present-and-empty at every host and silently
+    | delete the frame fallback for the hosts still using it. Declare them in a HOST's published copy,
+    | never in this package default.
+    |
+    |   classes         list<class-string>  explicit #[ParticleResource] classes, registered FIRST —
+    |                                       so they LOSE to anything registering the same key later
+    |                                       (see ListedResourceDisplacementAudit before adding one).
+    |   discover_paths  list<string>        filesystem paths scanned for #[ParticleResource].
+    */
+    'resources' => [
+
+        /*
+        | ADDITIVE realm membership — `realm => [resource key, …]`, unioned on top of
+        | `config('frame.realms')` rather than replacing it (particle-manifest-repatriation ticket 02).
+        |
+        | It exists because `frame.realms` belongs to FRAME: a host with one membership fact to add had
+        | to publish frame's config and restate the whole map, i.e. restate in order to extend — and the
+        | flagship went further and re-bound the whole `ParticleResourceRegistry` singleton to seed it,
+        | which is how that host ended up passing one collaborator to a two-collaborator constructor.
+        | Declare the delta here instead; beam's own binding feeds both sources through the same
+        | idempotent `loadRealmMap()`.
+        |
+        | Empty by default and inert when empty — 20 of the 21 `~/Herd` roots declare no realm map at
+        | all, and membership at those hosts is byte-for-byte what it was. The imperative twin, for a
+        | fact a host can only compute at runtime, is
+        | `app(ParticleResourceRegistry::class)->loadRealmMap([...])` from the host's own boot(); it is
+        | additive and idempotent too, and membership is computed on read, so a late seed still lands.
+        |
+        | Rung 2 of two: realms named at a resource's own `register($resource, ['operator'])` WIN over
+        | anything this map says for that key.
+        */
+        'realm_map' => [
+            // 'operator' => ['plans', 'tenants'],
+        ],
+
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 
