@@ -185,6 +185,7 @@ use Splicewire\Beam\Surgeon\SdkNameConventionAudit;
 use Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit;
 use Splicewire\Beam\Surgeon\SdkReturnsTypeScriptResolutionAudit;
 use Splicewire\Beam\Surgeon\StatusChannelLiteralDriftAudit;
+use Splicewire\Beam\Surgeon\SupersededDeclarationAudit;
 use Splicewire\Beam\Surgeon\Support\PackageOrigin;
 use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
 use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
@@ -1217,6 +1218,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // which packages it composes them with — so by the estate's rule this reports rather than throws,
         // and the ordering is left exactly as ticket 19 D1 settled it.
         $manifest->register('splicewire/laravel-beam', ListedResourceDisplacementAudit::class);
+        // Advisory, permanently — and the WIDER population the audit above measures a slice of. That one
+        // reads the explicit config list (7 roots, 31 entries); this one reads the registry itself, so it
+        // sees every displacement however it arrived — attribute scan, package provider, host provider,
+        // config list. Measured at the booted `~/Herd/splicewire-app` 2026-08-31: 21 of 53 resource keys
+        // and 10 of 36 operation keys carry a displaced entry that no instrument had ever read, against
+        // ONE resource key and zero operations at `~/Herd/tower`. Which packages a host composes, and in
+        // what provider order, is the definition of a host fact, so this reports and never throws.
+        $manifest->register('splicewire/laravel-beam', SupersededDeclarationAudit::class);
         // Advisory, permanently, and NOT as a burn-down posture that could later be promoted: whether a
         // resource is realmed is a fact about the HOST, and the same declaration is unrealmed at
         // `~/Herd/splicewire-app` and UNREALMABLE at `~/Herd/tower`, which declares no realms to join.
