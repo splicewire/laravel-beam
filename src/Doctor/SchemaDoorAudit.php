@@ -181,7 +181,7 @@ class SchemaDoorAudit implements DoctorAudit
         // frozen artifact the door was actually PROBED; with none there was no $id to probe it with and
         // all that could be checked is that the route is filed where the mount says it should be.
         if ($own === []) {
-            return [Finding::pass(self::CHECK, sprintf(
+            return [Finding::inconclusive(self::CHECK, sprintf(
                 'This host declares %s and mounts the door at [%s], and has frozen no artifacts under it '.
                 'yet (%s). Nothing was probed: with no $id there is nothing to ask the door for, so this '.
                 'line rests on the route table alone.',
@@ -215,7 +215,7 @@ class SchemaDoorAudit implements DoctorAudit
         $ids = $registry === null ? [] : $this->ids($registry);
 
         if ($ids === []) {
-            return Finding::pass(self::CHECK, sprintf(
+            return Finding::inconclusive(self::CHECK, sprintf(
                 'This host %s and has frozen no artifacts — conformant: a host that mints no versioned '.
                 '$id owes no public schema door.',
                 $state,

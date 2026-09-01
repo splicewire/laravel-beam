@@ -98,7 +98,7 @@ class UnrehearsableStubAudit implements DoctorAudit
         }
 
         if ($convergent === 0) {
-            return [Finding::pass(self::CHECK, sprintf(
+            return [Finding::inconclusive(self::CHECK, sprintf(
                 'No convergent migration is published into this host (%d migration path(s) scanned), so '.
                 'the install-time preflight has nothing it cannot see.',
                 count($this->paths),

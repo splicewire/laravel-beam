@@ -78,7 +78,7 @@ class RelativeEdgeIntegrityAudit implements DoctorAudit
         $edges = $this->relatives->all();
 
         if ($edges === []) {
-            return [Finding::pass(self::CHECK, 'No relative edge is declared on this host.')];
+            return [Finding::inconclusive(self::CHECK, 'No relative edge is declared on this host.')];
         }
 
         $rows = [];

@@ -100,7 +100,7 @@ class UnrealmedResourceAudit implements DoctorAudit
         ));
 
         if ($framed === []) {
-            return [Finding::pass(
+            return [Finding::inconclusive(
                 self::CHECK_CENSUS,
                 'No framed particle resources are registered in this host, so there is no manifest for a '
                 .'realm filter to drop anything from. Nothing was measured.'
@@ -120,7 +120,7 @@ class UnrealmedResourceAudit implements DoctorAudit
         // BOTH rungs, and a host could in principle realm every resource at its `register()` call and
         // ship no `frame.realms` map at all.
         if ($realmed === []) {
-            return [Finding::pass(
+            return [Finding::inconclusive(
                 self::CHECK_CENSUS,
                 sprintf(
                     'This host declares no realm membership on either rung (%s) for any of its %d framed '

@@ -28,7 +28,7 @@ class McpIsolationAudit
         $check = 'playwright MCP isolated';
 
         if ($registrations === []) {
-            return Finding::pass($check, 'no Playwright MCP server is registered — nothing to isolate.');
+            return Finding::inconclusive($check, 'no Playwright MCP server is registered — nothing to isolate.');
         }
 
         $unisolated = [];

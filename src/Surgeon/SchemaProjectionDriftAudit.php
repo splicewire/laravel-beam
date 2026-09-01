@@ -215,10 +215,20 @@ class SchemaProjectionDriftAudit implements DoctorAudit
             ));
         }
 
+        if ($findings === [] && $schemas->isEmpty()) {
+            // Nothing fell under the scope, so nothing was projected and nothing was compared — an empty
+            // population, not a clean projection.
+            return [Finding::inconclusive(
+                self::CHECK,
+                'no declared Data class falls under the disk schema tree\'s scope (app data paths) — nothing to project.',
+            )];
+        }
+
         if ($findings === []) {
-            return [Finding::pass(self::CHECK, $schemas->isEmpty()
-                ? 'no declared Data class falls under the disk schema tree\'s scope (app data paths) — nothing to project.'
-                : sprintf('%d declared Data class(es) have fresh disk schema projections.', $schemas->count()))];
+            return [Finding::pass(self::CHECK, sprintf(
+                '%d declared Data class(es) have fresh disk schema projections.',
+                $schemas->count(),
+            ))];
         }
 
         return $findings;

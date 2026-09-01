@@ -105,7 +105,7 @@ class RealmGateCoverageAudit implements DoctorAudit
         // is no entry that could be orphaned and nothing to measure — twelve of the sixteen beam-installing
         // Herd roots, the flagship among them, on 2026-08-30.
         if ($gates === []) {
-            return [Finding::pass(
+            return [Finding::inconclusive(
                 self::CHECK_CENSUS,
                 sprintf(
                     'This host declares no realm gates (%s is empty), so it does not use the realm '

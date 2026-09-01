@@ -158,7 +158,7 @@ class UndeclaredInputAudit implements DoctorAudit
         }
 
         if ($mounts === 0) {
-            return Finding::pass(self::CHECK_RESOURCES, 'No particle write mount on this host reaches '
+            return Finding::inconclusive(self::CHECK_RESOURCES, 'No particle write mount on this host reaches '
                 .'`ParticleController::parseInput()` — nothing to declare.');
         }
 
@@ -262,7 +262,7 @@ class UndeclaredInputAudit implements DoctorAudit
         $all = $this->operations->unfiltered()->matches('beam.particle.operations');
 
         if ($all === []) {
-            return Finding::pass(self::CHECK_OPERATIONS, 'No particle operations are registered in this host.');
+            return Finding::inconclusive(self::CHECK_OPERATIONS, 'No particle operations are registered in this host.');
         }
 
         $outstanding = [];

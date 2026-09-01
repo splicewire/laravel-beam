@@ -125,7 +125,7 @@ class FilterablePromiseAudit implements DoctorAudit
         $total = count($this->resources->all());
 
         if ($filterable === []) {
-            return [Finding::pass(self::CHECK, sprintf(
+            return [Finding::inconclusive(self::CHECK, sprintf(
                 '%d particle resource%s registered on this host, none of them filterable — no resource is '
                     .'promising a data-filters query.',
                 $total,

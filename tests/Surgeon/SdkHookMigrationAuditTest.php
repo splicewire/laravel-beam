@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Surgeon;
 
 use PHPUnit\Framework\TestCase;
+use Rushing\Doctor\DoctorStatus;
 use Rushing\Surgeon\Operation\FixableFinding;
 use Splicewire\Beam\Surgeon\SdkHookMigrationAudit;
 use Splicewire\Beam\Surgeon\SdkHookMigrationBridge;
@@ -82,11 +83,24 @@ class SdkHookMigrationAuditTest extends TestCase
         $this->assertSame([], $this->audit()->suggestFor(['candidates' => [], 'exceptions' => []]));
     }
 
-    public function test_suggest_operations_returns_no_findings_when_the_bridge_is_unavailable(): void
+    /**
+     * It used to assert `[]` here — the bridge is the audit's only instrument, so with it absent the
+     * sweep printed NO line at all and a mis-wired bridge read as "nothing to report" rather than as
+     * "not looked at". api-surface-coherence 128 gave it a line to print: a Pass, so no build reddens,
+     * flagged inconclusive so a reader can tell the two apart.
+     */
+    public function test_suggest_operations_reports_an_inconclusive_finding_when_the_bridge_is_unavailable(): void
     {
         $audit = new SdkHookMigrationAudit(new SdkHookMigrationBridge(script: null), '/x', '/y', '/z');
 
-        $this->assertSame([], $audit->suggestOperations());
-        $this->assertSame([], $audit->run());
+        // Both channels: suggestOperations() pairs the finding with a (null) operation; run() unwraps it.
+        foreach ([$audit->suggestOperations()[0]->finding, $audit->run()[0]] as $finding) {
+            $this->assertSame(DoctorStatus::Pass, $finding->status);
+            $this->assertFalse($finding->conclusive);
+            $this->assertStringContainsString('not available', $finding->detail);
+        }
+
+        $this->assertCount(1, $audit->suggestOperations());
+        $this->assertCount(1, $audit->run());
     }
 }

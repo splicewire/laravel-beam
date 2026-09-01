@@ -118,14 +118,14 @@ class FamilyTokenContractAudit implements DoctorAudit
         $entries = $this->scan->entries();
 
         if ($entries === []) {
-            return Finding::pass(self::CHECK, 'no Tailwind v4 CSS entry found — this host is out of the audit\'s population.');
+            return Finding::inconclusive(self::CHECK, 'no Tailwind v4 CSS entry found — this host is out of the audit\'s population.');
         }
 
         $declared = $this->declaredTokens($entries);
         $scanned = $this->scannedPackages();
 
         if ($scanned === []) {
-            return Finding::pass(self::CHECK, 'no family dist is inside an @source glob — nothing this host would generate classes from.');
+            return Finding::inconclusive(self::CHECK, 'no family dist is inside an @source glob — nothing this host would generate classes from.');
         }
 
         /** @var array<string, array<string, true>> $unknown token => packages */

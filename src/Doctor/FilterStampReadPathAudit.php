@@ -108,7 +108,7 @@ class FilterStampReadPathAudit implements DoctorAudit
         $stamped = $this->stampedRoutes();
 
         if ($stamped === []) {
-            return [Finding::pass(self::CHECK, sprintf(
+            return [Finding::inconclusive(self::CHECK, sprintf(
                 'No route on this host carries the `%s` stamp, so no hand-written exposure is publishing '
                     .'a filter sub-surface. That is a statement about `->inResource(..., filters: true)` '
                     .'ONLY — a `Particle::mount()` resource mounts its filter sub-surface from the '

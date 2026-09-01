@@ -48,7 +48,7 @@ class HouseStyleAudit implements DoctorAudit, SuggestsOperations
     public function suggestOperations(): array
     {
         if ($this->roots === []) {
-            return [new FixableFinding(Finding::pass('house-style.no-roots', 'No roots to scan.'))];
+            return [new FixableFinding(Finding::inconclusive('house-style.no-roots', 'No roots to scan.'))];
         }
 
         $findings = [];

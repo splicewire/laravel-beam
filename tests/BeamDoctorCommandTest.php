@@ -437,7 +437,7 @@ class BeamDoctorCommandTest extends TestCase
 
         $output = $this->runDoctor(BeamDoctorCommand::FAILURE);
 
-        $this->assertStringContainsString(AuditError::CHECK.': '.MarqueeGateAudit::class.' threw while running', $output);
+        $this->assertStringContainsString(AuditError::CHECK.' (measured nothing): '.MarqueeGateAudit::class.' threw while running', $output);
         $this->assertStringContainsString('unverified is not passed', $output);
         $this->assertStringContainsString(TailSentinelAudit::CHECK, $output);
     }
@@ -464,7 +464,7 @@ class BeamDoctorCommandTest extends TestCase
 
         $output = $this->runDoctor(BeamDoctorCommand::SUCCESS);
 
-        $this->assertStringContainsString(AuditError::CHECK.': '.FrameManifestAudit::class.' threw while running', $output);
+        $this->assertStringContainsString(AuditError::CHECK.' (measured nothing): '.FrameManifestAudit::class.' threw while running', $output);
         $this->assertStringContainsString('contributed no findings', $output);
         $this->assertStringContainsString(TailSentinelAudit::CHECK, $output);
     }
@@ -486,7 +486,7 @@ class BeamDoctorCommandTest extends TestCase
         });
 
         $this->artisan('splicewire:beam:doctor')
-            ->expectsOutputToContain(AuditError::CHECK_RESOLVE.': '.SchemaRoundTripAudit::class.' could not be resolved')
+            ->expectsOutputToContain(AuditError::CHECK_RESOLVE.' (measured nothing): '.SchemaRoundTripAudit::class.' could not be resolved')
             ->assertExitCode(BeamDoctorCommand::SUCCESS);
     }
 

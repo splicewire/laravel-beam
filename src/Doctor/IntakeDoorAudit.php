@@ -84,7 +84,7 @@ class IntakeDoorAudit implements DoctorAudit
     public function run(): array
     {
         if (! $this->mounted()) {
-            return [Finding::pass(self::CHECK, sprintf(
+            return [Finding::inconclusive(self::CHECK, sprintf(
                 'No intake door mounted (%s is not registered) — a beam app that captures through its own '.
                 'controllers, or captures nothing, is valid.',
                 self::ROUTE,
@@ -135,7 +135,7 @@ class IntakeDoorAudit implements DoctorAudit
         $slugs = $this->slugs();
 
         if ($slugs === []) {
-            return [Finding::pass(self::CHECK, sprintf(
+            return [Finding::inconclusive(self::CHECK, sprintf(
                 'The intake door is mounted at %s over a registry holding %d schema(s) (%s). '.
                 'beam.core.intake.slugs declares no slugs, so the door takes a schema stem straight off '.
                 'the URL and there is no configured population to resolve ahead of a request.',

@@ -129,7 +129,7 @@ class DuplicateRouteNameAudit implements DoctorAudit
         // name for two routes to share — so this reports the empty population rather than a clean bill it
         // did not earn.
         if ($claims === []) {
-            return [Finding::pass(
+            return [Finding::inconclusive(
                 self::CHECK_CENSUS,
                 sprintf(
                     'None of this host\'s %d assembled routes carries a name, so no two routes can claim '

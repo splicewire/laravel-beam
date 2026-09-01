@@ -96,7 +96,7 @@ class ParticleRouteResourceAudit implements DoctorAudit
         }
 
         if ($stamped === 0) {
-            return [Finding::pass(self::CHECK, 'No route on this host carries a particle stamp — nothing to resolve.')];
+            return [Finding::inconclusive(self::CHECK, 'No route on this host carries a particle stamp — nothing to resolve.')];
         }
 
         if ($unregistered === []) {

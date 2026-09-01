@@ -89,7 +89,12 @@ class SdkHookMigrationAudit implements DoctorAudit, SuggestsOperations
     public function suggestOperations(): array
     {
         if (! $this->bridge->available()) {
-            return [];
+            // The bridge is the audit's only instrument. Without it nothing was scanned, and the old
+            // silent [] said so to nobody (api-surface-coherence 128).
+            return [new FixableFinding(Finding::inconclusive(
+                self::CHECK,
+                'The beam-ux sdk-hook-migration Node bridge is not available on this host — no import site was scanned.',
+            ), null)];
         }
 
         try {

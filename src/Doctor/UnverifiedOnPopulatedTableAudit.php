@@ -126,7 +126,7 @@ class UnverifiedOnPopulatedTableAudit implements DoctorAudit
         $rehearsed = $published['rehearsed'] + $templates['rehearsed'];
 
         if ($convergent === 0) {
-            return [Finding::pass(self::CHECK, sprintf(
+            return [Finding::inconclusive(self::CHECK, sprintf(
                 'Nothing here declares a convergent table — no published migration this host will run '.
                 'and no template an installed package ships — so there is no declared type that could '.
                 'go `unverified` against a populated table. (`%s` answers the TYPES half from stub text '.

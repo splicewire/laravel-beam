@@ -47,7 +47,7 @@ class ParticleCapabilityDisagreementAudit implements DoctorAudit
         $rows = $this->report->rows();
 
         if ($rows === []) {
-            return [Finding::pass(self::CHECK, 'No particle resource is registered on this host — nothing to measure intent against.')];
+            return [Finding::inconclusive(self::CHECK, 'No particle resource is registered on this host — nothing to measure intent against.')];
         }
 
         $disagreeing = array_values(array_filter(

@@ -71,13 +71,13 @@ class FamilySourceCoverageAudit implements DoctorAudit
         // not in scope — reported as a pass with the reason, so a clean line is never mistaken for a
         // check that ran.
         if ($entries === []) {
-            return Finding::pass(self::CHECK, 'no Tailwind v4 CSS entry found — this host is out of the audit\'s population.');
+            return Finding::inconclusive(self::CHECK, 'no Tailwind v4 CSS entry found — this host is out of the audit\'s population.');
         }
 
         $packages = $this->scan->packages();
 
         if ($packages === []) {
-            return Finding::pass(self::CHECK, 'no family-scoped package with a `dist` resolves in node_modules — nothing to scan.');
+            return Finding::inconclusive(self::CHECK, 'no family-scoped package with a `dist` resolves in node_modules — nothing to scan.');
         }
 
         // Branch 1: the list is DERIVED. Nothing to path-match, and nothing that can drift.

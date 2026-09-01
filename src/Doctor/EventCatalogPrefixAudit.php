@@ -48,7 +48,7 @@ class EventCatalogPrefixAudit implements DoctorAudit
         $total = count($this->events->all());
 
         if ($total === 0) {
-            return [Finding::pass(self::CHECK, 'No event types are registered on this host — an empty catalog has no dead prefixes.')];
+            return [Finding::inconclusive(self::CHECK, 'No event types are registered on this host — an empty catalog has no dead prefixes.')];
         }
 
         $unresolved = $this->events->unresolvedPrefixes();

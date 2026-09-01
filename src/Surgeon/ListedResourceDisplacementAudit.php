@@ -78,7 +78,7 @@ class ListedResourceDisplacementAudit implements DoctorAudit
         $listed = config('beam.core.resources.classes', config('frame.resources', []));
 
         if (! is_array($listed) || $listed === []) {
-            return [Finding::pass(
+            return [Finding::inconclusive(
                 'resource.listing',
                 'This host names no explicit resource classes (`beam.core.resources.classes`, falling '
                 .'back to `frame.resources`), so there is no listing to displace. Nothing was measured.'

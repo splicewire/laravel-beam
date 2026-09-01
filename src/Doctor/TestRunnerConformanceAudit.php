@@ -61,7 +61,7 @@ class TestRunnerConformanceAudit implements DoctorAudit
         $hasPhpunit = isset($declared['phpunit/phpunit']);
 
         if (! is_dir($this->path('tests'))) {
-            return [Finding::pass(self::CHECK, 'No tests/ directory — nothing to run, so the convention does not apply here.')];
+            return [Finding::inconclusive(self::CHECK, 'No tests/ directory — nothing to run, so the convention does not apply here.')];
         }
 
         if ($hasPest) {

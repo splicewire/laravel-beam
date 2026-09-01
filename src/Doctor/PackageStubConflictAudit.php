@@ -113,7 +113,7 @@ class PackageStubConflictAudit implements DoctorAudit
         }
 
         if ($convergent === 0) {
-            return [Finding::pass(self::CHECK, sprintf(
+            return [Finding::inconclusive(self::CHECK, sprintf(
                 'No installed package ships a convergent migration template into this host, so there is '.
                 'no package-declared shape that could disagree with the live database. (%s reads the '.
                 'published copies this host will run; %s reads the same templates for a missing guard. '.

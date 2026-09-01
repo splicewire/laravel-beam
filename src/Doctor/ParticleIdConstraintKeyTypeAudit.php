@@ -80,7 +80,7 @@ class ParticleIdConstraintKeyTypeAudit implements DoctorAudit
         ));
 
         if ($declared === []) {
-            return [Finding::pass(self::CHECK, 'No particle operation in this host declares an `idConstraint:`, so there is nothing to disagree with a key type.')];
+            return [Finding::inconclusive(self::CHECK, 'No particle operation in this host declares an `idConstraint:`, so there is nothing to disagree with a key type.')];
         }
 
         $mismatched = [];

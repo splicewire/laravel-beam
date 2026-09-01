@@ -74,7 +74,7 @@ class RetiredMigrationAudit implements DoctorAudit
         $root = $this->migrationsPath ?? database_path('migrations');
 
         if (! is_dir($root)) {
-            return [Finding::pass(self::CHECK, 'No published migrations directory — nothing to check.')];
+            return [Finding::inconclusive(self::CHECK, 'No published migrations directory — nothing to check.')];
         }
 
         $findings = [];

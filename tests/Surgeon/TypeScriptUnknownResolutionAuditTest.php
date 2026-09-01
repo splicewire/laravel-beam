@@ -99,8 +99,18 @@ class TypeScriptUnknownResolutionAuditTest extends TestCase
         $this->assertStringContainsString('ThirdData.c', $findings[1]->detail);
     }
 
-    public function test_null_content_degrades_to_no_findings_rather_than_erroring(): void
+    /**
+     * It used to assert `[]` here. Degrading must not CRASH, but it must not go silent either: with no
+     * readable declaration file nothing was scanned, and reporting nothing made that indistinguishable
+     * from a clean scan. api-surface-coherence 128 gave it a line — Pass, flagged inconclusive.
+     */
+    public function test_null_content_degrades_to_an_inconclusive_finding_rather_than_erroring(): void
     {
-        $this->assertSame([], $this->audit()->check(null));
+        $findings = $this->audit()->check(null);
+
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
+        $this->assertFalse($findings[0]->conclusive);
+        $this->assertStringContainsString('nothing was scanned', $findings[0]->detail);
     }
 }

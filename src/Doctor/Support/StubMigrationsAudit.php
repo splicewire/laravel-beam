@@ -86,7 +86,7 @@ abstract class StubMigrationsAudit implements DoctorAudit
             // `<short-name>-migrations` publish tag per `->hasMigrations([...])` entry, so a package with
             // no migration files has no tag either, and there is no convention left to violate.
             if ($present === []) {
-                return [Finding::pass(
+                return [Finding::inconclusive(
                     $check,
                     "{$this->serviceProviderClass()} ships no migrations of its own — the publish-only stub ".
                     'convention has no subject here.',

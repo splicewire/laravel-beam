@@ -99,7 +99,7 @@ class BeamDependencyContractAudit
         ));
 
         if ($firstPartyRequires === []) {
-            return Finding::pass($check, 'No first-party requirements to declare.');
+            return Finding::inconclusive($check, 'No first-party requirements to declare.');
         }
 
         $repoUrls = '';
@@ -236,7 +236,7 @@ class BeamDependencyContractAudit
         }
 
         if (! $hasDevMainPin) {
-            return Finding::pass($check, 'No dev-main pins — stability flags not required.');
+            return Finding::inconclusive($check, 'No dev-main pins — stability flags not required.');
         }
 
         $missing = [];

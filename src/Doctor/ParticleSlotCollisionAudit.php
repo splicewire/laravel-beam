@@ -132,7 +132,7 @@ class ParticleSlotCollisionAudit implements DoctorAudit
         }
 
         if ($operations === 0) {
-            return [Finding::pass(self::CHECK, 'No particle operation is mounted on this host — the slot `{resource}/{id}/{name}` has nothing to collide over.')];
+            return [Finding::inconclusive(self::CHECK, 'No particle operation is mounted on this host — the slot `{resource}/{id}/{name}` has nothing to collide over.')];
         }
 
         $rows = array_merge(

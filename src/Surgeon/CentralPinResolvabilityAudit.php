@@ -103,7 +103,7 @@ class CentralPinResolvabilityAudit implements DoctorAudit
         $pins = $this->census->pins();
 
         if ($pins === []) {
-            return [Finding::pass(self::CHECK, sprintf(
+            return [Finding::inconclusive(self::CHECK, sprintf(
                 'No pins of the [%s] connection in scope, so nothing to resolve.',
                 $connection,
             ))];

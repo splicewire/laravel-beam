@@ -107,7 +107,7 @@ class ClientRuntimeContractAudit implements DoctorAudit
         if ($path === null) {
             // Not under the `@/` alias — an npm package or exotic layout this static audit cannot
             // resolve. Skipping is stated, never silent: an unavailable check must not look satisfied.
-            return [Finding::pass(self::CHECK, sprintf(
+            return [Finding::inconclusive(self::CHECK, sprintf(
                 "'%s' is not under the host's `@/` alias — not statically resolvable; contract check skipped (degrade-not-fabricate).",
                 $specifier,
             ))];

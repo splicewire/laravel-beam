@@ -19,7 +19,7 @@ class FrameManifestAudit
         $registryClass = 'Schemastud\\Frame\\Contracts\\ResourceRegistry';
 
         if (! class_exists($registryClass) || ! app()->bound($registryClass)) {
-            return Finding::pass($check, 'frame not installed — editor rung absent (headless beam is valid).');
+            return Finding::inconclusive($check, 'frame not installed — editor rung absent (headless beam is valid).');
         }
 
         try {

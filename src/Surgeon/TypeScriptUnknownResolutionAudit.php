@@ -57,7 +57,13 @@ class TypeScriptUnknownResolutionAudit implements DoctorAudit
     public function check(?string $dtsContent): array
     {
         if ($dtsContent === null) {
-            return [];
+            // No readable generated.d.ts, so nothing was line-scanned. Returning [] here reported
+            // NOTHING — a silent green with no line for a reader to disbelieve, which is worse than the
+            // false `[PASS]` the conclusiveness flag was built for (api-surface-coherence 128).
+            return [Finding::inconclusive(
+                self::CHECK,
+                'No generated TypeScript declaration file is readable on this host — nothing was scanned for bare `unknown`.',
+            )];
         }
 
         $findings = [];

@@ -87,7 +87,7 @@ class LedgerAheadOfRepositoryAudit implements DoctorAudit
         $ledger = $this->ledger ?? $this->readLedger();
 
         if ($ledger === null) {
-            return [Finding::pass(self::CHECK, 'No reachable `migrations` ledger — nothing to compare against.')];
+            return [Finding::inconclusive(self::CHECK, 'No reachable `migrations` ledger — nothing to compare against.')];
         }
 
         $onDisk = $this->stemsOnDisk();
