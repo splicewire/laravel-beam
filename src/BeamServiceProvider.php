@@ -575,8 +575,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // so membership is byte-for-byte unchanged wherever it is not declared. The imperative twin is
         // `app(ParticleResourceRegistry::class)->loadRealmMap([...])` from the host's own boot(); both
         // reach the SHARED instance, which is the point — a host that overrides this binding to change one
-        // collaborator drops the ones added later, and the flagship is the live proof (it passes one
-        // argument where this passes two, so its registry runs with `contributions: NULL`).
+        // collaborator drops the ones added later. The flagship was the worked example (it passed one
+        // argument where this passes two, so its registry ran with `contributions: NULL`); its override is
+        // deleted as of particle-manifest-repatriation ticket 03, and it needed no replacement seam at all
+        // because the seed it repeated is the `frame.realms` read on the line below.
         $this->app->singleton(ParticleResourceRegistry::class, fn ($app) => (new ParticleResourceRegistry(
             $app->make(RealmResourceRegistry::class),
             $app->make(ResourceContributionRegistry::class),

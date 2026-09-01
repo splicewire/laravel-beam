@@ -488,11 +488,21 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
      *
      * ⚠️ **A host that re-binds this singleton to seed the map is doing the thing this method exists to
      * make unnecessary, and it does not stay correct.** `~/Herd/splicewire-app` bound its own
-     * `singleton(ParticleResourceRegistry::class, …)` purely to repeat the seed — its own comment says so
+     * `singleton(ParticleResourceRegistry::class, …)` purely to repeat the seed — its own comment said so
      * — and when this constructor grew its second collaborator the host's copy kept passing one, leaving
      * the flagship with `contributions: NULL` and every cross-package contribution silently unfolded,
      * behind a green suite. A host that overrides a package binding to change one collaborator will always
      * drop the ones added later. Seed through here; never through the constructor.
+     *
+     * ✅ **The flagship's override is DELETED as of particle-manifest-repatriation ticket 03** — with no
+     * replacement seam, because the seed it existed to repeat is `config('frame.realms')`, which
+     * `BeamServiceProvider` already reads. Its realm map and per-key membership were byte-identical
+     * before and after; `contributions` went `NULL` → `ResourceContributionRegistry`. The worked example
+     * above is therefore history, not a live reading — but it stays written down because the shape
+     * recurs, and `~/Herd/splicewire-app/tests/Boot/ParticleContributionSeamTest.php` now pins the fold
+     * by BEHAVIOUR (a probe contribution declaring a static include, asserted folded) rather than by the
+     * non-null check, which the three shipped contributors cannot exercise: they declare no static
+     * includes, so a live payload diff was never available to catch this.
      *
      * The declarative twin is `beam.core.resources.realm_map`, which `BeamServiceProvider` feeds through
      * this same method after `config('frame.realms')` — a purely additive second source, so a host
