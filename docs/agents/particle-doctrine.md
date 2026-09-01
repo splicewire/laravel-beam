@@ -342,8 +342,17 @@ controller FQCN, so the population of exemptions stays countable.
   own `tokens` is registered purely in the platform's config, pointing at a `TokensQuery` whose
   `baseQuery()` is the row-scope. **Do not read a missing `query:` slot as "unscoped"; check the
   host's config before concluding anything about a resource's gate.** A key registered in no tier
-  makes `ResourceRegistry::get()` throw `InvalidArgumentException` and the index breaks on first
-  request — loudly, with nothing exposed, because no `ResourceQuery` is ever constructed
+  is caught at beam's own hydrator — `PayloadParticleReader::query()` asks `DataFilter::tryResource()`
+  and raises `BadMethodCallException` naming the key — so the REST index breaks on first request,
+  loudly, with nothing exposed, because no `ResourceQuery` is ever constructed; the Frame index
+  (`ParticleFrameResourceHandler::indexQuery()`) catches exactly that exception and degrades to the
+  plain includes-and-default-sort list. ⚠️ **Corrected 2026-09-01:** this sentence used to say the
+  miss surfaced as `ResourceRegistry::get()` throwing `InvalidArgumentException`. It no longer does —
+  data-filters' registry is a popcorn registry and a miss there is a `RegistryMiss`
+  (`RuntimeException`, registry-kernel 38), which is why the check moved to the hydrator
+  (registry-kernel 61). And you need not wait for the request: `particle.filterable-promise`
+  (`FilterablePromiseAudit`, advisory — the answer is a fact about the host) lists every filterable
+  key with no data-filters resource behind it, split LIVE/LATENT off the route table
   (`particle-doctrine-followups` 15). `filterable: true` needs one more thing nobody checks at
   registration: a backing implementing `QueriesRecords` — see the backing section above, and
   `particle.capability-disagreement` for the standing reading.
