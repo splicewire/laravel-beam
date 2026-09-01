@@ -50,8 +50,25 @@ use Symfony\Component\Finder\Finder;
  * switched off within the hour — the same reasoning that made the registry audit ratchet.
  *
  * So this reports a backlog you burn down, and the burn-down is cheap: one `Relation::morphMap()`
- * line in the owning provider clears a finding. Promote to `gate: true` once the backlog is clear
- * and the estate has decided which models are permanently exempt.
+ * line in the owning provider clears a finding.
+ *
+ * ⚠️ **Advisory PERMANENTLY, as of ADR-0118 decision 6 (2026-09-01).** This slot used to say "promote to
+ * `gate: true` once the backlog is clear", and that is now withdrawn for three measured reasons. The flag
+ * only changes an EXIT CODE (`DoctorRunner:52-61`), and since every finding here is `warn()` while the
+ * default floor is `fail`, flipping it is **inert** — it would ship a claim of enforcement that enforces
+ * nothing, which is this estate's most expensive shape. At `--floor=warn` it is worse than inert: 92
+ * findings today across 30+ packages, most of them models legitimately never polymorphic, so it hard-fails
+ * every host at once. And whether a model is aliased HERE is a fact about the host, which by the estate's
+ * standing rule is an advisory finding and never a throw.
+ *
+ * ADR-0118 decision 6 moved the ENFORCEMENT's home — from the flagship's `PolicyModelsAreAliasedTest`,
+ * which cannot fail a package author, to this package-tier audit — not this audit's severity. That
+ * decision is satisfied by what is already on disk: all five of the policy leaks it names are inside the
+ * findings above.
+ *
+ * A host that wants coverage to block registers this class in its OWN manifest with `gate: true` and runs
+ * `--floor=warn`. That is the estate's standard escape hatch and is documented the same way on six sibling
+ * audits ({@see FilterablePromiseAudit}, {@see ListedResourceDisplacementAudit}, {@see SupersededDeclarationAudit}).
  *
  * ## Honesty about reach — the same caveat {@see AuditScanPaths} carries
  * Discovery walks `vendor/composer/installed.json` for family packages, so this audits WHAT THE HOST

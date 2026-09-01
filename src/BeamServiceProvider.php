@@ -1278,8 +1278,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // others here are not — the scope is every model in every installed family package, which includes
         // many legitimately never used polymorphically (a pivot, a lookup table, timeline's Clip/Track).
         // A gate over that set blocks every host on day one and gets switched off within the hour. The
-        // burn-down is one `Relation::morphMap()` line per finding; promote to `gate: true` once it is
-        // clear and the permanently-exempt set is decided.
+        // burn-down is one `Relation::morphMap()` line per finding.
+        //
+        // ⚠️ Advisory PERMANENTLY per ADR-0118 decision 6 — the "promote to `gate: true` once clear" note
+        // that stood here is withdrawn. `gate: true` changes only an exit code, and every finding here is
+        // `warn()` against a default `fail` floor, so the flip is inert; at `--floor=warn` it hard-fails
+        // every host on 92 findings. Decision 6 moved enforcement's HOME to this audit, not its severity.
+        // A host wanting it to block registers it in its own manifest with `gate: true` + `--floor=warn`.
         $manifest->register('splicewire/laravel-beam', MorphAliasCoverageAudit::class);
         // Advisory, permanently. The explicit `beam.core.resources.classes` / `frame.resources` list is
         // registered FIRST — before beam's own manifest/scan and before every other package's provider
