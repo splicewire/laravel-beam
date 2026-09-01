@@ -97,11 +97,21 @@ class VerifyDeclaredTypesCommand extends Command
             return $missing === [] && $partition['absent'] === [] ? self::SUCCESS : self::FAILURE;
         }
 
+        // Why this warns rather than fails, and why it names a fix rather than just a workaround:
+        // `Particle::ops()` both discovers and mounts, so a package whose ops reach the registry only
+        // through a route file declares nothing in a console context. beam-calendars hit exactly this
+        // and solved it — `Resources.php` calls `AttributedParticleDiscovery->discover()` on its own
+        // `src/Data` and `src/Ops` at register time, with the reasoning written down: it "makes the
+        // declaration true of the PROCESS rather than of the REQUEST." That is the durable fix;
+        // `route:clear` only makes this one pass honest.
         if ($partial) {
             $this->components->warn(
-                'Routes are CACHED in this host, so route files did not load and any operation registered '
-                .'through `Particle::ops()` is not in the registry this pass read. Operation coverage is '
-                .'PARTIAL — run `route:clear` before trusting a clean result.'
+                'Routes are CACHED, so route files did not load and any operation registered only '
+                .'through `Particle::ops()` is missing from the registry this pass read — coverage is '
+                .'PARTIAL. To make a package immune rather than to work around it, have it call '
+                .'`AttributedParticleDiscovery->discover()` on its own declaration roots at register '
+                .'time (see beam-calendars `Resources.php`), which makes its declarations true of the '
+                .'process rather than of the request. `route:clear` makes this pass honest meanwhile.'
             );
         }
 
@@ -131,18 +141,19 @@ class VerifyDeclaredTypesCommand extends Command
                 $missing,
             ));
 
-            // Two different causes, and naming only the first sends a reader to add a path they very
-            // likely already have. Measured at the flagship 2026-08-31: it DOES scan
-            // `vendor/splicewire/tower/src/Data`, and `Splicewire.Tower.Data.AgentData` and its
-            // siblings emit from it — while every class one level down in `src/Data/Determination/`
-            // does not. The scan is not recursive, so a directory list is a list of exactly the
-            // directories it reads.
+            // Order matters, and it is not the order you would guess. The first run of this check
+            // found 8 classes and the diagnosis went wrong TWICE before landing — first "the scan is
+            // not recursive" (it is: spatie discovers through `Discover::in()`), then "the host
+            // cannot reach the package" (it could: the directory was in the live scan list). The
+            // actual cause was the dullest one: the classes had been declared THREE HOURS earlier and
+            // nobody had re-run the transform. So staleness leads here, because it is both the most
+            // common cause and the cheapest to rule out.
             $this->components->warn(
-                'Two causes to check, in this order. (1) NESTING: a scanned directory is not scanned '
-                .'recursively, so `src/Data/<SubDir>/` is missed even when `src/Data/` is already '
-                .'listed — compare a missing class\'s directory against the host\'s configured list, '
-                .'not just its package. (2) REACH: a host-rooted default scan cannot see a package at '
-                .'all. Then re-run `typescript:transform`.'
+                'Check in this order. (1) STALE ARTIFACT — most likely: the declaration is newer than '
+                .'the emitted tree. Re-run `typescript:transform` and re-check before investigating '
+                .'anything else. (2) REACH: the declaring package is not in this host\'s scan list at '
+                .'all — dump the configured directories and look, rather than assuming. (3) FILTER: '
+                .'the host\'s own transformer declined the class.'
             );
         }
 
