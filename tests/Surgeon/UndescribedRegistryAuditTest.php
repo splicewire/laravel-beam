@@ -118,17 +118,74 @@ class UndescribedRegistryAuditTest extends TestCase
         ];
     }
 
-    public function test_a_registry_shaped_singleton_that_does_not_describe_itself_produces_a_gate_tier_finding(): void
+    /**
+     * The `implements Registry` clause and the seven stubs it obliges — what makes a planted class the
+     * GATE's population rather than the shape heuristic's (registry-kernel 76). Written out rather than
+     * faked, because the discriminator is a real `implementsInterface()` read and a fixture that only
+     * looked the part would test nothing.
+     */
+    private const CONTRACT_IMPLEMENTS = 'implements \\Rushing\\Popcorn\\Registries\\Registry ';
+
+    private const CONTRACT_METHODS = <<<'PHP'
+        public function register(\Rushing\Popcorn\Registries\RegistryKey|string $key, mixed $entry, ?string $by = null, ?string $ability = null): static { $this->entries[(string) $key] = $entry; return $this; }
+        public function has(\Rushing\Popcorn\Registries\RegistryKey|string $key): bool { return isset($this->entries[(string) $key]); }
+        public function resolve(\Rushing\Popcorn\Registries\RegistryKey|string $key): mixed { return $this->entries[(string) $key]; }
+        public function tryResolve(\Rushing\Popcorn\Registries\RegistryKey|string $key): mixed { return $this->entries[(string) $key] ?? null; }
+        public function matches(\Rushing\Popcorn\Registries\RegistryKey|string $key): array { return []; }
+        public function keys(): array { return array_keys($this->entries); }
+        public function unfiltered(): \Rushing\Popcorn\Registries\Registry { return $this; }
+        PHP;
+
+    public function test_a_registry_shaped_singleton_that_does_not_describe_itself_reports_but_does_not_fail(): void
     {
         [$audit, $registry] = $this->plant();
 
         $findings = $audit->run();
 
+        // Two findings, and the pairing is the ticket-76 split itself: the gate's own coverage line, plus
+        // the shape heuristic's suspicion on the advisory channel. ⚠️ It is a Warn, NOT a Fail — "is this
+        // registry-shaped class really a registry?" is a judgement about a class the audit does not own,
+        // and a judgement that fails the build is a judgement someone else made for you.
+        $this->assertCount(2, $findings);
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
+        $this->assertSame(DoctorStatus::Warn, $findings[1]->status);
+        $this->assertSame(UndescribedRegistryAudit::CHECK, $findings[1]->check);
+        // Re-channelled, not dropped — the work-list is unchanged, only the severity moved.
+        $this->assertSame([$registry], array_column($audit->undescribed(), 'registry'));
+    }
+
+    public function test_the_empty_gate_states_what_it_covered_and_what_it_did_not(): void
+    {
+        // This estate's signature defect is an instrument that reports success by not running, and the
+        // gating population here is empty at every host measured — so the PASS has to be distinguishable
+        // from an absent check by reading it.
+        [$audit] = $this->plant();
+
+        $pass = $audit->run()[0];
+
+        $this->assertSame(DoctorStatus::Pass, $pass->status);
+        $this->assertStringContainsString('Rushing\Popcorn\Registries\Registry', $pass->detail);
+        $this->assertStringContainsString('NOT COVERED', $pass->detail);
+        // The count of what it declined to judge, so a reader can tell "nothing there" from "did not look".
+        $this->assertStringContainsString('1 class(es)', $pass->detail);
+        $this->assertStringContainsString('UndeclaredRegistryShapeAudit', $pass->detail);
+    }
+
+    public function test_a_class_that_implements_the_registry_contract_without_the_attribute_fails(): void
+    {
+        // The gate's whole population: the class asserts registry-hood in its OWN source and omits the
+        // attribute, so it contradicts itself in one file. That is grammar its author could have gotten
+        // right without knowing which host would load it — this estate's stated bar for what may throw.
+        [$audit, $registry] = $this->plant(
+            implements: self::CONTRACT_IMPLEMENTS,
+            methods: self::CONTRACT_METHODS,
+        );
+
+        $findings = $audit->run();
+
         $this->assertCount(1, $findings);
-        // Fail, not warn: the runner throws at its default floor, so an advisory-severity finding on a gate
-        // registration would only block a build that had already lowered its floor.
         $this->assertSame(DoctorStatus::Fail, $findings[0]->status);
-        $this->assertSame(UndescribedRegistryAudit::CHECK, $findings[0]->check);
+        $this->assertStringContainsString('PlantedRegistry', $findings[0]->detail);
         $this->assertSame([$registry], array_column($audit->undescribed(), 'registry'));
     }
 
@@ -136,13 +193,16 @@ class UndescribedRegistryAuditTest extends TestCase
     {
         [$audit] = $this->plant();
 
-        $detail = $audit->run()[0]->detail;
+        $detail = $audit->run()[1]->detail;
 
         $this->assertStringContainsString('PlantedRegistry', $detail);
         // The provider is the load-bearing half: the index's direction means the fix has exactly one legal
         // home, and a finding that named only the registry would leave the reader to find it.
         $this->assertStringContainsString('PlantedServiceProvider', $detail);
         $this->assertStringContainsString('#[IsRegistry(', $detail);
+        // No loss of detail on the way to the advisory channel — the re-channelling only ADDS the sentence
+        // saying why this row reports rather than blocks.
+        $this->assertStringContainsString('ADVISORY', $detail);
     }
 
     public function test_declaring_the_registry_silences_the_finding(): void
@@ -162,7 +222,9 @@ class UndescribedRegistryAuditTest extends TestCase
 
     public function test_the_runner_throws_on_an_undescribed_registry_at_the_default_floor(): void
     {
-        [$audit] = $this->plant();
+        // Planted with the contract clause: since registry-kernel 76 that is the only shape that blocks,
+        // and a shape-heuristic row here would prove the opposite of what this test is for.
+        [$audit] = $this->plant(implements: self::CONTRACT_IMPLEMENTS, methods: self::CONTRACT_METHODS);
         $this->app->instance(UndescribedRegistryAudit::class, $audit);
 
         try {
@@ -180,7 +242,7 @@ class UndescribedRegistryAuditTest extends TestCase
     {
         // The contrast that makes the gate flag mean something: identical Fail findings, no throw. This is
         // why registering it `gate: true` is a decision and not decoration.
-        [$audit] = $this->plant();
+        [$audit] = $this->plant(implements: self::CONTRACT_IMPLEMENTS, methods: self::CONTRACT_METHODS);
         $this->app->instance(UndescribedRegistryAudit::class, $audit);
 
         $report = (new DoctorRunner($this->app))->run([

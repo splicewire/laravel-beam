@@ -96,9 +96,38 @@ use Splicewire\Beam\Surgeon\Support\HostScanRoots;
  * catalogue can show, and an agent that cannot find a registry builds a parallel mechanism next to it. So
  * the cost of the drift is not a stale document, it is a second implementation of something that already
  * exists — the exact failure the rest of this effort is paying to prevent. It is also the cheapest check
- * here (one attribute fixes any finding), so it is the one place where blocking is proportionate. Registered `gate: true` in `BeamServiceProvider::registerRegistryConformanceAudits()`, and every
- * finding is a {@see Finding::fail()} so it blocks at the runner's DEFAULT floor rather than only at a
- * lowered one.
+ * here (one attribute fixes any finding), so it is the one place where blocking is proportionate.
+ * Registered `gate: true` in `BeamServiceProvider::registerRegistryConformanceAudits()`.
+ *
+ * ### ⚠️ …but only over the half of the population that answered the question ITSELF — registry-kernel 76
+ *
+ * The paragraph above used to end *"every finding is a {@see Finding::fail()}"*, and that sentence rested
+ * on a justification the scope had quietly outgrown. The gate's reach is {@see governedRoots()} — one
+ * directory per package owning a root — so a class is judged because a **sibling** declared, not because
+ * anyone opted in. Measured 2026-08-31: migrating ONE row in `rushing/laravel-request-logs` armed two new
+ * gate FAILs (`RequestLogCollector`, `RequestLogTracker`) whose own source had not changed at all, and both
+ * carry a measured `drop: not-a-registry` verdict. The property is monotone the wrong way — every registry
+ * the estate conforms drags its package's remaining registry-shaped siblings into a gate they never joined.
+ *
+ * So the population splits by **who answered**, which is ticket 35 §4's division of labour restored:
+ *
+ *   - **`implements Registry` and no `#[IsRegistry]` → {@see Finding::fail()}, blocking.** The class
+ *     contradicts itself in one file. That is grammar its own author could have gotten right without
+ *     knowing which host would load it, which is this estate's stated bar for what may throw.
+ *   - **registry-SHAPED and declaring nothing → {@see Finding::warn()}, reported.** *"Is this really a
+ *     registry?"* is a judgement call about a class this audit does not own, and it goes where 35 already
+ *     put judgement calls — the advisory channel, dispositioned by
+ *     {@see UndeclaredRegistryShapeAudit} and its committed artifact.
+ *
+ * Nothing is whitelisted and no verb list is tuned: ticket 76 rejected both (a whitelist grows a row per
+ * package forever and makes beam record a judgement about classes it does not own — 57's objection; and
+ * the "recognise a buffer" discriminator is unsafe, because `Rushing\Popcorn\Registries\Forgettable` is a kernel interface that
+ * real registries implement). Findings are re-channelled, never lost.
+ *
+ * The gating population is therefore small and is **empty at every host measured**, which is exactly the
+ * condition under which this estate's signature defect fires — so {@see run()}'s PASS names what it
+ * covered AND what it deliberately did not. An empty gate that does not say so is indistinguishable from
+ * one that never ran.
  *
  * ## The scope is the index's own membership — the ratchet
  * `forIndex()` derives its scan roots from the registries ALREADY in the index: a package that has
@@ -443,24 +472,74 @@ class UndescribedRegistryAudit implements DoctorAudit
         $rows = $this->registries();
         $undescribed = array_values(array_filter($rows, fn (array $row) => ! $row['described']));
 
-        if ($undescribed === []) {
-            // The PASS names its own population in the same breath, on 35 D2's precedent and
-            // registry-kernel ticket 55's ruling: this scan finds a registry a provider WIRES, and a
-            // registry constructed at a call site (per request, per tenant, per command) is outside it
-            // by construction — legitimately, not as a defect. A green here is not "no unindexed
-            // registry exists", it is "every wired one declares itself".
-            return [Finding::pass(self::CHECK, sprintf(
-                'All %d registry-shaped SINGLETON(s) in the governed packages declare themselves with '
-                    .'#[IsRegistry]. Scope: bindings only — a registry constructed at a call site is '
-                    .'outside this population by construction (registry-kernel 55).',
+        // Registry-kernel ticket 76's split. A row where the class itself says `implements Registry` has
+        // ALREADY answered the only judgement call this scan makes, and answered it in its own source — so
+        // the missing attribute is grammar, and grammar is what may block. Every other row is the shape
+        // heuristic's suspicion, which is a judgement call about somebody else's class and reports.
+        $contracted = array_values(array_filter($undescribed, fn (array $row) => $this->declaresRegistryContract($row)));
+        $shaped = array_values(array_filter($undescribed, fn (array $row) => ! $this->declaresRegistryContract($row)));
+
+        $findings = $contracted === []
+            // The empty GATE states its own coverage, on {@see UnindexedRegistryAudit}'s precedent and this
+            // estate's rule that an instrument reporting success by not running is its signature defect. The
+            // gating population here is small by construction and is empty at every host measured — so it
+            // must say what it covered AND what it deliberately did not, or it reads like an absent check.
+            // It also names its own scope on 35 D2 / registry-kernel 55's ruling: this scan finds a registry
+            // a provider WIRES, and one constructed at a call site is outside it by construction.
+            ? [Finding::pass(self::CHECK, sprintf(
+                'GATE CLEAR, and this is what it covered: 0 of %d registry-shaped SINGLETON(s) bound under '
+                    .'%d governed scan root(s) implement %s while declaring no #[IsRegistry]. NOT COVERED, '
+                    .'deliberately (registry-kernel 76): %d class(es) that are registry-SHAPED and declare '
+                    .'nothing at all — whether one of those really is a registry is a judgement call about a '
+                    .'class this gate does not own, so each is reported below as an advisory and dispositioned '
+                    .'by %s, never failed here. Scope: bindings only — a registry constructed at a call site '
+                    .'is outside this population by construction (registry-kernel 55).',
                 count($rows),
-            ))];
+                count($this->roots),
+                Registry::class,
+                count($shaped),
+                UndeclaredRegistryShapeAudit::class,
+            ))]
+            : array_map(fn (array $row) => Finding::fail(self::CHECK, $this->detail($row)), $contracted);
+
+        // Re-channelled, not dropped: same detail, same file:line, same remedy — advisory severity, so it
+        // reports and nominates without blocking. Ticket 76's whole finding is that the gate's stated
+        // justification ("a population that opted in by declaring") never described these rows.
+        foreach ($shaped as $row) {
+            $findings[] = Finding::warn(self::CHECK, $this->detail($row, advisory: true));
         }
 
-        return array_map(
-            fn (array $row) => Finding::fail(self::CHECK, $this->detail($row)),
-            $undescribed,
-        );
+        return $findings;
+    }
+
+    /**
+     * Whether the class on either side of the binding asserts registry-hood in its OWN source, by
+     * implementing the kernel {@see Registry} contract.
+     *
+     * This is the gate's whole population (registry-kernel 76). The distinction it draws is not about
+     * confidence in the heuristic — it is about WHO answered the question. A class that implements
+     * `Registry` and omits `#[IsRegistry]` is self-contradictory in one file, which its own author could
+     * have gotten right without knowing which host would load it; that is this estate's stated bar for what
+     * may throw. A class that merely LOOKS like a registry has said nothing, and the audit's opinion of it
+     * is a judgement call — advisory by the same rule.
+     *
+     * @param  array{registry: string, concrete: string|null, provider: string, package: string|null, file: string, line: int, described: bool}  $row
+     */
+    protected function declaresRegistryContract(array $row): bool
+    {
+        foreach ([$row['registry'], $row['concrete']] as $fqcn) {
+            if ($fqcn === null) {
+                continue;
+            }
+
+            $reflection = $this->reflect($fqcn);
+
+            if ($reflection !== null && $reflection->implementsInterface(Registry::class)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -586,21 +665,36 @@ class UndescribedRegistryAudit implements DoctorAudit
      * does not have the `describe(...)` signature in front of them.
      *
      * @param  array{registry: string, concrete: string|null, provider: string, package: string|null, file: string, line: int, described: bool}  $row
+     * @param  bool  $advisory  append the re-channelling sentence — why this row reports rather than blocks
      */
-    protected function detail(array $row): string
+    protected function detail(array $row, bool $advisory = false): string
     {
+        $suffix = $advisory
+            ? sprintf(
+                ' ADVISORY, and it will stay advisory: nothing in %s says it is a registry, so calling it one '.
+                'is this audit\'s judgement about a class it does not own — and a judgement that fails the '.
+                'build is a judgement someone else made for you (registry-kernel 76). If the verdict is '.
+                '"not a registry", record that where verdicts live: `%s` dispositions this row and '.
+                '`splicewire:beam:registry-conformance --check` ratchets it. Only a class that implements '.
+                'Rushing\\Popcorn\\Registries\\Registry and omits the attribute FAILS here.',
+                $this->shortName($row['registry']),
+                UndeclaredRegistryShapeAudit::class,
+            )
+            : '';
+
         return sprintf(
             '%s is a registry-shaped singleton bound at %s:%d but declares no #[IsRegistry]. Put '.
             '#[IsRegistry(root: ..., of: ..., arity: RegistryArity::...)] on %s itself — the declaration '.
             'belongs on the class that owns the keyspace, not on the provider (%s) that binds it. The root '.
             'is a dotted key, domain-first and vendor-free (`beam.realm.overlays`, `schemas.sources`), never '.
             'derived from the composer coordinate. An undeclared registry is one `popcorn:registries` cannot '.
-            'show, so an agent looking for where to register builds a parallel mechanism beside it.',
+            'show, so an agent looking for where to register builds a parallel mechanism beside it.%s',
             $this->shortName($row['registry']),
             $row['file'],
             $row['line'],
             $this->shortName($row['registry']),
             $this->shortName($row['provider']),
+            $suffix,
         );
     }
 

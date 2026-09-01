@@ -1287,7 +1287,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      * audit can run in a host without it — and both of the shape-reading audits report their own blindness
      * there instead of an empty work-list. See {@see UndescribedRegistryAudit::detectionAvailable()}.
      *
-     * ## One gate, two advisories, and the line between them
+     * ## Gates and advisories, and the line between them
+     *
+     * ⚠️ This heading read *"One gate, two advisories"* and undercounted: two of the three register
+     * `gate: true`. Registry-kernel 76 moved the line rather than the count — {@see UndescribedRegistryAudit}
+     * still gates, but only over classes that `implements Registry` and omit the attribute; its shape
+     * heuristic's suspicions now report at Warn. The invariant both gates share is the one below: a gating
+     * population must be one that answered the question in its own source.
      *
      * {@see RegistryConformanceAudit} gates because its population OPTED IN by declaring `#[IsRegistry]`, so
      * it carries no suppression list of any kind (14 D6). That property only holds because
@@ -1321,13 +1327,28 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
         $manifest = $this->app->make(BeamDoctorManifest::class);
 
-        // GATE — the ONLY gating registration in the particle-doctrine-convergence effort. Everything else
-        // here is a burn-down backlog; this one protects the discoverability surface the rest of the effort
-        // depends on. `popcorn:registries --json` is what an agent is told to run to answer "where do
-        // I register this", so an undeclared registry is not a stale document, it is an agent building a
-        // parallel mechanism next to one that already exists. It is also the cheapest possible fix (one
-        // attribute), which is what makes blocking proportionate here and nowhere else. Its findings are
-        // Fail, so it blocks at the runner's DEFAULT floor.
+        // GATE, over HALF of what it scans — and the half is the whole point (registry-kernel 76).
+        //
+        // This comment used to argue that blocking was proportionate because the population "opted in by
+        // declaring". ⚠️ That justification had already broken when it was written. The audit's reach is
+        // `governedRoots()` — one directory per package that owns a root — so a class is judged because a
+        // SIBLING declared. Measured 2026-08-31: conforming one registry in `rushing/laravel-request-logs`
+        // turned `RequestLogCollector` and `RequestLogTracker` into gate FAILs with no change to either
+        // class, both of them carrying a measured `drop: not-a-registry` verdict. The property is monotone
+        // the wrong way: every registry the estate conforms drags that package's remaining registry-shaped
+        // siblings into a gate they never joined, so the FAIL count is a function of sweep progress rather
+        // than of code quality.
+        //
+        // So the gate keeps only the certain question — `implements Registry` with no `#[IsRegistry]`, a
+        // class contradicting itself in one file, which is grammar its author could have gotten right
+        // without knowing the host and is therefore what this estate lets throw. The shape heuristic's
+        // suspicions are re-channelled to Warn by the audit itself and dispositioned by
+        // `UndeclaredRegistryShapeAudit` below — ticket 35 §4's division of labour, restored. Nothing is
+        // whitelisted (57's refusal stands, `DEFAULT_WHITELIST` is still empty), no verb list is tuned, and
+        // no finding is lost; only its channel changed.
+        //
+        // The gating population is small and is empty at both hosts measured, which is precisely when this
+        // estate's signature defect fires — so the audit's PASS names what it covered and what it did not.
         $manifest->register('splicewire/laravel-beam', UndescribedRegistryAudit::class, gate: true);
 
         // GATE, and the second one the estate has ever had — see the audit's own docblock for why the usual
