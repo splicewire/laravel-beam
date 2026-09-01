@@ -421,15 +421,28 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
     }
 
     /**
-     * The registered `ParticleResource` keys, from the booted registry. The registry exposes `has($key)`
-     * but not an enumeration, so read its private map reflectively — the honest way to answer the runtime
-     * "is this key registered" leg without a fabricated static check. Empty when no registry is wired (the
-     * pure-unit path).
+     * The registered `ParticleResource` keys, from the booted registry — the structural path's leg 2.
+     * Empty when no registry is wired (the pure-unit path).
      *
-     * The bound instance may be a HOST SUBCLASS of the beam base (e.g. Tower's own registry), whose
-     * `resources` map is a PRIVATE property on the beam parent — so walk the class hierarchy to the class
-     * that DECLARES it rather than reflecting the leaf class (whose `hasProperty` can't see a parent's
-     * private).
+     * ⚠️ This used to reflect a private `$resources` property, on the same false belief the sibling
+     * {@see ModelResourceIndex} documents: *"the registry exposes `has($key)` but not an enumeration."*
+     * `all()` has existed the whole time. Worse, the property it reflected for **stopped existing**:
+     * {@see ParticleResourceRegistry} composes a `BasicRegistry $entries` since the popcorn migration and
+     * declares no `resources` anywhere in its hierarchy, so the walk up the chain fell off the end and
+     * returned `[]`.
+     *
+     * Measured at `~/Herd/splicewire-app` on 2026-08-31: **0 keys against 53 registered resources.** Leg 2
+     * of the structural path is `isset($registeredKeys[$key])`, so it was false for every controller —
+     * the entire structural path (its pass, its two warns, and the fixable `particle-resource-collapse`
+     * nomination) was unreachable. Only the behavior path ever fired, which is exactly why the audit
+     * still looked alive. This is the estate's recurring shape: an instrument reporting success by not
+     * running.
+     *
+     * This is the same defect, from the same cause, as `ParticleOperationBypassAudit::registeredOperationKeys()`
+     * (repaired 2026-08-27, commit b9e9f57), and takes the same repair: read the **declarations**, never the
+     * keyspace. `$resource->key` is public and is what the registry key is derived FROM, so a future rekey
+     * cannot break this the same way. No reflection, no property-name assumption, and a host SUBCLASS of the
+     * beam registry is handled for free because `all()` is inherited.
      *
      * @return array<string, true>
      */
@@ -439,20 +452,15 @@ class ParticleControllerRedundancyAudit implements DoctorAudit, SuggestsOperatio
             return [];
         }
 
-        $ref = new \ReflectionClass($this->registry);
-        while ($ref !== false && ! $ref->hasProperty('resources')) {
-            $ref = $ref->getParentClass();
-        }
-        if ($ref === false) {
-            return [];
+        $keys = [];
+
+        foreach ($this->registry->all() as $resource) {
+            if ($resource instanceof ParticleResource) {
+                $keys[$resource->key] = true;
+            }
         }
 
-        $prop = $ref->getProperty('resources');
-        $prop->setAccessible(true);
-        /** @var array<string, mixed> $resources */
-        $resources = $prop->getValue($this->registry);
-
-        return array_fill_keys(array_keys($resources), true);
+        return $keys;
     }
 
     /**

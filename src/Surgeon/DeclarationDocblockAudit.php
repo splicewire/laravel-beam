@@ -77,11 +77,23 @@ use Splicewire\Beam\Surgeon\Support\HostScanRoots;
  *    was checked by hand and was a false positive — a class docblock's code example, a JSON Schema
  *    keyword in backticks, or a `Closure(mixed $model, mixed $actor)` type naming the closure's own
  *    parameters. The narrow check is the honest one, and its finding is real.
- *  - {@see CHECK_TS_NARROWER} is doing very little work today, and the census says why: of 275
- *    `#[TypeScript]` classes, **3** found a counterpart declaration, across **2** resolved TypeScript
- *    roots. Almost every family PHP package has no JS sibling, so almost every `#[TypeScript]` class has
- *    nothing to be compared against. Widening this means declaring more roots, not changing the check —
- *    and a host that wants the comparison must say where its TypeScript lives.
+ *  - {@see CHECK_TS_NARROWER} was doing very little work: of 275 `#[TypeScript]` classes, **3** found a
+ *    counterpart declaration, across **2** resolved TypeScript roots.
+ *
+ *    ⚠️ **The reason recorded here for that — *"almost every family PHP package has no JS sibling"* — was
+ *    FALSE, and it is what stopped anyone reopening the number.** The real cause was a bug in
+ *    {@see javascriptSibling()}: it derived the JS path from the PHP vendor segment
+ *    (`js/packages/{php-vendor}/{name}/src`), and the two estates do not share vendor directory names.
+ *    All 13 packages under `js/packages/beam/` publish as `@splicewire/*`, so every
+ *    `splicewire/laravel-beam-*` package resolved to a path that cannot exist — **81 siblings missed**,
+ *    and the 2 that resolved did so only because `schemastud`'s directory name coincides with its npm
+ *    scope. Repaired 2026-08-31 by matching on the npm scope, which is the identity, rather than the
+ *    directory, which is a grouping.
+ *
+ *    A host that wants the comparison somewhere the structural pairing does not reach still declares its
+ *    own roots in `beam.surgeon.declaration_docblock.typescript_roots`; that seam is unchanged. The
+ *    census line is what to read for the current population — do not trust the numbers frozen in this
+ *    paragraph, which is the mistake this bullet is a monument to.
  *  - {@see CHECK_ENUM} reports **zero live instances estate-wide**. It is retained because the shape is
  *    real and its one candidate was a hand-verified false positive that the recognition guard now
  *    removes; but nobody should read a zero here as evidence the estate has no docblock enumerations —
@@ -156,9 +168,11 @@ class DeclarationDocblockAudit implements DoctorAudit
      *
      * TypeScript roots are DERIVED, never committed as literal paths: a host may declare extra roots in
      * `beam.surgeon.declaration_docblock.typescript_roots`, and each PHP package root additionally
-     * contributes its structural JS sibling (`php/packages/<vendor>/laravel-<pkg>/src` ->
-     * `js/packages/<vendor>/<pkg>/src`) when that directory exists. A committed artifact cannot carry
-     * absolute per-machine paths, and a sibling that does not exist simply does not join the search.
+     * contributes its structural JS sibling — `php/packages/<vendor>/laravel-<pkg>/src` pairs with
+     * `js/packages/<any>/<pkg>/src` for whichever candidate publishes under the `@<vendor>` npm scope
+     * ({@see javascriptSibling()}, whose docblock records why the vendor DIRECTORY is not that answer).
+     * A committed artifact cannot carry absolute per-machine paths, and a sibling that does not exist
+     * simply does not join the search.
      *
      * @param  list<string>|null  $roots  PHP scan roots, defaulting to the host's
      * @param  list<string>|null  $typescriptRoots  overrides the derivation entirely (used by tests)
@@ -206,11 +220,26 @@ class DeclarationDocblockAudit implements DoctorAudit
     }
 
     /**
-     * The JS sibling of one resolved PHP package root, or null. The estate's layout pairs
-     * `~/Workspaces/php/packages/<vendor>/laravel-<pkg>` with `~/Workspaces/js/packages/<vendor>/<pkg>`;
-     * the `laravel-` prefix is stripped because that is the PHP half's naming, not the package's identity.
-     * Returns null for anything that does not match the shape or whose sibling is absent — the pairing is
-     * a convention, so it is probed and never assumed.
+     * The JS sibling of one resolved PHP package root, or null.
+     *
+     * ⚠️ This used to build `js/packages/{php-vendor}/{name}/src` — **the two estates do not share vendor
+     * directory names.** Verified on disk 2026-08-31: `js/packages/` holds `beam`, `schemastud` and
+     * `splicewire`, and all 13 packages under `js/packages/beam/` publish as `@splicewire/*`. So
+     * `js/packages/splicewire/beam-ux/src` does not exist while `js/packages/beam/beam-ux/src` does, and
+     * every `splicewire/laravel-beam-*` package — the largest family in the estate — resolved to a path
+     * that could not exist. **2 TS roots derived, 81 missed**, and the two that did resolve
+     * (`schemastud/laravel-frame`, `schemastud/laravel-blockdoc`) only because that one vendor's directory
+     * name happens to coincide with its npm scope.
+     *
+     * The **npm scope is the identity, the directory is only a grouping** — that is the fact read off
+     * disk, and it is what this now matches on. The stem (`laravel-` stripped, because that prefix is the
+     * PHP half's naming rather than the package's identity) is looked for under EVERY `js/packages/*`
+     * vendor dir, and a candidate is accepted only when its `package.json` publishes under `@<php-vendor>/`.
+     * A candidate with no readable scope falls back to the old directory-name match, so nothing that
+     * resolved before stops resolving.
+     *
+     * Returns null for anything that does not match the shape or has no accepted candidate — the pairing
+     * is a convention, so it is probed and never assumed.
      */
     public static function javascriptSibling(string $phpRoot): ?string
     {
@@ -218,10 +247,37 @@ class DeclarationDocblockAudit implements DoctorAudit
             return null;
         }
 
-        $name = str_starts_with($m[3], 'laravel-') ? substr($m[3], strlen('laravel-')) : $m[3];
-        $sibling = $m[1].'/js/packages/'.$m[2].'/'.$name.'/src';
+        [$base, $vendor, $phpName] = [$m[1], $m[2], $m[3]];
+        $name = str_starts_with($phpName, 'laravel-') ? substr($phpName, strlen('laravel-')) : $phpName;
 
-        return is_dir($sibling) ? (string) realpath($sibling) : null;
+        foreach (glob($base.'/js/packages/*/'.$name.'/src', GLOB_ONLYDIR) ?: [] as $candidate) {
+            $packageDir = dirname($candidate);
+            $scope = self::npmScopeOf($packageDir);
+
+            // Scope is the identity; the directory name is the fallback for a package that publishes no
+            // scoped name (or no manifest at all), which is exactly the pre-repair rule.
+            if ($scope === $vendor || ($scope === null && basename(dirname($packageDir)) === $vendor)) {
+                return (string) realpath($candidate);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The npm scope a JS package publishes under (`@schemastud/frame` -> `schemastud`), or null when it has
+     * no manifest, no name, or an unscoped one.
+     */
+    private static function npmScopeOf(string $packageDir): ?string
+    {
+        $decoded = json_decode((string) @file_get_contents($packageDir.'/package.json'), true);
+        $name = is_array($decoded) ? ($decoded['name'] ?? null) : null;
+
+        if (! is_string($name) || ! str_starts_with($name, '@') || ! str_contains($name, '/')) {
+            return null;
+        }
+
+        return substr($name, 1, (int) strpos($name, '/') - 1);
     }
 
     /** @return list<Finding> */

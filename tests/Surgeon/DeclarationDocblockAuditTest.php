@@ -407,6 +407,56 @@ class DeclarationDocblockAuditTest extends TestCase
         $this->assertNull(DeclarationDocblockAudit::javascriptSibling('/not/a/packages/layout'));
     }
 
+    /**
+     * ⚠️ The control for the repair of 2026-08-31. The test above passed under the defect and could not
+     * have failed on it: it uses `schemastud`, the ONE vendor whose JS directory name coincides with its
+     * npm scope, so a derivation keyed on the PHP vendor segment resolves it correctly by accident.
+     *
+     * The real estate is not shaped that way — all 13 packages under `js/packages/beam/` publish as
+     * `@splicewire/*` — so `js/packages/splicewire/beam-ux/src` does not exist, every
+     * `splicewire/laravel-beam-*` package resolved to a path that cannot exist, and the audit derived 2
+     * TypeScript roots where it should derive 9 at the flagship. This fixture reproduces the mismatched
+     * shape and returns null against the pre-repair derivation.
+     */
+    public function test_the_sibling_is_matched_on_the_npm_scope_not_the_vendor_directory(): void
+    {
+        $root = $this->tmp('sibling-scope');
+        $this->roots[] = $root;
+
+        mkdir($root.'/php/packages/splicewire/laravel-beam-ux/src', 0777, true);
+        mkdir($root.'/js/packages/beam/beam-ux/src', 0777, true);
+        file_put_contents(
+            $root.'/js/packages/beam/beam-ux/package.json',
+            (string) json_encode(['name' => '@splicewire/beam-ux']),
+        );
+
+        $this->assertSame(
+            realpath($root.'/js/packages/beam/beam-ux/src'),
+            DeclarationDocblockAudit::javascriptSibling(realpath($root.'/php/packages/splicewire/laravel-beam-ux/src')),
+        );
+    }
+
+    /**
+     * The other half of the same rule: a same-named JS package under a foreign scope is NOT the sibling.
+     * Matching on the directory alone could not tell these apart; matching on the published scope can.
+     */
+    public function test_a_same_named_package_under_a_foreign_npm_scope_is_not_the_sibling(): void
+    {
+        $root = $this->tmp('sibling-foreign');
+        $this->roots[] = $root;
+
+        mkdir($root.'/php/packages/splicewire/laravel-beam-ux/src', 0777, true);
+        mkdir($root.'/js/packages/vendorx/beam-ux/src', 0777, true);
+        file_put_contents(
+            $root.'/js/packages/vendorx/beam-ux/package.json',
+            (string) json_encode(['name' => '@vendorx/beam-ux']),
+        );
+
+        $this->assertNull(
+            DeclarationDocblockAudit::javascriptSibling(realpath($root.'/php/packages/splicewire/laravel-beam-ux/src')),
+        );
+    }
+
     /* ---------------- plumbing ---------------- */
 
     /**

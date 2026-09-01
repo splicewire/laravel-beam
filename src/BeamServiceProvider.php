@@ -1117,7 +1117,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         ));
         $this->app->bind(DocblockTierAudit::class, function ($app) {
             $root = $app->basePath();
-            $graph = PackageGraph::fromRoots([$root]);
+            // ⚠️ The vendor path is LOAD-BEARING, and omitting it made this audit structurally silent.
+            // `PackageGraph::fromRoots()` ingests `vendor/<vendor>/<pkg>/composer.json` only when given a
+            // vendor path; with one root and no vendor path the PSR-4 map holds exactly the app's own
+            // prefix, so `packageForFqn()` returns null for every family FQN and the app's own FQN for
+            // `App\…`. `isUpward()` needs a non-null target that differs from the own package — false for
+            // BOTH cases, hence false for every reference in every file, by construction.
+            // Measured 2026-08-31 at ~/Herd/splicewire-app: `packageForFqn('Splicewire\Beam\Facades\Beam')`
+            // was NULL, and the audit had never emitted a finding at any host across ~2,057 scanned files.
+            $graph = PackageGraph::fromRoots([$root], $root.'/vendor');
 
             return new DocblockTierAudit($this->phpFilesUnder($root), $graph->packageForRoot($root) ?? 'app', $graph);
         });

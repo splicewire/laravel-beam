@@ -40,7 +40,7 @@ class DocblockCommand extends Command
             return self::INVALID;
         }
 
-        $graph = PackageGraph::fromRoots($roots);
+        $graph = $this->buildGraph($roots);
 
         /** @var list<FixableFinding> $findings */
         $findings = [];
@@ -116,6 +116,32 @@ class DocblockCommand extends Command
         $this->line('');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The package graph the tier direction is read from.
+     *
+     * ⚠️ The **vendor path is load-bearing**, and omitting it made this command structurally incapable of
+     * reporting anything — the same defect, and the same repair, as `BeamServiceProvider`'s
+     * {@see DocblockTierAudit} binding. `PackageGraph::fromRoots()` ingests
+     * `vendor/<vendor>/<pkg>/composer.json` only when handed a vendor path; without one its PSR-4 map holds
+     * nothing but the scan roots' own prefixes, `packageForFqn()` returns null for every family FQN, and
+     * `DocblockTierAudit::isUpward()` — which requires a non-null target differing from the file's own
+     * package — is false for every reference in every file. Measured 2026-08-31 at `~/Herd/splicewire-app`:
+     * `packageForFqn('Splicewire\Beam\Facades\Beam')` was NULL, and 26 of 224 leading-slash see-references
+     * could be placed at all; with the vendor path, 93.
+     *
+     * The BASE root's vendor dir is the one to complete from: it is the only root guaranteed to have the
+     * family resolved into it (an extra `--root=` package checkout may have no `vendor/` at all). A missing
+     * directory is inert — `fromRoots()` globs it and ingests nothing.
+     *
+     * Protected so a test can pin the vendor-path leg without driving a whole scan.
+     *
+     * @param  list<string>  $roots
+     */
+    protected function buildGraph(array $roots): PackageGraph
+    {
+        return PackageGraph::fromRoots($roots, rtrim($this->baseDir(), '/').'/vendor');
     }
 
     /** @return list<string> */

@@ -5,6 +5,8 @@ namespace Splicewire\Beam\Tests\Surgeon;
 use PHPUnit\Framework\TestCase;
 use Rushing\Surgeon\Operation\FixableFinding;
 use Splicewire\Beam\Particle\Attributes\BespokeByDesign;
+use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
 
 /**
@@ -454,6 +456,70 @@ class ParticleControllerRedundancyAuditTest extends TestCase
         PHP;
 
         $this->assertSame([], $this->audit()->mountedKeysIn($source));
+    }
+
+    // ── registeredKeys(): the structural path's leg 2, against a REAL registry ─────────────────────────
+
+    /**
+     * ⚠️ The control for the repair of 2026-08-31. Every `suggestFor()` test above hands the registered-key
+     * set in as a literal array, so this file contained **zero** `Registry` references and was structurally
+     * unable to fail when `registeredKeys()` stopped reading one — which is exactly what happened: it
+     * reflected a private `$resources` property that the popcorn migration replaced with a composed
+     * `BasicRegistry $entries`, so the hierarchy walk returned `[]` and leg 2 was false for every
+     * controller. Measured 0 of 53 at `~/Herd/splicewire-app`.
+     *
+     * So this test drives a real {@see ParticleResourceRegistry} through the audit's own accessor, and
+     * fails (`[]` vs `['agents' => true, …]`) against the pre-repair implementation.
+     */
+    public function test_registered_keys_reads_the_declarations_out_of_a_real_registry(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register(new ParticleResource(key: 'agents', backing: 'Acme\\Particles\\Agent'));
+        $registry->register(new ParticleResource(key: 'context-scopes', backing: 'Acme\\Particles\\ContextScope'));
+
+        $audit = new ParticleControllerRedundancyAudit('/nonexistent', '/nonexistent', $registry);
+
+        $this->assertSame(
+            ['agents' => true, 'context-scopes' => true],
+            (fn () => $this->registeredKeys())->call($audit),
+        );
+    }
+
+    /**
+     * The same defect one level up: with leg 2 dead, a pure-passthrough shell on a registered, hand-wired
+     * key produced NO finding at all. Driving `suggestOperations()` over stubbed disk collection but a real
+     * registry proves the fixable collapse nomination is reachable again — it yields 0 findings pre-repair.
+     */
+    public function test_the_structural_path_is_reachable_with_a_real_registry_wired(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register(new ParticleResource(key: 'agents', backing: 'Acme\\Particles\\Agent'));
+
+        $audit = new class('/nonexistent', '/nonexistent', $registry) extends ParticleControllerRedundancyAudit
+        {
+            protected function collectControllers(array $dirs): array
+            {
+                return [[
+                    'class' => 'App\\Http\\Controllers\\Api\\V1\\AgentController',
+                    'file' => '/app/AgentController.php',
+                    'extendsParticleBase' => true,
+                    'resourceKey' => 'agents',
+                    'actions' => ['index' => 'passthrough', 'show' => 'passthrough'],
+                ]];
+            }
+
+            protected function collectRouteWiring(array $routesDirs): array
+            {
+                return [['agents' => true], ['tags' => true]];
+            }
+        };
+
+        $findings = $audit->suggestOperations();
+
+        $this->assertCount(1, $findings);
+        $this->assertTrue($findings[0]->isFixable());
+        $this->assertSame('particle-resource-collapse', $findings[0]->suggestion->kind);
+        $this->assertSame('agents', $findings[0]->suggestion->payload['resourceKey']);
     }
 
     /** Wrap method bodies in a minimal particle-controller class source. */
