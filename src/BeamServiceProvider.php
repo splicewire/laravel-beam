@@ -15,6 +15,7 @@ use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
 use Rushing\DataFilters\Registry\ResourceRegistry as FilterResourceRegistry;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
+use Rushing\PermissionCascade\Support\CascadePolicyRegistrar;
 use Rushing\Popcorn\Concerns\ChainsTraitMethods;
 use Rushing\Popcorn\Contracts\ChainsTraitMethods as ChainsTraitMethodsContract;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
@@ -1565,6 +1566,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
     public function packageBooted(): void
     {
+        // `Hook` binds its authorization HERE, in the package that owns the model, the way taxonomy binds
+        // `Silo`/`Tag` and knowledge binds `Fragment` (the host's policy map stays empty on purpose). Until
+        // this line existed the model carried NO policy, and the estate read that absence four ways at
+        // once: `ResourceFiltersController` fell through (every `hooks/filters/*` read answered any
+        // authenticated user), `GateWriteGate` denied every subjectless `POST /hooks` to everyone but
+        // Root, `HookSubscriptionReach` 403'd every `hooks.*` subscription, and the Frame nav hid the
+        // seat. One declaration, consumed by all four (api-surface-coherence 135; the `hook.*` family is
+        // seeded to a host's admin role by the host — a member with no token is denied, which is the
+        // cascade's own default).
+        CascadePolicyRegistrar::register(Hook::class);
+
         // Every route macro this package ships, contributed by the trait that OWNS it rather than
         // hand-listed here: the particle resource/op mounts, the `->beam()` route-metadata namespace,
         // and the rendering mount. Each link declares its own `order:`, so adding one is `use`-ing a

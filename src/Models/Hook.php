@@ -6,10 +6,13 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Rushing\PermissionCascade\Attributes\UseCascadePolicy;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Events\EventType;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Webhooks\HookSignature;
 
 /**
  * One event subscription: a set of catalog event names, an endpoint, and the secret every delivery
@@ -42,13 +45,14 @@ use Splicewire\Beam\Facades\Beam;
  * @property array<int, string> $events
  * @property string|null $subject_type
  * @property string|null $subject_id
- * @property \Illuminate\Support\Carbon|null $paused_at
- * @property \Illuminate\Support\Carbon|null $disabled_at
+ * @property Carbon|null $paused_at
+ * @property Carbon|null $disabled_at
  * @property int $consecutive_failures
  * @property string|null $last_failure_request_log_id
- * @property \Illuminate\Support\Carbon|null $verified_at
+ * @property Carbon|null $verified_at
  * @property array<int, string>|null $entitlement_keys
  */
+#[UseCascadePolicy]
 class Hook extends Model
 {
     use HasUuids;
@@ -201,7 +205,7 @@ class Hook extends Model
         return (int) config('webhooks.outbound.failure_threshold', self::DEFAULT_FAILURE_THRESHOLD);
     }
 
-    /** A fresh signing secret. 64 hex chars off a CSPRNG — see {@see \Splicewire\Beam\Webhooks\HookSignature}. */
+    /** A fresh signing secret. 64 hex chars off a CSPRNG — see {@see HookSignature}. */
     public static function mintSecret(): string
     {
         return bin2hex(random_bytes(32));
