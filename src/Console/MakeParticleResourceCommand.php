@@ -121,7 +121,7 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
     protected function getOptions(): array
     {
         return [
-            ['model', 'm', InputOption::VALUE_REQUIRED, 'The Eloquent model the resource resolves (default: App\Models\<Name>)'],
+            ['model', 'm', InputOption::VALUE_REQUIRED, 'The Eloquent model the resource resolves — a bare name resolves under App\Models\, a namespaced one is used as given (default: App\Models\<Name>)'],
             ['key', 'k', InputOption::VALUE_REQUIRED, 'The registry key and data-filters resource key (default: the kebab-cased plural of <Name>)'],
             ['force', 'f', InputOption::VALUE_NONE, 'Overwrite the read Data class if it already exists'],
         ];

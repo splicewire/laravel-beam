@@ -29,7 +29,7 @@ use Splicewire\Beam\Particle\OperationKind;
  *
  * The attribute DECLARES; the host ROUTES. Mount it from a route file:
  *
- *     Route::particleOps('{{ uri }}', '{{ resource }}', [{{ class }}::class]);
+ *     Particle::ops('{{ uri }}', '{{ resource }}', [{{ class }}::class]);
  */
 #[ParticleOp(
     resource: '{{ resource }}',

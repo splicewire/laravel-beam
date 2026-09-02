@@ -105,6 +105,91 @@ class ParticleGeneratorTest extends TestCase
         $this->assertStringContainsString('public function toModelAttributes(): array', $input);
     }
 
+    // ── a qualified --model is a fully-qualified class, not a suffix ─────────────────────────────────
+
+    /**
+     * Laravel's own `GeneratorCommand::qualifyModel()` prefixes `App\Models\` onto anything that does not
+     * already start with the root namespace — right for an app whose models all live under `App\`, wrong for
+     * this estate, where the ordinary model is package-tier (`Splicewire\Tower\Models\…`). Measured at the
+     * flagship (tenant-sync 16): `--model='Splicewire\Tower\Models\TenantSync'` emitted
+     * `use App\Models\Splicewire\Tower\Models\TenantSync;`, an uncompilable scaffold from the generator
+     * AGENTS.md tells every session to use.
+     */
+    public function test_the_resource_generator_keeps_a_namespaced_model_as_given(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', [
+            'name' => 'TenantSync',
+            '--model' => 'Splicewire\Tower\Models\TenantSync',
+        ])->assertSuccessful();
+
+        $read = $this->read('app/Data/TenantSyncData.php');
+
+        $this->assertStringContainsString('use Splicewire\Tower\Models\TenantSync;', $read);
+        $this->assertStringNotContainsString('App\Models\Splicewire', $read);
+        $this->assertStringContainsString('backing: TenantSync::class,', $read);
+    }
+
+    public function test_a_leading_backslash_on_the_model_is_stripped_rather_than_prefixed(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', [
+            'name' => 'TenantSync',
+            '--model' => '\Splicewire\Tower\Models\TenantSync',
+        ])->assertSuccessful();
+
+        $read = $this->read('app/Data/TenantSyncData.php');
+
+        $this->assertStringContainsString('use Splicewire\Tower\Models\TenantSync;', $read);
+        $this->assertStringNotContainsString('use \\', $read);
+    }
+
+    public function test_a_bare_model_name_still_resolves_under_app_models(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', [
+            'name' => 'Lyric',
+            '--model' => 'Lyric',
+        ])->assertSuccessful();
+
+        $this->assertStringContainsString('use App\Models\Lyric;', $this->read('app/Data/LyricData.php'));
+    }
+
+    public function test_the_op_generator_keeps_a_namespaced_model_as_given(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-op', [
+            'name' => 'Reconcile',
+            '--resource' => 'tenant-syncs',
+            '--model' => 'Splicewire\Tower\Models\TenantSync',
+        ])->assertSuccessful();
+
+        $op = $this->read('app/Particle/Operations/Reconcile.php');
+
+        $this->assertStringContainsString('use Splicewire\Tower\Models\TenantSync;', $op);
+        $this->assertStringNotContainsString('App\Models\Splicewire', $op);
+        $this->assertStringContainsString('public static function handle(TenantSync $model', $op);
+    }
+
+    /**
+     * The docblock's mount line and the command's own closing INFO line named two different verbs —
+     * `Route::particleResource(...)` in the stub, `Particle::mount(...)` in the report — and the `Route::`
+     * macros were deleted by api-surface-coherence 93. One verb, the live one, in both places.
+     */
+    public function test_the_emitted_mount_hint_names_the_live_verb_not_the_deleted_route_macro(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Lyric'])->assertSuccessful();
+        $this->artisan('splicewire:beam:make:particle-op', [
+            'name' => 'Reorder',
+            '--resource' => 'lyrics',
+            '--model' => 'Lyric',
+        ])->assertSuccessful();
+
+        $read = $this->read('app/Data/LyricData.php');
+        $op = $this->read('app/Particle/Operations/Reorder.php');
+
+        $this->assertStringContainsString("Particle::mount('lyrics', 'lyrics');", $read);
+        $this->assertStringNotContainsString('Route::particleResource', $read);
+        $this->assertStringContainsString("Particle::ops('lyrics', 'lyrics', [Reorder::class]);", $op);
+        $this->assertStringNotContainsString('Route::particleOps', $op);
+    }
+
     public function test_the_op_generator_emits_the_input_output_and_ability_slots_plus_both_data_classes(): void
     {
         $this->artisan('splicewire:beam:make:particle-op', [

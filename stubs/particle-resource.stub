@@ -16,7 +16,7 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
  *
  * The attribute DECLARES; the host ROUTES. Mount it from a route file:
  *
- *     Route::particleResource('{{ uri }}', '{{ key }}');
+ *     Particle::mount('{{ uri }}', '{{ key }}');
  *
  * The closures an attribute cannot carry are resolved by CONVENTION from `public static` methods on THIS
  * class, each optional — add them when you need them:

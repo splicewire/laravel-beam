@@ -125,6 +125,22 @@ abstract class ParticleGeneratorCommand extends GeneratorCommand
     }
 
     /**
+     * The framework's {@see GeneratorCommand::qualifyModel()} prefixes `App\Models\` onto anything that does not
+     * already start with the root namespace — the right default for an app whose models all live under `App\`,
+     * and the wrong one here, where the ordinary model is package-tier (`Splicewire\Tower\Models\…`). Measured at
+     * the flagship (tenant-sync 16): `--model='Splicewire\Tower\Models\TenantSync'` emitted
+     * `use App\Models\Splicewire\Tower\Models\TenantSync;`. A name carrying a namespace separator is already
+     * qualified and is kept as given (leading `\` stripped, `/` normalised); only a bare class name takes the
+     * framework's default.
+     */
+    protected function qualifyModel(string $model): string
+    {
+        $model = str_replace('/', '\\', ltrim($model, '\\/'));
+
+        return str_contains($model, '\\') ? $model : parent::qualifyModel($model);
+    }
+
+    /**
      * The particle resource key from a class base name: kebab-cased and plural, the estate's key shape
      * (`library-lyrics`, `timeline-projects`) rather than the studly class name.
      */
