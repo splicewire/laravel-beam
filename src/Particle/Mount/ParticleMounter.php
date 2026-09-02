@@ -28,6 +28,7 @@ use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleRelative;
 use Splicewire\Beam\Particle\ParticleRelativeRegistry;
+use Splicewire\Beam\Particle\Subject\SubjectResolvers;
 use Splicewire\Beam\Routing\BeamRouteAction;
 use Splicewire\Beam\Routing\BeamRouteProxy;
 use Splicewire\Beam\Routing\IdConstraint;
@@ -220,10 +221,47 @@ class ParticleMounter
     }
 
     /**
-     * One particle operation: `POST {uri}/{id}/{name}`, plus the deprecated `POST {uri}/{id}/op/{name}`
-     * alias it replaced (particle-operation-surface 12).
+     * One particle operation: `POST {uri}[/{coordinate}…]/{name}`, plus the deprecated
+     * `POST {uri}/{id}/op/{name}` alias it replaced (particle-operation-surface 12) — mounted only for
+     * the `['id']` shape, which is the only shape that ever answered there.
      *
      * The body behind one op of `Particle::ops(…)`. Was `Route::macro('particleOp', …)` until 93 deleted the macro.
+     *
+     * ## The coordinates are the SUBJECT's (particle-operation-surface 20, decided by 16 §D1)
+     *
+     * This method used to spell its URI from the literal `{uri}/{id}/{op}`, so a `NoSubject` op mounted
+     * with an `{id}` it never read and an `ActorSubject` op landed at `users/{id}/me`. The declared
+     * subject already said its coordinates — `ResolvesOperationSubject::pathParameters()`, *"declarative
+     * rather than inspected, so a mount, the published reference and the client codegen can all know an
+     * operation's URL shape"* — and nothing read it. Now the mount does:
+     *
+     *   `{uri}` + one `/{param}` per `pathParameters()` entry, in order + `/{name}`
+     *
+     * with two rules that keep the existing population byte-identical and the edge case honest:
+     *
+     * - **`subject: null` is `RecordSubject`, whose list is `['id']`** — so every declaration that predates
+     *   the slot (every shipped one) spells exactly what it spelled before. That is by construction, and
+     *   `Tests\Particle\OperationCoordinatesMountTest` pins it with a route-table comparison.
+     * - **A parameter the enclosing group already carries is NOT re-emitted.** The group prefix under a
+     *   relative edge is `hulls/{hull}`; a resolver listing `['hull', 'id']` there emits only `{id}`, and a
+     *   hand-written `Particle::ops('hulls/{hull}/holds', …)` is read the same way. Carried parameters are
+     *   read off {@see Router::getLastGroupPrefix()} and `$uri` itself.
+     *
+     * The published reference and the client codegen read the ROUTE TABLE this produces
+     * (`ParticleRouteManifestSource`, `ResourceMountMap::rootOf()`, Scribe's URL strategy), so they see the
+     * same list without a second reader of the declaration — which is the whole reason the list is on
+     * the port and not on a mount option.
+     *
+     * ⚠️ **Read at boot, without constructing the resolver.** `SubjectResolvers` rules that a class-string
+     * resolver resolves per request and never at registration; the read here is
+     * {@see SubjectResolvers::coordinates()}, a STATIC call on the declared class, so no constructor runs.
+     * AGENTS.md's shape for a boot-time fact is the same: computed on read from the declaration, never
+     * stamped at `register()` — an op registered before its resource, or on a host that cannot resolve
+     * the resolver's dependencies yet, mounts at the right URL regardless.
+     *
+     * The `{id}` uuid constraint is applied only when `{id}` is among the EMITTED coordinates: a
+     * `whereUuid('id')` on a route with no `{id}` is a constraint on nothing, and Laravel would
+     * quietly keep it.
      *
      * ## Why `/op/` left, and why the old spelling is still mounted
      *
@@ -263,6 +301,11 @@ class ParticleMounter
      * {@see RouteVisibility::Deprecated} and therefore vanishes from the generated client.
      *
      * ## `alias: false` — an operation that was never AT `/op/` must not be given a legacy there
+     *
+     * And the same rule, decided by the declaration rather than the caller: **the alias mounts only for a
+     * subject whose coordinates are exactly `['id']`.** Every URL that ever shipped under `/op/` was the
+     * `{uri}/{id}/op/{op}` shape, so a collection op, an actor op or a two-coordinate op has no legacy to
+     * keep, and manufacturing one would be the exact defect the option below exists to refuse.
      *
      * The alias is a BACK-COMPAT affordance for the 61 URLs that shipped under `/op/`. An operation
      * declared after that segment left never had one, so mounting the alias for it manufactures a
@@ -325,22 +368,40 @@ class ParticleMounter
         $name = $options['name'] ?? "{$stem}.{$op}";
         $legacyName = "{$resourceKey}.op.{$op}";
 
-        $mount = function (string $path, string $routeName) use ($router, $verb, $idConstraint, $resourceKey, $op) {
+        // The subject's coordinates (see the docblock) — a static read of the declaration, so a
+        // class-string resolver is never constructed at boot. `null` declaration ⇒ `['id']`.
+        $coordinates = SubjectResolvers::coordinates($declaration);
+        $carried = $this->carriedParameters($router, $uri);
+        $emitted = array_values(array_filter($coordinates, fn (string $parameter) => ! in_array($parameter, $carried, true)));
+
+        $mount = function (string $path, string $routeName) use ($router, $verb, $idConstraint, $resourceKey, $op, $emitted) {
             $route = $router->{$verb}($path, [ParticleOperationController::class, 'invoke'])
                 ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
                 ->defaults(ParticleOperationController::NAME, $op)
                 ->name($routeName);
 
             // Only `Uuid` is enforced — {@see IdConstraint} states why `Ulid`/`Int` are declared-but-inert
-            // and what has to read zero before that flips.
-            if ($idConstraint?->enforced()) {
+            // and what has to read zero before that flips. And only on a route that actually carries `{id}`.
+            if ($idConstraint?->enforced() && in_array('id', $emitted, true)) {
                 $route->whereUuid('id');
             }
 
             return $route;
         };
 
-        $mount("{$uri}/{id}/{$op}", $name);
+        $path = $uri;
+
+        foreach ($emitted as $parameter) {
+            $path .= '/{'.$parameter.'}';
+        }
+
+        $mount("{$path}/{$op}", $name);
+
+        // The `/op/` alias belongs to the `{uri}/{id}/op/{op}` shape and to nothing else — see the
+        // docblock. A subject whose coordinates are not exactly `['id']` never answered there.
+        if ($coordinates !== ['id']) {
+            return;
+        }
 
         // See the docblock: `false` is for an operation that never answered at `/op/`, so there is no
         // published URL to keep alive and an alias would be a legacy invented rather than preserved.
@@ -364,6 +425,22 @@ class ParticleMounter
         // a `Deprecation`/`Link` header pair on every response (RFC 8594, so an integrator's own client
         // can see it) and one log line per call (so the host can, without instrumenting anything).
         $alias->middleware(LegacyOperationAlias::class);
+    }
+
+    /**
+     * The route parameters the enclosing route group and the mount URI already carry — `{hull}` in a
+     * relative edge's `hulls/{hull}` prefix, or in a hand-written `hulls/{hull}/holds` URI — so
+     * {@see op()} does not emit a coordinate twice.
+     *
+     * @return list<string>
+     */
+    protected function carriedParameters(Router $router, string $uri): array
+    {
+        $prefix = $router->getLastGroupPrefix();
+
+        preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\??\}/', $prefix.'/'.$uri, $matches);
+
+        return array_values(array_unique($matches[1]));
     }
 
     /**

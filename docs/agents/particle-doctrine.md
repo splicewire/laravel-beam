@@ -49,8 +49,8 @@ pair at `route:cache`:
 
 | | URL | route name | |
 |---|---|---|---|
-| primary | `{uri}/{id}/{op}` | `{resourceKey}.{op}` | write new code against this |
-| alias | `{uri}/{id}/op/{op}` | `{resourceKey}.op.{op}` | **deprecated**, still answers |
+| primary | `{uri}[/{coordinate}…]/{op}` | `{resourceKey}.{op}` | write new code against this — the coordinates are the declared `subject:`'s `pathParameters()`, `{id}` by default (particle-operation-surface 20) |
+| alias | `{uri}/{id}/op/{op}` | `{resourceKey}.op.{op}` | **deprecated**, still answers — mounted only for the `['id']` shape |
 
 **The alias deliberately keeps the OLD name.** That is what made the drop a non-event for PHP callers:
 every `route('users.op.login-as')` and `URL::temporarySignedRoute('sigils.op.assume', …)` in the estate

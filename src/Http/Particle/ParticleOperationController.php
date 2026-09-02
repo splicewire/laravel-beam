@@ -23,8 +23,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Runs a declared {@see ParticleOperation} mounted by `Particle::ops()` at
- * `{$method} /{resource}/{id}/{name}`, plus the deprecated `…/{id}/op/{name}` alias that keeps shipped
- * callers working (particle-operation-surface 12 — see `ParticleMounter::op()`). It supplies the
+ * `{$method} /{resource}[/{coordinate}…]/{name}` — the coordinates being the declared subject's
+ * `pathParameters()`, `{id}` for the default (particle-operation-surface 20) — plus the deprecated
+ * `…/{id}/op/{name}` alias that keeps shipped callers working on the `['id']` shape
+ * (particle-operation-surface 12 — see `ParticleMounter::op()`). It supplies the
  * cross-cutting plumbing so the host's `handle` closure stays ordinary code:
  *
  *   1. resolve the operation (from the route defaults) + its SUBJECT, through the operation's declared
@@ -67,7 +69,13 @@ class ParticleOperationController extends Controller
         protected ActorPort $actor,
     ) {}
 
-    public function invoke(Request $request, string $id): mixed
+    /**
+     * `$id` is nullable because the URL's coordinates are the declared subject's, not the mount's
+     * (particle-operation-surface 20): an `ActorSubject`, `NoSubject` or `ParentSubject` op mounts with
+     * no `{id}` at all, and a two-coordinate resolver reads its own names off the parameter bag. The
+     * whole bag — path parameters plus the route defaults an edge stamped — is what `resolve()` gets.
+     */
+    public function invoke(Request $request, ?string $id = null): mixed
     {
         $defaults = $request->route()?->defaults ?? [];
         $resource = $defaults[static::RESOURCE] ?? throw new RuntimeException('Operation route missing its resource default.');

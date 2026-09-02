@@ -2170,8 +2170,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      *                             default, so it keeps the auto-`@group`); default: the generic controller
      *
      *   Particle::ops('timeline-projects', 'timeline_project', 'regenerate')
-     *      → {method} {uri}/{id}/{op} → invoke  ({resourceKey}.{op}, or the 'name' override)
-     *        plus the deprecated {uri}/{id}/op/{op} alias keeping the OLD name (ticket 12)
+     *      → {method} {uri}[/{coordinate}…]/{op} → invoke  ({resourceKey}.{op}, or the 'name' override)
+     *        the coordinates being the declared subject's pathParameters() — {id} by default (ticket 20) —
+     *        plus the deprecated {uri}/{id}/op/{op} alias keeping the OLD name (ticket 12), ['id'] only
      *      stamped with the operation controller's RESOURCE + NAME defaults.
      *
      *      ⚠️ Two of the options this line used to list have MOVED ONTO THE DECLARATION

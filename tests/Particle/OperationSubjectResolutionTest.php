@@ -114,7 +114,9 @@ class OperationSubjectResolutionTest extends TestCase
         $actor = new SubjectUser;
         $this->actingAs($actor);
 
-        $this->postJson('/subject-widgets/1/op/ping')->assertOk()->assertJson(['class' => SubjectUser::class]);
+        // No coordinate: the mount reads `pathParameters() === []` (particle-operation-surface 20), so
+        // the op answers at `subject-widgets/ping` and has no `{id}` to carry and no `/op/` alias.
+        $this->postJson('/subject-widgets/ping')->assertOk()->assertJson(['class' => SubjectUser::class]);
         $this->assertSame([], (new ActorSubject)->pathParameters());
         $this->assertTrue((new ActorSubject)->yieldsSubject());
     }
@@ -125,7 +127,8 @@ class OperationSubjectResolutionTest extends TestCase
         $this->resource();
         $this->mount($this->op(subject: NoSubject::class, handle: fn ($subject) => ['null' => $subject === null]));
 
-        $this->postJson('/subject-widgets/999/op/ping')->assertOk()->assertJson(['null' => true]);
+        // A collection-level op mounts at the collection (particle-operation-surface 20): no `{id}`.
+        $this->postJson('/subject-widgets/ping')->assertOk()->assertJson(['null' => true]);
         $this->assertSame([], (new NoSubject)->pathParameters());
         $this->assertFalse((new NoSubject)->yieldsSubject());
     }

@@ -47,14 +47,35 @@ use Splicewire\Beam\Particle\ParticleOperation;
 interface ResolvesOperationSubject
 {
     /**
-     * The route parameters this resolver CONSUMES, in mount order.
+     * The route parameters this resolver CONSUMES, in mount order — the operation's COORDINATES.
      *
      * Declarative rather than inspected, so a mount, the published reference and the client codegen
-     * can all know an operation's URL shape without booting a request.
+     * can all know an operation's URL shape without booting a request. `ParticleMounter::op()` is the
+     * mount that reads it (particle-operation-surface 20): `{uri}` + one `/{param}` per entry + `/{name}`,
+     * a parameter the enclosing route group already carries not re-emitted. The reference and the
+     * codegen read the route table that mount produced, so all three see one list by construction.
+     *
+     * ## ⚠️ STATIC, because the mount runs at BOOT and a resolver must not be constructed there
+     *
+     * {@see SubjectResolvers} rules that a class-string resolver is container-resolved per REQUEST and
+     * that *"a resolver's constructor (and whatever it injects) must not run during registration"*.
+     * The mount needs this list during registration. Those two sentences are reconciled by making the
+     * list a fact about the CLASS rather than about an instance: a static method cannot read
+     * constructor state, so it cannot need the constructor to have run, and the mount reads the
+     * declaration (`Foo::pathParameters()`) without `app()`-ing anything. AGENTS.md's rule for a
+     * boot-time read is the same one — computed on read from the declaration, never stamped at
+     * `register()` and never by resolving the thing whose resolution the host may not be able to
+     * answer yet.
+     *
+     * The cost is stated rather than hidden: a resolver cannot name its coordinates BY VALUE
+     * (`new SectionSubject(param: 'section')`). A resolver with different coordinates is a different
+     * class, which is what the type-discriminated slot already says about every other axis.
+     * {@see ColumnSubject} is the shape that shows the split — configured by value (the column),
+     * coordinates fixed by class (`['id']`).
      *
      * @return list<string>
      */
-    public function pathParameters(): array;
+    public static function pathParameters(): array;
 
     /**
      * Whether this resolver yields a subject at all — `false` marks a COLLECTION-level operation.

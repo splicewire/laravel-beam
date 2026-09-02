@@ -18,7 +18,7 @@ use Splicewire\Beam\Particle\ParticleOperation;
 class NoSubject implements ResolvesOperationSubject
 {
     /** @return list<string> */
-    public function pathParameters(): array
+    public static function pathParameters(): array
     {
         return [];
     }

@@ -70,7 +70,7 @@ class RecordSubject implements ResolvesOperationSubject
     ) {}
 
     /** @return list<string> */
-    public function pathParameters(): array
+    public static function pathParameters(): array
     {
         return ['id'];
     }

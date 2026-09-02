@@ -19,11 +19,19 @@ use Splicewire\Beam\Particle\ParticleOperation;
  * | a `ResolvesOperationSubject` class-string | container-resolved at REQUEST time, so it can take constructor injection |
  * | `null` | {@see RecordSubject} — the default every declaration had implicitly |
  *
- * ## Resolved at request time, never at boot
+ * ## Resolved at request time, never at boot — and the ONE boot-time read is static for that reason
  *
  * A class-string goes through the container **per request**, exactly as a `backing:` class-string
  * does. {@see RecordSubject} takes the resource registry that way. Nothing here may resolve at boot:
  * a resolver's constructor (and whatever it injects) must not run during registration.
+ *
+ * The mount does need one fact from the resolver during registration — its coordinates, so
+ * `ParticleMounter::op()` can spell the URL (particle-operation-surface 20). {@see coordinates()} is
+ * that read, and it is legal under the sentence above because
+ * {@see ResolvesOperationSubject::pathParameters()} is STATIC: it is a fact about the class, read off
+ * the declaration with no instance made, so no constructor and no injection runs. An instance in the
+ * slot is read as-is (it was constructed as a constant expression at declaration, not here). A
+ * class-string is read as `$class::pathParameters()` — never `app($class)`.
  *
  * ## The `null` default is what keeps the slot a pure addition
  *
@@ -50,6 +58,32 @@ use Splicewire\Beam\Particle\ParticleOperation;
  */
 class SubjectResolvers
 {
+    /**
+     * The operation's COORDINATES — the route parameters its declared subject consumes, in mount order —
+     * read at BOOT without constructing the resolver (see the class docblock).
+     *
+     * `null` in the slot is {@see RecordSubject}, so `['id']`: the shape every declaration had before the
+     * slot existed, which is what keeps the existing population's URLs byte-identical by construction.
+     * An unknown class-string falls to the same `['id']` rather than throwing here — the mount runs at
+     * boot, and {@see for()} will name the defect with the exact spelling at the first request.
+     *
+     * @return list<string>
+     */
+    public static function coordinates(?ParticleOperation $operation): array
+    {
+        $subject = $operation?->subject;
+
+        if ($subject instanceof ResolvesOperationSubject) {
+            return $subject::pathParameters();
+        }
+
+        if (is_string($subject) && is_a($subject, ResolvesOperationSubject::class, true)) {
+            return $subject::pathParameters();
+        }
+
+        return RecordSubject::pathParameters();
+    }
+
     /**
      * The resolver for an operation's declared `subject:` slot.
      */
