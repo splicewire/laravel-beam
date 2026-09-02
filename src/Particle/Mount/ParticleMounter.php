@@ -279,6 +279,19 @@ class ParticleMounter
      * written literally rather than through a variable (zsh does not glob after parameter expansion). If
      * an override happens to equal the alias's own derived name, the alias is skipped rather than
      * mounted into a name collision.
+     *
+     * `$options['names']` is the route-name STEM the enclosing mount already uses for its CRUD
+     * (`PendingParticleMount::names()`), and the primary op name derives from it — `{stem}.{op}` — for
+     * the reason api-surface-coherence 51 §3 gave the stem to CRUD: an op mounted under a relative edge
+     * would otherwise derive `{child}.{op}`, the same name the child's flat mount derives, and Laravel's
+     * name table is last-wins. The alias keeps the flat `{resourceKey}.op.{op}` regardless, because the
+     * alias exists to keep OLD `route()` calls resolving and no old call ever spelled a stem.
+     *
+     * ⚠️ A `'streams'` option used to be read here and chained as `->streams()` onto the route. It is
+     * gone (particle-operation-surface 11 §A1 measured zero call sites; 12 assigned the reap to the last
+     * of {12,13,14,15} to hold this method; 15 held it). A Stream-kind op declares its event map through
+     * `output:`, and the response strategy reads it from the declaration — the route-level stamp was a
+     * second place to say the same thing.
      */
     public function op(Router $router, string $uri, string $resourceKey, string $op, array $options = []): void
     {
@@ -308,10 +321,11 @@ class ParticleMounter
                 ? IdConstraint::tryFrom($options['idConstraint'])
                 : null);
 
-        $name = $options['name'] ?? "{$resourceKey}.{$op}";
+        $stem = $options['names'] ?? $resourceKey;
+        $name = $options['name'] ?? "{$stem}.{$op}";
         $legacyName = "{$resourceKey}.op.{$op}";
 
-        $mount = function (string $path, string $routeName) use ($router, $verb, $idConstraint, $resourceKey, $op, $options) {
+        $mount = function (string $path, string $routeName) use ($router, $verb, $idConstraint, $resourceKey, $op) {
             $route = $router->{$verb}($path, [ParticleOperationController::class, 'invoke'])
                 ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
                 ->defaults(ParticleOperationController::NAME, $op)
@@ -321,14 +335,6 @@ class ParticleMounter
             // and what has to read zero before that flips.
             if ($idConstraint?->enforced()) {
                 $route->whereUuid('id');
-            }
-
-            // A Stream-kind op (ADR-0160) has no single resolved response — it emits a sequence of
-            // typed SSE events instead. `op()` mounts through the generic controller, so there's
-            // no per-route call site to chain `->streams()` onto directly; an `'streams'` option lets
-            // the caller declare it here (surgeon-audit-viability ticket 28).
-            if ($options['streams'] ?? null) {
-                $route->streams($options['streams']);
             }
 
             return $route;
@@ -613,6 +619,16 @@ class ParticleMounter
                 if ($relative->names !== null) {
                     $mount->names($relative->names);
                 }
+
+                // particle-operation-surface 15 (07 §D1): the two builder slots the edge could not
+                // reach. Both are off unless the declaration asks, so a package shipping a new
+                // `#[ParticleOp]` or `#[ParticleRelative]` never widens an edge the host mounted
+                // without it (01's opt-in rule, granted at the EDGE per 07 §D2). The ops mount inside
+                // this `routes:` closure, so the edge stamps them like the child's CRUD and the
+                // subject resolves inside the bound parent's set (07 §D3); a sub-edge mounts inside this
+                // group with its ordinary `of:`/`at:` and so composes under this prefix, the nesting
+                // guard in {@see relative()} keeping its own binding (07 §D4).
+                $mount->ops($relative->ops)->relatives($relative->relatives);
 
                 $mount->idConstraint($relative->idConstraint)->register();
             },

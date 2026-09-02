@@ -279,6 +279,8 @@ class AttributedParticleDiscovery
             idConstraint: $attribute->idConstraint,
             childAt: $attribute->childAt,
             declaredBy: $class,
+            ops: $attribute->ops,
+            relatives: $attribute->relatives,
         ));
     }
 

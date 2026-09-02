@@ -28,7 +28,7 @@ Three legal declaration sites — no fourth:
    attrition, not by a rename.
 
 Don't hand-roll: `splicewire:beam:make:particle-resource` and `splicewire:beam:make:particle-op`
-emit the attribute with every slot filled, the classes those slots name, and the
+emit the attribute with every SHAPE slot filled (`input:`, `output:`, `ability:` — a default-valued slot such as `method:` or `signed:` is deliberately omitted, because an omission and a decision must not be spelled the same), the classes those slots name, and the
 `Particle::mount()` / `Particle::ops()` mount line to paste into the host's route file.
 
 ## Where an operation MOUNTS — `/op/` is gone, and the old spelling still answers

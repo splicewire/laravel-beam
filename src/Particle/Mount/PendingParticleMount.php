@@ -75,10 +75,20 @@ class PendingParticleMount
         protected string $resourceKey,
     ) {}
 
-    /** Which of the five CRUD verbs to mount. Defaults to all five. */
-    public function only(array $verbs): static
+    /**
+     * Which of the five CRUD verbs to mount. Defaults to all five; `true` says so explicitly (the
+     * wildcard 07 §D2 accepted for the declared edge) and `false` mounts none — an exposure whose whole
+     * surface is operations, or a parent that exists only to hang relatives off.
+     */
+    public function only(array|bool $verbs): static
     {
-        $this->options['only'] = $verbs;
+        if ($verbs === true) {
+            unset($this->options['only']);
+
+            return $this;
+        }
+
+        $this->options['only'] = $verbs === false ? [] : $verbs;
 
         return $this;
     }
@@ -150,8 +160,10 @@ class PendingParticleMount
      * - `ops([DownloadMedia::class, 'reorder', new ParticleOperation(…)])` mounts an explicit list, in
      *   the three forms {@see ParticleMounter::ops()} documents. A bare string is the one-op spelling.
      *
-     * `$options` carries `method`, `idConstraint`, `name` and `streams` through to each mounted op,
-     * exactly as the `Route::particleOps()` spelling did.
+     * `$options` carries `method`, `idConstraint`, `name` and `alias` through to each mounted op, exactly
+     * as the `Route::particleOps()` spelling did (`streams` was reaped by particle-operation-surface 15 —
+     * a Stream declares its event map through `output:`). The mount's own `names()` stem reaches every
+     * op too, so an op under a relative edge is named off the edge rather than off the child's flat key.
      */
     public function ops(array|bool|string $ops = true, array $options = []): static
     {
@@ -217,6 +229,13 @@ class PendingParticleMount
                     app(ParticleOperationRegistry::class)->forResource($this->resourceKey),
                 )
                 : $declared;
+
+            // The stem is the mount's, not the op list's: `names()` names the CRUD, and the ops mounted
+            // beside that CRUD take the same stem so a relative exposure and a flat one stay addressable
+            // side by side (api-surface-coherence 51 §3, applied to ops by particle-operation-surface 15).
+            if (isset($this->options['names']) && ! isset($options['names'])) {
+                $options['names'] = $this->options['names'];
+            }
 
             $this->mounter->ops($this->router, $this->uri, $this->resourceKey, $ops, $options);
         }

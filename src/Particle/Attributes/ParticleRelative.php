@@ -60,12 +60,27 @@ class ParticleRelative
      * @param  string|null  $binding  the route parameter claimed for the parent (default: the model's
      *                                kebab basename). ⚠️ app-global — ticket 51 §1
      * @param  string|null  $at  the parent's URI segment when it differs from `$of`
-     * @param  array<int, string>|null  $only  which of the child's five CRUD verbs to mount; null ⇒ all
+     * @param  array<int, string>|bool|null  $only  which of the child's five CRUD verbs to mount;
+     *                                              null or `true` ⇒ all five, `false` ⇒ none (an edge
+     *                                              whose whole surface is operations)
      * @param  string|null  $names  the child's route-name stem — ⚠️ give it one, or this exposure derives
      *                              the same names as the child's flat mount and last-wins hides one of
-     *                              them (ticket 51 §3)
+     *                              them (ticket 51 §3). The stem reaches the child's OPS too, for the
+     *                              same reason
      * @param  string|null  $idConstraint  `'uuid'` constrains the child's `{id}`
      * @param  string|null  $childAt  the child's URI segment when it differs from `$child`
+     * @param  array<int, string>|bool  $ops  the CHILD's operations to mount under this edge, in the
+     *                                        three forms {@see ParticleMounter::ops()} takes; `true`
+     *                                        mounts every op registered for the child; **off unless
+     *                                        asked** (particle-operation-surface 07 §D1/§D2 — host
+     *                                        consent is granted at the edge, so a wildcard widens only
+     *                                        within an edge the host already mounted)
+     * @param  array<int, string>|bool  $relatives  sub-edges to mount under this edge's bound child — the
+     *                                              same `#[ParticleRelative]` classes a flat mount of the
+     *                                              child would take, unchanged: they mount inside this
+     *                                              edge's route group, so its prefix composes for them
+     *                                              (07 §D4); `true` mounts every edge registered against
+     *                                              the child; off unless asked
      */
     public function __construct(
         public string $child,
@@ -74,9 +89,11 @@ class ParticleRelative
         public ?string $via = null,
         public ?string $binding = null,
         public ?string $at = null,
-        public ?array $only = null,
+        public array|bool|null $only = null,
         public ?string $names = null,
         public ?string $idConstraint = null,
         public ?string $childAt = null,
+        public array|bool $ops = false,
+        public array|bool $relatives = false,
     ) {}
 }

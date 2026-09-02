@@ -70,7 +70,8 @@ class ParticleRelative implements HasRegistryKey
      *                                model's kebab basename. ⚠️ **App-global** — ticket 51 §1 owns that
      *                                ruling and {@see ParticleMounter::claimBinding()} ledgers it
      * @param  string|null  $at  the parent's URI segment when it differs from `$of`
-     * @param  array<int, string>|null  $only  which of the child's five CRUD verbs to mount; null ⇒ all
+     * @param  array<int, string>|bool|null  $only  which of the child's five CRUD verbs to mount;
+     *                                              null or `true` ⇒ all five, `false` ⇒ none
      * @param  string|null  $names  the child's route-name stem. ⚠️ **Give it one.** Absent a stem the
      *                              child derives its names from its own resource key, which is the same
      *                              name its FLAT mount derives — and Laravel's name table is last-wins,
@@ -80,6 +81,11 @@ class ParticleRelative implements HasRegistryKey
      * @param  string|null  $childAt  the child's URI segment when it differs from `$child`
      * @param  class-string|null  $declaredBy  the annotated class, when this came from the attribute —
      *                                         the serializable reference a Closure `$via` cannot be
+     * @param  array<int, string|ParticleOperation>|bool  $ops  the child's operations mounted under
+     *                                                          this edge (particle-operation-surface 15);
+     *                                                          off unless asked — see the attribute twin
+     * @param  array<int, string|ParticleRelative>|bool  $relatives  sub-edges mounted under the bound
+     *                                                               child; off unless asked
      */
     public function __construct(
         public string $child,
@@ -88,11 +94,13 @@ class ParticleRelative implements HasRegistryKey
         public string|Closure|null $via = null,
         public ?string $binding = null,
         public ?string $at = null,
-        public ?array $only = null,
+        public array|bool|null $only = null,
         public ?string $names = null,
         public ?string $idConstraint = null,
         public ?string $childAt = null,
         public ?string $declaredBy = null,
+        public array|bool $ops = false,
+        public array|bool $relatives = false,
     ) {
         if ($this->via === null && $this->declaredBy === null) {
             throw new InvalidArgumentException(
