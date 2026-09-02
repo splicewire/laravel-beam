@@ -74,6 +74,7 @@ use Splicewire\Beam\Doctor\FilterStampReadPathAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
+use Splicewire\Beam\Doctor\OrphanedGroupWordAudit;
 use Splicewire\Beam\Doctor\PackageStubConflictAudit;
 use Splicewire\Beam\Doctor\ParticleCapabilityDisagreementAudit;
 use Splicewire\Beam\Doctor\ParticleIdConstraintKeyTypeAudit;
@@ -1763,6 +1764,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             LedgerAheadOfRepositoryAudit::class,
+        );
+
+        // api-surface-coherence 143: a `#[ParticleResource(group: '…')]` word that resolves to no group
+        // on this host. A host renamed its group (`compliance` → `determination`) and six package
+        // declarations kept the old word for a day with nothing anywhere reporting it — rung 2 resolves
+        // a loose word and answers a miss with null by design. Advisory: whether a word resolves is a
+        // fact about the HOST's taxonomy, and package defaults a host never adopts are legitimate. It
+        // reads the declared word, not the placement, so a rung-1 assignment cannot hide the row.
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            OrphanedGroupWordAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered
