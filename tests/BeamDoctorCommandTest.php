@@ -114,11 +114,30 @@ class BeamDoctorCommandTest extends TestCase
     public function test_command_fails_when_the_beam_manifest_is_absent(): void
     {
         // The BEAM.md self-description is a gate (relocated from the satellite doctor): a beam site
-        // with no manifest (and no legacy SATELLITE.md fallback) is not conformant.
+        // with no manifest is not conformant.
         $this->pointBaseAt(
             ['minimum-stability' => 'dev', 'prefer-stable' => true],
             ['packages' => [], 'packages-dev' => []],
             withManifest: false,
+        );
+
+        $this->artisan('splicewire:beam:doctor')
+            ->expectsOutputToContain('BEAM.md is missing')
+            ->assertExitCode(BeamDoctorCommand::FAILURE);
+    }
+
+    public function test_a_legacy_satellite_md_no_longer_satisfies_the_manifest_gate(): void
+    {
+        // The SATELLITE.md → BEAM.md rename has contracted: a base carrying only the legacy file
+        // is a base with no manifest.
+        $this->pointBaseAt(
+            ['minimum-stability' => 'dev', 'prefer-stable' => true],
+            ['packages' => [], 'packages-dev' => []],
+            withManifest: false,
+        );
+        file_put_contents(
+            $this->fixtureBase.'/SATELLITE.md',
+            "---\nsatellite: fixture\nvariant: inertia-react\n---\n# Legacy\n",
         );
 
         $this->artisan('splicewire:beam:doctor')

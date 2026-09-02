@@ -5,8 +5,8 @@ namespace Splicewire\Beam\Doctor;
 use Rushing\Doctor\Finding;
 
 /**
- * Verifies the site carries a valid Beam Manifest (BEAM.md at its repo root; legacy SATELLITE.md
- * still accepted during the rename): the file exists and declares at least the required identity
+ * Verifies the site carries a valid Beam Manifest (BEAM.md at its repo root): the file exists and
+ * declares at least the required identity
  * keys (`satellite`, `variant`). A beam site is self-describing (ADR-0001); a missing or
  * unparseable manifest means the Sweep and the reconcile flow have nothing to key off, so it's a
  * hard failure.

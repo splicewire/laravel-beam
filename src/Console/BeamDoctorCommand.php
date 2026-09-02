@@ -277,9 +277,8 @@ class BeamDoctorCommand extends Command
     }
 
     /**
-     * The site is self-describing (ADR-0001): a valid BEAM.md must exist and declare its identity
-     * (legacy SATELLITE.md still accepted during the rename). Reads + parses the front matter and
-     * hands the parsed identity to the pure audit.
+     * The site is self-describing (ADR-0001): a valid BEAM.md must exist and declare its identity.
+     * Reads + parses the front matter and hands the parsed identity to the pure audit.
      */
     private function manifestFinding(BeamManifestAudit $audit, string $base): Finding
     {
@@ -381,19 +380,12 @@ class BeamDoctorCommand extends Command
     }
 
     /**
-     * Resolve the manifest file at $base: prefer the current BEAM.md, fall back to legacy
-     * SATELLITE.md; return the BEAM.md path when neither exists so a missing-file check names the
-     * current convention.
+     * The manifest file at $base — always the BEAM.md path, whether or not it exists, so a
+     * missing-file check names the convention. (The pre-rename fallback has contracted.)
      */
     private function manifestPath(string $base): string
     {
-        $current = $base.'/BEAM.md';
-        if (is_file($current)) {
-            return $current;
-        }
-        $legacy = $base.'/SATELLITE.md';
-
-        return is_file($legacy) ? $legacy : $current;
+        return $base.'/BEAM.md';
     }
 
     /**
