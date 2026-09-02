@@ -1211,11 +1211,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // PHP roots (each package's structural JS sibling) plus whatever the host declares, so nothing
         // per-machine is committed anywhere.
         $this->app->bind(DeclarationDocblockAudit::class, fn () => DeclarationDocblockAudit::forApp());
-        // Reads the resource registry only — membership is a registered value, not a syntactic one, so
-        // there is nothing for a parser to do and no host path to scope. Its skip branch is what keeps
-        // it quiet in the 19 of 20 bootable Herd roots that declare no realms at all.
+        // Reads the resource registry — membership is a registered value, not a syntactic one, so there
+        // is nothing for a parser to do and no host path to scope. Its skip branch is what keeps it
+        // quiet in the 19 of 20 bootable Herd roots that declare no realms at all. The database manager
+        // is for its second fact (api-surface-coherence 139): whether each model-backed registration's
+        // table exists anywhere this host can see, which no declaration can answer.
         $this->app->bind(UnrealmedResourceAudit::class, fn ($app) => new UnrealmedResourceAudit(
             $app->make(ParticleResourceRegistry::class),
+            $app->make('db'),
         ));
         // The realm registry's sibling meter, and deliberately a `bind` rather than a `singleton`: the
         // registry it holds is the boot singleton, but the audit itself must re-read `all()` on every

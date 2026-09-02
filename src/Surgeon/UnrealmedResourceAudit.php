@@ -2,6 +2,9 @@
 
 namespace Splicewire\Beam\Surgeon;
 
+use Closure;
+use Illuminate\Database\DatabaseManager;
+use Illuminate\Database\Eloquent\Model;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
@@ -73,9 +76,43 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * Everything is computed **on read**. Nothing is stamped at registration, so a resource registered after
  * beam's own boot — a consumer package's provider, a host's `AppServiceProvider` — clears its own
  * finding instead of having load order recorded as truth about it.
+ *
+ * ## The second fact: a registration whose table exists nowhere (api-surface-coherence 139)
+ *
+ * Measured 2026-09-01 at `~/Herd/splicewire-app`: of 18 registered resources with no routed presence,
+ * three — `teams`, `access-grants`, `view-requests` — declare a model whose table exists on **no**
+ * connection and in **no** schema at that host (`beam_teams`, `beam_access_grants`, `beam_view_requests`;
+ * the host runs its own team system and declares the beam-accounts estate `'absent'`). They are not
+ * unrealmed-by-design and not awaiting a mount; they are **dead registrations**, and any route or realm
+ * that ever serves them answers with a query error. The ticket considered a "deliberately API-less"
+ * declaration and rejected it precisely for these three: a flag would have let someone stamp them
+ * intentional and close over the defect. Whether a table exists is a fact nobody declares, so the
+ * instrument is a probe of the backing, and this is where it lives — the same registry walk, one fact
+ * further in.
+ *
+ * Its population is **every registration that names a model, framed or not** — two of the three live
+ * instances are REST-only, which the realm checks above deliberately exclude — and it runs whether or
+ * not the host uses the realm axis at all: `~/Herd/tower` declares no realms and must still hear about
+ * a missing table. A source-backed resource (`members`, `review-queue`) declares no model and is
+ * counted, not probed.
+ *
+ * ⚠️ The probe has to be able to say "did not look". A multi-tenant host keeps most of its tables in
+ * tenant schemas that `Schema::hasTable()` on the central connection cannot see, so the default probe
+ * asks the model's own connection first and then, on Postgres, `information_schema.tables` across every
+ * schema on that connection — the flagship's 54 registrations read 51 backed, 3 absent, 0 unknown that
+ * way. A connection that will not open, a driver whose catalog is not consulted, a model that will not
+ * construct: those are **inconclusive**, named on the census line and never warned, because an
+ * instrument whose "absent" and "could not look" are spelled identically is the estate's signature
+ * defect.
  */
 class UnrealmedResourceAudit implements DoctorAudit
 {
+    /** A model-backed resource whose table exists on no connection or schema this host can see. */
+    public const CHECK_UNBACKED = 'resource.backing.absent';
+
+    /** The backing census line: backed / absent / unprobeable / source-backed. */
+    public const CHECK_BACKING = 'resource.backing';
+
     /** A framed resource whose membership is empty on both rungs: filtered out of every realm. */
     public const CHECK_UNREALMED = 'resource.realm.unrealmed';
 
@@ -85,14 +122,187 @@ class UnrealmedResourceAudit implements DoctorAudit
     /** The census line, emitted whether or not anything warned. */
     public const CHECK_CENSUS = 'resource.realm';
 
+    /**
+     * @param  (Closure(?string $connection, string $table): ?bool)|null  $tableExists  a stand-in for the
+     *                                                                                  database — true exists, false
+     *                                                                                  absent everywhere, null could
+     *                                                                                  not look. Tests use it; a host
+     *                                                                                  gets the default probe.
+     */
     public function __construct(
         protected ParticleResourceRegistry $registry,
+        protected ?DatabaseManager $db = null,
+        protected ?Closure $tableExists = null,
     ) {}
 
     /**
      * @return list<Finding>
      */
     public function run(): array
+    {
+        return array_merge($this->backingFindings(), $this->realmFindings());
+    }
+
+    // ── backing applicability ───────────────────────────────────────────────────────────────────────
+
+    /**
+     * @return list<Finding>
+     */
+    protected function backingFindings(): array
+    {
+        $backed = [];
+        /** @var array<string, array{model: string, table: string, connection: ?string}> $absent */
+        $absent = [];
+        /** @var array<string, string> $unknown key => why */
+        $unknown = [];
+        $sourceBacked = 0;
+
+        foreach ($this->registry->all() as $resource) {
+            try {
+                $model = $resource->modelClass();
+            } catch (\Throwable $e) {
+                $unknown[$resource->key] = 'backing did not resolve: '.$e->getMessage();
+
+                continue;
+            }
+
+            if ($model === null) {
+                $sourceBacked++;
+
+                continue;
+            }
+
+            if (! class_exists($model) || ! is_subclass_of($model, Model::class)) {
+                $unknown[$resource->key] = $model.' is not a loadable Eloquent model';
+
+                continue;
+            }
+
+            try {
+                $instance = new $model;
+                $table = $instance->getTable();
+                $connection = $instance->getConnectionName();
+            } catch (\Throwable $e) {
+                $unknown[$resource->key] = $model.' would not construct: '.$e->getMessage();
+
+                continue;
+            }
+
+            $exists = $this->tableExists($connection, $table);
+
+            if ($exists === true) {
+                $backed[] = $resource->key;
+            } elseif ($exists === false) {
+                $absent[$resource->key] = ['model' => $model, 'table' => $table, 'connection' => $connection];
+            } else {
+                $unknown[$resource->key] = sprintf('could not probe [%s] on connection [%s]', $table, $connection ?? 'default');
+            }
+        }
+
+        if ($backed === [] && $absent === [] && $unknown === []) {
+            return [Finding::inconclusive(
+                self::CHECK_BACKING,
+                sprintf(
+                    'No registered particle resource names an Eloquent model (%d source-backed), so there '
+                    .'is no table to look for. Nothing was measured.',
+                    $sourceBacked,
+                ),
+            )];
+        }
+
+        $findings = [];
+
+        foreach ($absent as $key => $row) {
+            $findings[] = Finding::warn(
+                self::CHECK_UNBACKED,
+                sprintf(
+                    '[%s] (%s) is registered here and its table [%s] exists on no connection or schema this '
+                    .'host can see (probed connection [%s], then every schema on it). It is a dead '
+                    .'registration: any route or realm that serves it answers with a query error, and no '
+                    .'declaration can make that intentional. Either run the migration that creates the '
+                    .'table, or — if this host binds its own model for the concept — register the '
+                    .'replacement resource and stop discovering this one.',
+                    $key,
+                    $row['model'],
+                    $row['table'],
+                    $row['connection'] ?? 'default',
+                ),
+            );
+        }
+
+        $summary = sprintf(
+            '%d model-backed resource%s: %d backed, %d absent, %d could not be probed; %d source-backed not probed.',
+            count($backed) + count($absent) + count($unknown),
+            count($backed) + count($absent) + count($unknown) === 1 ? '' : 's',
+            count($backed),
+            count($absent),
+            count($unknown),
+            $sourceBacked,
+        );
+
+        if ($unknown !== []) {
+            $findings[] = Finding::inconclusive(
+                self::CHECK_BACKING,
+                $summary.' Not looked at: '.implode('; ', array_map(
+                    fn (string $key, string $why) => sprintf('[%s] %s', $key, $why),
+                    array_keys($unknown),
+                    $unknown,
+                )),
+            );
+        } else {
+            $findings[] = Finding::pass(self::CHECK_BACKING, $summary);
+        }
+
+        return $findings;
+    }
+
+    /**
+     * Does the table exist anywhere this host can see? true / false / null = could not look.
+     *
+     * The model's own connection first, via the schema builder (which honours the prefix and, on a
+     * tenant-initialised connection, the tenant's `search_path`). Then, on Postgres only, every schema
+     * on that connection — a multi-tenant host keeps most of its tables in `tenant_*` schemas the central
+     * `search_path` cannot see, and "exists in some schema" is the question this check asks. Any other
+     * driver stops at the schema builder's answer. Anything that throws is null.
+     */
+    protected function tableExists(?string $connection, string $table): ?bool
+    {
+        if ($this->tableExists !== null) {
+            return ($this->tableExists)($connection, $table);
+        }
+
+        if ($this->db === null) {
+            return null;
+        }
+
+        try {
+            $conn = $this->db->connection($connection);
+
+            if ($conn->getSchemaBuilder()->hasTable($table)) {
+                return true;
+            }
+
+            if ($conn->getDriverName() === 'pgsql') {
+                $rows = $conn->select(
+                    'select 1 from information_schema.tables where table_name = ? limit 1',
+                    [$conn->getTablePrefix().$table],
+                );
+
+                return $rows !== [];
+            }
+
+            return false;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    // ── realm membership ────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @return list<Finding>
+     */
+    protected function realmFindings(): array
     {
         $framed = array_values(array_filter(
             $this->registry->all(),

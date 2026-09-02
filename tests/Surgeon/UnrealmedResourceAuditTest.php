@@ -2,9 +2,11 @@
 
 namespace Splicewire\Beam\Tests\Surgeon;
 
+use Illuminate\Database\Eloquent\Model;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Particle\Backing\ResourceBacking;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
@@ -133,7 +135,7 @@ class UnrealmedResourceAuditTest extends TestCase
             $registry->register($this->framed($key));
         }
 
-        $findings = (new UnrealmedResourceAudit($registry))->run();
+        $findings = $this->of((new UnrealmedResourceAudit($registry))->run(), UnrealmedResourceAudit::CHECK_CENSUS);
 
         $this->assertCount(1, $findings);
         $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
@@ -167,7 +169,7 @@ class UnrealmedResourceAuditTest extends TestCase
         $registry = $this->registry()->loadRealmMap(['tenant' => ['songs']]);
         $registry->register($this->restOnly('songs'));
 
-        $findings = (new UnrealmedResourceAudit($registry))->run();
+        $findings = $this->of((new UnrealmedResourceAudit($registry))->run(), UnrealmedResourceAudit::CHECK_CENSUS);
 
         $this->assertCount(1, $findings);
         $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
@@ -304,4 +306,164 @@ class UnrealmedResourceAuditTest extends TestCase
         $this->assertSame(DoctorStatus::Pass, $census[0]->status);
         $this->assertStringContainsString('1 realmed, 1 reachable through no realm', $census[0]->detail);
     }
+    // ── backing applicability: a registration whose table exists nowhere ────────────────────────────
+
+    /**
+     * A probe standing in for the database: `table => exists`, with a key that is absent from the map
+     * answering null — "this host could not look".
+     *
+     * @param  array<string, bool>  $tables
+     */
+    private function probe(array $tables): \Closure
+    {
+        return fn (?string $connection, string $table): ?bool => $tables[$table] ?? null;
+    }
+
+    /**
+     * api-surface-coherence 139. Three registrations at `~/Herd/splicewire-app` — `teams`, `access-grants`,
+     * `view-requests` — declare a model whose table exists on NO connection or schema at that host. Their
+     * realm membership is beside the point: a route or realm serving them answers with a query error. A
+     * "deliberately API-less" flag would have let someone stamp them intentional and close over the
+     * defect, so the honest instrument is a fact about the backing, and the key must be named.
+     */
+    public function test_a_model_backed_resource_whose_table_exists_nowhere_is_a_dead_registration(): void
+    {
+        config()->set('frame.realms', ['tenant' => ['songs']]);
+
+        $registry = $this->registry()->loadRealmMap(['tenant' => ['songs']]);
+        $registry->register(new ParticleResource(key: 'songs', backing: UnrealmedFixtureSong::class, label: 'Songs'));
+        $registry->register(new ParticleResource(key: 'teams', backing: UnrealmedFixtureTeam::class, label: 'Teams'));
+
+        $audit = new UnrealmedResourceAudit($registry, tableExists: $this->probe(['songs' => true, 'beam_teams' => false]));
+        $absent = $this->of($audit->run(), UnrealmedResourceAudit::CHECK_UNBACKED);
+
+        $this->assertCount(1, $absent);
+        $this->assertSame(DoctorStatus::Warn, $absent[0]->status);
+        $this->assertStringContainsString('[teams]', $absent[0]->detail);
+        $this->assertStringContainsString('beam_teams', $absent[0]->detail);
+        $this->assertStringContainsString(UnrealmedFixtureTeam::class, $absent[0]->detail);
+        $this->assertStringNotContainsString('[songs]', $absent[0]->detail, 'a backed resource is not a finding.');
+    }
+
+    /**
+     * Two of the three live instances (`access-grants`, `view-requests`) are REST-only, and the realm
+     * checks above deliberately exclude the unframed set. Backing is a different fact with a different
+     * population: every registration that names a model, framed or not.
+     */
+    public function test_the_backing_check_reads_rest_only_resources_too(): void
+    {
+        config()->set('frame.realms', ['tenant' => ['songs']]);
+
+        $registry = $this->registry()->loadRealmMap(['tenant' => ['songs']]);
+        $registry->register(new ParticleResource(key: 'songs', backing: UnrealmedFixtureSong::class, label: 'Songs'));
+        $registry->register(new ParticleResource(key: 'access-grants', backing: UnrealmedFixtureTeam::class));
+
+        $audit = new UnrealmedResourceAudit($registry, tableExists: $this->probe(['songs' => true, 'beam_teams' => false]));
+        $findings = $audit->run();
+
+        $absent = $this->of($findings, UnrealmedResourceAudit::CHECK_UNBACKED);
+        $this->assertCount(1, $absent);
+        $this->assertStringContainsString('[access-grants]', $absent[0]->detail);
+        $this->assertSame([], $this->of($findings, UnrealmedResourceAudit::CHECK_UNREALMED), 'REST-only stays out of the realm check.');
+    }
+
+    /**
+     * Independent of the realm population gate: `~/Herd/tower` declares no realms and must still hear
+     * about a table that is missing. The gate is about the realm axis, not about the database.
+     */
+    public function test_the_backing_check_runs_at_a_host_that_declares_no_realms(): void
+    {
+        config()->set('frame.realms', []);
+
+        $registry = $this->registry();
+        $registry->register(new ParticleResource(key: 'teams', backing: UnrealmedFixtureTeam::class, label: 'Teams'));
+
+        $audit = new UnrealmedResourceAudit($registry, tableExists: $this->probe(['beam_teams' => false]));
+        $findings = $audit->run();
+
+        $this->assertCount(1, $this->of($findings, UnrealmedResourceAudit::CHECK_UNBACKED));
+        $this->assertStringContainsString('no realm membership', $this->of($findings, UnrealmedResourceAudit::CHECK_CENSUS)[0]->detail);
+    }
+
+    /**
+     * A connection this host cannot open, a driver whose catalog cannot be read, a model that will not
+     * construct: the answer is "did not look", which is not "absent". The estate's signature defect is
+     * an instrument that cannot tell the two apart, so the unknown set is named on its own line and
+     * never warned.
+     */
+    public function test_a_backing_the_host_cannot_probe_is_inconclusive_not_absent(): void
+    {
+        config()->set('frame.realms', []);
+
+        $registry = $this->registry();
+        $registry->register(new ParticleResource(key: 'songs', backing: UnrealmedFixtureSong::class));
+        $registry->register(new ParticleResource(key: 'remote', backing: UnrealmedFixtureRemote::class));
+
+        $audit = new UnrealmedResourceAudit($registry, tableExists: $this->probe(['songs' => true]));
+        $findings = $audit->run();
+
+        $this->assertSame([], $this->of($findings, UnrealmedResourceAudit::CHECK_UNBACKED));
+
+        $backing = $this->of($findings, UnrealmedResourceAudit::CHECK_BACKING);
+        $this->assertCount(1, $backing);
+        $this->assertSame(DoctorStatus::Pass, $backing[0]->status);
+        $this->assertFalse($backing[0]->conclusive, 'did not look, so it cannot claim to have measured.');
+        $this->assertStringContainsString('[remote]', $backing[0]->detail);
+        $this->assertStringContainsString('1 backed', $backing[0]->detail);
+    }
+
+    /** The backing census reports the split and the source-backed resources it had nothing to probe for. */
+    public function test_the_backing_census_reports_backed_absent_and_source_backed(): void
+    {
+        config()->set('frame.realms', []);
+
+        $registry = $this->registry();
+        $registry->register(new ParticleResource(key: 'songs', backing: UnrealmedFixtureSong::class));
+        $registry->register(new ParticleResource(key: 'teams', backing: UnrealmedFixtureTeam::class));
+        $registry->register(new ParticleResource(key: 'members', backing: UnrealmedFixtureSource::class, readOnly: true));
+
+        $audit = new UnrealmedResourceAudit($registry, tableExists: $this->probe(['songs' => true, 'beam_teams' => false]));
+        $backing = $this->of($audit->run(), UnrealmedResourceAudit::CHECK_BACKING);
+
+        $this->assertCount(1, $backing);
+        $this->assertSame(DoctorStatus::Pass, $backing[0]->status);
+        $this->assertStringContainsString('1 backed, 1 absent', $backing[0]->detail);
+        $this->assertStringContainsString('1 source-backed', $backing[0]->detail);
+    }
+
+    /** With no database handed in and no probe, the default answer is "did not look" — never a warning. */
+    public function test_without_a_database_the_backing_check_says_it_did_not_look(): void
+    {
+        config()->set('frame.realms', []);
+
+        $registry = $this->registry();
+        $registry->register(new ParticleResource(key: 'teams', backing: UnrealmedFixtureTeam::class));
+
+        $findings = (new UnrealmedResourceAudit($registry))->run();
+
+        $this->assertSame([], $this->of($findings, UnrealmedResourceAudit::CHECK_UNBACKED));
+        $this->assertFalse($this->of($findings, UnrealmedResourceAudit::CHECK_BACKING)[0]->conclusive);
+    }
 }
+
+// ── fixtures: the smallest models that carry a table name ───────────────────────────────────────────
+
+class UnrealmedFixtureSong extends Model
+{
+    protected $table = 'songs';
+}
+
+class UnrealmedFixtureTeam extends Model
+{
+    protected $table = 'beam_teams';
+}
+
+class UnrealmedFixtureRemote extends Model
+{
+    protected $table = 'remote_rows';
+
+    protected $connection = 'remote';
+}
+
+/** A source-backed resource declares no model at all (`members`, `review-queue` at the flagship). */
+class UnrealmedFixtureSource implements ResourceBacking {}
