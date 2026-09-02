@@ -15,19 +15,20 @@ if (! function_exists('set_min_time_limit')) {
      * `Call to undefined function` at any beam host that had not happened to define it, which is
      * every host but one, and nothing in the estate reported it (beam-facade ticket 93; found by 75
      * building the newest Task op). `splicewire/tower` met the identical defect first and shipped its
-     * own guarded copy; that copy is now deleted in favour of this one, since tower requires beam.
+     * own guarded copy; that definition was removed on 2026-09-02 (tower `404a71e`) in favour of this
+     * one, since tower requires beam — tower's `src/helpers.php` survives only as a comment-only
+     * tombstone until its consumers' install snapshots stop naming it (the file says when it can go).
      *
      * The `function_exists` guard is load-bearing in both directions: hosts that already define this
      * (and did so precisely because beam did not) must keep booting, and a redeclaration would fatal
      * exactly the hosts that have been working. First definition wins, harmlessly.
      *
      * ⚠️ The bodies do NOT agree — this docblock claimed they did until 2026-08-29, and the claim was
-     * false in every direction once checked. Five definitions exist estate-wide (grep the real package
-     * and host roots, never this repo's symlink view): this one, `splicewire/tower`'s
-     * `src/helpers.php` (which the paragraph above says was deleted, and which is still there),
-     * `splicewire-app/app/helpers.php`, `prahsys-gateway/app/helpers.php`, and
-     * `prognosix-api/app/helpers.php`. Only the last differs textually, and ALL FOUR OTHERS carry the
-     * unlimited-ceiling defect fixed below.
+     * false in every direction once checked. Four definitions exist estate-wide as of 2026-09-02 —
+     * five until tower's was removed (grep the real package and host roots, never this repo's
+     * symlink view): this one, `splicewire-app/app/helpers.php`, `prahsys-gateway/app/helpers.php`,
+     * and `prognosix-api/app/helpers.php`. Only the last differs textually, and ALL THREE host copies
+     * carry the unlimited-ceiling defect fixed below.
      *
      * CORRECTED 2026-08-29 — an earlier version of this paragraph said "first definition wins" makes
      * every one of those four dangerous, and that fixing beam does not reach them. That was wrong in
@@ -36,7 +37,8 @@ if (! function_exists('set_min_time_limit')) {
      * guard makes the host's own copy an inert no-op. Verified at `~/Herd/splicewire-app`:
      * `vendor/composer/autoload_files.php` has beam at line 44, `splicewire/tower` at 68, and the app's
      * own `app/helpers.php` at 78 of 79. So beam's FIXED body is already the live one there, and
-     * tower's and the flagship's copies are dead code — safe to delete, and harmless if left.
+     * tower's and the flagship's copies are dead code — safe to delete, and harmless if left
+     * (tower's is gone; the flagship's still sits at `app/helpers.php`).
      *
      * The real exposure is the opposite shape: the two roots that do NOT install beam.
      * `~/Herd/prahsys-gateway` and `~/Herd/prognosix-api` each define this function UNGUARDED (no
