@@ -173,6 +173,7 @@ use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\DeclarationDocblockAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\DuplicateRouteNameAudit;
+use Splicewire\Beam\Surgeon\EnvelopeCopyAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
 use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
@@ -1054,10 +1055,22 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bind(TablePrefixBypassAudit::class, fn ($app) => new TablePrefixBypassAudit(
             $app->make(FacadeConformanceScope::class),
         ));
+        // api-surface-coherence 131: a host class that declares its own `ResponseBody`, a subclass that
+        // re-declares a role-rule member under the wrong keyword, or a `toResponse()` that builds its
+        // JsonResponse outside `jsonResponseThatCannotThrow()`. Same scope as the three above — the
+        // host's own source plus the family packages it composes through the overlay — and advisory for
+        // the same reason: whether a host still carries a copy is a fact about the host. An operation
+        // RETURNING the envelope is legal (beam-facade 194) and is never a row: the lint reads
+        // declarations, not call sites. Registered on the manifest only, never on the command's own
+        // list, so `splicewire:beam:doctor` and `surgeon:audit` each render it once (143's lesson).
+        $this->app->bind(EnvelopeCopyAudit::class, fn ($app) => new EnvelopeCopyAudit(
+            $app->make(FacadeConformanceScope::class),
+        ));
 
         $manifest->register('splicewire/laravel-beam', ParticleWriteBypassAudit::class);
         $manifest->register('splicewire/laravel-beam', ComposedTableConfigAudit::class);
         $manifest->register('splicewire/laravel-beam', TablePrefixBypassAudit::class);
+        $manifest->register('splicewire/laravel-beam', EnvelopeCopyAudit::class);
     }
 
     /**
