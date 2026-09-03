@@ -212,6 +212,19 @@ class MarketingSampleAuditTest extends TestCase
         $this->assertSame(MarketingSampleAudit::CHECK_ATTRIBUTE, $findings[0]->check);
     }
 
+    public function test_an_attribute_from_an_open_foundation_beam_depends_on_resolves_unqualified(): void
+    {
+        // `Schemastud\Frame\Attributes\Widget` — frame is a hard `require` of beam (ADR-0156), so a beam
+        // sample spelling `#[Widget]` bare is legitimate. Before the three foundation namespaces joined
+        // DEFAULT_ATTRIBUTE_NAMESPACES this returned "resolves to no attribute class in this estate" for
+        // an attribute the estate ships, twice, live at ~/Herd/splicewire.
+        $this->write('copy.md', 'Mark the property with #[Widget] and the form control follows.');
+
+        $findings = $this->audit([$this->dir.'/copy.md'])->run();
+
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status, $findings[0]->detail);
+    }
+
     public function test_an_attribute_that_targets_a_parameter_is_probed_where_it_belongs(): void
     {
         // `#[Required, Max(120)]` annotates a promoted constructor parameter in the copy it came from.

@@ -100,6 +100,15 @@ class MarketingSampleAudit implements DoctorAudit
         'Splicewire\\Beam\\Data',
         'Spatie\\LaravelData\\Attributes',
         'Spatie\\LaravelData\\Attributes\\Validation',
+        // The three open foundations beam depends DOWN on in `composer.json` — frame (ADR-0156),
+        // data-schemas, data-filters. Their attributes are as legitimately unqualified in a beam sample as
+        // beam's own, and leaving them out produced a FABRICATED finding rather than a missing one:
+        // `~/Herd/splicewire`'s Frame docs show `#[Widget]`, which the estate ships at
+        // `Schemastud\Frame\Attributes\Widget`, and the audit reported "resolves to no attribute class in
+        // this estate" twice. A wrong label on a real finding is the one thing this file must not emit.
+        'Schemastud\\Frame\\Attributes',
+        'Schemastud\\DataSchemas\\Attributes',
+        'Rushing\\DataFilters\\Attributes',
     ];
 
     /** Extensions whose PHP samples live inside string literals rather than in the file's own grammar. */
