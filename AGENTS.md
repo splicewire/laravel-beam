@@ -73,6 +73,17 @@ off the instance you passed in. `reject` is an oracle by construction and is leg
 an authenticated door. The key recipe is write-once. See
 `docs/agents/dedupe-keyword.convention.md`.
 
+## Customizing the scaffolder stubs — `beam-stubs`
+
+`vendor:publish --tag=beam-stubs` writes the six generator stubs into `base_path('stubs')`, and
+`ParticleGeneratorCommand::resolveStubPath()` prefers the host copy at the same relative path — so
+publish-once-edit-in-place needs no flag on the generate. Two things a reader gets wrong otherwise:
+it is **deliberately not** a `splicewire:beam:install` step (*an unpublished stub is not a missing
+file, it is the default*), and the tag maps the whole `stubs/` **directory**, so it also deposits
+INERT copies of `client-runtime/` and `scribe/` — those are wired by `beam-client-runtime` and
+`beam-scribe`, which publish to the paths that are actually read. See
+`docs/agents/stub-publishing.convention.md`.
+
 ## Asking what the convergent guards would do, without publishing
 
 `splicewire:beam:convergence-preflight` (beam-facade 146) is the **read-only** entry point to the

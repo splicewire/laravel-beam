@@ -260,6 +260,23 @@ The bound relative is route-model-bound (`findOrFail` → a stranger parent id 4
 carried in the route defaults (`ParticleController::RELATIVE` / `::RELATIVE_MODEL` / `::VIA`) and read by
 the controller — **the standalone (no-relative) path is byte-for-byte unchanged.**
 
+## Customizing what the generators emit — `beam-stubs`
+
+`splicewire:beam:make:particle-resource` and `splicewire:beam:make:particle-op` render from stubs the
+package ships. A host that wants its own docblock header, namespace layout or slot defaults publishes
+them once and edits the copies in place:
+
+```
+php artisan vendor:publish --tag=beam-stubs
+```
+
+Six stubs land in `stubs/` (`particle-resource`, `particle-resource-input`, `particle-op`,
+`particle-op-task`, `particle-op-stream`, `particle-data`), and every later generate prefers the host
+copy with no flag. **Not publishing is the default, not a missing file** — this is deliberately not a
+`splicewire:beam:install` step. The tag maps the whole `stubs/` directory, so it also deposits inert
+copies of the `client-runtime/` and `scribe/` sources that have their own tags; see
+`docs/agents/stub-publishing.convention.md`.
+
 ## Conventions
 
 Matches the `rushing/*` / `schemastud/*` house style: **no `strict_types`, no
