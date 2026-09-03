@@ -1577,6 +1577,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // cascade's own default).
         CascadePolicyRegistrar::register(Hook::class);
 
+        // `BeamSchema` — the same shape, one line later (api-surface-coherence 147). Its docblock had
+        // promised a "policy seam (schemas may be permissioned)" since the model was promoted, and
+        // nothing ever used it: `schemas` sat in 135's no-policy bucket with the four readers above
+        // disagreeing about what that meant. The `beam-schema.*` family is a host's admin role's to
+        // seed; the host's own `schemas.manage` verb (freeze/migrate) is a `Gate::define` the policy
+        // leaves alone.
+        CascadePolicyRegistrar::register(BeamSchema::class);
+
         // Every route macro this package ships, contributed by the trait that OWNS it rather than
         // hand-listed here: the particle resource/op mounts, the `->beam()` route-metadata namespace,
         // and the rendering mount. Each link declares its own `order:`, so adding one is `use`-ing a

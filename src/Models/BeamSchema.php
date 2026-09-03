@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Rushing\PermissionCascade\Attributes\UseCascadePolicy;
 use Splicewire\Beam\Facades\Beam;
 
 /**
@@ -22,7 +23,14 @@ use Splicewire\Beam\Facades\Beam;
  * or no-ops on an identical re-publish, and REJECTS a changed shape (a new shape needs a new `$id`).
  * There is deliberately no update path — so the "gate the write before it half-lands" concern that
  * attends a model with a pivot does not arise here; a schema is created whole, never mutated.
+ *
+ * The policy seam promised above is now USED (api-surface-coherence 147, the shape 135 landed for
+ * `Hook`): `#[UseCascadePolicy]`, bound in `BeamServiceProvider::packageBooted()`, gives
+ * `Gate::getPolicyFor(BeamSchema::class)` a real answer under the `beam_schema` alias (ADR-0118) —
+ * `beam-schema.{view,create,…}`, a host's admin family. The host's `schemas.manage` verb
+ * (freeze/migrate) is a separate `Gate::define` the policy does not shadow.
  */
+#[UseCascadePolicy]
 class BeamSchema extends Model
 {
     use HasUuids;
