@@ -192,6 +192,7 @@ use Splicewire\Beam\Surgeon\SdkHookMigrationAudit;
 use Splicewire\Beam\Surgeon\SdkHookMigrationBridge;
 use Splicewire\Beam\Surgeon\SdkNameConventionAudit;
 use Splicewire\Beam\Surgeon\SdkReturnsCoverageAudit;
+use Splicewire\Beam\Surgeon\SdkReturnsHandlerAgreementAudit;
 use Splicewire\Beam\Surgeon\SdkReturnsTypeScriptResolutionAudit;
 use Splicewire\Beam\Surgeon\StatusChannelLiteralDriftAudit;
 use Splicewire\Beam\Surgeon\SupersededDeclarationAudit;
@@ -1174,6 +1175,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         ));
         $this->app->bind(SdkHookMigrationAudit::class, fn ($app) => SdkHookMigrationAudit::forApp($app->make(SdkHookMigrationBridge::class)));
         $this->app->bind(SdkReturnsCoverageAudit::class, fn () => SdkReturnsCoverageAudit::forApp());
+        $this->app->bind(SdkReturnsHandlerAgreementAudit::class, fn () => SdkReturnsHandlerAgreementAudit::forApp());
         $this->app->bind(SdkReturnsTypeScriptResolutionAudit::class, fn () => SdkReturnsTypeScriptResolutionAudit::forApp());
         $this->app->bind(TypeScriptShortNameCollisionAudit::class, fn () => TypeScriptShortNameCollisionAudit::forApp());
         $this->app->bind(StatusChannelLiteralDriftAudit::class, fn () => StatusChannelLiteralDriftAudit::forApp());
@@ -1272,6 +1274,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $manifest->register('splicewire/laravel-beam', DocblockTierAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkHookMigrationAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkReturnsCoverageAudit::class);
+        $manifest->register('splicewire/laravel-beam', SdkReturnsHandlerAgreementAudit::class);
         $manifest->register('splicewire/laravel-beam', SdkReturnsTypeScriptResolutionAudit::class);
         $manifest->register('splicewire/laravel-beam', TypeScriptShortNameCollisionAudit::class);
         $manifest->register('splicewire/laravel-beam', StatusChannelLiteralDriftAudit::class);
