@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Surface;
 
 use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Routing\Router;
+use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -226,9 +227,30 @@ class RuntimeCorroborator
      */
     private function matches(array $middleware, PostureFacet $facet, array $defaults): bool
     {
-        $signals = $this->middlewareSignals[$facet->value] ?? $defaults;
+        return self::middlewareMatches($middleware, $this->middlewareSignals[$facet->value] ?? $defaults);
+    }
 
+    /**
+     * The matcher on its own, for a caller with a middleware list and no posture — the particle read gate
+     * (beam-docs-satellite 65, {@see ResourceReadGuard::suppliesScope()})
+     * asks of a route's resolved stack the same question this class asks of a finished route: does it
+     * initialize tenancy? One matcher, two readers, so the read gate and the posture facet cannot disagree
+     * about what a tenancy signal is.
+     *
+     * A prefix signal also matches a SUBCLASS of anything under the prefix — a host-authored
+     * `App\Http\Middleware\InitializeTenancyByEmbedKey` that extends Stancl's initializer is a tenancy
+     * initializer, and the flagship carries exactly that one.
+     *
+     * @param  list<string>  $middleware
+     * @param  list<string>  $signals
+     */
+    public static function middlewareMatches(array $middleware, array $signals): bool
+    {
         foreach ($middleware as $entry) {
+            if (! is_string($entry)) {
+                continue;
+            }
+
             // A parameterized entry arrives as `auth:sanctum` / `throttle:api`; compare on the name only.
             $name = ltrim(explode(':', $entry, 2)[0], '\\');
 
@@ -238,6 +260,12 @@ class RuntimeCorroborator
                 if (str_ends_with($signal, '\\')) {
                     if (str_starts_with($name, $signal)) {
                         return true;
+                    }
+
+                    foreach (class_exists($name) ? class_parents($name) : [] as $parent) {
+                        if (str_starts_with(ltrim($parent, '\\'), $signal)) {
+                            return true;
+                        }
                     }
 
                     continue;

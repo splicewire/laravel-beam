@@ -13,10 +13,14 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Routing\Route;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Authorization\ResourceReadGuard;
+use Splicewire\Beam\Authorization\RowAuthorization;
+use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
@@ -109,6 +113,12 @@ class ParticleController extends Controller
         // sees are exactly the ones hanging off the (already-authorized) parent. Absent a relative, this is
         // null and the standalone path below is byte-for-byte today's code.
         $relativeQuery = $this->relativeBaseQuery($request);
+
+        // beam-docs-satellite 65: a standalone list whose read is gated by NOTHING fails closed here, on
+        // read — never at the mount, because whether a host's mount is scoped is a host fact.
+        if ($relativeQuery === null) {
+            $this->denyUngatedRead($request, $resource);
+        }
 
         $query = $resource->filterable
             ? $this->hydrator->query($resource->key, $ctx)
@@ -344,6 +354,66 @@ class ParticleController extends Controller
      * A relation-name `via:` bases on `$relative->{via}()` (Eloquent handles hasMany / hasManyThrough /
      * belongsToMany "through" for free); a closure `via:` applies `($via)($relative, model::query())`.
      */
+    /**
+     * beam-docs-satellite 65's ruling, enforced where it can be computed: a standalone list read that is
+     * UNSCOPED (no predicate in its data-filters base, no `scope` closure), POLICY-LESS (nothing bound for
+     * its model), and mounted with NO tenancy on its route answers a caller with 403 rather than every row.
+     *
+     * Decided by api-surface-coherence 135 (a read falls through to the SCOPE — a posture that presupposes
+     * one exists), registry-kernel 72 §B ({@see RowAuthorization} fails
+     * CLOSED), and AGENTS.md's gate-posture rule: a 200 from a resource with no scope and no policy is
+     * success by not checking. 65 measured three package queries whose docblocks NAMED their gate — "the
+     * schema the connection resolves to, plus the middleware on each host's mount" — and one host mounted
+     * one of them centrally with neither. Prose nominates; only a predicate, a policy, or a tenancy
+     * initializer authorizes, and this is where the three are read.
+     *
+     * ## On READ, never at the mount
+     *
+     * Whether a host's mount carries tenancy, and whether a policy is bound there, are facts about the
+     * HOST — so the mount registers and the host boots regardless (AGENTS.md: a check whose answer depends
+     * on the host must not throw; the 2026-08-26 event-catalog repair is the shape). The first cut of this
+     * ruling refused the mount at boot and took `~/Herd/splicewire-app` and `~/Herd/audiostud` down with
+     * it; this is the corrected shape, and {@see UngatedResourceReadAudit} is the
+     * advisory that tells a host which mounts would answer 403 before a caller finds out.
+     *
+     * ## What the deny honours
+     *
+     * `authorize('viewAny', model)` rather than a bare 403: with no policy bound that is deny-by-default
+     * (no ability answers), but a `Gate::before` superuser — the flagship's Root — still reads, which is
+     * the semantics every other verb on this controller already has. A did-not-look reading (`null` from
+     * either probe — a base that cannot be built, a backing with no model) never denies; the audit counts
+     * it. The checks run cheapest-first: a bound policy or a tenancy initializer settles it before the
+     * base query is ever constructed.
+     */
+    protected function denyUngatedRead(Request $request, ParticleResource $resource): void
+    {
+        $guard = ResourceReadGuard::forApp();
+
+        if ($guard->policyBound($resource) !== false) {
+            return;
+        }
+
+        $route = $request->route();
+
+        if ($route instanceof Route) {
+            $middleware = [];
+
+            foreach ([...$route->middleware(), ...app('router')->gatherRouteMiddleware($route)] as $entry) {
+                $middleware[] = is_string($entry) ? $entry : (is_object($entry) ? $entry::class : (string) json_encode($entry));
+            }
+
+            if (ResourceReadGuard::suppliesScope($middleware)) {
+                return;
+            }
+        }
+
+        if ($guard->scoped($resource, $request) !== false) {
+            return;
+        }
+
+        $this->authorize('viewAny', $resource->modelClass());
+    }
+
     protected function relativeBaseQuery(Request $request): mixed
     {
         [$relative, $via] = $this->relativeContext($request);

@@ -27,13 +27,16 @@ use Splicewire\Beam\Models\Hook;
  * records why: api-surface-coherence ticket 12 §7 made the `owner_*` morph **audit only**, and a
  * scope keyed on it "would quietly turn it into an authorization boundary that nothing else in the
  * surface honours — which is the worse of the two failures, because it would look like it worked."
- * Nothing in the estate registers a policy for {@see Hook}.
  *
- * So this class must NOT invent a row filter the declaration deliberately refuses. The read guard for
- * `hooks` lives where it always did — the tenant schema the connection resolves to, and the route
- * middleware on each of the two mounts (`routes/tenant.php`, and the operator realm in
- * `routes/operator.php`, which is `index`/`show` only). Turning the list filterable did not widen it:
- * the non-filterable path applied `latest()`, which hides no row either.
+ * So this class must NOT invent a row filter the declaration deliberately refuses. ⚠️ An earlier version
+ * of this docblock then said the read guard was "the tenant schema the connection resolves to, and the
+ * route middleware on each of the two mounts", and that "nothing in the estate registers a policy for
+ * {@see Hook}". beam-docs-satellite 65 measured that sentence for what it is — prose NOMINATING a gate
+ * no code enforced — and both halves are stale: {@see Hook} carries `#[UseCascadePolicy]` since
+ * api-surface-coherence 135 (`5b7233f`), and that bound policy is what `ParticleController::index()`'s
+ * read gate reads. A host that mounts `hooks` with no tenancy and no policy answers 403, not every row.
+ * Turning the list filterable did not widen it: the non-filterable path applied `latest()`, which hides
+ * no row either.
  *
  * What it DOES protect is the ordering. `defaultSort()` is null here and `HookData` declares no
  * `#[Sortable(default: true)]`, so with the stock base query an unsorted `GET /api/v1/hooks` would

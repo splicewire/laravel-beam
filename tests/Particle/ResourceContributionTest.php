@@ -8,6 +8,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Schemastud\Frame\Attributes\Column;
@@ -23,6 +24,7 @@ use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Tests\Fixtures\ReadGuard\OpenReadPolicy;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -42,6 +44,10 @@ class ResourceContributionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // beam-docs-satellite 65: a central, unscoped, policy-less list answers 403 now; this fixture's
+        // listing is open by declaration, which is the ruling's own repair.
+        Gate::policy(ContribCrate::class, OpenReadPolicy::class);
 
         Schema::create('contrib_crates', function (Blueprint $table): void {
             $table->id();

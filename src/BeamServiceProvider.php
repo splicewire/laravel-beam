@@ -91,6 +91,7 @@ use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UndeclaredOutputAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
+use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Doctor\UnrehearsableStubAudit;
@@ -1808,6 +1809,19 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             OrphanedGroupWordAudit::class,
+        );
+
+        // beam-docs-satellite 65: a resource whose LIST read is gated by nothing — no predicate in its
+        // base query, no policy on its model, no tenancy on its mount. `ParticleController::index()`
+        // fails that read closed at REQUEST time (403); this audit tells a host which mounts would answer
+        // so before a caller finds out, walking the BOOTED registry because `filterable` defaults to true
+        // and a source grep cannot see it. Advisory, and never a boot-time refusal: tenancy on a mount and
+        // a policy on a model are facts about the HOST. Reads the finished route table, so it is bound
+        // lazily off the container.
+        $this->app->bind(UngatedResourceReadAudit::class, fn () => UngatedResourceReadAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            UngatedResourceReadAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Rushing\DataFilters\Attributes\Sortable;
 use Spatie\LaravelData\Data;
@@ -16,6 +17,7 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
+use Splicewire\Beam\Tests\Fixtures\ReadGuard\OpenReadPolicy;
 use Splicewire\Beam\Tests\TestCase;
 use Splicewire\Beam\Write\ParticleWriter;
 
@@ -29,6 +31,12 @@ class ParticleControllerScopeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // beam-docs-satellite 65: a central, unscoped, policy-less list answers 403 now; this fixture's
+        // listing is open by declaration, which is the ruling's own repair.
+        Gate::policy(ScopeWidget::class, OpenReadPolicy::class);
+        Gate::policy(SortedWidget::class, OpenReadPolicy::class);
+        Gate::policy(WeightedWidget::class, OpenReadPolicy::class);
 
         Schema::create('scope_widgets', function (Blueprint $table): void {
             $table->id();
