@@ -74,6 +74,7 @@ use Splicewire\Beam\Doctor\FilterablePromiseAudit;
 use Splicewire\Beam\Doctor\FilterStampReadPathAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
+use Splicewire\Beam\Doctor\MarketingSampleAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 use Splicewire\Beam\Doctor\OrphanedGroupWordAudit;
 use Splicewire\Beam\Doctor\PackageStubConflictAudit;
@@ -1834,6 +1835,22 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             ClientRuntimeContractAudit::class,
+        );
+
+        // competitive-landscape 06: a code sample in marketing copy that names something the estate does
+        // not provide. Two defects of this class shipped on `/beam` — a fabricated `BeamSchema`, and
+        // `php artisan make:particle-resource` in three places where the registered name is
+        // `splicewire:beam:make:particle-resource` — and the second was found only because a survey went
+        // looking. Advisory: whether a host publishes marketing copy, and which spellings it is allowed to
+        // use pre-launch, are facts about the HOST. Beam ships no default population, so an unconfigured
+        // host reads inconclusive rather than clean; a host points it at its own island source and at
+        // whatever carries its prose through `beam.core.marketing_copy` (at splicewire/splicewire the prose
+        // is a particle payload, NOT the disk projection beside it). Registered on the MANIFEST ONLY —
+        // registering an audit in both places double-renders it (api-surface-coherence 143).
+        $this->app->bind(MarketingSampleAudit::class, fn () => MarketingSampleAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            MarketingSampleAudit::class,
         );
 
         // particle-doctrine-followups #14: the schema leg's first drift guard. Advisory (a

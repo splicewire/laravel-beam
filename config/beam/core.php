@@ -379,6 +379,37 @@ return [
 
     ],
 
+    /*
+    | Where this host's MARKETING COPY lives, for `beam.marketing.sample-claim` (competitive-landscape
+    | ticket 06). Empty by default and inert when empty: beam ships no default population, and an
+    | unconfigured host reads INCONCLUSIVE rather than clean — "no copy configured here" and "the copy is
+    | correct" must not be the same reading.
+    |
+    | Two kinds of source, because the disk file is not the page. `paths` globs reach island source and
+    | markdown. `providers` are `Splicewire\Beam\Doctor\Support\MarketingCopySource` class-strings, and they
+    | are how a host reaches copy that is not a file at all — at `splicewire/splicewire` the prose bullets
+    | live in a ~49 KB `beam_particles` payload whose disk neighbour (`resources/js/content/page/beam.tsx`)
+    | is an OUTBOUND PROJECTION written on Publish. Point this at both, or the audit scans a projection and
+    | passes while the served page is wrong.
+    |
+    | `attribute_namespaces` is where a bare attribute short name in a sample is looked for, ON TOP of
+    | beam's and spatie/laravel-data's. A sample naming a host's own attribute needs its namespace here or
+    | the audit reports it as undefined.
+    */
+    'marketing_copy' => [
+        'paths' => [
+            // 'resources/js/components/marketing/*.tsx',
+        ],
+
+        'providers' => [
+            // App\Doctor\BeamPageParticleCopy::class,
+        ],
+
+        'attribute_namespaces' => [
+            // 'App\\Attributes',
+        ],
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 
