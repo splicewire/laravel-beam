@@ -109,6 +109,51 @@ class SdkEndpointDriftAuditTest extends TestCase
         $this->assertSame([], $this->audit()->suggestFor($literals, $routes));
     }
 
+    /**
+     * A host that CONSUMES this API over HTTP is not measured, it is excused — with prose saying so.
+     *
+     * Measured 2026-09-03 (map-drain 218): `splicewire/laravel-connector` is generated from the flagship's
+     * OpenAPI spec, and ten other roots install it as a client. Booted routers, same audit: the flagship
+     * 534 routes under `api/v1` → 0 findings; audiostud, fable, numero, standwell, stephenrushing,
+     * thingsontv, entreport, calcucrypt, splicewire and both starters → 0 under `api/v1`, 56 of 56
+     * literals flagged. 560 fabricated ERRORs estate-wide, all of them the audit noticing that a client
+     * is not a server — a fact about the host, which AGENTS.md says must not throw.
+     */
+    public function test_a_host_that_serves_none_of_the_sdk_surface_is_inconclusive_not_failed(): void
+    {
+        $literals = [
+            ['file' => '/pkg/CreateComposition.php', 'literal' => '/api/v1/splice/compositions'],
+            ['file' => '/pkg/ListThread.php', 'literal' => '/api/v1/threads'],
+        ];
+        // audiostud's real route table, in miniature: 0 routes under any prefix the SDK addresses. The
+        // lone `api/`-rooted route is an INBOUND webhook, which is why the prefix test takes two segments.
+        $routes = ['api/splicewire/webhook', 'dashboard', 'login'];
+
+        $findings = $this->audit()->suggestFor($literals, $routes);
+
+        $this->assertCount(1, $findings);                              // one, not one-per-literal
+        $this->assertSame('pass', $findings[0]->finding->status->value);
+        $this->assertFalse($findings[0]->finding->conclusive);
+        $this->assertNull($findings[0]->suggestion);
+        $this->assertStringContainsString('api/v1', $findings[0]->finding->detail);
+    }
+
+    /** The discrimination half: a host that DOES serve the surface still Fails on a real drift. */
+    public function test_a_host_that_serves_the_surface_still_fails_on_drift(): void
+    {
+        $literals = [[
+            'file' => '/pkg/src/Requests/Compositions/TriggerRender.php',
+            'literal' => '/api/v1/compositions/{$this->id}/render',
+        ]];
+        $routes = ['api/v1/splice/compositions/{id}/render'];
+
+        $findings = $this->audit()->suggestFor($literals, $routes);
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('fail', $findings[0]->finding->status->value);
+        $this->assertTrue($findings[0]->finding->conclusive);
+    }
+
     public function test_it_extracts_concatenation_style_endpoint_literals_from_source(): void
     {
         $mid = <<<'PHP'

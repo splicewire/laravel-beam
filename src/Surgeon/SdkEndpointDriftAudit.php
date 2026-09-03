@@ -89,6 +89,19 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
         $normalizedRoutes = array_map(fn ($p) => $this->normalize($p), $routePaths);
         $routeSet = array_flip($normalizedRoutes);
 
+        if ($sdkLiterals !== [] && ! $this->hostServesSdkSurface($sdkLiterals, $normalizedRoutes)) {
+            return [new FixableFinding(
+                Finding::inconclusive(self::CHECK, sprintf(
+                    'This host serves no route under any prefix the SDK addresses (%s), so it CONSUMES that '.
+                    'API over HTTP rather than serving it: all %d endpoint literal(s) would compare against a '.
+                    'route table that never held them. Not measured here.',
+                    implode(', ', $this->sdkPrefixes($sdkLiterals)),
+                    count($sdkLiterals),
+                )),
+                null,
+            )];
+        }
+
         $findings = [];
         foreach ($sdkLiterals as $row) {
             $literal = $row['literal'];
@@ -137,6 +150,72 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
         }
 
         return $findings;
+    }
+
+    /**
+     * Whether this host SERVES the surface the SDK addresses, i.e. whether the comparison this audit
+     * makes has a true answer here at all.
+     *
+     * ⚠️ **Measured 2026-09-03 (map-drain unit 218): without this gate the audit fabricates one ERROR
+     * per SDK request class at every host that is a CLIENT of the API rather than its server.**
+     * `splicewire/laravel-connector` is generated from the flagship's OpenAPI spec (its README: *"the
+     * request/resource surface is regenerated from the app's OpenAPI spec"*), and ten other roots install
+     * it to TALK to that API over HTTP. Readings, booted router, same audit, same hour:
+     *
+     * ```
+     * ~/Herd/splicewire-app   741 routes   534 under api/v1    56 literals    0 findings
+     * audiostud · fable · numero · standwell · stephenrushing · thingsontv ·
+     * entreport · calcucrypt · splicewire · laravel-satellite-starter ·
+     * laravel-tower-starter    57–225 routes     0 under api/v1    56 literals   56 findings
+     * ```
+     *
+     * 56 of 56, at ten roots — 560 ERRORs estate-wide, every one of them the audit noticing that a
+     * consumer is not the server. That is a fact about the HOST, and this estate's rule is that an audit
+     * throws only on what the declaration's author could have gotten right without knowing which host
+     * would load it (`~/Workspaces/splicewire-ecosystem/AGENTS.md`, *"A check whose answer depends on the
+     * host must not throw"*). The SDK's author got it right; audiostud's route table is the variable. So
+     * the honest report is {@see Finding::inconclusive()} — the estate's own primitive for a population
+     * that is empty or unreachable (`api-surface-coherence` 124), which reports `Pass` and gates nothing.
+     *
+     * The test is deliberately the SDK's own PREFIXES rather than "did everything drift": a host that
+     * genuinely serves this API and renamed a path still has routes under `api/v1`, so a real drift — the
+     * ADR-0124 marquee case this audit exists for — stays a Fail. Only a host holding NONE of the SDK's
+     * surface is excused, and it says so in prose rather than passing silently.
+     *
+     * @param  list<array{file: string, literal: string}>  $sdkLiterals
+     * @param  list<string>  $normalizedRoutes
+     */
+    protected function hostServesSdkSurface(array $sdkLiterals, array $normalizedRoutes): bool
+    {
+        foreach ($this->sdkPrefixes($sdkLiterals) as $prefix) {
+            foreach ($normalizedRoutes as $route) {
+                if ($route === $prefix || str_starts_with($route, $prefix.'/')) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The distinct two-segment roots the SDK addresses — `api/v1`, `api/device`, `api/beam-market` for
+     * the flagship's connector. Two segments because one (`api`) is shared by surfaces that have nothing
+     * to do with this SDK: audiostud's single `api/` route is `api/splicewire/webhook`, an INBOUND
+     * webhook, and a one-segment test would read that as "this host serves the API".
+     *
+     * @param  list<array{file: string, literal: string}>  $sdkLiterals
+     * @return list<string>
+     */
+    protected function sdkPrefixes(array $sdkLiterals): array
+    {
+        $prefixes = [];
+        foreach ($sdkLiterals as $row) {
+            $segments = explode('/', $this->normalize($this->routeShape($row['literal'])));
+            $prefixes[implode('/', array_slice($segments, 0, 2))] = true;
+        }
+
+        return array_keys($prefixes);
     }
 
     /**
