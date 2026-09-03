@@ -212,10 +212,18 @@ class TsClientGenerator implements Generator
      * `ui/src/features/operator/OperatorRegistryPage.tsx`). A generated module path is a consumed
      * contract; rename only what is ambiguous.
      *
-     * ⚠️ Deliberately NOT keyed off `frame.collapse_operator_realm` (default OFF). That knob makes
-     * operator resolve THROUGH the tenant realm at runtime; it does not make two distinct realms one
-     * namespace in a generated client. If a collapsed host should emit one merged domain, that is a
-     * change to make against the knob, deliberately, with its own test.
+     * ⚠️ **Corrected 2026-09-03 — `frame.collapse_operator_realm` DOES NOT EXIST.** An earlier version of
+     * this docblock said this de-duplication was "deliberately NOT keyed off" that knob, describing it as a
+     * shipped default-OFF config key. It was a spike that never landed: it was reverted uncommitted
+     * (realm-and-floor-reconciliation ticket 00), `git log -S'configDrivenRealms'` is empty, and this
+     * comment — committed at 09b8a9a, 2026-08-26 — was the only trace of it left in HEAD.
+     *
+     * The reasoning it stood on is unchanged and is worth keeping: a runtime collapse of one realm
+     * through another would not make two distinct realms one namespace in a generated client, so this
+     * de-duplication would not key off such a knob even if one existed. The only shipped sibling is
+     * `frame.collapse_user_realm` (`Realm/RealmRegistry.php:320`), and it is not consulted here either,
+     * for the same reason. If a collapsed host should ever emit one merged domain, that is a deliberate
+     * change with its own test — against a knob that would first have to be built.
      *
      * @param  list<array<string, mixed>>  $typed
      * @return list<array<string, mixed>>
