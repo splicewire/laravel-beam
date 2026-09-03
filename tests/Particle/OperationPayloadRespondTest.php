@@ -8,7 +8,10 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Data\ResponseBody;
+use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Http\ResponseBodyEnvelope;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Tests\TestCase;
@@ -132,6 +135,52 @@ class OperationPayloadRespondTest extends TestCase
         $response = $this->finishRaw($op);
 
         $this->assertSame(202, $response->getStatusCode());
+    }
+
+    // ── The envelope itself is not a payload (beam-facade 194) ──────────────────────────────────────
+
+    public function test_a_respond_projector_returning_the_envelope_keeps_its_status_and_is_not_re_enveloped(): void
+    {
+        // `ResponseBody` is a spatie `Data` AND the estate's one envelope (api-surface-coherence 130). Rule 1
+        // read it as a declared payload, so `created($payload)` came back a 200 whose body was
+        // `{data: {data: …}}` — the status the projector chose dropped and the envelope doubled. Measured on
+        // tower's `CircuitIntakeOp`, which had to render the envelope itself to get its 201 through.
+        $this->app->instance(ResponseEnvelope::class, new ResponseBodyEnvelope);
+        $op = $this->op(
+            handle: fn () => new OpPayloadData('w-1', 1),
+            respond: fn (OpPayloadData $payload) => app(ResponseEnvelope::class)->created($payload),
+        );
+
+        $response = $this->finishRaw($op)->toResponse(Request::create('/'));
+        $body = json_decode($response->getContent(), true);
+
+        $this->assertSame(201, $response->getStatusCode(), 'the status the envelope carries must reach the wire.');
+        $this->assertSame(['id' => 'w-1', 'total' => 1], $body['data'], 'one `data` key, not `data.data`.');
+        $this->assertTrue($body['success']);
+    }
+
+    public function test_a_handler_returning_the_envelope_directly_passes_through_as_well(): void
+    {
+        $this->app->instance(ResponseEnvelope::class, new ResponseBodyEnvelope);
+        $envelope = ResponseBody::from(['data' => ['id' => 'w-1']])->accepted();
+        $op = $this->op(handle: fn () => $envelope);
+
+        $this->assertSame($envelope, $this->finishRaw($op));
+    }
+
+    public function test_a_declared_payload_is_still_enveloped_exactly_once_under_the_response_body_envelope(): void
+    {
+        // The other half of the same seam: the escape hatch for the envelope must not cost the declared
+        // payload its envelope, and must not double it either.
+        $this->app->instance(ResponseEnvelope::class, new ResponseBodyEnvelope);
+        $op = $this->op(handle: fn () => new OpPayloadData('w-1', 1));
+
+        $response = $this->finishRaw($op)->toResponse(Request::create('/'));
+        $body = json_decode($response->getContent(), true);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(['id' => 'w-1', 'total' => 1], $body['data']);
+        $this->assertTrue($body['success']);
     }
 
     // ── Declared input validation ───────────────────────────────────────────────────────────────────

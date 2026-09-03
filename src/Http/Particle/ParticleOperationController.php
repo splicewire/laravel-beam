@@ -11,6 +11,7 @@ use RuntimeException;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
+use Splicewire\Beam\Data\ResponseBody;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\Emitter;
 use Splicewire\Beam\Particle\OperationKind;
@@ -284,15 +285,25 @@ class ParticleOperationController extends Controller
      *
      * Order is load-bearing:
      *
-     *   1. A declared payload Data object is enveloped. This must come FIRST because a spatie Data object is
-     *      itself `Responsable`, so the pass-through check below would otherwise swallow every declared
-     *      payload and this whole ticket would be a no-op.
-     *   2. An already-built response passes through UNTOUCHED — the escape hatch, and it is load-bearing
+     *   1. The ENVELOPE itself passes through. {@see ResponseBody} is the estate's one JSON envelope
+     *      (api-surface-coherence 130 — nine hosts deleted their copies and beam absorbed it) and it is ALSO
+     *      a spatie `Data`, so without this rule the payload rule below read `created($payload)` as a
+     *      declared payload and re-enveloped it: the status the projector chose became a 200 and the body
+     *      `{data: {data: …}}` (beam-facade 194, measured on tower's `circuits.intake`). This is the
+     *      status channel a declared `output:` slot lacks: a projector hands back the envelope it built
+     *      through {@see ResponseEnvelope} and its status reaches the wire, with no ambient request read.
+     *      The test is the class, not `Responsable` — every Data is Responsable, so a `Responsable` test
+     *      here would swallow every declared payload. A host binding its own envelope adapter whose product
+     *      is some OTHER Data subclass is outside this rule's reach; it renders, as tower did.
+     *   2. A declared payload Data object is enveloped. This must come BEFORE the built-response rule because
+     *      a spatie Data object is itself `Responsable`, so the pass-through check below would otherwise
+     *      swallow every declared payload and this whole ticket would be a no-op.
+     *   3. An already-built response passes through UNTOUCHED — the escape hatch, and it is load-bearing
      *      rather than defensive. Three live operations need it and each names a distinct reason: a binary
      *      download whose pass-through is a stated contract (flattening it into a JSON envelope would corrupt
      *      it), two operations returning a redirect alongside session mutation, and one carrying a specific
      *      accepted status code that a declared payload slot has no channel to express.
-     *   3. Anything else — an array, null, a scalar — is returned as-is, which is exactly what every
+     *   4. Anything else — an array, null, a scalar — is returned as-is, which is exactly what every
      *      pre-existing read/write handler already did. That keeps this change additive: handlers already
      *      returning `['data' => …]` envelopes are not double-wrapped.
      *
@@ -304,6 +315,11 @@ class ParticleOperationController extends Controller
     {
         if ($operation->respond !== null) {
             $payload = ($operation->respond)($payload, $model);
+        }
+
+        // Rule 1: the envelope is not a payload. Checked before the Data rule because it IS a Data.
+        if ($payload instanceof ResponseBody) {
+            return $payload;
         }
 
         if ($payload instanceof Data) {
