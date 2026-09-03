@@ -331,7 +331,19 @@ class MarketingSampleAudit implements DoctorAudit
         return implode("\n", $this->stringLiterals($text));
     }
 
-    /** @return list<string> */
+    /**
+     * The string literals of a JS/TS source, in source order, MINUS the ones sitting in non-final
+     * call-argument position.
+     *
+     * That exclusion is the whole difference between a reconstruction and noise, and it was measured at
+     * `~/Herd/splicewire` rather than reasoned: the islands wrap every fragment as
+     * `{tok('attr', '#[ParticleResource(')}`, so a naive join interleaves the token-class label with the
+     * code and yields `#[ParticleResource( attr key: 'articles' … attr )]` — a PHP syntax error, reported
+     * against a sample that is correct. A literal immediately followed by `,` and another string is a
+     * label or selector, never the content; the content is the last argument.
+     *
+     * @return list<string>
+     */
     protected function stringLiterals(string $text): array
     {
         $literals = [];
@@ -375,6 +387,24 @@ class MarketingSampleAudit implements DoctorAudit
 
                 $buffer .= $c;
                 $i++;
+            }
+
+            $after = $i;
+
+            while ($after < $length && ctype_space($text[$after])) {
+                $after++;
+            }
+
+            if ($after < $length && $text[$after] === ',') {
+                $after++;
+
+                while ($after < $length && ctype_space($text[$after])) {
+                    $after++;
+                }
+
+                if ($after < $length && in_array($text[$after], ["'", '"', '`'], true)) {
+                    continue;
+                }
             }
 
             $literals[] = $buffer;
@@ -611,6 +641,14 @@ class MarketingSampleAudit implements DoctorAudit
             $imports[$name] = $resolved;
         }
 
+        // A BARE `#[ParticleResource]` in prose is a MENTION, not a sample: it makes no claim about
+        // arguments, so instantiating it manufactures "Too few arguments" against copy that is correct.
+        // Measured at ~/Herd/splicewire, where three doc entries name the attribute in a sentence. The
+        // existence check above still runs — that is the `BeamSchema` defect, and a mention can commit it.
+        if (! str_contains($claim['raw'], '(')) {
+            return null;
+        }
+
         $error = $this->instantiate($claim['raw'], $imports);
 
         if ($error === null) {
@@ -710,6 +748,31 @@ class MarketingSampleAudit implements DoctorAudit
      */
     protected function instantiate(string $span, array $imports): ?string
     {
+        // A sample does not say where it sits. `#[Required, Max(120)]` annotates a promoted constructor
+        // PARAMETER in the copy it came from; probed only as a class attribute it answers "cannot target
+        // class", which is a fact about the probe and not about the copy. Try each placement and take a
+        // success anywhere — the errors this audit is for (a missing required argument, an attribute
+        // nobody ships) fail identically at all three.
+        $errors = [];
+
+        foreach (['class', 'property', 'parameter'] as $placement) {
+            $error = $this->instantiateAt($span, $imports, $placement);
+
+            if ($error === null) {
+                return null;
+            }
+
+            if (! str_contains($error, 'cannot target')) {
+                $errors[] = $error;
+            }
+        }
+
+        return $errors[0] ?? 'the attribute targets none of class, property or parameter';
+    }
+
+    /** @param  array<string, class-string>  $imports */
+    protected function instantiateAt(string $span, array $imports, string $placement): ?string
+    {
         $id = 'P'.getmypid().'_'.bin2hex(random_bytes(6));
         $namespace = 'Splicewire\\Beam\\Doctor\\MarketingProbe\\'.$id;
         $file = rtrim(sys_get_temp_dir(), '/').'/beam-marketing-probe-'.$id.'.php';
@@ -722,7 +785,13 @@ class MarketingSampleAudit implements DoctorAudit
             }
         }
 
-        $source = "<?php\n\nnamespace {$namespace};\n\n{$use}\n{$span}\nclass Probe {}\n";
+        $body = match ($placement) {
+            'property' => "class Probe\n{\n{$span}\npublic \$slot;\n}\n",
+            'parameter' => "class Probe\n{\npublic function __construct({$span} public string \$slot = '') {}\n}\n",
+            default => "{$span}\nclass Probe {}\n",
+        };
+
+        $source = "<?php\n\nnamespace {$namespace};\n\n{$use}\n{$body}";
 
         try {
             if (@file_put_contents($file, $source) === false) {
@@ -733,7 +802,13 @@ class MarketingSampleAudit implements DoctorAudit
 
             $reflection = new ReflectionClass($namespace.'\\Probe');
 
-            foreach ($reflection->getAttributes() as $attribute) {
+            $attributes = match ($placement) {
+                'property' => $reflection->getProperty('slot')->getAttributes(),
+                'parameter' => $reflection->getConstructor()?->getParameters()[0]->getAttributes() ?? [],
+                default => $reflection->getAttributes(),
+            };
+
+            foreach ($attributes as $attribute) {
                 $attribute->newInstance();
             }
 

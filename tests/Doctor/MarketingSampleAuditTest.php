@@ -191,6 +191,57 @@ class MarketingSampleAuditTest extends TestCase
         $this->assertStringContainsString('does not survive instantiation', $findings[0]->detail);
     }
 
+    public function test_a_bare_attribute_mention_in_prose_is_not_instantiated(): void
+    {
+        // Measured at ~/Herd/splicewire: three doc entries say "declare a `#[ParticleResource]`" in a
+        // sentence. A mention makes no claim about arguments, so instantiating it manufactures "Too few
+        // arguments" against copy that is correct. The existence check still runs — see the next case.
+        $this->write('copy.md', 'Declare a #[ParticleResource] and the routes mount themselves.');
+
+        $findings = $this->audit([$this->dir.'/copy.md'])->run();
+
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status, $findings[0]->detail);
+    }
+
+    public function test_a_bare_mention_of_an_attribute_nobody_ships_is_still_a_warn(): void
+    {
+        $this->write('copy.md', 'Declare a #[BeamSchema] and you are done.');
+
+        $findings = $this->audit([$this->dir.'/copy.md'])->run();
+
+        $this->assertSame(MarketingSampleAudit::CHECK_ATTRIBUTE, $findings[0]->check);
+    }
+
+    public function test_an_attribute_that_targets_a_parameter_is_probed_where_it_belongs(): void
+    {
+        // `#[Required, Max(120)]` annotates a promoted constructor parameter in the copy it came from.
+        // Probed only as a class attribute it answers "cannot target class" — a fact about the probe.
+        $this->write('copy.md', '#[Required, Max(120)]');
+
+        $findings = $this->audit([$this->dir.'/copy.md'])->run();
+
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status, $findings[0]->detail);
+    }
+
+    public function test_the_token_class_label_of_an_island_fragment_is_not_joined_into_the_sample(): void
+    {
+        // The islands wrap every fragment as `{tok('attr', '…')}`. Joining ALL literals interleaves the
+        // token-class label with the code and yields a PHP syntax error against a CORRECT sample — which
+        // is what the first live run at ~/Herd/splicewire reported.
+        $this->write('beam-content.tsx', <<<'TSX'
+            {tok('attr', '#[ParticleResource(')}
+            {'\n  '}
+            {tok('attr', "key: 'articles', backing: Article::class,")}
+            {'\n'}
+            {tok('attr', ')]')}
+            TSX);
+
+        $findings = $this->audit([$this->dir.'/beam-content.tsx'])->run();
+
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status, $findings[0]->detail);
+        $this->assertStringContainsString('1 attribute sample', $findings[0]->detail);
+    }
+
     public function test_a_span_that_is_not_a_constant_expression_is_counted_not_dropped(): void
     {
         // `#[` inside markup, and a call in argument position — neither is a claim, and neither may be
