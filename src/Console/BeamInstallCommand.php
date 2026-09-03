@@ -65,7 +65,8 @@ use function Laravel\Prompts\text;
 class BeamInstallCommand extends Command
 {
     protected $signature = 'splicewire:beam:install
-        {--force : Overwrite any already-published files}
+        {--force : Overwrite any already-published files (and nothing else — it never waives a production confirm)}
+        {--allow-production-migrate : Waive the production confirmation on migrate and db:seed (default off; --force never does this)}
         {--prefix= : Beam table prefix (config beam.core.table_prefix); pass an empty string for no prefix}
         {--schema-sources= : Comma list of schema sources in read/write order, e.g. "db,file" or "file"}
         {--tenancy= : "single" (one database) or "multi" (tenant-scoped)}
@@ -168,7 +169,17 @@ class BeamInstallCommand extends Command
                 return self::FAILURE;
             }
 
-            $this->call('migrate', $this->option('force') ? ['--force' => true] : []);
+            // `--force` is NOT forwarded here (beam-facade 190). It means "overwrite my published files" at
+            // every other site in this command; `migrate --force` means "do not ask before writing to a
+            // production database", and one word carrying both meant a scripted overwrite also waived
+            // the production confirm. The waiver is its own opt-in, default off. READ the exit code:
+            // `migrate` returns FAILURE on a declined confirm rather than throwing, and until 190 this
+            // line discarded it — an install whose migrate was cancelled printed "beam stack installed."
+            if ($this->call('migrate', $this->productionWriteWaiver()) !== self::SUCCESS) {
+                $this->components->error('splicewire:beam:install — migrate did not complete (declined in production, or failed); aborting. Pass --allow-production-migrate to waive the production confirmation.');
+
+                return self::FAILURE;
+            }
         }
 
         $this->persistConfig($prefix, $sources, $tenancy);
@@ -712,7 +723,9 @@ class BeamInstallCommand extends Command
             // discarding it — which this line did until beam-docs-satellite ticket 46 — means a seed run
             // that reported failures was indistinguishable from a clean one. The install still continues
             // (a failed demo seeder should not strand a host mid-install); it just stops claiming success.
-            $code = $this->call('splicewire:beam:seed', $this->option('force') ? ['--force' => true] : []);
+            // The seed pass takes the same production-write waiver as `migrate` above, never `--force`
+            // (beam-facade 190): `splicewire:beam:seed --force` is `db:seed --force`, a production waiver.
+            $code = $this->call('splicewire:beam:seed', $this->productionWriteWaiver());
 
             if ($code !== self::SUCCESS) {
                 $this->seedingFailed = true;
@@ -721,6 +734,25 @@ class BeamInstallCommand extends Command
             $this->seedingFailed = true;
             $this->warn('  ↳ seeding failed (the rest of the install is unaffected): '.$e->getMessage());
         }
+    }
+
+    /**
+     * The options that waive the production confirmation on a database-writing sub-command (`migrate`,
+     * `splicewire:beam:seed` → `db:seed`): `['--force' => true]` only when `--allow-production-migrate`
+     * was passed, else nothing — so in production a scripted run without the opt-in is DECLINED
+     * (`ConfirmableTrait` confirms with default no; non-interactive returns the default), and outside
+     * production nothing is asked and the option is inert.
+     *
+     * Deliberately not derived from `--force` (beam-facade 190, owner-ruled 2026-08-28): that flag
+     * overwrites files, and the two acts must not share a spelling. The same waiver covers any step
+     * that iterates tenants — a tenant's connection can be a remote cluster nothing in the invocation
+     * names — which is why the opt-in is per run and never a config default.
+     *
+     * @return array<string, bool>
+     */
+    private function productionWriteWaiver(): array
+    {
+        return $this->option('allow-production-migrate') ? ['--force' => true] : [];
     }
 
     private function generateOpenApiArtifact(): void
@@ -950,6 +982,11 @@ class BeamInstallCommand extends Command
      * already published (and may carry hand edits), so — like re-publishing an existing file — persisting
      * over it requires `--force`. Without it, the answered values still govern this run via runtime config;
      * they're just not written to disk.
+     *
+     * That sentence is true and ONLY true since beam-facade 190: `--force` means overwrite-my-files at
+     * every site in this command (`vendor:publish`, this writer, `pnpm-overrides`) and nothing else. The
+     * production-write waiver that used to ride on the same word is `--allow-production-migrate`
+     * ({@see self::productionWriteWaiver()}).
      */
     private function persistConfig(?string $prefix, ?string $sources, ?string $tenancy): void
     {

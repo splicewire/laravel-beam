@@ -41,7 +41,7 @@ class BeamSeedCommand extends Command
     use AsSystemWriter;
 
     protected $signature = 'splicewire:beam:seed
-        {--force : Run seeders even in production (passed through to db:seed)}
+        {--force : Run seeders even in production (passed through to db:seed; splicewire:beam:install spells this --allow-production-migrate)}
         {--tolerate-failures : Exit 0 even when a seeder failed (report only — the pre-ticket-46 behaviour)}';
 
     protected $description = 'Seed the whole beam stack from the self-registration manifest (core-first), each seeder config-gated.';
@@ -129,16 +129,21 @@ class BeamSeedCommand extends Command
             // db:seed reports its own failures through the exit code as well as by throwing, and a non-zero
             // return here is NOT an exception — read it, or a seeder that fails politely is recorded as a
             // success. This is the same defect one layer down that this command had at its own top level.
-            $code = $this->call('db:seed', [
-                '--class' => $step->seeder,
-                '--force' => true,
-            ]);
+            //
+            // `--force` is forwarded only when THIS command was given it (beam-facade 190). Until then it was
+            // passed unconditionally, so the option the signature declares was never read and a production
+            // host was seeded without ever being asked. Now a production run without `--force` is declined
+            // by `db:seed` (default no; non-interactive returns the default) and recorded as a failure.
+            $code = $this->call('db:seed', array_merge(
+                ['--class' => $step->seeder],
+                $this->option('force') ? ['--force' => true] : [],
+            ));
 
             if ($code !== self::SUCCESS) {
                 $this->failures[] = [
                     'seeder' => $step->seeder,
                     'package' => $step->package,
-                    'message' => "db:seed exited {$code}",
+                    'message' => "db:seed exited {$code}".($this->declinedInProduction() ? ' (production confirm declined — pass --force to waive it)' : ''),
                 ];
                 $this->warn("  ↳ {$step->seeder} exited {$code} (continuing).");
 
@@ -156,5 +161,11 @@ class BeamSeedCommand extends Command
             ];
             $this->warn("  ↳ {$step->seeder} failed (continuing): {$e->getMessage()}");
         }
+    }
+
+    /** Whether a non-zero `db:seed` is the production confirm being declined rather than a seeder failing. */
+    private function declinedInProduction(): bool
+    {
+        return $this->getLaravel()->environment('production') && ! $this->option('force');
     }
 }
