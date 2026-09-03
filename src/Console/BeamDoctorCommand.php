@@ -344,7 +344,11 @@ class BeamDoctorCommand extends Command
     private function sitemapFinding(SitemapReadinessAudit $audit, string $base): Finding
     {
         $public = $base.'/public';
-        $path = ltrim((string) config('beam.core.sitemap.path', 'sitemap.xml'), '/');
+        // `beam.sitemap.*`, not `beam.core.sitemap.*` — laravel-beam-sitemap merges its config
+        // AT `beam.sitemap` (BeamSitemapServiceProvider::register), and the satellite's route file
+        // + RobotsController read the same key. The `beam.core.` spelling resolved to null, so the
+        // disabled branch was unreachable and a non-default `path` was never honoured.
+        $path = ltrim((string) config('beam.sitemap.path', 'sitemap.xml'), '/');
 
         $shadowing = [];
         foreach ([$path, 'robots.txt'] as $file) {
@@ -354,7 +358,7 @@ class BeamDoctorCommand extends Command
         }
 
         return $audit->run(
-            (bool) config('beam.core.sitemap.enabled', true),
+            (bool) config('beam.sitemap.enabled', true),
             $shadowing,
         );
     }

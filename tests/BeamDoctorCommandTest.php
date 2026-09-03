@@ -386,6 +386,40 @@ class BeamDoctorCommandTest extends TestCase
         $this->assertSame(DoctorStatus::Pass, (new SitemapReadinessAudit)->run(true, [])->status);
     }
 
+    public function test_sitemap_audit_warns_on_a_shadowing_file_and_names_the_current_command(): void
+    {
+        $finding = (new SitemapReadinessAudit)->run(true, ['public/robots.txt']);
+
+        $this->assertSame(DoctorStatus::Warn, $finding->status);
+        $this->assertStringContainsString('public/robots.txt', $finding->detail);
+        // The escape hatch was renamed by ADR-0166's relocation (0d5bd7f): the command now lives in
+        // laravel-beam-sitemap as `splicewire:beam:sitemap:generate`. A warn that names a command
+        // artisan cannot run sends the reader nowhere.
+        $this->assertStringContainsString('splicewire:beam:sitemap:generate', $finding->detail);
+        $this->assertStringNotContainsString('`splicewire:sitemap:generate`', $finding->detail);
+    }
+
+    /**
+     * The command must read the key the sitemap arm actually merges. laravel-beam-sitemap merges at
+     * `beam.sitemap`; the command read `beam.core.sitemap`, which resolves to null everywhere — so
+     * the `enabled` argument was permanently `true` and this branch could not be reached from a
+     * host's config at all. Drives the whole command so the wiring, not just the audit, is pinned.
+     */
+    public function test_sitemap_audit_reads_the_beam_sitemap_config_key_not_beam_core_sitemap(): void
+    {
+        $this->pointBaseAt(
+            ['minimum-stability' => 'dev', 'prefer-stable' => true],
+            ['packages' => [], 'packages-dev' => []],
+        );
+
+        config()->set('beam.core.sitemap.enabled', true);
+        config()->set('beam.sitemap.enabled', false);
+
+        $this->artisan('splicewire:beam:doctor')
+            ->expectsOutputToContain('the sitemap subsystem is off')
+            ->assertExitCode(BeamDoctorCommand::SUCCESS);
+    }
+
     public function test_dependency_audit_fails_when_required_marquee_has_no_repo(): void
     {
         $findings = (new BeamDependencyContractAudit)->run(

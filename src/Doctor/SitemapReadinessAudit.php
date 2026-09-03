@@ -33,7 +33,7 @@ class SitemapReadinessAudit
         if ($shadowingFiles !== []) {
             return Finding::warn(
                 $check,
-                'a static '.implode(' and ', $shadowingFiles).' shadows the mode-aware route(s) — nginx serves the file before Laravel, so the gate never fires. Delete it (unless you are running `splicewire:sitemap:generate` on purpose).',
+                'a static '.implode(' and ', $shadowingFiles).' shadows the mode-aware route(s) — nginx serves the file before Laravel, so the gate never fires. Delete it (unless you are running `splicewire:beam:sitemap:generate` on purpose).',
             );
         }
 
