@@ -80,6 +80,20 @@ use Splicewire\Beam\Routing\RouteReturnType;
  * closures (a closure's `return` belongs to its own body). Same trap {@see SdkReturnsCoverageAudit}
  * documents from the other direction, where a `throw new Ex(new SomeData(...))` was read as a response.
  *
+ * ## ⚠️ A route count is not a handler count, and the route count flatters the audit
+ *
+ * Measured at the flagship 2026-09-03: **209 declaring routes resolve to 106 distinct handlers.** Three
+ * shared controllers account for 106 of the routes on their own — `ResourceDiscoveryController` (44),
+ * `HookEventCatalogController` (34) and `ResourceFiltersController` (28) are each mounted once per
+ * resource, so one agreeing method body is counted dozens of times. Per route the reading is 171 agree /
+ * 38 undetermined (18% unmeasured); **per distinct handler it is 68 / 38 — 36% unmeasured.**
+ *
+ * Both numbers are true and the route one is the one a summary line naturally reports, which is exactly
+ * the failure this estate keeps meeting: the instrument counts the thing it can enumerate, and the answer
+ * gets written down against the question someone actually asked. Read the per-handler figure before
+ * concluding anything about coverage. {@see classify()} returns the rows, so deduplicating on
+ * `controllerClass@actionMethod` is one line.
+ *
  * ## The answer distinguishes "clean" from "did not look"
  *
  * An audit whose zero reads identically for "no disagreements" and "could not resolve a single handler"
