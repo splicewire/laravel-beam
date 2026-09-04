@@ -247,6 +247,72 @@ class ModelSurfaceCoverageAuditTest extends TestCase
         $this->assertSame(['model-surface.coverage'], $this->checks($this->audit()->run()));
     }
 
+    /**
+     * The three shapes the pattern's alternation and modifier group exist for, and which no other case
+     * in this file reaches — so each was silently optional until now.
+     *
+     * Measured 2026-09-04 by mutation: narrowing the alternation to `Model` (dropping `Pivot`), dropping
+     * `final\s+` from the modifier group, and dropping the fully-qualified
+     * `Illuminate\Database\Eloquent\` prefix each leave the ENTIRE suite green. Two of the three are
+     * live — `extends Pivot` has two declarations across the estate's package roots today.
+     *
+     * The reason a narrowing must be caught HERE and cannot be caught downstream: a model the census
+     * stops recognising is not a finding that disappears, it is a model that leaves the DENOMINATOR. The
+     * audit's terminal reading for "recognised nothing" is `Finding::pass` — *"All 0 Eloquent model(s)
+     * across N scanned file(s)"*, conclusive — which is this estate's signature defect and is
+     * indistinguishable from a real all-clear.
+     */
+    public function test_pivots_final_models_and_fully_qualified_extends_are_all_in_the_population(): void
+    {
+        $this->makeRoot();
+
+        file_put_contents($this->root.'/app/Models/Link.php', <<<'PHP'
+        <?php
+
+        namespace App\Models;
+
+        use Illuminate\Database\Eloquent\Relations\Pivot;
+
+        class Link extends Pivot
+        {
+        }
+        PHP);
+
+        file_put_contents($this->root.'/app/Models/Sealed.php', <<<'PHP'
+        <?php
+
+        namespace App\Models;
+
+        use Illuminate\Database\Eloquent\Model;
+
+        final class Sealed extends Model
+        {
+        }
+        PHP);
+
+        file_put_contents($this->root.'/app/Models/Qualified.php', <<<'PHP'
+        <?php
+
+        namespace App\Models;
+
+        class Qualified extends \Illuminate\Database\Eloquent\Model
+        {
+        }
+        PHP);
+
+        $detail = $this->details($findings = $this->audit()->run());
+
+        $this->assertSame(
+            ['model-surface.uncovered', 'model-surface.uncovered', 'model-surface.uncovered'],
+            $this->checks($findings),
+            'a model shape the census cannot see leaves the denominator, and the audit then passes',
+        );
+
+        foreach (['App\\Models\\Link', 'App\\Models\\Sealed', 'App\\Models\\Qualified'] as $class) {
+            $this->assertStringContainsString($class, $detail);
+        }
+    }
+
     public function test_a_class_that_is_not_an_eloquent_model_is_not_reported(): void
     {
         $this->makeRoot();
