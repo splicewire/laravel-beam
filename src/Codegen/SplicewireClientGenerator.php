@@ -735,8 +735,23 @@ class SplicewireClientGenerator implements Generator
 
     /**
      * The client `Data\*` adapter (#06): a THIN subclass of the spine-wire DTO adding only the Saloon
-     * `Response` → DTO unwrap (`static::fromArray($response->json('data') ?? [])`). No second field copy —
-     * the wire vocabulary + `fromArray` live in the licensed spine tier (ADR-0093).
+     * `Response` → DTO unwrap. No second field copy — the wire vocabulary + `fromArray` live in the
+     * licensed spine tier (ADR-0093).
+     *
+     * ⚠️ THE UNWRAP THROWS FIRST, DELIBERATELY. Saloon hands back a well-formed `Response` on a 4xx/5xx
+     * rather than raising, so the earlier body — `static::fromArray($response->json('data') ?? [])` —
+     * turned a REFUSED write into a DTO with an empty id and no exception: a save that never happened,
+     * shaped exactly like one that did. Measured 2026-09-03 at `~/Herd/entreport`, twice in this one
+     * connector: a refused provision was stored as an entity with an empty id, and a section submit
+     * returned `void` so the page redirected as though it had saved. Both call sites were then guarded
+     * BY HAND, at the host — which is the wrong tier for a defect the generator reproduces into every
+     * adapter it emits.
+     *
+     * `$response->throw()` is a no-op on a 2xx, so the happy path is unchanged; on a failure it raises
+     * Saloon's `RequestException` and the caller can no longer mistake a refusal for a result. This is
+     * narrower than `alwaysThrowOnErrors()` on the connector, which would also break callers that
+     * legitimately read a 404 — here it fires only where a caller has asked for a typed DTO, and a
+     * non-2xx can never produce one.
      */
     private function buildDataAdapter(string $namespace, string $dtoName, string $spineFqn): PhpFile
     {
@@ -761,7 +776,13 @@ class SplicewireClientGenerator implements Generator
         $method = $class->addMethod('fromResponse')
             ->setStatic()
             ->setReturnType('self')
-            ->setBody("return static::fromArray(\$response->json('data') ?? []);");
+            ->setBody(
+                "// A refused write must not hydrate. Saloon returns a well-formed Response on a 4xx/5xx,\n"
+                ."// so without this the caller receives a DTO with an empty id and NO exception — a save\n"
+                ."// that never happened, indistinguishable from one that did. throw() no-ops on a 2xx.\n"
+                ."\$response->throw();\n\n"
+                ."return static::fromArray(\$response->json('data') ?? []);"
+            );
         $method->addParameter('response')->setType('Saloon\\Http\\Response');
 
         return $file;

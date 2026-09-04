@@ -69,6 +69,35 @@ class SplicewireClientGeneratorTest extends TestCase
         $this->assertStringContainsString("return static::fromArray(\$response->json('data') ?? []);", $adapter);
     }
 
+    /**
+     * A REFUSED WRITE MUST NOT HYDRATE.
+     *
+     * Saloon hands back a well-formed `Response` on a 4xx/5xx rather than raising, so an unwrap that
+     * goes straight to `fromArray($response->json('data') ?? [])` turns a refusal into a DTO with an
+     * empty id and no exception — a save that never happened, shaped exactly like one that did.
+     * Measured 2026-09-03 at `~/Herd/entreport`, twice in one connector; both call sites were then
+     * guarded by hand AT THE HOST, which is the wrong tier for a defect this generator reproduces into
+     * every adapter it emits.
+     *
+     * The ORDER is the assertion: `throw()` has to precede the hydrate, or it guards nothing.
+     */
+    public function test_the_data_adapter_throws_before_it_hydrates(): void
+    {
+        $adapter = $this->generate()['Data/Composition.php'];
+
+        $this->assertStringContainsString('$response->throw();', $adapter);
+
+        $throwAt = strpos($adapter, '$response->throw();');
+        $hydrateAt = strpos($adapter, 'return static::fromArray(');
+        $this->assertIsInt($throwAt);
+        $this->assertIsInt($hydrateAt);
+        $this->assertLessThan(
+            $hydrateAt,
+            $throwAt,
+            'throw() must precede the hydrate, or a refused response is unwrapped before it is checked.'
+        );
+    }
+
     public function test_a_mapped_return_emits_a_typed_dual_resource_method(): void
     {
         $resource = $this->generate()['Resource/Compositions.php'];
