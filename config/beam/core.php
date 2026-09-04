@@ -410,6 +410,31 @@ return [
         ],
     ],
 
+    /*
+    | Surgeon audits owned by beam-core that a HOST needs to steer.
+    |
+    | `model_surface_coverage.exclude_models` — `ModelSurfaceCoverageAudit` reports every concrete
+    | Eloquent model (this host's own `app/`/`src/`, plus each family package it composes) carrying no
+    | `#[ParticleResource]`. "Every model should have a resource" is false as stated — a pivot, a lookup
+    | table, an aggregate's private detail all legitimately have none — so this is the host's place to
+    | say so once, in writing, and stop being asked.
+    |
+    | ⚠️ HOST tier on purpose. `MorphAliasCoverageAudit::EXEMPT` is the wrong prior art to copy: it is a
+    | package `const`, so excusing YOUR model would mean editing beam. The host-tier idiom is a config
+    | key, exactly as `beam.client.surgeon.sdk_hook_migration.exclude_dirs` already is.
+    |
+    | Empty by default, and empty means "nothing excused" rather than "nothing to excuse": the audit is
+    | advisory in every state and never fails a build, so an unconfigured host reads a backlog, not a
+    | gate. Excluding a model is a claim that it is deliberately internal — write the reason beside it.
+    */
+    'surgeon' => [
+        'model_surface_coverage' => [
+            'exclude_models' => [
+                // App\Models\FeatureFlagUser::class,   // pivot; no surface of its own
+            ],
+        ],
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 

@@ -179,6 +179,7 @@ use Splicewire\Beam\Surgeon\EnvelopeCopyAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
 use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
+use Splicewire\Beam\Surgeon\ModelSurfaceCoverageAudit;
 use Splicewire\Beam\Surgeon\MorphAliasCoverageAudit;
 use Splicewire\Beam\Surgeon\MorphTokenBypassAudit;
 use Splicewire\Beam\Surgeon\ParticleControllerRedundancyAudit;
@@ -1334,6 +1335,23 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // Advisory for the same reason as its sibling: the population is `installed.json` plus the host's
         // own `app/`, i.e. what THIS host composes, which is a host fact and never a throw.
         $manifest->register('splicewire/laravel-beam', MorphTokenBypassAudit::class);
+        // The coverage question one axis over, and the one NOTHING here could ask: not "does this
+        // model's alias exist" but "does this model have a declared surface at all".
+        // `UndeclaredSurfaceAudit` computes from the live route table, and a model with no
+        // `#[ParticleResource]` has no route — so it never enters the table, never reaches that
+        // audit's committed artifact, and the ratchet over it is silent. The gap bites an ADOPTING
+        // host hardest: N models, zero resources, and nothing saying where it stands.
+        //
+        // Advisory, and unlike its siblings this one could not be a gate even in principle: "every
+        // model should have a resource" is FALSE as stated — a pivot, a lookup table, an aggregate's
+        // private detail all legitimately have none. Same population argument ADR-0118 decision 6
+        // settled permanently for MorphAliasCoverageAudit above, plus the host-fact rule: whether a
+        // model is surfaced HERE is not something a declaration's author could have gotten right
+        // host-blind, and a check of that shape that threw at boot took `~/Herd/tower` off the air.
+        // So: no `gate: true`, no `--check`, no CI-failing path. A host wanting it to block registers
+        // it in its OWN manifest with `gate: true` and runs `--floor=warn`; a host wanting it quieter
+        // names models in `beam.core.surgeon.model_surface_coverage.exclude_models`.
+        $manifest->register('splicewire/laravel-beam', ModelSurfaceCoverageAudit::class);
         // Advisory, permanently. The explicit `beam.core.resources.classes` / `frame.resources` list is
         // registered FIRST — before beam's own manifest/scan and before every other package's provider
         // boots — so under `OnDuplicate::Supersede` a host's listed override is the entry that LOSES,
