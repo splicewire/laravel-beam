@@ -1952,54 +1952,19 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         if ((bool) config('beam.core.discovery.enabled', true)) {
             $this->app->booted(fn () => $this->app->make(ResourceDiscoveryAutoMounter::class)->mount());
         }
-
-        // The second act for the five rows registry-kernel 38's beam pass CONFORMED and never described
-        // (`d3b2fd3`, `1a127aa`, 2026-08-28). All five carry `#[IsRegistry]` and implement the contract,
-        // so `splicewire:beam:registry-conformance` counted them `conforming` and `UndescribedRegistryAudit`
-        // — which asks the DECLARATION question, per its own docblock — passed over them. Neither gate asks
-        // the second question, so `beam.capabilities`, `beam.doctor.audits`, `beam.install.steps`,
-        // `beam.seed.steps` and `schemas.sources` were absent from `popcorn:registries` and unreachable
-        // through `RegistryIndex::routeTo()` for three days while every instrument read green. That is the
-        // sweep brief's spine step 8, and its own warning about the b rows that "were declared and green
-        // for days over an index they had never been described into".
+        // No describe() call belongs here. Registry-kernel 38 added one for five accumulator
+        // registries, 73 added six more — and 73's own cutover then DELETED the act entirely:
+        // membership is baked and lazily resolved, so `#[IsRegistry]` IS the description
+        // ({@see Surgeon\UnindexedRegistryAudit}, which carries the reasoning at its remedy text).
+        // What the cutover left behind was an `$this->app->booted()` closure wrapping a foreach over
+        // eleven class-strings with an EMPTY body and no `$index` in scope — dead since then, under
+        // 40 lines of comment arguing for the timing of a call that no longer exists. Removed here.
         //
-        // On `booted()`, not here: every one of the five is an ACCUMULATOR whose registrants are other
-        // packages' providers (tower seeds `beam.capabilities`; beam-* packages push install, doctor and
-        // seed steps; a package contributes a schema tier). Beam cannot know whether a contributor's
-        // provider boots before or after its own, so `booted()` is the only point at which "what this
-        // registry holds" is a settled question — the same reasoning the event catalog and the discovery
-        // auto-mount above take, and the reason `popcorn:registries` reports these populated rather than
-        // empty.
-        $this->app->booted(function () {
-
-            foreach ([
-                CapabilityRegistry::class,
-                BeamDoctorManifest::class,
-                BeamInstallManifest::class,
-                BeamSeedManifest::class,
-                SchemaSources::class,
-
-                // ⚠️ SIX MORE, added 2026-08-31 by registry-kernel 73 phase A, and they are the same
-                // defect as the five above — found by the instrument that did not exist when the five
-                // were repaired. `a699757` (2026-08-28, titled "registry-kernel 38 CLOSES beam") landed
-                // all six, and the sweep LEDGER records all six as VERIFIED. They were never in the
-                // index at any host: `UnindexedRegistryAudit` measured every one of them unindexed at
-                // **14 of 14** `~/Herd` roots. The sweep's verification standard could not see it,
-                // because every instrument it had asks the DECLARATION question.
-                //
-                // All six are unconditional singletons bound in this provider's register(), and all six
-                // are accumulators other packages contribute into (a realm overlay, a resource
-                // contribution, a surface group, an audit scan path), so `booted()` is right for the
-                // reason the block above states rather than by copying it.
-                RealmOverlayRegistry::class,
-                RealmResourceRegistry::class,
-                ResourceContributionRegistry::class,
-                GroupRegistry::class,
-                AuditScanPaths::class,
-                FacadeConformanceScope::class,
-            ] as $registry) {
-            }
-        });
+        // ⚠️ If a future reader finds a registry missing from `popcorn:registries` or
+        // `RegistryIndex::routeTo()`, do NOT reinstate a describe() loop — that is the regression the
+        // audit's remedy text warns about by name. The three real causes are a stale baked membership
+        // list (`popcorn:registries:cache`), a class outside every bake scan root, or a host that
+        // cannot resolve it (`RegistryIndex::unresolvable()`).
 
         // Frame OS ticket 08 (ADR-0013 §2): beam is the authority that unifies the two authorization
         // planes. Register a Laravel Gate ability per KNOWN feature key (`entitlement:{key}`) delegating to
