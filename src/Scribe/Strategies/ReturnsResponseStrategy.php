@@ -4,9 +4,12 @@ namespace Splicewire\Beam\Scribe\Strategies;
 
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
+use Knuckles\Scribe\Tools\DocumentationConfig;
 use ReflectionClass;
 use Schemastud\DataSchemas\Generators\Generator;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Routing\BeamRouteAction;
+use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Routing\RouteReturnType;
 
 /**
@@ -32,9 +35,29 @@ class ReturnsResponseStrategy extends Strategy
 {
     use ModelsResponseEnvelope;
 
+    protected RouteMetadataReader $meta;
+
+    // Scribe constructs strategies directly with only its config; match the sibling strategies'
+    // optional reader seam so container bindings and explicit test readers both remain effective.
+    public function __construct(DocumentationConfig $config, ?RouteMetadataReader $meta = null)
+    {
+        parent::__construct($config);
+
+        $this->meta = $meta ?? BeamRouteAction::reader();
+    }
+
     public function __invoke(ExtractedEndpointData $endpointData, array $settings = []): ?array
     {
-        $returns = $endpointData->route?->getAction('returns');
+        $route = $endpointData->route;
+
+        if ($route === null) {
+            return null;
+        }
+
+        $declared = $this->meta->returns($route);
+        // Preserve the raw-key contract this strategy previously accepted. Canonical metadata wins
+        // as a pair: a legacy returnsMany must never turn a canonical single-item declaration into a list.
+        $returns = $declared ?? $route->getAction('returns');
 
         if (! is_string($returns) || ! is_subclass_of($returns, Data::class)) {
             return null; // No `->returns()` annotation (or a non-Data target) — defer.
@@ -60,7 +83,11 @@ class ReturnsResponseStrategy extends Strategy
 
         $itemSchema = $generator->generate($class);
 
-        $envelope = $endpointData->route->getAction('returnsMany')
+        $many = $declared !== null
+            ? $this->meta->returnsMany($route)
+            : (bool) $route->getAction('returnsMany');
+
+        $envelope = $many
             ? $this->listEnvelope($itemSchema, $class)
             : $this->itemEnvelope($itemSchema, $class);
 
