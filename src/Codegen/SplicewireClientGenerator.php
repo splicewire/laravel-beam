@@ -386,6 +386,7 @@ class SplicewireClientGenerator implements Generator
      * file part, every other field a scalar part keyed by its wire name.
      *
      * @param  array<string, string>|string|null  $bodyMap
+     * @param  array<int, array<string, mixed>>  $ctorParams
      */
     private function multipartBodyExpression(array|string|null $bodyMap, string $fileWire, array $ctorParams): string
     {
@@ -531,6 +532,11 @@ class SplicewireClientGenerator implements Generator
         return [$this->declaredDefaults($params, $op), $bodyMap === [] ? null : $bodyMap, $queryPlan];
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $params
+     * @param  array<string, mixed>  $op
+     * @return array<int, array<string, mixed>>
+     */
     private function declaredDefaults(array $params, array $op): array
     {
         $defaults = $op['meta']['parameterDefaults'] ?? [];
@@ -710,6 +716,9 @@ class SplicewireClientGenerator implements Generator
         foreach ($requests as $className => $spec) {
             $requestPath = "Requests/{$domain}/{$className}.php";
             $aliasPath = array_search($requestPath, $this->options['aliases'] ?? [], true);
+            if ($aliasPath !== false && ! is_string($aliasPath)) {
+                throw new InvalidArgumentException('SDK aliases must be keyed by relative PHP file paths.');
+            }
             $requestClass = $namespace.'\\'.str_replace('/', '\\', substr($aliasPath === false ? $requestPath : $aliasPath, 0, -4));
             $requestClassName = $this->shortName($requestClass);
             $ns->addUse($requestClass);
@@ -782,7 +791,10 @@ class SplicewireClientGenerator implements Generator
         return $file;
     }
 
-    /** @return list<string> PHP argument expressions for forwarding this signature. */
+    /**
+     * @param  array<int, array<string, mixed>>  $params
+     * @return list<string> PHP argument expressions for forwarding this signature.
+     */
     private function resourceSignature(PhpMethod $method, array $params): array
     {
         $arguments = [];
@@ -797,7 +809,14 @@ class SplicewireClientGenerator implements Generator
         return $arguments;
     }
 
-    /** Separate PHP facade parameter names and fixed arguments from the generated request contract. */
+    /**
+     * Separate PHP facade parameter names and fixed arguments from the generated request contract.
+     *
+     * @param  array<int, array<string, mixed>>  $params
+     * @param  array<string, mixed>  $options
+     * @param  list<string>  $bodyFields
+     * @return array{list<array<string, mixed>>, list<string>}
+     */
     private function resourceInvocationPlan(array $params, array $options, array $bodyFields): array
     {
         $signature = [];
@@ -830,7 +849,12 @@ class SplicewireClientGenerator implements Generator
         return [$signature, $arguments];
     }
 
-    /** Render a checked convenience projection; the raw method still exposes every HTTP status. */
+    /**
+     * Render a checked convenience projection; the raw method still exposes every HTTP status.
+     *
+     * @param  list<string>  $args
+     * @param  array<string, mixed>  $result
+     */
     private function projectionBody(string $rawName, array $args, array $result): string
     {
         $path = array_key_exists('path', $result) ? var_export($result['path'], true) : '';

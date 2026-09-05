@@ -17,7 +17,7 @@ class SdkDataAdapterGenerator
      * Constructor hydration supports builtin scalar/array/mixed parameters only; richer values
      * belong to the spine's named factory. Defaults come from the constructor, never an SDK field list.
      *
-     * @param  array{mode?: 'alias'|'body'|'json', path?: string|null, factory?: string, required?: list<string>}  $options
+     * @param  array<string, mixed>  $options  Unvalidated configuration; mode, path, factory and required are checked here.
      */
     public function generate(string $namespace, string $dtoName, string $spineFqn, array $options = []): PhpFile
     {
@@ -32,7 +32,7 @@ class SdkDataAdapterGenerator
         if ($mode !== 'alias') {
             $ns->addUse('Saloon\\Http\\Response');
         }
-        $spineShort = substr(strrchr('\\'.$spineFqn, '\\'), 1);
+        $spineShort = basename(str_replace('\\', '/', $spineFqn));
         $alias = $spineShort === $dtoName || ($mode !== 'alias' && $spineShort === 'Response')
             ? 'Spine'.$spineShort : null;
         $ns->addUse($spineFqn, $alias);
@@ -84,6 +84,9 @@ class SdkDataAdapterGenerator
 
     private function constructorBody(string $spineFqn): string
     {
+        if (! class_exists($spineFqn)) {
+            throw new InvalidArgumentException("SDK constructor adapter class does not exist: {$spineFqn}");
+        }
         $constructor = (new ReflectionClass($spineFqn))->getConstructor();
         if ($constructor === null || ! $constructor->isPublic()) {
             throw new InvalidArgumentException("SDK constructor adapter requires a public constructor: {$spineFqn}");
