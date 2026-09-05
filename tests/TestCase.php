@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests;
 
 use Orchestra\Testbench\TestCase as Orchestra;
 use Rushing\DataFilters\ServiceProvider as DataFiltersServiceProvider;
+use Rushing\DataNav\ServiceProvider as DataNavServiceProvider;
 use Rushing\PermissionCascade\PermissionCascadeServiceProvider;
 use Rushing\Popcorn\Laravel\PopcornServiceProvider;
 use Rushing\Versioning\VersioningServiceProvider;
@@ -55,6 +56,11 @@ abstract class TestCase extends Orchestra
             // Gate abilities + can-map/manifest projection over this seam. A declared dependency DOWN
             // (beam → permission-cascade), not a rung above beam.
             PermissionCascadeServiceProvider::class,
+            // data-nav (added 2026-09-05 with beam.nav.sections): beam declares the nav SEATS a
+            // package can register and UnseatedNavSectionAudit reads a host's own navigation to see
+            // the seats it wrote by hand, so NavRegistry must be bound. A declared dependency DOWN
+            // (beam → rushing), the same direction as permission-cascade and versioning above.
+            DataNavServiceProvider::class,
             // The json-ns host bindings (ADR-0191/0192): the VocabularyRegistry/-Validator the
             // namespace-aware gates resolve, backed by SchemaRegistry when a test binds one.
             JsonNsServiceProvider::class,

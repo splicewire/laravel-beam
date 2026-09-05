@@ -296,8 +296,23 @@ class NavSectionRegistryTest extends TestCase
             $this->assertTrue($type->isBuiltin(), "\${$parameter->getName()} must be a builtin type, not a class");
         }
 
-        $manifest = json_decode(file_get_contents(__DIR__.'/../../composer.json'), true);
-        $this->assertArrayNotHasKey('rushing/laravel-data-nav', $manifest['require'] ?? []);
+        // ⚠️ This used to also assert beam's composer.json does NOT require `rushing/laravel-data-nav`.
+        // That assertion was removed 2026-09-05 when beam took the dependency deliberately, and the
+        // reasoning behind it was simply wrong: beam already hard-requires NINE rushing/* packages
+        // (data-filters, doctor, permission-cascade, popcorn, versioning, codegen, …), so
+        // splicewire -> rushing is the SANCTIONED direction (ADR-0092, paid -> open) and the
+        // package-topology `noRequire` policy in that same manifest forbids only schemastud->splicewire,
+        // beam->satellite and beam->tower. Nothing ever forbade this edge.
+        //
+        // What the dependency bought: `UnseatedNavSectionAudit` can read a host's HAND-AUTHORED
+        // navigation, not just the declarative registry. Without it the audit reported six unseated
+        // sections at the flagship that are all seated by hand — six of six false positives.
+        //
+        // Everything ABOVE this comment still holds and is the part that mattered: `NavSection` stays
+        // a plain value object with builtin-typed fields and no data-nav import. That is not about
+        // what beam may depend on — it is that a SEAT DECLARATION is not a nav node. The projector at
+        // the beam-ux tier owns the translation, and keeping the two apart is what lets a package
+        // declare a seat without knowing how it will be rendered.
     }
 
     public function test_the_registry_declares_itself(): void

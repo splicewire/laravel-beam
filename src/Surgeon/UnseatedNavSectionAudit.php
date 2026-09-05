@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Surgeon;
 
 use Rushing\DataNav\NavContext;
+use Rushing\DataNav\NavNode;
+use Rushing\DataNav\NavRegistry;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Nav\NavSection;
@@ -10,6 +12,7 @@ use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Particle\Backing\ResourceBacking;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Realm\RealmRegistry;
 
 /**
  * **A section a package DECLARED and nothing SEATS** — the other half of the nav declaration, checked.
@@ -34,22 +37,30 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * the host chose not to surface that package's admin rows — so this registers with `gate: false` and
  * emits {@see Finding::warn()}.
  *
- * ## ⚠️ What it can see, and the blind spot that matters most
+ * ## It reads BOTH ways a section can be seated
  *
- * "Seated" here means **seated declaratively**, through {@see NavSectionRegistry}. It does NOT and
- * cannot mean "reachable in this host's navigation". A host that hand-authors its nav — as
- * `~/Herd/splicewire-app` does, in `app/Navigation/AppNavigation.php` — seats sections in a tree this
- * audit has no way to read: the tree is `Rushing\DataNav` vocabulary, beam does not depend on data-nav
- * (that is the whole reason {@see NavSection} is a plain value object here rather than an
- * `InvocableNavItem`), and the tree is built per request from a {@see NavContext} this
- * audit does not have.
+ * A section is seated either DECLARATIVELY, through {@see NavSectionRegistry}, or BY HAND, by a host
+ * that writes its own navigation in `Rushing\DataNav` vocabulary — as `~/Herd/splicewire-app` does in
+ * `app/Navigation/AppNavigation.php`. Both count, and both are read here.
  *
- * So a hand-seated section reports as unseated. That is a FALSE POSITIVE in the plain sense and it is
- * still the right trade: the alternative instrument — reading the host's nav tree — does not exist at
- * this tier and cannot be built here, and an audit that stayed silent rather than admit a blind spot
- * would be the estate's signature defect wearing a clean face. Every finding says so in its own text
- * rather than leaving the reader to infer it, and the census states the whole population so a low warn
- * count is never mistaken for coverage.
+ * ⚠️ **Reading only the first is not a small gap — it was 100% wrong.** On 2026-09-05 an earlier cut
+ * of this audit reported SIX unseated sections at the flagship — `circuits`, `determination`,
+ * `knowledge`, `platform`, `studio`, `threads`. Every one is seated by hand, in that file. Six of six
+ * false positives, at the only host in the estate with a real navigation. An advisory that warns
+ * about six correctly-seated sections every run is one a reader learns to skip, and then it misses
+ * the seventh.
+ *
+ * Hand-authored nav is not a legacy form to be migrated away, so this is permanent, not a bridge:
+ * {@see NavRegistry} is `PickOne`/`Supersede` SO THAT a host can own its IA outright. A host
+ * registering its own navigation is the override seam working as designed.
+ *
+ * ## Reads the FACTORY, never `build()`
+ *
+ * `NavRegistry::build()` gates, expands every invocable and stamps active state — DB reads, policy
+ * checks, an actor. This runs in a console audit with no request and no user, so building would be
+ * both expensive and WRONG: a seat hidden from the null actor by a gate stage would come back
+ * "unseated" and reintroduce the false positive from the other direction. Seats are top-level nodes,
+ * so resolving the factory and reading one level is the cheaper and the more honest shape.
  *
  * ## Only PACKAGE declarations are warned on
  *
@@ -91,6 +102,8 @@ class UnseatedNavSectionAudit implements DoctorAudit
     public function __construct(
         protected ParticleResourceRegistry $resources,
         protected NavSectionRegistry $sections,
+        protected NavRegistry $navigations,
+        protected RealmRegistry $realms,
     ) {}
 
     /**
@@ -227,6 +240,51 @@ class UnseatedNavSectionAudit implements DoctorAudit
             static fn (NavSection $section): string => $section->key,
             $this->sections->all(),
         );
+
+        return array_values(array_unique(array_merge($keys, $this->handAuthoredKeys())));
+    }
+
+    /**
+     * The section keys named by the top-level nodes of every realm's navigation — the hand-authored
+     * half of "seated".
+     *
+     * A `<key>.section` routeName is the spelling BOTH the declarative projector and every
+     * hand-authored host seat use; beam-ux's `RouteContextValidator` exempts exactly that suffix from
+     * leaf binding, which makes it a load-bearing marker rather than a convention this hopes holds.
+     *
+     * Every failure mode collapses to "no keys". A host's navigation factory is host code: it may
+     * want a tenant, an actor or a request this console run does not have, and it is entitled to
+     * throw. That is "could not tell", never "not seated" — the audit exists to surface the
+     * invisible, so a wrong `seated` would hide precisely what it was built to find, and a wrong
+     * `unseated` is merely noisy. The asymmetry is deliberate.
+     *
+     * @return list<string>
+     */
+    protected function handAuthoredKeys(): array
+    {
+        $keys = [];
+
+        foreach (array_keys($this->realms->all()) as $realm) {
+            try {
+                $factory = $this->navigations->tryResolve($realm);
+
+                if (! is_callable($factory)) {
+                    continue;
+                }
+
+                $nodes = $factory(new NavContext(attributes: ['realm' => $realm]));
+            } catch (\Throwable) {
+                continue;
+            }
+
+            foreach (is_array($nodes) ? $nodes : [] as $node) {
+                $name = $node instanceof NavNode ? $node->routeName : null;
+
+                if (is_string($name) && str_ends_with($name, '.section')) {
+                    $keys[] = substr($name, 0, -strlen('.section'));
+                }
+            }
+        }
 
         return array_values(array_unique($keys));
     }

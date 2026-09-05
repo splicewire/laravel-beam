@@ -43,7 +43,12 @@ class UnseatedNavSectionAuditTest extends TestCase
 
     private function audit(): UnseatedNavSectionAudit
     {
-        return new UnseatedNavSectionAudit($this->resources, $this->sections);
+        return new UnseatedNavSectionAudit(
+            $this->resources,
+            $this->sections,
+            $this->app->make(\Rushing\DataNav\NavRegistry::class),
+            $this->app->make(\Splicewire\Beam\Realm\RealmRegistry::class),
+        );
     }
 
     /** A resource whose Data class namespace reads as a family PACKAGE declaration. */
@@ -262,5 +267,48 @@ class UnseatedNavSectionAuditTest extends TestCase
             UnseatedNavSectionAudit::class,
             $this->app->make(UnseatedNavSectionAudit::class),
         );
+    }
+
+    /**
+     * The arm the data-nav dependency was taken for. A host that writes its own navigation seats
+     * sections in `Rushing\DataNav` vocabulary, and reading only the declarative registry made this
+     * audit 100% wrong where it mattered: measured 2026-09-05 at `~/Herd/splicewire-app` it reported
+     * SIX unseated sections — circuits, determination, knowledge, platform, studio, threads — every
+     * one of them seated by hand in `app/Navigation/AppNavigation.php`. With this arm it reads all
+     * nine of that host's seats and reports zero.
+     *
+     * Hand-authored nav is permanent, not legacy: `NavRegistry` is PickOne/Supersede precisely so a
+     * host can own its IA, so the instrument has to read both forms forever.
+     */
+    public function test_a_section_seated_by_hand_in_a_hosts_own_navigation_counts_as_seated(): void
+    {
+        $this->app->make(\Rushing\DataNav\NavRegistry::class)->register(
+            'tenant',
+            fn (): array => [
+                \Rushing\DataNav\NavLink::make(title: 'Studio', href: '/studio', routeName: 'studio.section'),
+                \Rushing\DataNav\NavLink::make(title: 'Not a seat', href: '/x', routeName: 'x.index'),
+            ],
+            by: 'host',
+        );
+
+        $seated = $this->audit()->seatedKeys();
+
+        // ⚠️ Asserted as an EXACT set, not with assertNotContains('x'). Dropping the `.section`
+        // suffix check is a mutation that SURVIVED the loose form: `substr('x.index', 0, -8)` on a
+        // 7-character name yields '' rather than 'x', so a probe for 'x' passes while the mutant
+        // happily seats every leaf in the tree. The exact set is what makes the suffix load-bearing.
+        $this->assertSame(['studio'], $seated);
+    }
+
+    /** A host navigation that throws is "could not tell", never "not seated" — silence, not a warning. */
+    public function test_a_throwing_host_navigation_is_silent_rather_than_fatal(): void
+    {
+        $this->app->make(\Rushing\DataNav\NavRegistry::class)->register(
+            'tenant',
+            fn (): array => throw new \RuntimeException('needs a tenant this console run has not got'),
+            by: 'host',
+        );
+
+        $this->assertSame([], $this->audit()->seatedKeys());
     }
 }
