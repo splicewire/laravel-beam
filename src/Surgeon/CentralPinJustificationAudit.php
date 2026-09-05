@@ -84,6 +84,54 @@ class CentralPinJustificationAudit implements DoctorAudit
      * name itself into one of these is not floor, it is a profile row that participates in the churn, and
      * the honest outcome is either a re-pin or a written exception — never a new category.
      *
+     * ## No `reachability`
+     * Unlike the other refusals this one is **prospective**: nothing on disk proposes the category today,
+     * and the reason to argue it here anyway is that the *evidence* against it has been deleted.
+     * Realm-and-floor-reconciliation ticket 07 removed the word from every docblock that carried it, so a
+     * future widening pass finds it absent from code and present only in git history — where a retracted
+     * claim and an established vocabulary are indistinguishable. **The argument has to outlive the
+     * evidence it was drawn from,** and this constant is where the widening pass will be standing.
+     *
+     * **The proposal.** A seventh member, `reachability`, or the same word as a {@see TAG} citation: the
+     * claim that a central-only table is unreachable from a tenant frame unless the pin is there, so what
+     * the pin "buys" is reachability.
+     *
+     * **The measurement.** It was written into three docblocks on 2026-08-30 — two `splicewire/tower`
+     * corpus models and `splicewire/laravel-beam-ux`'s `Theme/ThemeResolver` — and it was **false for all
+     * seven tower pins for the entire period it stood** (2026-08-30 → 2026-09-01).
+     * `Splicewire\Beam\Tenancy\PostgreSQLSchemaManager:13` (in `splicewire/laravel-beam-tenancy`)
+     * overrides stancl's `makeConnectionConfig()` hook with `"$databaseName,public"`, and
+     * `~/Herd/splicewire-app/config/tenancy.php:90` binds the `pgsql` driver to
+     * `HybridPostgresTenantDatabaseManager`, whose shared-schema branch reaches that override. A real
+     * tenant frame is therefore `search_path = tenant_<id>,public`, so a `public`-only table resolves the
+     * **identical physical relation** pinned or unpinned. Ticket 07 carries the mechanism and the five
+     * docblocks that asserted its opposite; read it there rather than re-deriving it from the tower
+     * sources, which no longer say either thing.
+     *
+     * **Why it recurs anyway** — which is the part worth remembering, because a refusal only holds if it
+     * explains the attraction. The word names something real: a pin genuinely does become load-bearing
+     * under database-per-tenant, where `public.<table>` is not in the tenant's catalog at all. It just
+     * names it in the **present tense** for a population of **zero** isolated tenants (0 of 18, measured
+     * 2026-09-01). A category minted for a hazard nobody has is a category that gets applied to the pins
+     * that do not have it — and three of this list's six existing members already have zero users, so the
+     * standing pressure on it is entirely toward opening.
+     *
+     * **What is correct instead.** A `public`-only pin is a **residency declaration, inert under today's
+     * configuration** — true, worth keeping, and not floor. That is prose in the pinning model's own
+     * docblock, alongside ticket 06's two reopen triggers (the first isolated-database tenant; removal or
+     * narrowing of the `,public` suffix in either estate override of the schema manager), never a member
+     * of a closed list.
+     *
+     * **Do not take the above on faith.** {@see CentralPinRelationIdentityAudit} is the standing
+     * instrument for the question `reachability` was standing in for: per pin, it compares the `pg_class`
+     * OID the pinned frame resolves against the OID the ambient tenant frame resolves, and reports the
+     * tower pins `convergent`. Run it before proposing the category — if some pin really is unreachable
+     * without its pin, that audit says so in OIDs instead of in prose.
+     *
+     * **Reopen condition.** The first isolated-database tenant goes live. Every currently-inert pin
+     * becomes load-bearing simultaneously, with no code change and no warning, and a shared vocabulary
+     * for that may genuinely earn a category — reopen with that tenant named.
+     *
      * @var list<string>
      */
     public const FLOOR_CATEGORIES = [
