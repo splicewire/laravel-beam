@@ -43,6 +43,11 @@ class ParticleRequestStrategy extends Strategy
     {
         $defaults = $endpointData->route?->defaults ?? [];
 
+        // Explicit method declarations take precedence over both operation and resource stamps.
+        if ($this->declaresItsOwnRequestBody($endpointData)) {
+            return null;
+        }
+
         // Operation routes (…/{id}/{name}) declare their payload the same way a resource does — the second
         // legal declaration site — so they document the same way (api-surface-coherence ticket 30).
         if (isset($defaults[ParticleOperationController::RESOURCE], $defaults[ParticleOperationController::NAME])) {
@@ -70,17 +75,6 @@ class ParticleRequestStrategy extends Strategy
         $key = $defaults[ParticleController::RESOURCE] ?? null;
         if ($key === null) {
             return null; // Not a particle route — defer to the other strategies.
-        }
-
-        // An EXPLICIT `#[RequestFromData]` on the action is the author's statement and wins over this
-        // route-derived inference — the same precedence the host's `urlParameters` chain states for
-        // `#[UrlParam]`. Without it, a route that carries the `_particle` stamp for GROUPING but declares
-        // its own body publishes the resource's input DTO instead: measured on the per-resource filter
-        // sub-surface (api-surface-coherence 35), whose `store`/`update` happen to be spelled the same as
-        // the generic controller's and so documented `POST /agents/filters` with AgentInputData's fields.
-        // Method NAME is this strategy's only trigger, which is exactly why the opt-out has to exist.
-        if ($this->declaresItsOwnRequestBody($endpointData)) {
-            return null;
         }
 
         $method = $endpointData->method?->getName();

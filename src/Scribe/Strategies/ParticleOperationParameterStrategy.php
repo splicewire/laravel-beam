@@ -95,7 +95,13 @@ class ParticleOperationParameterStrategy extends Strategy
             return [];
         }
 
-        return ScribeBodyParameters::fromSchema($generator->generate($reflection));
+        $schema = $generator->generate($reflection);
+
+        // Query parameters keep Scribe's flat types; dereference enums here and retain the
+        // full declaration for the OpenAPI hook to restore defaults lost by Parameter.
+        $endpointData->custom['dataQuerySchema'] = $schema;
+
+        return ScribeBodyParameters::fromSchema($schema, dereference: true);
     }
 
     /**

@@ -89,11 +89,18 @@ trait ModelsResponseEnvelope
      */
     protected function stash(ExtractedEndpointData $endpointData, array $schema): array
     {
-        $endpointData->custom['dataResponseSchemas'] = [[
+        // Replace only the status this strategy owns; declared errors and other statuses
+        // must survive into the OpenAPI assembly hook.
+        $responses = array_values(array_filter(
+            $endpointData->custom['dataResponseSchemas'] ?? [],
+            fn (array $response) => (int) $response['status'] !== 200,
+        ));
+        $responses[] = [
             'status' => 200,
             'schema' => $schema,
             'description' => null,
-        ]];
+        ];
+        $endpointData->custom['dataResponseSchemas'] = $responses;
 
         return [[
             'status' => 200,

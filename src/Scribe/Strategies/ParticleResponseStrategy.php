@@ -36,6 +36,19 @@ class ParticleResponseStrategy extends Strategy
 
     public function __invoke(ExtractedEndpointData $endpointData, array $settings = []): ?array
     {
+        // Scribe executes every strategy; returning a response does not stop extraction.
+        // Attribute and macro strategies run before this fallback, so retain their successful
+        // schemas. Error-only declarations still allow the particle to supply its success body.
+        foreach ($endpointData->custom['dataResponseSchemas'] ?? [] as $response) {
+            if ($response['status'] >= 200 && $response['status'] < 300) {
+                return null;
+            }
+        }
+
+        if (! empty($endpointData->custom['dataStreamSchemas'])) {
+            return null;
+        }
+
         $defaults = $endpointData->route?->defaults ?? [];
 
         // Operation routes (…/{id}/{name}): document the operation's DECLARED `output:` slot — the same
