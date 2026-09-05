@@ -207,6 +207,7 @@ use Splicewire\Beam\Surgeon\UndeclaredWriteMapAudit;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
 use Splicewire\Beam\Surgeon\UnindexedRegistryAudit;
 use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
+use Splicewire\Beam\Surgeon\UnseatedNavSectionAudit;
 use Splicewire\Beam\Surgeon\WireNameDeclarationAudit;
 use Splicewire\Beam\Webhooks\HookSubjectPruner;
 use Splicewire\Beam\Write\Contracts\WriteGate;
@@ -1842,6 +1843,23 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             OrphanedGroupWordAudit::class,
+        );
+
+        // The OTHER half of the same declaration, and the defect that produced the NavSectionRegistry
+        // seam: a `#[ParticleResource(section: '…')]` a package declares and NOTHING seats here, so the
+        // resources attach to a section that does not exist and never render. Measured across the family
+        // on 2026-09-05: 9 packages declared 30 sections and 11 of them named a section no host seated.
+        // No instrument could see it — every existing check asks about the declaration, and this is a
+        // question about the PAIR.
+        //
+        // Advisory, permanently. An unseated section is often the right outcome (the host chose not to
+        // surface those rows), and the audit's own reach is partial: a section a host seats in a
+        // hand-authored `Rushing\DataNav` tree is unreadable from beam, which does not depend on
+        // data-nav — it reports as unseated and says so in its own finding text. That is a check whose
+        // answer depends on the host, so it may never join an exit code.
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            UnseatedNavSectionAudit::class,
         );
 
         // beam-docs-satellite 65: a resource whose LIST read is gated by nothing — no predicate in its
