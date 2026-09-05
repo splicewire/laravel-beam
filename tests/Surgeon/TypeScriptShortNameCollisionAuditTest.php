@@ -121,9 +121,30 @@ class TypeScriptShortNameCollisionAuditTest extends TestCase
         $this->assertStringContainsString('3 #[TypeScript]-annotated classes', $findings[0]->detail);
     }
 
-    public function test_an_empty_input_set_produces_no_findings(): void
+    public function test_an_empty_input_set_is_inconclusive_in_both_channels(): void
     {
-        $this->assertSame([], $this->audit()->check([]));
+        foreach ([$this->audit()->check([]), $this->audit()->run()] as $findings) {
+            $this->assertCount(1, $findings);
+            $this->assertFalse($findings[0]->conclusive);
+            $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
+            $this->assertSame(TypeScriptShortNameCollisionAudit::CHECK, $findings[0]->check);
+        }
+    }
+
+    public function test_run_distinguishes_populated_clean_classes_from_collisions(): void
+    {
+        $classes = [
+            ['fqn' => 'A\\Data\\Widget', 'shortName' => 'Widget'],
+            ['fqn' => 'B\\Data\\Widget', 'shortName' => 'Widget'],
+        ];
+        $this->assertSame([], (new TypeScriptShortNameCollisionAudit($classes))->run());
+
+        $classes[0]['location'] = ['Shared'];
+        $classes[1]['location'] = ['Shared'];
+        $findings = (new TypeScriptShortNameCollisionAudit($classes))->run();
+        $this->assertCount(1, $findings);
+        $this->assertTrue($findings[0]->conclusive);
+        $this->assertSame(DoctorStatus::Fail, $findings[0]->status);
     }
 
     public function test_manifest_driven_registered_classes_never_reach_this_audit(): void

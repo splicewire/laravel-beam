@@ -86,10 +86,17 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
      */
     public function suggestFor(array $sdkLiterals, array $routePaths): array
     {
+        if ($sdkLiterals === []) {
+            return [new FixableFinding(
+                Finding::inconclusive(self::CHECK, 'No SDK endpoint literals were found; endpoint drift was not measured.'),
+                null,
+            )];
+        }
+
         $normalizedRoutes = array_map(fn ($p) => $this->normalize($p), $routePaths);
         $routeSet = array_flip($normalizedRoutes);
 
-        if ($sdkLiterals !== [] && ! $this->hostServesSdkSurface($sdkLiterals, $normalizedRoutes)) {
+        if (! $this->hostServesSdkSurface($sdkLiterals, $normalizedRoutes)) {
             return [new FixableFinding(
                 Finding::inconclusive(self::CHECK, sprintf(
                     'This host serves no route under any prefix the SDK addresses (%s), so it CONSUMES that '.

@@ -2,6 +2,10 @@
 
 namespace Splicewire\Beam\Tests\Surgeon;
 
+use Illuminate\Events\Dispatcher;
+use Illuminate\Routing\RouteCollection;
+use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\TestCase;
 use Rushing\Surgeon\Operation\FixableFinding;
 use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
@@ -13,13 +17,81 @@ use Splicewire\Beam\Surgeon\SdkEndpointDriftAudit;
  * match locates the corrected path and emits an applyable `literal-rewrite` suggestion (the beam POLICY
  * that nominates surgeon's generic literal-rewrite mechanism).
  *
- * Pure unit test over an in-memory fixture — no splicewire/laravel-connector package, no route table, no DB.
+ * Uses in-memory routes and temporary request source files — no installed SDK, booted app, or DB.
  */
 class SdkEndpointDriftAuditTest extends TestCase
 {
     private function audit(): SdkEndpointDriftAudit
     {
         return new SdkEndpointDriftAudit('/nonexistent'); // requestsDir unused by suggestFor()
+    }
+
+    public function test_empty_sdk_literals_are_inconclusive(): void
+    {
+        $findings = $this->audit()->suggestFor([], ['api/v1/things']);
+
+        $this->assertCount(1, $findings);
+        $this->assertFalse($findings[0]->finding->conclusive);
+        $this->assertSame('pass', $findings[0]->finding->status->value);
+        $this->assertSame(SdkEndpointDriftAudit::CHECK, $findings[0]->finding->check);
+        $this->assertNull($findings[0]->suggestion);
+    }
+
+    public function test_missing_and_empty_request_directories_are_inconclusive_in_both_channels(): void
+    {
+        $directory = sys_get_temp_dir().'/sdk-endpoint-audit-'.bin2hex(random_bytes(8));
+        $previousRouter = Route::getFacadeRoot();
+        $router = new Router(new Dispatcher);
+        $router->get('api/v1/things', fn () => null);
+        Route::swap($router);
+
+        try {
+            foreach ([false, true] as $exists) {
+                if ($exists) {
+                    mkdir($directory);
+                }
+                $audit = new SdkEndpointDriftAudit($directory);
+                $suggestions = $audit->suggestOperations();
+                $this->assertCount(1, $suggestions);
+                $this->assertNull($suggestions[0]->suggestion);
+                foreach ([$audit->run(), [$suggestions[0]->finding]] as $findings) {
+                    $this->assertCount(1, $findings);
+                    $this->assertFalse($findings[0]->conclusive);
+                    $this->assertSame('pass', $findings[0]->status->value);
+                    $this->assertSame(SdkEndpointDriftAudit::CHECK, $findings[0]->check);
+                }
+            }
+
+            file_put_contents($directory.'/ListThings.php', <<<'PHP'
+            <?php
+            class ListThings {
+                public function resolveEndpoint(): string {
+                    return '/api/v1/things';
+                }
+            }
+            PHP);
+            $this->assertSame([], $audit->run());
+            $this->assertSame([], $audit->suggestOperations());
+
+            $router->setRoutes(new RouteCollection);
+            $router->get('api/v1/renamed/things', fn () => null);
+            $suggestions = $audit->suggestOperations();
+            $this->assertCount(1, $suggestions);
+            $this->assertNotNull($suggestions[0]->suggestion);
+            foreach ([$audit->run(), [$suggestions[0]->finding]] as $findings) {
+                $this->assertCount(1, $findings);
+                $this->assertTrue($findings[0]->conclusive);
+                $this->assertSame('fail', $findings[0]->status->value);
+            }
+        } finally {
+            Route::swap($previousRouter);
+            if (is_file($directory.'/ListThings.php')) {
+                unlink($directory.'/ListThings.php');
+            }
+            if (is_dir($directory)) {
+                rmdir($directory);
+            }
+        }
     }
 
     public function test_it_corrects_a_drifted_endpoint_by_unique_suffix_match(): void

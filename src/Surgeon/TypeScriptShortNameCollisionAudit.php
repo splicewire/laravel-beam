@@ -102,6 +102,13 @@ class TypeScriptShortNameCollisionAudit implements DoctorAudit
      */
     public function check(array $annotatedClasses): array
     {
+        if ($annotatedClasses === []) {
+            return [Finding::inconclusive(
+                self::CHECK,
+                'No #[TypeScript]-annotated classes were found; emitted-path collisions were not measured.',
+            )];
+        }
+
         $byEmittedPath = [];
         foreach ($annotatedClasses as $row) {
             $path = self::emittedPathFor($row);
