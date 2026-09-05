@@ -11,6 +11,7 @@ use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Install\BeamInstallManifest;
+use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\PayloadParticleReader;
@@ -65,6 +66,7 @@ class BeamRegistryDeclarationTest extends TestCase
             GroupRegistry::class => 'beam.surface.groups',
             RealmRegistry::class => 'beam.realm',
             RealmOverlayRegistry::class => 'beam.realm.overlays',
+            NavSectionRegistry::class => 'beam.nav.sections',
             RealmResourceRegistry::class => 'beam.realm.resource-overrides',
             CapabilityRegistry::class => 'beam.capabilities',
             EventTypeRegistry::class => 'beam.events.types',
@@ -130,6 +132,7 @@ class BeamRegistryDeclarationTest extends TestCase
         // break the other two (ticket 06 D2). Where beam's behaviour is NOT the default, it says so.
         $this->assertSame(OnDuplicate::Admit, IsRegistry::of(RealmOverlayRegistry::class)?->onDuplicate);
         $this->assertSame(OnDuplicate::Admit, IsRegistry::of(AuditScanPaths::class)?->onDuplicate);
+        $this->assertSame(OnDuplicate::Admit, IsRegistry::of(NavSectionRegistry::class)?->onDuplicate);
 
         // And where it IS the default it still says so, because both docblocks argue overwrite is
         // intentional — a claim worth making in the attribute rather than by omission.

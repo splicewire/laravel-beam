@@ -123,6 +123,7 @@ use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Models\BeamSubmission;
 use Splicewire\Beam\Models\CentralActivityLog;
 use Splicewire\Beam\Models\Hook;
+use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\OpenApi\ConfiguredArtifactSpecSource;
 use Splicewire\Beam\OpenApi\OpenApiSpecSource;
 use Splicewire\Beam\Ownership\Contracts\OwnershipEdgeStore;
@@ -554,6 +555,16 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // byte. Unlike RealmRegistry it has no realm-creation verb — an overlay can only enrich a realm
         // RealmRegistry already ships, never conjure a new realm/tile.
         $this->app->singleton(RealmOverlayRegistry::class, fn () => new RealmOverlayRegistry);
+
+        // The package-facing NAV SEAT registry. A `#[ParticleResource(section:)]` declaration says which
+        // section a resource sits UNDER; until now nothing could SEAT that section, so 11 of the family's
+        // 30 package-declared sections named a section no host hand-authored and were correctly declared
+        // and invisible (measured 2026-09-05). A SINGLETON for the same reason RealmOverlayRegistry above
+        // is one: a capability package declaring a seat from its own provider must mutate the instance a
+        // beam-UX projector reads. Ships EMPTY ⇒ INERT — no seat ⇒ the host's hand-authored navigation is
+        // byte-for-byte. And, like the overlay registry, it has no realm-creation verb: a seat for a realm
+        // RealmRegistry does not ship is a silent no-op, never an error.
+        $this->app->singleton(NavSectionRegistry::class, fn () => new NavSectionRegistry);
 
         // The per-realm presentation-override registry (RDU-03) — the overlay layer behind the `?realm`
         // seam. A SINGLETON hydrated from `frame.realm_resource_overrides` at resolution (the default
