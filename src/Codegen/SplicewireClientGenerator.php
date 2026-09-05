@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Codegen;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Nette\PhpGenerator\Literal;
+use Nette\PhpGenerator\Method as PhpMethod;
 use Nette\PhpGenerator\PhpFile;
 use Nette\PhpGenerator\PsrPrinter;
 use Rushing\Codegen\Contracts\Generator;
@@ -23,8 +24,7 @@ use Saloon\Traits\Body\HasMultipartBody;
  * untyped self-client (`App\Generated\Saloon`); this one reproduces the hand-curated, domain-namespaced,
  * per-field-typed, prose-documented published package.
  *
- * Naming is CONVENTION-ONLY, delegated to the shared {@see SdkNaming} helper (the client-sdk-regen pivot:
- * the convention IS the standard, so there is no name-override any more):
+ * Canonical request naming is delegated to {@see SdkNaming}:
  *  - domain = the SDK domain REGISTRY (`options['domains']`, see {@see domainRegistry()}) →
  *    `Requests/<Domain>/…`, class `Resource\<Domain>`;
  *  - request class = derived from path+verb (`POST …/ideas` → `CreateIdea`, a trailing action segment
@@ -34,7 +34,9 @@ use Saloon\Traits\Body\HasMultipartBody;
  *    `@bodyParam` migration), so the doc rides for free.
  * A per-route hint (`options['requests']["{VERB} {path}"]`) still carries the STRUCTURAL escape hatches —
  * a body collapsed into one opaque array param (`collapseBody`) or a renamed path param (`pathParams`) —
- * WITHOUT re-encoding the SDK. The `class` name-override key is no longer honored; convention wins.
+ * without re-encoding wire fields. `resource` metadata preserves PHP convenience names, projections,
+ * bound arguments and variants; `aliases` emits legacy request subclasses of the canonical requests.
+ * The `class` name-override key is not honored.
  *
  * The SYNTACTIC builder (nette/php-generator) lives HERE in the driver, never in the shared codegen core.
  */
@@ -140,7 +142,26 @@ class SplicewireClientGenerator implements Generator
                 $printer->printFile($this->buildDataAdapter($namespace, $dtoName, (string) $spineFqn));
         }
 
+        foreach ($this->options['adapters'] ?? [] as $name => $adapter) {
+            $files["Data/{$name}.php"] = $printer->printFile(
+                (new SdkDataAdapterGenerator)->generate($namespace, $name, $adapter['spine'], $adapter)
+            );
+        }
+
         $files['GeneratedConnector.php'] = $printer->printFile($this->buildConnector($namespace, $byDomain));
+        foreach ($this->options['aliases'] ?? [] as $alias => $target) {
+            if (! isset($files[$target]) || isset($files[$alias])) {
+                throw new InvalidArgumentException("SDK alias [{$alias}] must target an emitted canonical file [{$target}].");
+            }
+            $aliasClass = str_replace('/', '\\', substr($alias, 0, -4));
+            $targetClass = $namespace.'\\'.str_replace('/', '\\', substr($target, 0, -4));
+            $file = new PhpFile;
+            $ns = $file->addNamespace($namespace.'\\'.Str::beforeLast($aliasClass, '\\'));
+            $ns->addUse($targetClass, $this->shortName($targetClass) === $this->shortName($aliasClass) ? 'Canonical'.$this->shortName($targetClass) : null);
+            $ns->addClass($this->shortName($aliasClass))->setExtends($targetClass)
+                ->addComment('@deprecated Use the convention-named parent; this generated alias preserves existing callers.');
+            $files[$alias] = $printer->printFile($file);
+        }
 
         return ['files' => $this->applyDenyList($files)];
     }
@@ -460,7 +481,7 @@ class SplicewireClientGenerator implements Generator
             $params[] = ['name' => $name, 'php' => 'array', 'docType' => 'array<string, mixed>', 'default' => [], 'doc' => null];
             [$queryPlan, $params] = $this->planQuery($queryParams, $params);
 
-            return [$params, $name, $queryPlan];
+            return [$this->declaredDefaults($params, $op), $name, $queryPlan];
         }
 
         $taken = array_column($params, 'name');
@@ -496,6 +517,9 @@ class SplicewireClientGenerator implements Generator
             ];
             if ($this->isOptional($field['type'])) {
                 $param['default'] = $this->phpType($field['type']) === 'array' ? [] : null;
+                if ($param['default'] === null) {
+                    $param['php'] = $this->nullable($param['php']);
+                }
             }
             $params[] = $param;
             $taken[] = $name;
@@ -504,7 +528,20 @@ class SplicewireClientGenerator implements Generator
 
         [$queryPlan, $params] = $this->planQuery($queryParams, $params);
 
-        return [$params, $bodyMap === [] ? null : $bodyMap, $queryPlan];
+        return [$this->declaredDefaults($params, $op), $bodyMap === [] ? null : $bodyMap, $queryPlan];
+    }
+
+    private function declaredDefaults(array $params, array $op): array
+    {
+        $defaults = $op['meta']['parameterDefaults'] ?? [];
+        foreach ($params as &$param) {
+            if (isset($param['wire']) && array_key_exists($param['wire'], $defaults)) {
+                $param['default'] = $defaults[$param['wire']];
+            }
+        }
+        unset($param);
+
+        return $params;
     }
 
     /**
@@ -671,48 +708,152 @@ class SplicewireClientGenerator implements Generator
         $class = $ns->addClass($domain)->setExtends($namespace.'\\Resource');
 
         foreach ($requests as $className => $spec) {
-            $ns->addUse($namespace.'\\Requests\\'.$domain.'\\'.$className);
+            $requestPath = "Requests/{$domain}/{$className}.php";
+            $aliasPath = array_search($requestPath, $this->options['aliases'] ?? [], true);
+            $requestClass = $namespace.'\\'.str_replace('/', '\\', substr($aliasPath === false ? $requestPath : $aliasPath, 0, -4));
+            $requestClassName = $this->shortName($requestClass);
+            $ns->addUse($requestClass);
             [$ctorParams] = $this->constructorPlan($spec['op'], $spec['hint']);
 
+            if (! empty($spec['op']['meta']['multipart']) && isset($spec['op']['meta']['multipartFile'])) {
+                $ctorParams = $this->injectMultipartFile($ctorParams, $spec['op']['meta']['multipartFile']);
+            }
+
             // The RAW method — the untyped `Response` send. Its name is the request class camelCased.
-            $rawName = Str::camel($className);
-            $rawMethod = $class->addMethod($rawName);
-            $args = [];
-            foreach ($ctorParams as $p) {
-                $mp = $rawMethod->addParameter($p['name'])->setType($p['php']);
-                if (array_key_exists('default', $p)) {
-                    $mp->setDefaultValue($p['default']);
+            $baseResourceOptions = $spec['hint']['resource'] ?? [];
+            foreach ([$baseResourceOptions, ...($baseResourceOptions['variants'] ?? [])] as $resourceOptions) {
+                $requestCtorParams = $ctorParams;
+                $rawName = $resourceOptions['raw'] ?? Str::camel($className);
+                [$facadeParams, $requestArgs] = $this->resourceInvocationPlan($requestCtorParams, $resourceOptions, array_column($spec['op']['body']['fields'] ?? [], 'name'));
+                $rawMethod = $class->addMethod($rawName);
+                $args = $this->resourceSignature($rawMethod, $facadeParams);
+                $rawMethod->setReturnType('Saloon\\Http\\Response')
+                    ->setBody("return \$this->connector->send(new {$requestClassName}(".implode(', ', $requestArgs).'));');
+
+                // The TYPED dual method (#06): present only when the op returns a MAPPED component. It unwraps
+                // the raw `Response` through the spine-DTO adapter's `fromResponse`.
+                if (isset($resourceOptions['result'])) {
+                    $typedName = $resourceOptions['typed'] ?? $this->typedMethodName($rawName, $domain);
+                    $typedMethod = $class->addMethod($typedName);
+                    $this->resourceSignature($typedMethod, $facadeParams);
+                    $result = $resourceOptions['result'];
+                    $typedMethod->setReturnType($result['type'] ?? 'array')->setBody(
+                        $this->projectionBody($rawName, $args, $result)
+                    );
+
+                    continue;
                 }
-                $args[] = '$'.$p['name'];
-            }
-            $rawMethod->setReturnType('Saloon\\Http\\Response')
-                ->setBody("return \$this->connector->send(new {$className}(".implode(', ', $args).'));');
 
-            // The TYPED dual method (#06): present only when the op returns a MAPPED component. It unwraps
-            // the raw `Response` through the spine-DTO adapter's `fromResponse`.
-            $component = $this->returnComponent($spec['op']);
-            if ($component === null || ! isset($dataMap[$component])) {
-                continue;
-            }
+                $component = $this->returnComponent($spec['op']);
+                $adapter = $resourceOptions['adapter'] ?? null;
+                if ($adapter === null && ($component === null || ! isset($dataMap[$component]))) {
+                    if (isset($resourceOptions['typed']) || ! empty($resourceOptions['typedAliases'])) {
+                        throw new InvalidArgumentException("SDK typed facade for [{$spec['op']['method']} {$spec['op']['path']}] has no mapped response declaration.");
+                    }
 
-            $dtoName = $this->dtoShortName($component, (string) $dataMap[$component]);
-            $ns->addUse($namespace.'\\Data\\'.$dtoName);
-
-            $typedName = $this->typedMethodName($rawName, $domain);
-            $typedMethod = $class->addMethod($typedName)->addComment('Typed view over the `{data: {...}}` envelope.');
-            $callArgs = [];
-            foreach ($ctorParams as $p) {
-                $mp = $typedMethod->addParameter($p['name'])->setType($p['php']);
-                if (array_key_exists('default', $p)) {
-                    $mp->setDefaultValue($p['default']);
+                    continue;
                 }
-                $callArgs[] = '$'.$p['name'];
+
+                if ($adapter !== null && ! isset($this->options['adapters'][$adapter])) {
+                    throw new InvalidArgumentException("Unknown SDK adapter [{$adapter}].");
+                }
+                $dtoName = $adapter ?? $this->dtoShortName($component, (string) $dataMap[$component]);
+                $ns->addUse($namespace.'\\Data\\'.$dtoName);
+
+                $typedName = $resourceOptions['typed'] ?? $this->typedMethodName($rawName, $domain);
+                $typedMethod = $class->addMethod($typedName)->addComment('Typed response view through the generated transport adapter.');
+                $callArgs = $this->resourceSignature($typedMethod, $facadeParams);
+                if (! empty($spec['op']['returnsMany'])) {
+                    $typedMethod->setReturnType('array')->addComment("@return array<int, {$dtoName}>")
+                        ->setBody("\$data = \$this->{$rawName}(".implode(', ', $callArgs).")->throw()->json('data');\n"
+                            ."return array_map(static fn (array \$row): {$dtoName} => {$dtoName}::fromArray(\$row), is_array(\$data) ? \$data : []);");
+                } else {
+                    $typedMethod->setReturnType($namespace.'\\Data\\'.$dtoName)
+                        ->setBody("return {$dtoName}::fromResponse(\$this->{$rawName}(".implode(', ', $callArgs).'));');
+                }
+                foreach ($resourceOptions['typedAliases'] ?? [] as $alias) {
+                    $aliasMethod = $class->addMethod($alias)->setReturnType($typedMethod->getReturnType());
+                    $this->resourceSignature($aliasMethod, $facadeParams);
+                    $aliasMethod->setBody('return $this->'.$typedName.'('.implode(', ', $callArgs).');');
+                }
             }
-            $typedMethod->setReturnType($namespace.'\\Data\\'.$dtoName)
-                ->setBody("return {$dtoName}::fromResponse(\$this->{$rawName}(".implode(', ', $callArgs).'));');
         }
 
         return $file;
+    }
+
+    /** @return list<string> PHP argument expressions for forwarding this signature. */
+    private function resourceSignature(PhpMethod $method, array $params): array
+    {
+        $arguments = [];
+        foreach ($params as $param) {
+            $parameter = $method->addParameter($param['name'])->setType($param['php']);
+            if (array_key_exists('default', $param)) {
+                $parameter->setDefaultValue($param['default']);
+            }
+            $arguments[] = '$'.$param['name'];
+        }
+
+        return $arguments;
+    }
+
+    /** Separate PHP facade parameter names and fixed arguments from the generated request contract. */
+    private function resourceInvocationPlan(array $params, array $options, array $bodyFields): array
+    {
+        $signature = [];
+        $arguments = [];
+        foreach ($params as $param) {
+            $original = $param['name'];
+            if (array_key_exists($original, $options['bind'] ?? [])) {
+                $arguments[] = var_export($options['bind'][$original], true);
+
+                continue;
+            }
+            if (isset($options['body']) && in_array($param['wire'] ?? null, $bodyFields, true)) {
+                $name = $options['body'];
+                if (! in_array($name, array_column($signature, 'name'), true)) {
+                    $signature[] = ['name' => $name, 'php' => 'array'];
+                }
+                $argument = '$'.$name.'['.var_export($param['wire'], true).']';
+                if (array_key_exists('default', $param)) {
+                    $argument .= ' ?? '.var_export($param['default'], true);
+                }
+                $arguments[] = $argument;
+
+                continue;
+            }
+            $param['name'] = $options['parameters'][$original] ?? $original;
+            $signature[] = $param;
+            $arguments[] = '$'.$param['name'];
+        }
+
+        return [$signature, $arguments];
+    }
+
+    /** Render a checked convenience projection; the raw method still exposes every HTTP status. */
+    private function projectionBody(string $rawName, array $args, array $result): string
+    {
+        $path = array_key_exists('path', $result) ? var_export($result['path'], true) : '';
+        $body = '$data = $this->'.$rawName.'('.implode(', ', $args).")->throw()->json({$path});\n";
+        $error = var_export($result['error'] ?? 'The response is missing a required value.', true);
+        foreach ($result['required'] ?? [] as $key) {
+            $key = var_export($key, true);
+            $body .= "if (!is_string(\$data[{$key}] ?? null) || \$data[{$key}] === '') {\n"
+                ."    throw new \\UnexpectedValueException({$error});\n}\n";
+        }
+        $type = $result['type'] ?? 'array';
+        if ($type === 'string') {
+            return $body."if (!is_string(\$data) || \$data === '') {\n"
+                ."    throw new \\UnexpectedValueException({$error});\n}\nreturn \$data;";
+        }
+        if ($type !== 'array') {
+            throw new InvalidArgumentException("Unsupported SDK JSON projection type [{$type}].");
+        }
+        if (($result['items'] ?? null) === 'int') {
+            return $body.'return array_values(array_map(static fn ($value): int => (int) $value, is_array($data) ? $data : []));';
+        }
+
+        return $body.'return is_array($data) ? $data : [];';
     }
 
     /**
@@ -733,59 +874,12 @@ class SplicewireClientGenerator implements Generator
         return $rawName.'Typed';
     }
 
-    /**
-     * The client `Data\*` adapter (#06): a THIN subclass of the spine-wire DTO adding only the Saloon
-     * `Response` → DTO unwrap. No second field copy — the wire vocabulary + `fromArray` live in the
-     * licensed spine tier (ADR-0093).
-     *
-     * ⚠️ THE UNWRAP THROWS FIRST, DELIBERATELY. Saloon hands back a well-formed `Response` on a 4xx/5xx
-     * rather than raising, so the earlier body — `static::fromArray($response->json('data') ?? [])` —
-     * turned a REFUSED write into a DTO with an empty id and no exception: a save that never happened,
-     * shaped exactly like one that did. Measured 2026-09-03 at `~/Herd/entreport`, twice in this one
-     * connector: a refused provision was stored as an entity with an empty id, and a section submit
-     * returned `void` so the page redirected as though it had saved. Both call sites were then guarded
-     * BY HAND, at the host — which is the wrong tier for a defect the generator reproduces into every
-     * adapter it emits.
-     *
-     * `$response->throw()` is a no-op on a 2xx, so the happy path is unchanged; on a failure it raises
-     * Saloon's `RequestException` and the caller can no longer mistake a refusal for a result. This is
-     * narrower than `alwaysThrowOnErrors()` on the connector, which would also break callers that
-     * legitimately read a 404 — here it fires only where a caller has asked for a typed DTO, and a
-     * non-2xx can never produce one.
-     */
+    /** The spine owns wire fields; the adapter owns only transport extraction. */
     private function buildDataAdapter(string $namespace, string $dtoName, string $spineFqn): PhpFile
     {
-        $file = new PhpFile;
-        $file->setStrictTypes(false);
-        $ns = $file->addNamespace($namespace.'\\Data');
-        $ns->addUse('Saloon\\Http\\Response');
-
-        // Alias the spine base to `Spine<Name>` (the golden import convention) when the short-names collide.
-        $spineShort = $this->shortName($spineFqn);
-        $alias = $spineShort === $dtoName ? 'Spine'.$dtoName : null;
-        $ns->addUse($spineFqn, $alias);
-        $baseRef = $alias ?? $spineShort;
-
-        $class = $ns->addClass($dtoName)->setExtends($spineFqn);
-        $class->addComment(
-            "Connector-side Saloon adapter over the shared spine {@see {$baseRef}} (ADR-0093): the wire\n".
-            "vocabulary + its `fromArray` live in the licensed spine tier; this thin subclass adds ONLY the\n".
-            'Saloon Response->DTO unwrap, so there is no drift-prone second field copy here.'
+        return (new SdkDataAdapterGenerator)->generate(
+            $namespace, $dtoName, $spineFqn, $this->options['adapters'][$dtoName] ?? [],
         );
-
-        $method = $class->addMethod('fromResponse')
-            ->setStatic()
-            ->setReturnType('self')
-            ->setBody(
-                "// A refused write must not hydrate. Saloon returns a well-formed Response on a 4xx/5xx,\n"
-                ."// so without this the caller receives a DTO with an empty id and NO exception — a save\n"
-                ."// that never happened, indistinguishable from one that did. throw() no-ops on a 2xx.\n"
-                ."\$response->throw();\n\n"
-                ."return static::fromArray(\$response->json('data') ?? []);"
-            );
-        $method->addParameter('response')->setType('Saloon\\Http\\Response');
-
-        return $file;
     }
 
     /**
@@ -805,7 +899,7 @@ class SplicewireClientGenerator implements Generator
 
         foreach (array_keys($byDomain) as $domain) {
             $ns->addUse($namespace.'\\Resource\\'.$domain);
-            $connector->addMethod(Str::camel($domain))
+            $connector->addMethod($this->options['factories'][$domain] ?? Str::camel($domain))
                 ->setReturnType($namespace.'\\Resource\\'.$domain)
                 ->setBody("return new {$domain}(\$this);");
         }
