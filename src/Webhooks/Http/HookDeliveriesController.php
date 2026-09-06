@@ -9,6 +9,7 @@ use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Rushing\RequestLogs\Models\RequestLog;
 use Splicewire\Beam\Data\ResponseBody;
 use Splicewire\Beam\Models\Hook;
+use Splicewire\Beam\Webhooks\Data\HookDeliveriesResponseData;
 use Splicewire\Beam\Webhooks\Data\HookDeliveryData;
 use Splicewire\Beam\Webhooks\DispatchWebhookJob;
 use Throwable;
@@ -47,7 +48,7 @@ class HookDeliveriesController extends Controller
      * body: see {@see HookDeliveryData} for why that half of 12 §6 is a recorded contradiction rather
      * than an omission.
      */
-    #[ResponseFromData(HookDeliveryData::class, description: 'The attempts, newest first.')]
+    #[ResponseFromData(HookDeliveriesResponseData::class, description: 'The attempts, newest first.')]
     public function index(Request $request, Hook $hook)
     {
         Gate::authorize('view', $hook);

@@ -9,6 +9,7 @@ use Splicewire\Beam\Data\ResponseBody;
 use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Webhooks\Data\EventCatalogData;
+use Splicewire\Beam\Webhooks\Data\EventCatalogResponseData;
 use Splicewire\Beam\Webhooks\Data\EventTypeDescriptorData;
 
 /**
@@ -78,7 +79,7 @@ class HookEventCatalogController extends Controller
      * and one line of prose about when it fires. Filtered to a single resource when reached through
      * the scoped exposure.
      */
-    #[ResponseFromData(EventCatalogData::class)]
+    #[ResponseFromData(EventCatalogResponseData::class)]
     public function index(Request $request)
     {
         $resource = $this->resourceFromRoute($request);

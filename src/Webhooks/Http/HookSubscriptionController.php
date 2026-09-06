@@ -17,6 +17,7 @@ use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Webhooks\Data\CreatedHookData;
+use Splicewire\Beam\Webhooks\Data\CreatedHookResponseData;
 use Splicewire\Beam\Webhooks\HookEmitter;
 use Splicewire\Beam\Webhooks\HookSubscriptionReach;
 use Throwable;
@@ -85,7 +86,7 @@ class HookSubscriptionController extends Controller
      * `verifiedAt`.
      */
     #[RequestFromData(HookInputData::class)]
-    #[ResponseFromData(CreatedHookData::class, status: 201, description: 'The subscription, plus its signing secret — for the only time it is transmitted.')]
+    #[ResponseFromData(CreatedHookResponseData::class, status: 201, description: 'The subscription, plus its signing secret — for the only time it is transmitted.')]
     public function store(Request $request)
     {
         $input = HookInputData::validateAndCreate($request);
