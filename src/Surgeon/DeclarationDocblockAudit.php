@@ -128,12 +128,15 @@ class DeclarationDocblockAudit implements DoctorAudit
      * Docblock spans a `$name` inside is NOT a reference to a declared parameter, stripped before the
      * phantom scan: an inline code span, a quoted string, and — the one that is easy to miss — the
      * parameter list of a `callable(...)` / `Closure(...)` TYPE, whose names belong to the callable and
-     * have nothing to do with the declaration being documented. The last pattern is recursive so a nested
-     * generic (`Closure(array<string, mixed> $filters): list<string>`) is consumed whole.
+     * have nothing to do with the declaration being documented. PHPDoc see/link targets naming a class
+     * property also belong to that class; their labels remain subject to the phantom scan.
+     * The callable pattern is recursive so a nested generic
+     * (`Closure(array<string, mixed> $filters): list<string>`) is consumed whole.
      *
      * @var list<string>
      */
     public const NOT_A_PARAMETER_REFERENCE = [
+        '/\{@(?:see|link)\h+\\\\?(?:[A-Za-z_][A-Za-z0-9_]*\\\\)*[A-Za-z_][A-Za-z0-9_]*::\$[A-Za-z_][A-Za-z0-9_]*(?=\h[^{}\r\n]*\}|\})/',
         '/`[^`]*`/',
         '/"[^"]*"/',
         "/'[^']*'/",

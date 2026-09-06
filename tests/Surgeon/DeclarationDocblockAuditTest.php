@@ -111,6 +111,78 @@ class DeclarationDocblockAuditTest extends TestCase
         $this->assertSame([], $this->findings([$file], check: DeclarationDocblockAudit::CHECK_PHANTOM));
     }
 
+    public function test_phpdoc_property_references_are_not_constructor_parameters(): void
+    {
+        $file = $this->php('RouteContextPlan.php', <<<'PHP'
+            <?php
+
+            namespace Acme;
+
+            class RouteContextPlan
+            {
+                /**
+                 * @param  array<int, array{routeName: string, path: string}>  $centralStandalone  resource-less leaves for a CENTRAL realm ({@see RealmDefinition::$central})
+                 */
+                public function __construct(public readonly array $centralStandalone = []) {}
+            }
+            PHP);
+
+        $this->assertSame([], $this->findings([$file], check: DeclarationDocblockAudit::CHECK_PHANTOM));
+    }
+
+    public function test_phpdoc_references_do_not_hide_real_phantoms_on_the_same_param_line(): void
+    {
+        $file = $this->php('References.php', <<<'PHP'
+            <?php
+
+            namespace Acme;
+
+            class References
+            {
+                /**
+                 * @param  array  $centralStandalone  $before, {@see \Acme\RealmDefinition::$central label mentioning $label}, {@link Realm\Definition::$scoped}, and $after
+                 * @param  string  $missing  {@see self::$central}
+                 */
+                public function __construct(public array $centralStandalone = []) {}
+            }
+            PHP);
+
+        $findings = $this->findings([$file], check: DeclarationDocblockAudit::CHECK_PHANTOM);
+
+        $this->assertCount(4, $findings);
+        foreach (['before', 'label', 'after', 'missing'] as $index => $name) {
+            $this->assertSame(DoctorStatus::Fail, $findings[$index]->status);
+            $this->assertStringContainsString('directs the reader to $'.$name.' on an @param line', $findings[$index]->detail);
+            $this->assertStringContainsString('Acme\References', $findings[$index]->detail);
+        }
+    }
+
+    public function test_only_complete_phpdoc_property_reference_targets_are_excluded(): void
+    {
+        $file = $this->php('ReferenceBoundaries.php', <<<'PHP'
+            <?php
+
+            class ReferenceBoundaries
+            {
+                /**
+                 * @param  array  $items  {@see RealmDefinition::$central} does not declare $central
+                 * @param  array  $items  {@see RealmDefinition::$unterminated
+                 * @param  array  $items  {@example RealmDefinition::$example}
+                 * @param  array  $items  {@see RealmDefinition::$invalid!}
+                 */
+                public function __construct(public array $items = []) {}
+            }
+            PHP);
+
+        $findings = $this->findings([$file], check: DeclarationDocblockAudit::CHECK_PHANTOM);
+
+        $this->assertCount(4, $findings);
+        foreach (['central', 'unterminated', 'example', 'invalid'] as $index => $name) {
+            $this->assertSame(DoctorStatus::Fail, $findings[$index]->status);
+            $this->assertStringContainsString('directs the reader to $'.$name.' on an @param line', $findings[$index]->detail);
+        }
+    }
+
     public function test_a_promoted_property_and_a_plain_property_both_count_as_declared(): void
     {
         $file = $this->php('Mixed.php', <<<'PHP'
