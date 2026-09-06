@@ -85,7 +85,7 @@ class RouteReturnType
     }
 
     /**
-     * @return array{type: string, many: bool}|null the TS type + whether the endpoint returns a list
+     * @return array{type: string, many: bool, returnsBody?: bool}|null the TS type and its response projection
      */
     public function for(Route $route): ?array
     {
@@ -97,10 +97,10 @@ class RouteReturnType
             ];
         }
 
-        // (2) The method attribute. It declares a body shape, not a cardinality, so `many` is false — a
-        // collection response still declares its item type and says so explicitly via the macro.
+        // (2) The attribute declares the complete HTTP body, including any envelope. Preserve that
+        // projection so clients do not unwrap it as though it were a particle payload.
         if ($declared = $this->fromResponseAttribute($route)) {
-            return ['type' => ClientTypeName::for($declared), 'many' => false];
+            return ['type' => ClientTypeName::for($declared), 'many' => false, 'returnsBody' => true];
         }
 
         // (3) A particle operation's declared output slot.
@@ -152,21 +152,23 @@ class RouteReturnType
     }
 
     /**
-     * The response Data class declared by `#[ResponseFromData]` on the route's controller method.
+     * The raw PHP Data class for the lowest declared 2xx on the controller method. Declaration
+     * discovery shares this reader with client generation instead of reversing a TypeScript name.
      *
      * @return class-string|null
      */
-    private function fromResponseAttribute(Route $route): ?string
+    public function fromResponseAttribute(Route $route): ?string
     {
         return $this->declarationsFor($route)['response'];
     }
 
     /**
-     * The event map declared by `#[StreamsFromData]` on the route's controller method.
+     * The raw PHP event map declared by `#[StreamsFromData]` on the controller method, shared with
+     * declaration discovery before TypeScript names are projected.
      *
      * @return array<string, list<class-string>>
      */
-    private function fromStreamsAttribute(Route $route): array
+    public function fromStreamsAttribute(Route $route): array
     {
         return $this->declarationsFor($route)['streams'];
     }

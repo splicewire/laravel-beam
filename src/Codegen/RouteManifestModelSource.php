@@ -39,7 +39,7 @@ class RouteManifestModelSource
     }
 
     /**
-     * @param  array<string, array{path: string, methods: list<string>, returns?: string, returnsMany?: bool, streams?: list<string>}>  $manifest
+     * @param  array<string, array{path: string, methods: list<string>, returns?: string, returnsMany?: bool, returnsBody?: bool, streams?: list<string>}>  $manifest
      */
     private function addRealm(CodegenModel $model, array $manifest, string $realm): void
     {
@@ -47,6 +47,10 @@ class RouteManifestModelSource
             $methods = $entry['methods'] ?? [];
 
             $meta = ['realm' => $realm];
+
+            if (! empty($entry['returnsBody'])) {
+                $meta['returnsBody'] = true;
+            }
 
             // SSE event DTOs (surgeon-audit-viability ticket 28) ride in `meta` alongside `realm` —
             // the same untyped host-facet escape hatch, not a core-model concept (a stream has no

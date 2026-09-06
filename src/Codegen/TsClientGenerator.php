@@ -107,6 +107,10 @@ class TsClientGenerator implements Generator
                 $entry['returnsMany'] = true;
             }
 
+            if (! empty($op['meta']['returnsBody'])) {
+                $entry['returnsBody'] = true;
+            }
+
             if (isset($op['meta']['streams'])) {
                 $entry['streams'] = $op['meta']['streams'];
             }
@@ -276,6 +280,7 @@ class TsClientGenerator implements Generator
                 'realm' => $realm,
                 'type' => $entry['returns'].(($entry['returnsMany'] ?? false) ? '[]' : ''),
                 'returns' => $entry['returns'],
+                'responseExpression' => ($entry['returnsBody'] ?? false) ? 'res.data' : 'res.data.data',
                 'domainKey' => $domainSlug,
                 'hookName' => 'use'.Str::studly($domainSlug).Str::studly($action),
                 'params' => $paramMatches[1],
@@ -472,7 +477,7 @@ class TsClientGenerator implements Generator
                 ."        queryKey: {$key},\n"
                 ."        queryFn: async () => {\n"
                 ."            const res = await {$client}.get({$routeCall});\n"
-                ."            return res.data.data as {$type};\n"
+                ."            return {$e['responseExpression']} as {$type};\n"
                 ."        },\n"
                 ."        ...options,\n"
                 ."    });\n"
@@ -493,7 +498,7 @@ class TsClientGenerator implements Generator
             ."    return useMutation({\n"
             ."        mutationFn: async ({$varsParam}) => {\n"
             ."            const res = await {$call};\n"
-            ."            return res.data.data as {$type};\n"
+            ."            return {$e['responseExpression']} as {$type};\n"
             ."        },\n"
             ."        ...options,\n"
             ."    });\n"
@@ -557,7 +562,7 @@ class TsClientGenerator implements Generator
             ."        set({ loading: true, error: null });\n"
             ."        try {\n"
             ."            const res = await {$client}.get({$routeFn}('{$e['name']}'));\n"
-            ."            set({ data: res.data.data as {$type}, loading: false });\n"
+            ."            set({ data: {$e['responseExpression']} as {$type}, loading: false });\n"
             ."        } catch (error) {\n"
             ."            set({ error, loading: false });\n"
             ."        }\n"

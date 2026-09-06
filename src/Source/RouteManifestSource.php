@@ -30,6 +30,8 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
  *                    presence is what promotes an entry from a route-map-only line to a typed hook. Absent
  *                    ⇒ the entry gets a route-map entry only (its hook stays hand-written).
  *   - `returnsMany` (optional) true ⇒ the hook/store yields `Splicewire.Tower.Data.X[]` (a list/index endpoint).
+ *   - `returnsBody` (optional) true ⇒ `returns` describes the complete HTTP body. When absent,
+ *                    hooks and stores retain the particle/legacy envelope payload projection.
  *   - `streams`     (optional) an SSE route's event map — wire `event:` name → list of TS-qualified event
  *                    DTOs. Mutually exclusive with `returns` in practice; the generator emits a
  *                    discriminated-union type plus a `useSseStream` hook per entry.
@@ -45,7 +47,7 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
 interface RouteManifestSource
 {
     /**
-     * @return array<string, array{path: string, methods: list<string>, visibility: string, returns?: string, returnsMany?: bool, streams?: array<string, list<string>>, unresolved?: bool}>
+     * @return array<string, array{path: string, methods: list<string>, visibility: string, returns?: string, returnsMany?: bool, returnsBody?: bool, streams?: array<string, list<string>>, unresolved?: bool}>
      */
     public function toArray(): array;
 }
