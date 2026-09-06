@@ -12,6 +12,7 @@ use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Routing\BeamRouteProxy;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Source\RouteManifestSource;
 use Splicewire\Beam\Surface\RuntimeCorroborator;
@@ -287,8 +288,29 @@ class UndeclaredSurfaceAudit implements DoctorAudit
     /** Whether any of the invariant's legal declaration sites answers for this route. */
     private function isDeclared(RouteInstance $route): bool
     {
-        if ($route->getAction('returns') || $route->getAction('streams')) {
-            return true;
+        // ⚠️ This read was `getAction('returns')` / `getAction('streams')` — the WRONG KEY, so every
+        // `->beam()->returns(...)` mount in the estate counted as UNDECLARED and this ratchet has been
+        // overstating the gap since the macro existed. Three files disagreed:
+        //
+        //   BeamRouteProxy::set()               writes $route->action['beam'][$key]   (ACTION = 'beam')
+        //   RouteActionMetadataReader::get()    reads  getAction('beam.'.$key)         ← the real reader
+        //   this audit                          read   getAction($key)                 ← nothing writes it
+        //
+        // Corroborated rather than reasoned: `credits.show`, `credits.checkout` and
+        // `subscription.portal` all carry `->beam()->returns(...)` at the flagship
+        // (`routes/tenant.php:837,842,864`) AND already have generated typed hooks on disk in
+        // `ui/src/generated/hooks/beam-commerce-{credits,subscription}.ts` — yet all three sat in the
+        // undeclared population. A declaration the CODEGEN honours and the AUDIT does not see.
+        //
+        // That matters more here than in most places: this class's own docblock argues at length that
+        // the number must be comparable across two machines, and it spent that care on `--no-dev` and
+        // debugbar while a key mismatch inflated every host's count. Read through the same constant the
+        // writer uses, so the two cannot drift apart again. The bare keys are still accepted, since a
+        // hand-written `->defaults('returns', ...)` is a legal spelling this must not start missing.
+        foreach (['returns', 'streams'] as $key) {
+            if ($route->getAction(BeamRouteProxy::ACTION.'.'.$key) || $route->getAction($key)) {
+                return true;
+            }
         }
 
         $resourceKey = $route->defaults[ParticleController::RESOURCE] ?? null;

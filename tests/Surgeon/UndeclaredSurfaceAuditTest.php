@@ -104,14 +104,37 @@ class UndeclaredSurfaceAuditTest extends TestCase
 
     // ── the declared set is subtracted ──────────────────────────────────────────────────────────────
 
+    /**
+     * ⚠️ **This test did not use the macro its own name claims, and that is how the defect survived.**
+     *
+     * Until 2026-09-05 it called `annotate(['returns' => ...])`, which writes the FLAT action key via
+     * `setAction()`. The audit read that same flat key. So the test and the bug agreed with each other
+     * and neither agreed with `->beam()->returns()`, which writes `action['beam']['returns']`
+     * (`BeamRouteProxy::set()`, `ACTION = 'beam'`) and is what `RouteActionMetadataReader::get()` —
+     * the reader the CODEGEN uses — actually reads.
+     *
+     * Consequence: every real `->beam()->returns()` mount in the estate counted as undeclared, and the
+     * ratchet overstated the gap, while a green test sat on top of it named for the thing it was not
+     * doing. Now it exercises the macro. The flat-key case is kept below, because a hand-written
+     * `setAction` spelling is still legal and must not start being missed.
+     */
     public function test_an_explicit_returns_macro_counts_as_declared(): void
     {
+        Route::get('api/v1/annotated', [UndeclaredFixtureController::class, 'plain'])
+            ->beam()->returns(WidgetGateData::class);
+
+        $this->assertNotContains('api/v1/annotated', $this->uris());
+    }
+
+    /** The flat action key stays legal — a hand-written `setAction(['returns' => ...])` still declares. */
+    public function test_a_flat_returns_action_key_also_counts_as_declared(): void
+    {
         $this->annotate(
-            Route::get('api/v1/annotated', [UndeclaredFixtureController::class, 'plain']),
+            Route::get('api/v1/flat-annotated', [UndeclaredFixtureController::class, 'plain']),
             ['returns' => WidgetGateData::class],
         );
 
-        $this->assertNotContains('api/v1/annotated', $this->uris());
+        $this->assertNotContains('api/v1/flat-annotated', $this->uris());
     }
 
     public function test_a_response_attribute_on_the_method_counts_as_declared(): void
