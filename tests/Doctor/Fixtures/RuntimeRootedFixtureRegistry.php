@@ -6,7 +6,6 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryIndex;
 
 /**
@@ -31,14 +30,12 @@ class RuntimeRootedFixtureRegistry implements Registry
         $this->entries = new BasicRegistry($writeOnDuplicate
             ? new IsRegistry(
                 root: $root,
-                of: 'a registry whose root was computed at boot',
-                arity: RegistryArity::PickOne,
                 onDuplicate: OnDuplicate::Supersede,
+                description: 'a registry whose root was computed at boot',
             )
             : new IsRegistry(
                 root: $root,
-                of: 'a registry whose root was computed at boot',
-                arity: RegistryArity::PickOne,
+                description: 'a registry whose root was computed at boot',
             ));
     }
 

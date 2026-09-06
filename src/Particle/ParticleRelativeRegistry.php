@@ -14,7 +14,6 @@ use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\RecordsSupersession;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\Superseded;
 
@@ -36,11 +35,8 @@ use Rushing\Popcorn\Registries\Superseded;
  * mirror is the DOT; see {@see ParticleRelative::registryKey()} for why transcribing the literal
  * characters would have been the wrong kind of faithfulness.
  *
- * ## Arity is one step, and stays scalar
- *
- * `<parent>.<child>` is a FLAT keyspace: a read picks one edge by its full address in one step.
- * Enumerating a parent's edges is `matches('…relatives.<parent>')` — the same one-step read scoped to a
- * branch, not a second arity member (registry-kernel ticket 47's rule).
+ * `<parent>.<child>` addresses one edge. Enumerate a parent's edges with
+ * `matches('…relatives.<parent>')`.
  *
  * ## `Supersede`, and what it means here specifically
  *
@@ -54,19 +50,9 @@ use Rushing\Popcorn\Registries\Superseded;
  */
 #[IsRegistry(
     root: 'beam.particle.relatives',
-    of: 'declared relative edges — a child particle resource mounted under a route-model-bound parent',
-    arity: RegistryArity::PickOne,
     entryType: ParticleRelative::class,
     onDuplicate: OnDuplicate::Supersede,
-    note: 'Keys are `<parent>.<child>` under the stamped root, off the self-keying entry '
-        .'({@see ParticleRelative::registryKey()}). The edge is declared by the COUPLING OWNER — never '
-        .'by the child\'s package or the parent\'s, because either would force one tier to name the '
-        .'other (api-surface-coherence ticket 50 / 18 §D1). Nothing about an edge lives on '
-        .'`#[ParticleResource]`. An edge whose `via` is behavioural rides as the DECLARING CLASS NAME in '
-        .'the route defaults rather than as a Closure, which is what keeps the table `route:cache`-able '
-        .'(ticket 51 §2). `Supersede` means a second declaration of one `<parent>.<child>` pair is a '
-        .'second opinion about the same coupling and the later wins; two distinct edges between one pair '
-        .'are not expressible, deliberately, at a live population of one.',
+    description: 'declared relative edges — a child particle resource mounted under a route-model-bound parent. Keys are `<parent>.<child>` under the stamped root, off the self-keying entry ({@see ParticleRelative::registryKey()}). The edge is declared by the COUPLING OWNER — never by the child\'s package or the parent\'s, because either would force one tier to name the other (api-surface-coherence ticket 50 / 18 §D1). Nothing about an edge lives on `#[ParticleResource]`. An edge whose `via` is behavioural rides as the DECLARING CLASS NAME in the route defaults rather than as a Closure, which is what keeps the table `route:cache`-able (ticket 51 §2). `Supersede` means a second declaration of one `<parent>.<child>` pair is a second opinion about the same coupling and the later wins; two distinct edges between one pair are not expressible, deliberately, at a live population of one.',
     order: 14,
 )]
 class ParticleRelativeRegistry implements Gated, RecordsSupersession, Registry

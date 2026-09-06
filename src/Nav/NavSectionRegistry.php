@@ -10,7 +10,6 @@ use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\Optionality;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
@@ -36,7 +35,7 @@ use Splicewire\Beam\Realm\RealmRegistry;
  *
  * A seat self-keys off `$section->realm`, not off its own `key`, because the question a projector asks
  * is *"what seats does the `tenant` region carry?"* Several packages seating several sections in one
- * region is the DESIGN, not a collision — hence `OnDuplicate::Admit` and `ComposeMany`. Registration
+ * region is the DESIGN, not a collision — hence `OnDuplicate::Admit`. Registration
  * order is not the read order: {@see for()} sorts by declared `order` then by `key`, so two packages
  * whose providers boot in either order project the same navigation.
  *
@@ -59,17 +58,10 @@ use Splicewire\Beam\Realm\RealmRegistry;
  */
 #[IsRegistry(
     root: 'beam.nav.sections',
-    of: 'package-declared top-level NAV SEATS — the section a host\'s navigation hangs declared resources under',
-    arity: RegistryArity::ComposeMany,
     entryType: NavSection::class,
     onDuplicate: OnDuplicate::Admit,
     optionality: Optionality::Optional,
-    note: 'ComposeMany because a read is keyed by REALM and composes every seat that region carries, from '
-        .'however many packages. Admit because several packages seating several sections in one realm is '
-        .'the design, not a collision. Optional because an empty registry is the inert default — a host '
-        .'that registers no package seats projects exactly the navigation it hand-authored. A seat never '
-        .'CREATES a realm: a seat for a realm the RealmRegistry does not ship is a silent no-op, because '
-        .'a projector iterates the realms the host has and never this registry\'s own key set.',
+    description: 'Package-declared navigation sections grouped by realm. Reads combine all seats for a realm in registration order. Multiple seats per realm are retained. An empty registry preserves the navigation authored by the host; seats for unknown realms have no effect.',
     order: 18,
 )]
 /**

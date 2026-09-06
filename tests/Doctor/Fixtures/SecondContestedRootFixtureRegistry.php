@@ -6,16 +6,14 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 
 /**
  * The other half of the collision pair.
  */
 #[IsRegistry(
     root: 'fixture.contested',
-    of: 'the second claimant of a contested root',
-    arity: RegistryArity::PickOne,
     onDuplicate: OnDuplicate::Supersede,
+    description: 'the second claimant of a contested root',
 )]
 class SecondContestedRootFixtureRegistry implements Registry
 {

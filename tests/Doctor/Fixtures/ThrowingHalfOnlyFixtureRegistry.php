@@ -5,7 +5,6 @@ namespace Splicewire\Beam\Tests\Doctor\Fixtures;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
-use Rushing\Popcorn\Registries\RegistryArity;
 
 /**
  * A port: its own vocabulary over a held kernel store, publishing the THROWING half and nothing else.
@@ -20,9 +19,8 @@ use Rushing\Popcorn\Registries\RegistryArity;
  */
 #[IsRegistry(
     root: 'fixture.throwing-half-only',
-    of: 'a port publishing only the throwing half of the miss pair',
-    arity: RegistryArity::PickOne,
     onDuplicate: OnDuplicate::Supersede,
+    description: 'a port publishing only the throwing half of the miss pair',
 )]
 class ThrowingHalfOnlyFixtureRegistry
 {

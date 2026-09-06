@@ -13,7 +13,6 @@ use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\Optionality;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 
@@ -92,22 +91,10 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
  */
 #[IsRegistry(
     root: 'beam.events.types',
-    of: 'publishable event types — enumerated by GET /hooks/events, looked up by name at subscribe time',
-    arity: RegistryArity::PickOne,
     entryType: EventType::class,
     onDuplicate: OnDuplicate::Reject,
     optionality: Optionality::Optional,
-    note: 'Keys ARE event names (`{resourceKey}.{verbPhrase}`, plural-verbatim) under the stamped root, '
-        .'off the self-keying entry. The resource key is segment ONE and the verb phrase may be '
-        .'multi-segment, so `withPrefix(\'compositions\')` is a segment-wise branch read rather than a '
-        .'string prefix test. Registration validates the name grammar and subject-unless-subjectless '
-        .'and throws; the prefix-against-LIVE-resources check is ADVISORY (`unresolvedPrefixes()`, '
-        .'read by EventCatalogPrefixAudit) because it is host-dependent and it took a host off the air '
-        .'as a throw — api-surface-coherence 91. Emission validates nothing. '
-        .'⚠️ The chartering ticket (api-surface-coherence 40 §4) specified a `describe(new '
-        .'ManifestDescriptor(seam: ManifestSeam::SingletonAccumulator, registerHint: …, where: …))` — '
-        .'that whole vocabulary was DELETED by registry-kernel ticket 21/07, and this attribute plus '
-        .'`RegistryIndex::describe()` in BeamServiceProvider::boot() is its successor.',
+    description: 'Publishable event types, listed by GET /hooks/events and resolved by name when subscribing. Registration validates names and subject requirements; unresolved resource prefixes are reported by the catalog audit.',
     order: 14,
 )]
 class EventTypeRegistry implements Filled, Gated, Registry

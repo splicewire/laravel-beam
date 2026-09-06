@@ -18,7 +18,6 @@ use Rushing\Popcorn\Registries\RecordsSupersession;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\Superseded;
 use Schemastud\Frame\Registry\ResourceDefinition;
@@ -78,21 +77,9 @@ use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
  */
 #[IsRegistry(
     root: 'beam.particle.resources',
-    of: 'Frame resource definitions (model→Data projections) driving reads + the editor',
-    arity: RegistryArity::PickOne,
     entryType: ParticleResource::class,
     onDuplicate: OnDuplicate::Supersede,
-    note: 'Declared, not inherited: overwrite is intentional here and the class docblock argues it. '
-        .'This said `mixed` on the grounds that an entry is a ParticleResource OR a raw '
-        .'ResourceDefinition — ⚠️ STALE since the escape hatch was collapsed: the keyspace holds only '
-        .'ParticleResource and `all()`\'s instanceof filter was deleted as the identity. '
-        .'Registry-kernel ticket 47 caught it while measuring whether any registry in the estate holds '
-        .'two entry types; none does, which is why `entryType` stayed a scalar. Whether the three '
-        .'collections split into three registries '
-        .'is registry-kernel ticket 36\'s — ANSWERED: they do not split. The composed BasicRegistry is '
-        .'the keyspace; `$realms`/`$realmMap` are a two-rung membership ladder beside the entry, declared '
-        .'through {@see Laddered}. Realm membership is a TAG recorded '
-        .'beside the entry, never a second key dimension: one entry, many realms, no duplicate.',
+    description: 'Frame resource definitions (model→Data projections) driving reads + the editor. Declared, not inherited: overwrite is intentional here and the class docblock argues it. This said `mixed` on the grounds that an entry is a ParticleResource OR a raw ResourceDefinition — ⚠️ STALE since the escape hatch was collapsed: the keyspace holds only ParticleResource and `all()`\'s instanceof filter was deleted as the identity. Registry-kernel ticket 47 caught it while measuring whether any registry in the estate holds two entry types; none does, which is why `entryType` stayed a scalar. Whether the three collections split into three registries is registry-kernel ticket 36\'s — ANSWERED: they do not split. The composed BasicRegistry is the keyspace; `$realms`/`$realmMap` are a two-rung membership ladder beside the entry, declared through {@see Laddered}. Realm membership is a TAG recorded beside the entry, never a second key dimension: one entry, many realms, no duplicate.',
     order: 12,
 )]
 class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupersession, Registry

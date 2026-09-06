@@ -9,7 +9,6 @@ use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\BeamServiceProvider;
 
@@ -39,14 +38,9 @@ use Splicewire\Beam\BeamServiceProvider;
  */
 #[IsRegistry(
     root: 'beam.realm.overlays',
-    of: 'additive realm OVERLAYS folded onto an EXISTING realm descriptor before the manifest emits',
-    arity: RegistryArity::ComposeMany,
     entryType: RealmOverlay::class,
     onDuplicate: OnDuplicate::Admit,
-    note: 'ComposeMany, not RunAll: a read is keyed by realm and the overlays for that realm FOLD in '
-        .'registration order, each transforming what the previous produced (last write at a JSONPath '
-        .'target wins). Admit because multiple overlays targeting one realm is the design, not a '
-        .'collision. An overlay never CREATES a realm — an unregistered realmKey is a silent no-op.',
+    description: 'Overlays folded onto existing realm descriptors before manifest emission. Overlays for a realm run in registration order, each transforming the previous result; the last write at a JSONPath target wins. Multiple overlays per realm are retained. Unknown realm keys have no effect.',
     order: 17,
 )]
 /**

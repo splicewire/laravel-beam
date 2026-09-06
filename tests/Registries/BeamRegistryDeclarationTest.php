@@ -5,7 +5,6 @@ namespace Splicewire\Beam\Tests\Registries;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnDuplicate;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
@@ -85,7 +84,6 @@ class BeamRegistryDeclarationTest extends TestCase
             // `:` and `/` rejected rather than folded. A root that does not parse is unroutable.
             $this->assertSame($expected, (string) Key::parse($declaration->root));
 
-            $this->assertNotSame('', $declaration->of, "{$class} must say what it is a registry OF");
         }
     }
 
@@ -108,22 +106,6 @@ class BeamRegistryDeclarationTest extends TestCase
         // `beam.realm`, however much the strings suggest otherwise.
         $this->assertTrue(Key::parse('beam.realm.overlays')->isUnder(Key::parse('beam.realm')));
         $this->assertFalse(Key::parse('beam.realms')->isUnder(Key::parse('beam.realm')));
-    }
-
-    public function test_arity_is_declared_and_is_not_a_function_of_the_class_name_suffix(): void
-    {
-        // The axis the Registry/Manifest naming split was really tracking (canon: the-seam-is-a-registry):
-        // both are one primitive, and arity is what differs. Two classes suffixed `Registry` here disagree
-        // about arity, and a `Manifest` and a `Registry` agree — which is the whole point.
-        $this->assertSame([RegistryArity::PickOne], IsRegistry::of(RealmRegistry::class)?->arity);
-        $this->assertSame([RegistryArity::ComposeMany], IsRegistry::of(RealmOverlayRegistry::class)?->arity);
-        $this->assertSame([RegistryArity::RunAll], IsRegistry::of(BeamInstallManifest::class)?->arity);
-        // ⚠️ `ResourceRenderingRegistry` — `beam.renderings`, the estate's one
-        // `[PickOne, RunAll]` two-step (PickOne selects a resource, RunAll engages that resource's
-        // renderings) and registry-kernel 47's second beneficiary — was DELETED by
-        // particle-operation-surface 13. Its rows are gone from both lists above rather than being
-        // left as an expectation nothing can satisfy. The two-step arity itself is unexercised in
-        // beam again; `rushing/laravel-popcorn`'s own suite is where that shape is pinned now.
     }
 
     public function test_a_non_default_duplicate_policy_is_declared_rather_than_inherited(): void

@@ -4,7 +4,6 @@ namespace Splicewire\Beam\Tests\Nav;
 
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Optionality;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Splicewire\Beam\Nav\NavSection;
 use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
@@ -321,7 +320,6 @@ class NavSectionRegistryTest extends TestCase
 
         $this->assertNotNull($declaration);
         $this->assertSame('beam.nav.sections', $declaration->root);
-        $this->assertSame([RegistryArity::ComposeMany], $declaration->arity);
         $this->assertSame(NavSection::class, $declaration->entryType);
 
         // Optional is what makes "no package seated anything" a legal state rather than a boot failure —

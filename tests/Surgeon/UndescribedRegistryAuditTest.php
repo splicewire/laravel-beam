@@ -210,7 +210,7 @@ class UndescribedRegistryAuditTest extends TestCase
         // The remedy the finding prints, applied. Note it is applied to the CLASS, not pushed into an index
         // from a provider — which is why the audit no longer needs a populated index to answer.
         [$audit] = $this->plant(
-            declaration: "#[\\Rushing\\Popcorn\\Registries\\IsRegistry(root: 'planted.entries', of: 'planted entries', arity: \\Rushing\\Popcorn\\Registries\\RegistryArity::PickOne)]\n",
+            declaration: "#[\\Rushing\\Popcorn\\Registries\\IsRegistry(root: 'planted.entries', description: 'planted entries')]\n",
         );
 
         $findings = $audit->run();

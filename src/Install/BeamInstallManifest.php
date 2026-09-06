@@ -7,7 +7,6 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\RelativeUriKey;
 
@@ -48,12 +47,9 @@ use Rushing\Popcorn\Registries\RelativeUriKey;
  */
 #[IsRegistry(
     root: 'beam.install.steps',
-    of: 'package install steps (publish tags + migrate flag), run core-first',
-    arity: RegistryArity::RunAll,
     entryType: InstallStep::class,
     onDuplicate: OnDuplicate::Supersede,
-    note: 'Keyed by package name and idempotent by design — a provider that boots twice (test harness) '
-        .'must not double-publish, so re-registering replaces rather than accumulating.',
+    description: 'package install steps (publish tags + migrate flag), run core-first. Keyed by package name and idempotent by design — a provider that boots twice (test harness) must not double-publish, so re-registering replaces rather than accumulating.',
     order: 1,
 )]
 /**

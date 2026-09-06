@@ -235,7 +235,7 @@ class RegistryConformanceAuditTest extends TestCase
             [],
             $this->failuresFor($audit, InheritingFixtureRegistry::class),
             'The subclass writes nothing at its own site, but it RUNS under a complete declaration. '
-            .'Scoring its empty site instead would fail root/arity/onDuplicate on a class whose only '
+            .'Scoring its empty site instead would fail root/onDuplicate on a class whose only '
             .'remedy is to stop extending.',
         );
     }

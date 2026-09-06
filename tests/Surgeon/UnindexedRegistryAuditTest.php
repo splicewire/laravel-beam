@@ -259,8 +259,7 @@ class UnindexedRegistryAuditTest extends TestCase
 <?php
 namespace Beam\Tests\UnindexedFixtures;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\RegistryArity;
-#[IsRegistry(root: 'fixture.non-conforming', of: 'nothing', arity: RegistryArity::PickOne)]
+#[IsRegistry(root: 'fixture.non-conforming', description: 'nothing')]
 class NonConforming {}
 PHP);
 

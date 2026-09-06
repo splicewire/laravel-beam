@@ -6,7 +6,6 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnDuplicate;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 
 /**
  * Complete: implements the contract and writes every slot the gate asks for. The control case — without
@@ -15,9 +14,8 @@ use Rushing\Popcorn\Registries\RegistryArity;
  */
 #[IsRegistry(
     root: 'fixture.conforming',
-    of: 'a conforming fixture registry',
-    arity: RegistryArity::PickOne,
     onDuplicate: OnDuplicate::Supersede,
+    description: 'a conforming fixture registry',
 )]
 class ConformingFixtureRegistry implements Registry
 {

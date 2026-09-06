@@ -18,7 +18,6 @@ use Rushing\Popcorn\Registries\Exceptions\InvalidRegistryKey;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
@@ -42,9 +41,9 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *
  * ## The checks
  *
- * Seven checks, ONE check key ({@see CHECK}), each finding naming which check failed (14 D9) — the estate's
+ * Six checks, ONE check key ({@see CHECK}), each finding naming which check failed (14 D9) — the estate's
  * audits are single-purpose and this stays one purpose: *is this declaration complete, and does it hold?*
- * Five ask that of a declaration in isolation; {@see CHECK_SHADOW} asks it of the described set as a whole,
+ * Four ask that of a declaration in isolation; {@see CHECK_SHADOW} asks it of the described set as a whole,
  * which is the one question no declaration can answer about itself; {@see CHECK_MISS_PAIR} asks it of the
  * class body, which is the one question the attribute cannot answer at all.
  *
@@ -59,7 +58,6 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *     `RegistryIndex` to `OnDuplicate::Supersede`, so a duplicate root is a recorded supersession — which
  *     makes this static half, handed here by ticket 20 D7, the only thing that fires BEFORE a boot rather
  *     than reporting after one.
- *   - {@see CHECK_ARITY} — `arity` written at the declaration site.
  *   - {@see CHECK_SHADOW} — no described registry holds an entry at an address a NESTED described registry
  *     owns. The kernel RECORDS this at `describe()` time and no longer throws (registry-kernel 73 §1,
  *     php-popcorn ADR-0001), and a registry is filled by its registrars after it is described, so the
@@ -81,15 +79,8 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *     (`RealmResourceRegistry`) was a `has()`-then-`resolve()` double lookup, so it too ratchets a good
  *     state. See {@see publishesOnlyTheThrowingHalf()} for what it deliberately cannot see.
  *
- * ## The chartered fifth check dissolved, and this is why
- *
- * Ticket 35 §1 chartered *"`resolve()` defined **only** under `RegistryArity::PickOne`"*, from ticket 06 D4.
- * **It has no subject.** {@see Registry} gives every registry both a one-entry read and an all-entries read,
- * and {@see RegistryArity}'s own docblock settles the point: arity is *"declared metadata, not an enforced
- * constraint"* — ticket 20 found that out by self-hosting the index, whose live `RunAll` and claimed
- * `PickOne` were never in conflict. Any implementer of the interface defines `resolve()`, so the check as
- * chartered would fail every `RunAll` and `ComposeMany` registry in the estate INCLUDING the index. The
- * root/collision pair is counted as two checks instead; the total is unchanged and the fifth one is real.
+ * Every {@see Registry} provides both single-entry and all-entry reads. Conformance therefore does
+ * not classify registries by how many entries a consumer reads.
  *
  * ## `implements Registry` is measured; it does not gate. Yet.
  *
@@ -139,8 +130,6 @@ class RegistryConformanceAudit implements DoctorAudit
 
     public const CHECK_ROOT_COLLISION = 'root-collision';
 
-    public const CHECK_ARITY = 'arity';
-
     public const CHECK_ON_DUPLICATE = 'on-duplicate';
 
     public const CHECK_SHADOW = 'shadowed-entry';
@@ -155,7 +144,7 @@ class RegistryConformanceAudit implements DoctorAudit
      *
      * @var list<string>
      */
-    public const ARGUMENT_POSITIONS = ['root', 'of', 'arity', 'entryType', 'onDuplicate', 'optionality', 'note', 'order'];
+    public const ARGUMENT_POSITIONS = ['root', 'entryType', 'onDuplicate', 'optionality', 'description', 'order'];
 
     public function __construct(
         protected Application $app,
@@ -231,11 +220,9 @@ class RegistryConformanceAudit implements DoctorAudit
      * {@see population()} no longer filters described registries through a class-attribute read, so a
      * member can arrive here with no attribute to reflect: its declaration was passed to
      * `BasicRegistry::__construct()` as a value (registry-kernel 26 D2). {@see IsRegistry}'s constructor
-     * makes `root`, `of` and `arity` REQUIRED, so for such a registry those three are written by
-     * construction — the type system enforces exactly what {@see CHECK_ROOT} and {@see CHECK_ARITY} exist
-     * to check, and there is no weaker reading of "written" available.
+     * requires `root`, so runtime declarations satisfy the written-root check by construction.
      *
-     * `onDuplicate` is the one argument that defaults, and an instance cannot say whether the author wrote
+     * An instance cannot say whether the author wrote `onDuplicate` as
      * `Supersede` or inherited it. That check is therefore SKIPPED for a runtime declaration rather than
      * guessed — see {@see failuresFor()}. A miss is recoverable; a gate failing a registry that did write
      * the argument is not, and this audit gates.
@@ -257,7 +244,7 @@ class RegistryConformanceAudit implements DoctorAudit
 
             $written = $attribute !== null
                 ? $this->writtenArguments($attribute)
-                : ['root' => $runtime?->root, 'of' => $runtime?->of, 'arity' => $runtime?->arity];
+                : ['root' => $runtime?->root];
             $declared = $attribute !== null ? $this->instantiate($attribute) : $runtime;
             $location = $this->locate($fqcn);
 
@@ -361,10 +348,6 @@ class RegistryConformanceAudit implements DoctorAudit
             $failures[] = self::CHECK_ROOT;
         } elseif ($this->collidesOnRoot($fqcn, $declared, $population)) {
             $failures[] = self::CHECK_ROOT_COLLISION;
-        }
-
-        if (! array_key_exists('arity', $written)) {
-            $failures[] = self::CHECK_ARITY;
         }
 
         if (! $runtimeDeclared && ! array_key_exists('onDuplicate', $written)) {
@@ -792,9 +775,6 @@ class RegistryConformanceAudit implements DoctorAudit
                 'so this is the same defect caught before a boot instead of during one.',
                 $row['root'],
             ),
-            self::CHECK_ARITY => 'writes no `arity:`. Arity is how many entries a read engages OUT '.
-                '(PickOne / ComposeMany / RunAll) and it is what the index renders — a consumer reads it to '.
-                'know whether it is looking at a lookup table or a pipeline.',
             self::CHECK_ON_DUPLICATE => 'writes no `onDuplicate:`, so it inherits Supersede silently. The '.
                 'estate ships all three policies with argued docblocks, so an unwritten one is a guess that '.
                 'reads as a decision. Write the one you mean, even where it is Supersede.',
@@ -874,9 +854,9 @@ class RegistryConformanceAudit implements DoctorAudit
      *
      * The **parent's** written arguments — not an empty set. The attribute handed in here is whichever one
      * {@see attributeOf()}'s walk found governing, so an undeclaring subclass is measured against the
-     * declaration it actually runs under. That is the only reading that keeps `root`/`arity`/`onDuplicate`
+     * declaration it actually runs under. That is the only reading that keeps `root`/`onDuplicate`
      * meaning the same thing they mean everywhere else in this audit: *what this registry says about
-     * itself.* Scoring the subclass's own (empty) site instead would fail all three checks on a class whose
+     * itself.* Scoring the subclass's own (empty) site instead would fail both checks on a class whose
      * remedy is to write nothing, and the remedy text would be wrong — the fix would be to un-inherit.
      *
      * The consequence to know rather than rediscover: a subclass CANNOT fail these checks on its own, and
@@ -899,7 +879,7 @@ class RegistryConformanceAudit implements DoctorAudit
 
     /**
      * The declaration as a value, or null where it will not instantiate — a required slot omitted, or an
-     * argument of the wrong type. Reported as a root/arity failure by its absence rather than thrown: an
+     * argument of the wrong type. Reported as a declaration failure by its absence rather than thrown: an
      * audit that fatals on the one malformed declaration reports nothing about the other forty-nine.
      */
     protected function instantiate(?ReflectionAttribute $attribute): ?IsRegistry

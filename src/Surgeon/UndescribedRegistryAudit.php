@@ -19,7 +19,6 @@ use Rushing\Popcorn\Discovery\AttributedClassScanner;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Laddered;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Splicewire\Beam\Doctor;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
@@ -143,8 +142,7 @@ use Splicewire\Beam\Surgeon\Support\HostScanRoots;
  * packages it lists is not an index. A package that is absent entirely at least does not lie.
  *
  * ## What "registry-shaped" means, structurally
- * Not the class NAME. The estate's `Registry`/`Manifest`/`Pipeline`/`Store` suffixes are inconsistent (see
- * {@see RegistryArity}'s docblock on exactly that), and blockdoc's node-type
+ * Not the class NAME. The estate's `Registry`/`Manifest`/`Pipeline`/`Store` suffixes are inconsistent, and blockdoc's node-type
  * registry is bound under the interface `Contracts\Schema` — a name-based test would miss it while
  * flagging every `SchemaTypeProjector` in the fleet. The test is instead the shape a registry actually has:
  *
@@ -263,7 +261,7 @@ class UndescribedRegistryAudit implements DoctorAudit
 
     /**
      * Method-name prefixes for the read path — either a LOOKUP (`get`/`resolve`/`for`) or, for a
-     * compose-many registry, an ENGAGEMENT of the whole chain.
+     * a pipeline, execution of the whole chain.
      *
      * The engagement half is not optional. blockdoc's `TransformPipeline` is a textbook singleton registry —
      * `register(class)` in, ordered `array $transforms` inside — and its only read is `transform($doc)`,
@@ -684,7 +682,7 @@ class UndescribedRegistryAudit implements DoctorAudit
 
         return sprintf(
             '%s is a registry-shaped singleton bound at %s:%d but declares no #[IsRegistry]. Put '.
-            '#[IsRegistry(root: ..., of: ..., arity: RegistryArity::...)] on %s itself — the declaration '.
+            '#[IsRegistry(root: ..., entryType: ..., description: ...)] on %s itself — the declaration '.
             'belongs on the class that owns the keyspace, not on the provider (%s) that binds it. The root '.
             'is a dotted key, domain-first and vendor-free (`beam.realm.overlays`, `schemas.sources`), never '.
             'derived from the composer coordinate. An undeclared registry is one `popcorn:registries` cannot '.
@@ -770,8 +768,8 @@ class UndescribedRegistryAudit implements DoctorAudit
      * higher one is a dependency-direction problem rather than a config problem.
      *
      * Reading the type inverts that cleanly. {@see Laddered} and {@see Registry} live in
-     * `rushing/php-popcorn` — BELOW beam, below tower, below everything — and this file already reads three
-     * of their siblings ({@see IsRegistry}, {@see RegistryArity}, {@see RegistryIndex}). So the exclusion is
+     * `rushing/php-popcorn` — BELOW beam, below tower, below everything — and this file already reads two
+     * of their siblings ({@see IsRegistry}, {@see RegistryIndex}). So the exclusion is
      * a **downward** read, identical in direction to {@see isDescribed()}'s `IsRegistry::of()`, and the
      * exempting act belongs to tower: it is tower's own `implements Laddered`, on tower's own class, in
      * tower's own repo. Nothing below names anything above, and `DEFAULT_WHITELIST` stays empty — which its
