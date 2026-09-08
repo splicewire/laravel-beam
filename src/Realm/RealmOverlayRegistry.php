@@ -7,7 +7,7 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\BeamServiceProvider;
@@ -39,7 +39,7 @@ use Splicewire\Beam\BeamServiceProvider;
 #[IsRegistry(
     root: 'beam.realm.overlays',
     entryType: RealmOverlay::class,
-    onDuplicate: OnDuplicate::Admit,
+    onKeyDuplicate: OnKeyDuplicate::Admit,
     description: 'Overlays folded onto existing realm descriptors before manifest emission. Overlays for a realm run in registration order, each transforming the previous result; the last write at a JSONPath target wins. Multiple overlays per realm are retained. Unknown realm keys have no effect.',
     order: 17,
 )]
@@ -58,7 +58,7 @@ class RealmOverlayRegistry implements Gated, Registry
 
     /**
      * Register an additive overlay ON an existing realm. Additive/append — a second overlay for the same
-     * realm folds after the first, which is what `OnDuplicate::Admit` above buys.
+     * realm folds after the first, which is what `OnKeyDuplicate::Admit` above buys.
      *
      * The overlay SELF-KEYS off `$overlay->realmKey`, which is why the first parameter is widened rather
      * than replaced: every live caller passes a bare {@see RealmOverlay} positionally

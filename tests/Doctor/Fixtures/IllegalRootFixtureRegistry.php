@@ -3,14 +3,14 @@
 namespace Splicewire\Beam\Tests\Doctor\Fixtures;
 
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 
 /**
  * A root no `Key` will parse: uppercase and a space. Never constructed by the audit, which only reflects.
  */
 #[IsRegistry(
     root: 'Fixture.Illegal Root',
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     description: 'a fixture registry whose root is not a key',
 )]
 class IllegalRootFixtureRegistry

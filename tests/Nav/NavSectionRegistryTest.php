@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Tests\Nav;
 
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\Optionality;
+use Rushing\Popcorn\Registries\PopulationRequirement;
 use Splicewire\Beam\Nav\NavSection;
 use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
@@ -80,7 +80,7 @@ class NavSectionRegistryTest extends TestCase
 
     public function test_several_packages_compose_additively_into_one_realm(): void
     {
-        // Three registrars, one region. `OnDuplicate::Admit` is what makes the second and third joins
+        // Three registrars, one region. `OnKeyDuplicate::Admit` is what makes the second and third joins
         // rather than replacements; a Supersede registry would leave one seat here.
         $this->registry()
             ->register($this->seat('tenant', 'calendars', order: 20), by: 'splicewire/laravel-beam-calendars')
@@ -324,6 +324,6 @@ class NavSectionRegistryTest extends TestCase
 
         // Optional is what makes "no package seated anything" a legal state rather than a boot failure —
         // the inert default this seam depends on. Declared rather than inherited, so it is a claim.
-        $this->assertSame(Optionality::Optional, $declaration->optionality);
+        $this->assertSame(PopulationRequirement::Optional, $declaration->populationRequirement);
     }
 }

@@ -13,7 +13,7 @@ use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\Laddered;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\RecordsSupersession;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
@@ -78,7 +78,7 @@ use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
 #[IsRegistry(
     root: 'beam.particle.resources',
     entryType: ParticleResource::class,
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     description: 'Frame resource definitions (model→Data projections) driving reads + the editor. Declared, not inherited: overwrite is intentional here and the class docblock argues it. This said `mixed` on the grounds that an entry is a ParticleResource OR a raw ResourceDefinition — ⚠️ STALE since the escape hatch was collapsed: the keyspace holds only ParticleResource and `all()`\'s instanceof filter was deleted as the identity. Registry-kernel ticket 47 caught it while measuring whether any registry in the estate holds two entry types; none does, which is why `entryType` stayed a scalar. Whether the three collections split into three registries is registry-kernel ticket 36\'s — ANSWERED: they do not split. The composed BasicRegistry is the keyspace; `$realms`/`$realmMap` are a two-rung membership ladder beside the entry, declared through {@see Laddered}. Realm membership is a TAG recorded beside the entry, never a second key dimension: one entry, many realms, no duplicate.',
     order: 12,
 )]
@@ -288,7 +288,7 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
      * (registry-kernel ticket 19 D3, paid on ticket 53): `BeamServiceProvider::discoverResources()`
      * attaches an {@see AttributeRegistrar} in beam's own
      * `boot()`, so a consumer provider that hand-registers the same key afterwards lands second and
-     * wins by {@see OnDuplicate::Supersede} alone — no tier, no branch, no precedence rule.
+     * wins by {@see OnKeyDuplicate::Supersede} alone — no tier, no branch, no precedence rule.
      *
      * ⚠️ **That is true for ONE of the two documented host-override routes, and false for the other**
      * (registry-kernel ticket 67). `discoverResources()` has a second intake that is not a consumer

@@ -55,7 +55,7 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *   - {@see CHECK_ROOT_COLLISION} — no two declared registries on one root. Two registries on one root make
  *     that branch unroutable, which is different in kind from a duplicate ENTRY (the estate ships three
  *     argued policies for those). The runtime half no longer throws — registry-kernel 34, landed by 48, flipped
- *     `RegistryIndex` to `OnDuplicate::Supersede`, so a duplicate root is a recorded supersession — which
+ *     `RegistryIndex` to `OnKeyDuplicate::Supersede`, so a duplicate root is a recorded supersession — which
  *     makes this static half, handed here by ticket 20 D7, the only thing that fires BEFORE a boot rather
  *     than reporting after one.
  *   - {@see CHECK_SHADOW} — no described registry holds an entry at an address a NESTED described registry
@@ -64,7 +64,7 @@ use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
  *     entry that collides usually does not exist yet at that moment. This is the half of that check only
  *     a post-boot reader can hold — and since the kernel stopped being fatal, it is the ONLY half that
  *     gates. See {@see shadowedEntries()}.
- *   - {@see CHECK_ON_DUPLICATE} — `onDuplicate` written at the declaration site rather than silently
+ *   - {@see CHECK_ON_DUPLICATE} — `onKeyDuplicate` written at the declaration site rather than silently
  *     inherited. The estate ships all three policies with argued docblocks (`LensRegistry` throws,
  *     `RealmOverlayRegistry` admits, `ParticleResourceRegistry` overwrites), so an UNWRITTEN one is not a
  *     considered default, it is a guess that reads as a decision. Measured before landing: every one of the
@@ -144,7 +144,7 @@ class RegistryConformanceAudit implements DoctorAudit
      *
      * @var list<string>
      */
-    public const ARGUMENT_POSITIONS = ['root', 'entryType', 'onDuplicate', 'optionality', 'description', 'order'];
+    public const ARGUMENT_POSITIONS = ['root', 'entryType', 'onKeyDuplicate', 'populationRequirement', 'description', 'order'];
 
     public function __construct(
         protected Application $app,
@@ -222,7 +222,7 @@ class RegistryConformanceAudit implements DoctorAudit
      * `BasicRegistry::__construct()` as a value (registry-kernel 26 D2). {@see IsRegistry}'s constructor
      * requires `root`, so runtime declarations satisfy the written-root check by construction.
      *
-     * An instance cannot say whether the author wrote `onDuplicate` as
+     * An instance cannot say whether the author wrote `onKeyDuplicate` as
      * `Supersede` or inherited it. That check is therefore SKIPPED for a runtime declaration rather than
      * guessed — see {@see failuresFor()}. A miss is recoverable; a gate failing a registry that did write
      * the argument is not, and this audit gates.
@@ -332,7 +332,7 @@ class RegistryConformanceAudit implements DoctorAudit
      * @param  array<string, mixed>  $written  arguments actually written at the declaration site
      * @param  list<string>  $population
      * @param  bool  $runtimeDeclared  the declaration is a live {@see IsRegistry} instance rather than a
-     *                                 class attribute, so `onDuplicate` is unreadable — see
+     *                                 class attribute, so `onKeyDuplicate` is unreadable — see
      *                                 {@see declarations()}
      * @return list<string>
      */
@@ -350,7 +350,7 @@ class RegistryConformanceAudit implements DoctorAudit
             $failures[] = self::CHECK_ROOT_COLLISION;
         }
 
-        if (! $runtimeDeclared && ! array_key_exists('onDuplicate', $written)) {
+        if (! $runtimeDeclared && ! array_key_exists('onKeyDuplicate', $written)) {
             $failures[] = self::CHECK_ON_DUPLICATE;
         }
 
@@ -690,7 +690,7 @@ class RegistryConformanceAudit implements DoctorAudit
      * failure its docblock argues it is exempt from.
      *
      * Inheritance is the test because it is what the runtime does: only one of the two classes is bound,
-     * so only one branch owner reaches `describe()`, and `OnDuplicate::Reject` never fires. Two UNRELATED
+     * so only one branch owner reaches `describe()`, and `OnKeyDuplicate::Reject` never fires. Two UNRELATED
      * classes claiming one root still collide, and still make that branch unroutable.
      *
      * @param  list<string>  $population
@@ -775,7 +775,7 @@ class RegistryConformanceAudit implements DoctorAudit
                 'so this is the same defect caught before a boot instead of during one.',
                 $row['root'],
             ),
-            self::CHECK_ON_DUPLICATE => 'writes no `onDuplicate:`, so it inherits Supersede silently. The '.
+            self::CHECK_ON_DUPLICATE => 'writes no `onKeyDuplicate:`, so it inherits Supersede silently. The '.
                 'estate ships all three policies with argued docblocks, so an unwritten one is a guess that '.
                 'reads as a decision. Write the one you mean, even where it is Supersede.',
             self::CHECK_MISS_PAIR => sprintf(
@@ -854,7 +854,7 @@ class RegistryConformanceAudit implements DoctorAudit
      *
      * The **parent's** written arguments — not an empty set. The attribute handed in here is whichever one
      * {@see attributeOf()}'s walk found governing, so an undeclaring subclass is measured against the
-     * declaration it actually runs under. That is the only reading that keeps `root`/`onDuplicate`
+     * declaration it actually runs under. That is the only reading that keeps `root`/`onKeyDuplicate`
      * meaning the same thing they mean everywhere else in this audit: *what this registry says about
      * itself.* Scoring the subclass's own (empty) site instead would fail both checks on a class whose
      * remedy is to write nothing, and the remedy text would be wrong — the fix would be to un-inherit.

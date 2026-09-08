@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Tests\Doctor\Fixtures;
 
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 
 /**
  * The same port with the pair carried across — `get()` over `resolve()`, `find()` over `tryResolve()`, on
@@ -15,7 +15,7 @@ use Rushing\Popcorn\Registries\OnDuplicate;
  */
 #[IsRegistry(
     root: 'fixture.both-halves',
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     description: 'a port publishing both halves of the miss pair',
 )]
 class BothHalvesFixtureRegistry

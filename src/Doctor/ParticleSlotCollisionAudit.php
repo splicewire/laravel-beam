@@ -24,7 +24,7 @@ use Splicewire\Beam\Routing\RouteVisibility;
  *   the estate's three renderings as operations; the class survives here as the reason the audit reads
  *   the ROUTE TABLE rather than a registry, and because a host may still hand-write the same slot.
  * - **Operations** — keyed under `beam.particle.operations`. A *different* root from the rendering one,
- *   so `OnDuplicate` was structurally blind to a rendering with the same name, whatever either registry
+ *   so `OnKeyDuplicate` was structurally blind to a rendering with the same name, whatever either registry
  *   declared.
  * - **Hand-written routes, in no registry at all.** This is the class the ticket does not name and the
  *   one that decides the design. At `~/Herd/splicewire-app`, `POST api/v1/circuits/{id}/intake` sits in

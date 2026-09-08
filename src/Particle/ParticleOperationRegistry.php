@@ -10,7 +10,7 @@ use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\RecordsSupersession;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registry;
@@ -47,7 +47,7 @@ use Rushing\Popcorn\Registries\Superseded;
 #[IsRegistry(
     root: 'beam.particle.operations',
     entryType: ParticleOperation::class,
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     description: 'named particle operations (custom actions) mounted on the generic op controller. Keys are `<resource>.<name>` under the stamped root, off the self-keying entry ({@see ParticleOperation::registryKey()}). The old note said `:` was REJECTED by Key and that this registry "cannot be migrated by rekeying alone" (registry-kernel ticket 05) — ⚠️ STALE since ticket 30 widened the charset: `:` is legal inside a segment, so `resource:name` always parsed, as ONE segment. The migration was about SHAPE (a flat key cannot enumerate a resource\'s operations, nest a relation scope, or line up with a dot-segmented permission name), not legality. `Supersede` is load-bearing rather than incidental: registering over a key is how a package OVERRIDES an operation it does not own, and {@see superseded()} is what makes that auditable.',
     order: 13,
 )]

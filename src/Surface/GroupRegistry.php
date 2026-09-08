@@ -9,7 +9,7 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -64,7 +64,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 #[IsRegistry(
     root: 'beam.surface.groups',
     entryType: ApiGroup::class,
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     description: 'the API taxonomy — the group tree (key/name/description/parent) plus the chain that resolves a route into it. A PRECEDENCE registry — registry-kernel ticket 15 archetype (d), explicitly never sweepable. The groups are one keyspace; `$assignments` (rung 1) and `$globs` (rung 3, ordered first-match) are a resolution LADDER over them, not more entries. Only the tree is declared here; how the ladder is expressed is ticket 36\'s.',
     order: 12,
 )]

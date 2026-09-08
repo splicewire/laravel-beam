@@ -8,7 +8,7 @@ use Rushing\Popcorn\Registries\Exceptions\InvalidRegistryKey;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Registry\ResourceDefinition;
@@ -38,7 +38,7 @@ use Schemastud\Frame\Registry\ResourceDefinition;
 #[IsRegistry(
     root: 'beam.realm.resource-overrides',
     entryType: RealmResourceOverride::class,
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     description: 'per-realm presentation OVERRIDES merged into a resource declaration as it is projected for a realm. A PRECEDENCE registry — registry-kernel ticket 15 archetype (d), never sweepable. Its state is `[realm][key]`, two DIMENSIONS rather than a dotted key, and `apply()` walks the realm\'s declared `[...stack, self]` ancestry — a DECLARED chain, not lexical reach (ticket 05). It is also config-driven and mutable at runtime, so it cannot be baked. Ticket 36 owns the shape.',
     order: 18,
 )]

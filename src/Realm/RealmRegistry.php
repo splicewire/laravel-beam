@@ -9,7 +9,7 @@ use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Realm\RealmDefinition;
@@ -48,7 +48,7 @@ use Splicewire\Beam\Realm\Attributes\Realm;
 #[IsRegistry(
     root: 'beam.realm',
     entryType: RealmDefinition::class,
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     description: 'authorization realms (admin·tenant·user·docs) governing resource access. Seeded-plus-registered: the constructor seeds the base realms AND #[Realm] classes augment the same instance. Contribution is last-wins by key, and deliberately so — a capability package re-registers a differently-shaped realm over the base one. `beam.realm.overlays` nests UNDER this root; longest prefix routes them apart.',
     order: 14,
 )]

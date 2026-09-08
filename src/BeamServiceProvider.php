@@ -1367,7 +1367,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $manifest->register('splicewire/laravel-beam', ModelSurfaceCoverageAudit::class);
         // Advisory, permanently. The explicit `beam.core.resources.classes` / `frame.resources` list is
         // registered FIRST — before beam's own manifest/scan and before every other package's provider
-        // boots — so under `OnDuplicate::Supersede` a host's listed override is the entry that LOSES,
+        // boots — so under `OnKeyDuplicate::Supersede` a host's listed override is the entry that LOSES,
         // silently, while the provider-boot route the registry's own docblock describes wins
         // (registry-kernel ticket 67). The population is a host fact — which classes this host lists and
         // which packages it composes them with — so by the estate's rule this reports rather than throws,
@@ -2336,7 +2336,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // and all three are asserted by `ParticleResourceRegistrarOrderingTest`:
         //
         //  - it is attached in the OWNER's own `boot()`, so it runs before any consumer provider boots
-        //    and hand-registers — explicit registration lands second and wins by `OnDuplicate::Supersede`
+        //    and hand-registers — explicit registration lands second and wins by `OnKeyDuplicate::Supersede`
         //    alone, with no tier, no branch and no precedence rule (07 D9);
         //  - `attach()` FILLS IMMEDIATELY, so "when did you call attach" IS the ordering rule — there is
         //    no second `fill()` for anyone to put in the wrong place (24 D2);

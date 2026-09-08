@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Tests\Registries;
 
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
@@ -95,7 +95,7 @@ class BeamRegistryDeclarationTest extends TestCase
             count($roots),
             count(array_unique($roots)),
             'Two registries on one root make that branch unroutable — the index refuses it at describe time '
-                .'(OnDuplicate::Reject), so a duplicate here is a boot failure waiting to happen.',
+                .'(OnKeyDuplicate::Reject), so a duplicate here is a boot failure waiting to happen.',
         );
     }
 
@@ -112,13 +112,13 @@ class BeamRegistryDeclarationTest extends TestCase
     {
         // The estate ships all three policies with argued docblocks, so a kernel that picked one would
         // break the other two (ticket 06 D2). Where beam's behaviour is NOT the default, it says so.
-        $this->assertSame(OnDuplicate::Admit, IsRegistry::of(RealmOverlayRegistry::class)?->onDuplicate);
-        $this->assertSame(OnDuplicate::Admit, IsRegistry::of(AuditScanPaths::class)?->onDuplicate);
-        $this->assertSame(OnDuplicate::Admit, IsRegistry::of(NavSectionRegistry::class)?->onDuplicate);
+        $this->assertSame(OnKeyDuplicate::Admit, IsRegistry::of(RealmOverlayRegistry::class)?->onKeyDuplicate);
+        $this->assertSame(OnKeyDuplicate::Admit, IsRegistry::of(AuditScanPaths::class)?->onKeyDuplicate);
+        $this->assertSame(OnKeyDuplicate::Admit, IsRegistry::of(NavSectionRegistry::class)?->onKeyDuplicate);
 
         // And where it IS the default it still says so, because both docblocks argue overwrite is
         // intentional — a claim worth making in the attribute rather than by omission.
-        $this->assertSame(OnDuplicate::Supersede, IsRegistry::of(ParticleResourceRegistry::class)?->onDuplicate);
+        $this->assertSame(OnKeyDuplicate::Supersede, IsRegistry::of(ParticleResourceRegistry::class)?->onKeyDuplicate);
     }
 
     public function test_the_two_particle_pipelines_are_deliberately_undeclared(): void

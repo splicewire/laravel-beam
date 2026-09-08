@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Tests\Doctor\Fixtures;
 
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
 
 /**
@@ -12,7 +12,7 @@ use Rushing\Popcorn\Registries\Registry;
  */
 #[IsRegistry(
     root: 'fixture.contested',
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     description: 'the second claimant of a contested root',
 )]
 class SecondContestedRootFixtureRegistry implements Registry

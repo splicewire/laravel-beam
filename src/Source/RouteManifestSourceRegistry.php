@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Source;
 
 use Rushing\Popcorn\Laravel\Registries\ConfigRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 
 /**
  * The class `config('beam.client.sources')` never had.
@@ -35,7 +35,7 @@ use Rushing\Popcorn\Registries\OnDuplicate;
 #[IsRegistry(
     root: 'beam.client.sources',
     entryType: 'class-string<'.RouteManifestSource::class.'>',
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     description: 'RouteManifestSource bindings by realm — the per-tier route manifests the client SDK codegen generates from. Storage is `config(\'beam.client.sources\')`, a realm-keyed map bound per host (env-overridable). An unbound realm is null and reads as absent, matching GenerateClientSdkCommand\'s own reading.',
 )]
 class RouteManifestSourceRegistry extends ConfigRegistry

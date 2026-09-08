@@ -7,7 +7,7 @@ use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
@@ -35,7 +35,7 @@ use Splicewire\Beam\Install\BeamInstallManifest;
 #[IsRegistry(
     root: 'schemas.sources',
     entryType: Closure::class,
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     description: 'package-contributed schema-source tier factories composed into BeamSchemaRegistry (JN-15). Registration order is NOT resolution order. `config(beam.core.schema.sources)` decides precedence; contributed keys the config does not name are appended at the lowest. The host\'s own binding-side map wins over every registration here.',
     order: 11,
 )]

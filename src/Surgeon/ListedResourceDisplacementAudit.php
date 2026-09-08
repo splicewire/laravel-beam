@@ -20,7 +20,7 @@ use Throwable;
  * outcomes. {@see BeamServiceProvider::discoverResources()} reads the explicit list
  * and registers it before beam's own cached manifest or live scan, and — because it runs inside beam's
  * `boot()` — before every OTHER family package's provider boots. `ParticleResourceRegistry` declares
- * `onDuplicate: OnDuplicate::Supersede`, so the last writer takes the key. Therefore:
+ * `onKeyDuplicate: OnKeyDuplicate::Supersede`, so the last writer takes the key. Therefore:
  *
  * - hand-registered from the host's own provider `boot()` → runs last → **wins**. This is the route
  *   {@see ParticleResourceRegistry::attach()} describes, correctly, for that route only.
@@ -122,7 +122,7 @@ class ListedResourceDisplacementAudit implements DoctorAudit
                     'resource.listing.displaced',
                     "[{$key}] is listed as {$class} but resolves {$winningClass}. The explicit list is "
                     .'registered before beam\'s own manifest/scan and before every other package\'s '
-                    .'provider boots, so under OnDuplicate::Supersede the listing loses. Move this '
+                    .'provider boots, so under OnKeyDuplicate::Supersede the listing loses. Move this '
                     .'override to the host\'s own provider boot() — `app('
                     .ParticleResourceRegistry::class.')->registerClass('
                     .class_basename($class).'::class)` — which runs last and wins.'
