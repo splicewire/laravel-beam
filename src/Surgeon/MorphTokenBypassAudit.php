@@ -2,6 +2,15 @@
 
 namespace Splicewire\Beam\Surgeon;
 
+use Composer\Autoload\ClassLoader;
+use PhpParser\Error;
+use PhpParser\Node;
+use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\NameResolver;
+use PhpParser\NodeVisitor\ParentConnectingVisitor;
+use PhpParser\ParserFactory;
+use PhpParser\PrettyPrinter\Standard;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Symfony\Component\Finder\Finder;
@@ -67,7 +76,16 @@ class MorphTokenBypassAudit implements DoctorAudit
                 foreach ($this->phpFilesIn($dir) as $path => $source) {
                     $scanned++;
 
-                    foreach ($this->hitsIn($source) as $hit) {
+                    try {
+                        $hits = $this->hitsIn($source);
+                    } catch (Error $error) {
+                        $findings[] = Finding::inconclusive('morph-token.bypass',
+                            $this->relative($path).': source could not be parsed: '.$error->getMessage());
+
+                        continue;
+                    }
+
+                    foreach ($hits as $hit) {
                         $findings[] = Finding::warn($hit['check'], sprintf(
                             '%s: %s passes %s into the `%s` column. %s',
                             $label,
@@ -102,8 +120,8 @@ class MorphTokenBypassAudit implements DoctorAudit
         if ($findings === []) {
             return [Finding::pass(
                 'morph-token.bypass',
-                sprintf('Every polymorphic `*_type` value across %d scanned file(s) of installed family '
-                    .'source and host app code is asked of the morph map rather than spelled by hand.', $scanned)
+                sprintf('No morph-token bypass candidate found in recognized persistence/query expressions across %d file(s) of family '
+                    .'source and host app code; dynamic calls and interprocedural payloads are not covered.', $scanned)
             )];
         }
 
@@ -115,34 +133,57 @@ class MorphTokenBypassAudit implements DoctorAudit
      */
     public function hitsIn(string $source): array
     {
+        // Parse source, never execute it. Comments, strings and cast declarations are not writes.
+        $nodes = (new ParserFactory)->createForNewestSupportedVersion()->parse(
+            str_contains($source, '<?php') ? $source : "<?php\n".$source
+        ) ?? [];
+        $nodes = (new NodeTraverser(new NameResolver, new ParentConnectingVisitor))->traverse($nodes);
+        $finder = new NodeFinder;
+        $printer = new Standard;
         $out = [];
 
-        // Both shapes that reach a morph column: an array-literal write (`'x_type' => V`) and a query
-        // (`where('x_type', V)`). A `.`-qualified column (`sib.siloable_type`) counts — a raw join is
-        // exactly where a hand-spelled token hides.
-        //
-        // ⚠️ `::` as well as `->`. The six readers that produced the 5,871-row defect were all STATIC
-        // `Model::where('syncable_type', Foo::class)`, which is the commonest Laravel form — an
-        // arrow-only pattern reports those files clean, which is how this audit would have missed the
-        // exact defect it was written for. Caught by its own test, not by review.
-        $patterns = [
-            '/[\'"]([\w.]*_type)[\'"]\s*=>\s*([^,\)\]]+)/',
-            '/(?:->|::)\s*(?:or)?[wW]here\w*\(\s*[\'"]([\w.]*_type)[\'"]\s*,\s*(?:[\'"][^\'"]*[\'"]\s*,\s*)?([^,\)]+)/',
-        ];
+        // Follow payload variables conservatively: every assignment is a possible source. This is
+        // not control-flow analysis, so ambiguity remains a nomination rather than a clean bill.
+        $assignments = [];
+        foreach ($finder->findInstanceOf($nodes, Node\Expr\Assign::class) as $assignment) {
+            if ($assignment->var instanceof Node\Expr\Variable && is_string($assignment->var->name)) {
+                $assignments[$assignment->var->name][] = $assignment->expr;
+            }
+        }
 
-        foreach ($patterns as $pattern) {
-            if (! preg_match_all($pattern, $source, $matches, PREG_SET_ORDER)) {
+        foreach ($finder->find($nodes, fn (Node $node) => $node instanceof Node\Expr\MethodCall
+            || $node instanceof Node\Expr\StaticCall) as $call) {
+            if ($call->isFirstClassCallable() || ! $call->name instanceof Node\Identifier) {
                 continue;
             }
 
-            foreach ($matches as $m) {
-                $column = $m[1];
-                $value = trim($m[2]);
+            $method = strtolower($call->name->name);
+            $pairs = [];
+            if (str_starts_with($method, 'where') || str_starts_with($method, 'orwhere')) {
+                $args = $call->getArgs();
+                if (isset($args[1]) && $args[0]->value instanceof Node\Scalar\String_) {
+                    $pairs[] = [$args[0]->value->value, ($args[2] ?? $args[1])->value];
+                }
+            }
 
-                if ($this->isCorrect($value) || $this->isLiteralToken($value)) {
+            // Include query arrays and both identity/update payloads, including indirect payloads.
+            if (in_array($method, ['create', 'forcecreate', 'insert', 'insertgetid', 'insertorignore',
+                'update', 'upsert', 'updateorcreate', 'updateorinsert', 'firstorcreate', 'firstornew',
+                'fill', 'forcefill', 'createmany', 'where', 'orwhere'], true)) {
+                foreach ($call->getArgs() as $arg) {
+                    array_push($pairs, ...$this->arrayPairs($arg->value, $assignments));
+                }
+            }
+
+            foreach ($pairs as [$column, $expression]) {
+                if (! str_ends_with($column, '_type')) {
                     continue;
                 }
-
+                $value = $printer->prettyPrintExpr($expression);
+                if ($this->isCorrect($value) || $this->isLiteralToken($value)
+                    || $this->isBackedEnumValue($expression, $nodes)) {
+                    continue;
+                }
                 if (str_contains($value, '::class')) {
                     $out[] = ['check' => 'morph-token.class-literal', 'column' => $column, 'value' => $value];
                 } elseif (preg_match('/^\$[A-Za-z_]\w*(->\w+)*$/', $value)) {
@@ -152,6 +193,90 @@ class MorphTokenBypassAudit implements DoctorAudit
         }
 
         return $out;
+    }
+
+    /** @return list<array{string, Node\Expr}> */
+    protected function arrayPairs(Node\Expr $expression, array $assignments, array $seen = []): array
+    {
+        if ($expression instanceof Node\Expr\Variable && is_string($expression->name)) {
+            if (isset($seen[$expression->name])) {
+                return [];
+            }
+            $seen[$expression->name] = true;
+            $pairs = [];
+            foreach ($assignments[$expression->name] ?? [] as $value) {
+                array_push($pairs, ...$this->arrayPairs($value, $assignments, $seen));
+            }
+
+            return $pairs;
+        }
+        if (! $expression instanceof Node\Expr\Array_) {
+            return [];
+        }
+        $pairs = [];
+        foreach ($expression->items as $item) {
+            if ($item === null) {
+                continue;
+            }
+            if ($item->key instanceof Node\Scalar\String_) {
+                $pairs[] = [$item->key->value, $item->value];
+            } else {
+                array_push($pairs, ...$this->arrayPairs($item->value, $assignments, $seen));
+            }
+        }
+
+        return $pairs;
+    }
+
+    protected function isBackedEnumValue(Node\Expr $expression, array $nodes): bool
+    {
+        if (! $expression instanceof Node\Expr\PropertyFetch
+            || ! $expression->name instanceof Node\Identifier || $expression->name->name !== 'value'
+            || ! $expression->var instanceof Node\Expr\Variable) {
+            return false;
+        }
+        $scope = $expression;
+        while ($scope = $scope->getAttribute('parent')) {
+            if ($scope instanceof Node\FunctionLike) {
+                foreach ($scope->getParams() as $param) {
+                    if ($param->var->name === $expression->var->name && $param->type instanceof Node\Name) {
+                        $reassigned = (new NodeFinder)->findFirst($scope->getStmts() ?? [],
+                            fn (Node $node) => $node instanceof Node\Expr\Assign
+                                && $node->var instanceof Node\Expr\Variable
+                                && $node->var->name === $param->var->name);
+
+                        return $reassigned === null && $this->isBackedEnum($param->type->toString(), $nodes);
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    protected function isBackedEnum(string $name, array $nodes): bool
+    {
+        foreach ((new NodeFinder)->findInstanceOf($nodes, Node\Stmt\Enum_::class) as $enum) {
+            if (isset($enum->namespacedName) && $enum->namespacedName->toString() === $name) {
+                return $enum->scalarType !== null;
+            }
+        }
+        // Composer can locate an imported enum without autoloading (executing) scanned PHP.
+        foreach (ClassLoader::getRegisteredLoaders() as $loader) {
+            if ($file = $loader->findFile($name)) {
+                $declarations = (new ParserFactory)->createForNewestSupportedVersion()->parse(file_get_contents($file)) ?? [];
+                $declarations = (new NodeTraverser(new NameResolver))->traverse($declarations);
+                foreach ((new NodeFinder)->findInstanceOf($declarations, Node\Stmt\Enum_::class) as $enum) {
+                    if (isset($enum->namespacedName) && $enum->namespacedName->toString() === $name) {
+                        return $enum->scalarType !== null;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     protected function isCorrect(string $value): bool
