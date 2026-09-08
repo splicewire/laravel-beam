@@ -142,36 +142,34 @@ class MorphTokenBypassAudit implements DoctorAudit
         $printer = new Standard;
         $out = [];
 
-        // Follow payload variables conservatively: every assignment is a possible source. This is
-        // not control-flow analysis, so ambiguity remains a nomination rather than a clean bill.
-        $assignments = [];
-        foreach ($finder->findInstanceOf($nodes, Node\Expr\Assign::class) as $assignment) {
-            if ($assignment->var instanceof Node\Expr\Variable && is_string($assignment->var->name)) {
-                $assignments[$assignment->var->name][] = $assignment->expr;
-            }
-        }
-
         foreach ($finder->find($nodes, fn (Node $node) => $node instanceof Node\Expr\MethodCall
-            || $node instanceof Node\Expr\StaticCall) as $call) {
+            || $node instanceof Node\Expr\StaticCall || $node instanceof Node\Expr\NullsafeMethodCall) as $call) {
             if ($call->isFirstClassCallable() || ! $call->name instanceof Node\Identifier) {
                 continue;
             }
 
             $method = strtolower($call->name->name);
             $pairs = [];
-            if (str_starts_with($method, 'where') || str_starts_with($method, 'orwhere')) {
+            $query = preg_replace('/^orwhere/', 'where', $method);
+            if (in_array($query, ['where', 'wherenot', 'wherein', 'wherenotin', 'whereintegerinraw', 'whereintegernotinraw'], true)) {
                 $args = $call->getArgs();
                 if (isset($args[1]) && $args[0]->value instanceof Node\Scalar\String_) {
-                    $pairs[] = [$args[0]->value->value, ($args[2] ?? $args[1])->value];
+                    $value = in_array($query, ['where', 'wherenot'], true)
+                        ? ($args[2] ?? $args[1])->value : $args[1]->value;
+                    $values = $value instanceof Node\Expr\Array_
+                        ? array_map(fn ($item) => $item->value, array_filter($value->items)) : [$value];
+                    foreach ($values as $expression) {
+                        $pairs[] = [$args[0]->value->value, $expression];
+                    }
                 }
             }
 
             // Include query arrays and both identity/update payloads, including indirect payloads.
             if (in_array($method, ['create', 'forcecreate', 'insert', 'insertgetid', 'insertorignore',
                 'update', 'upsert', 'updateorcreate', 'updateorinsert', 'firstorcreate', 'firstornew',
-                'fill', 'forcefill', 'createmany', 'where', 'orwhere'], true)) {
+                'fill', 'forcefill', 'createmany', 'where', 'orwhere', 'wherenot', 'orwherenot'], true)) {
                 foreach ($call->getArgs() as $arg) {
-                    array_push($pairs, ...$this->arrayPairs($arg->value, $assignments));
+                    array_push($pairs, ...$this->arrayPairs($arg->value, $nodes));
                 }
             }
 
@@ -196,16 +194,17 @@ class MorphTokenBypassAudit implements DoctorAudit
     }
 
     /** @return list<array{string, Node\Expr}> */
-    protected function arrayPairs(Node\Expr $expression, array $assignments, array $seen = []): array
+    protected function arrayPairs(Node\Expr $expression, array $nodes, array $seen = []): array
     {
         if ($expression instanceof Node\Expr\Variable && is_string($expression->name)) {
-            if (isset($seen[$expression->name])) {
+            $key = $expression->name.':'.$expression->getStartFilePos();
+            if (isset($seen[$key])) {
                 return [];
             }
-            $seen[$expression->name] = true;
+            $seen[$key] = true;
             $pairs = [];
-            foreach ($assignments[$expression->name] ?? [] as $value) {
-                array_push($pairs, ...$this->arrayPairs($value, $assignments, $seen));
+            foreach ($this->precedingValues($expression, $nodes) as $value) {
+                array_push($pairs, ...$this->arrayPairs($value, $nodes, $seen));
             }
 
             return $pairs;
@@ -221,11 +220,99 @@ class MorphTokenBypassAudit implements DoctorAudit
             if ($item->key instanceof Node\Scalar\String_) {
                 $pairs[] = [$item->key->value, $item->value];
             } else {
-                array_push($pairs, ...$this->arrayPairs($item->value, $assignments, $seen));
+                array_push($pairs, ...$this->arrayPairs($item->value, $nodes, $seen));
             }
         }
 
         return $pairs;
+    }
+
+    /** The nearest function (or namespace) is a provenance boundary, not the whole file. */
+    protected function lexicalScope(Node $node): ?Node
+    {
+        while ($node = $node->getAttribute('parent')) {
+            if ($node instanceof Node\FunctionLike || $node instanceof Node\Stmt\Namespace_) {
+                return $node;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<Node\Expr> */
+    protected function precedingValues(Node\Expr\Variable $variable, array $nodes): array
+    {
+        $scope = $this->lexicalScope($variable);
+        $values = [];
+        foreach ((new NodeFinder)->findInstanceOf($nodes, Node\Expr\Assign::class) as $assignment) {
+            if (! $assignment->var instanceof Node\Expr\Variable
+                || $assignment->var->name !== $variable->name
+                || $this->lexicalScope($assignment) !== $scope
+                || $assignment->getEndFilePos() >= $variable->getStartFilePos()) {
+                continue;
+            }
+
+            // Only a straight-line assignment definitely replaces the prior payload. A branch or
+            // loop may not execute: retain both possibilities instead of certifying its safe arm.
+            $statement = $assignment->getAttribute('parent');
+            $container = $statement?->getAttribute('parent');
+            if ($statement instanceof Node\Stmt\Expression && $container === $scope) {
+                $values = [];
+            }
+            $values[] = $assignment->expr;
+        }
+
+        return $values;
+    }
+
+    protected function possiblyMutated(Node\Expr\PropertyFetch $use, Node\FunctionLike $scope): bool
+    {
+        $name = $use->var->name;
+        $contains = fn (Node $node) => (new NodeFinder)->findFirst([$node],
+            fn (Node $child) => $child instanceof Node\Expr\Variable && $child->name === $name) !== null;
+
+        foreach ((new NodeFinder)->find($scope->getStmts() ?? [], fn (Node $node) => true) as $node) {
+            if ($node->getStartFilePos() >= $use->getStartFilePos() || $this->lexicalScope($node) !== $scope) {
+                continue;
+            }
+            if (($node instanceof Node\Expr\Assign || $node instanceof Node\Expr\AssignRef
+                || $node instanceof Node\Expr\AssignOp) && $contains($node->var)) {
+                return true;
+            }
+            if ($node instanceof Node\Expr\AssignRef && $contains($node->expr)) {
+                return true;
+            }
+            if ($node instanceof Node\Stmt\Foreach_
+                && ($contains($node->valueVar) || ($node->keyVar && $contains($node->keyVar)))) {
+                return true;
+            }
+            if ($node instanceof Node\Expr\Closure) {
+                foreach ($node->uses as $capture) {
+                    if ($capture->byRef && $capture->var->name === $name) {
+                        return true;
+                    }
+                }
+            }
+            // A call may accept this variable by reference; without callee analysis it is unknown.
+            if ($node instanceof Node\Arg && $node->value instanceof Node\Expr\Variable
+                && $node->value->name === $name) {
+                return true;
+            }
+            if (($node instanceof Node\Expr\PreInc || $node instanceof Node\Expr\PostInc
+                || $node instanceof Node\Expr\PreDec || $node instanceof Node\Expr\PostDec)
+                && $contains($node->var)) {
+                return true;
+            }
+            if ($node instanceof Node\Stmt\Unset_) {
+                foreach ($node->vars as $var) {
+                    if ($contains($var)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     protected function isBackedEnumValue(Node\Expr $expression, array $nodes): bool
@@ -240,12 +327,8 @@ class MorphTokenBypassAudit implements DoctorAudit
             if ($scope instanceof Node\FunctionLike) {
                 foreach ($scope->getParams() as $param) {
                     if ($param->var->name === $expression->var->name && $param->type instanceof Node\Name) {
-                        $reassigned = (new NodeFinder)->findFirst($scope->getStmts() ?? [],
-                            fn (Node $node) => $node instanceof Node\Expr\Assign
-                                && $node->var instanceof Node\Expr\Variable
-                                && $node->var->name === $param->var->name);
-
-                        return $reassigned === null && $this->isBackedEnum($param->type->toString(), $nodes);
+                        return ! $this->possiblyMutated($expression, $scope)
+                            && $this->isBackedEnum($param->type->toString(), $nodes);
                     }
                 }
 
