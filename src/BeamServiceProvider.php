@@ -156,6 +156,7 @@ use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
 use Splicewire\Beam\Schema\SchemaSources;
+use Splicewire\Beam\Scribe\FrameEndpointUrl;
 use Splicewire\Beam\Seed\BeamSeedManifest;
 use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
 use Splicewire\Beam\Source\LadderForeignSourceProjector;
@@ -1614,6 +1615,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
     public function packageBooted(): void
     {
+        FrameEndpointUrl::register();
+
         // `Hook` binds its authorization HERE, in the package that owns the model, the way taxonomy binds
         // `Silo`/`Tag` and knowledge binds `Fragment` (the host's policy map stays empty on purpose). Until
         // this line existed the model carried NO policy, and the estate read that absence four ways at
