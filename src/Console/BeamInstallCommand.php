@@ -184,6 +184,9 @@ class BeamInstallCommand extends Command
 
         $this->persistConfig($prefix, $sources, $tenancy);
 
+        // App-owned Data classes also have a disk projection; OpenAPI only generates in memory.
+        $schemasGenerated = $this->generateSchemaArtifacts();
+
         // 4b. Generate the OpenAPI artifact, so a fresh host serves its OWN spec at
         //     beam/openapi.{yaml,json} on first boot rather than 404ing until someone remembers to run
         //     the generator. Publishing beam's scribe stub happened above; this is the step that turns it
@@ -225,6 +228,12 @@ class BeamInstallCommand extends Command
             // scroll away behind publishing, migrating and spec generation.
             $this->error('beam stack installed, but SEEDING REPORTED FAILURES — re-run `splicewire:beam:seed` '
                 .'to see them. The host is installed; its package-owned data is incomplete.');
+
+            return self::FAILURE;
+        }
+
+        if (! $schemasGenerated) {
+            $this->error('beam stack installed, but schema projection failed — re-run `php artisan schemas:generate`.');
 
             return self::FAILURE;
         }
@@ -753,6 +762,24 @@ class BeamInstallCommand extends Command
     private function productionWriteWaiver(): array
     {
         return $this->option('allow-production-migrate') ? ['--force' => true] : [];
+    }
+
+    /** Run the configured discovery/generator/writer pipeline; never fabricate schema files here. */
+    private function generateSchemaArtifacts(): bool
+    {
+        if (! $this->getApplication()?->has('schemas:generate')) {
+            return true;
+        }
+
+        $this->line('splicewire:beam:install → JSON schema artifacts (schemas:generate)');
+
+        try {
+            return $this->call('schemas:generate') === self::SUCCESS;
+        } catch (\Throwable $e) {
+            $this->warn('  ↳ schema generation failed: '.$e->getMessage());
+
+            return false;
+        }
     }
 
     private function generateOpenApiArtifact(): void
