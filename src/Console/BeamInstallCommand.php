@@ -768,7 +768,9 @@ class BeamInstallCommand extends Command
     private function generateSchemaArtifacts(): bool
     {
         if (! $this->getApplication()?->has('schemas:generate')) {
-            return true;
+            $this->warn('  ↳ required schemas:generate command is not registered; check the DataSchemas provider.');
+
+            return false;
         }
 
         $this->line('splicewire:beam:install → JSON schema artifacts (schemas:generate)');

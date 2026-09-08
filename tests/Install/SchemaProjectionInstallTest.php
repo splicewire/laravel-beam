@@ -2,14 +2,17 @@
 
 namespace Splicewire\Beam\Tests\Install;
 
+use Illuminate\Console\Application;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
+use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Tests\TestCase;
 
-class SchemaProjectionInstallTest extends TestCase
+abstract class SchemaProjectionInstallTestCase extends TestCase
 {
-    private string $outputDirectory;
+    protected string $outputDirectory;
 
     protected function defineEnvironment($app): void
     {
@@ -38,29 +41,43 @@ class SchemaProjectionInstallTest extends TestCase
         File::deleteDirectory($this->outputDirectory);
         parent::tearDown();
     }
-
-    public function test_install_emits_app_data_through_the_real_schema_generator(): void
-    {
-        $this->artisan('splicewire:beam:install', ['--no-interaction' => true, '--no-seed' => true])->assertSuccessful();
-        $path = $this->outputDirectory.'/Splicewire/Beam/Tests/Fixtures/SchemaProjectionInstall/SitemapData.schema.json';
-        $this->assertFileExists($path);
-        $schema = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame(['label', 'href', 'order', 'externalUrl'], array_keys($schema['properties']));
-        $this->assertSame('integer', $schema['properties']['order']['type']);
-        $this->assertContains('null', $schema['properties']['externalUrl']['type']);
-    }
-
-    public function test_install_reports_a_thrown_schema_generation_failure(): void
-    {
-        Artisan::command('schemas:generate', function () {
-            throw new \RuntimeException('fixture generation failed');
-        });
-        $this->artisan('splicewire:beam:install', ['--no-interaction' => true, '--no-seed' => true])->assertFailed();
-    }
-
-    public function test_install_reports_a_schema_generation_failure(): void
-    {
-        Artisan::command('schemas:generate', fn () => 1);
-        $this->artisan('splicewire:beam:install', ['--no-interaction' => true, '--no-seed' => true])->assertFailed();
-    }
 }
+
+uses(SchemaProjectionInstallTestCase::class);
+
+it('emits app data through the real schema generator during installation', function () {
+    $this->artisan('splicewire:beam:install', ['--no-interaction' => true, '--no-seed' => true])->assertSuccessful();
+    $path = $this->outputDirectory.'/Splicewire/Beam/Tests/Fixtures/SchemaProjectionInstall/SitemapData.schema.json';
+    expect($path)->toBeFile();
+    $schema = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+    expect(array_keys($schema['properties']))->toBe(['label', 'href', 'order', 'externalUrl'])
+        ->and($schema['properties']['order']['type'])->toBe('integer')
+        ->and($schema['properties']['externalUrl']['type'])->toContain('null');
+});
+
+it('reports a thrown schema generation failure', function () {
+    Artisan::command('schemas:generate', function () {
+        throw new \RuntimeException('fixture generation failed');
+    });
+    $this->artisan('splicewire:beam:install', ['--no-interaction' => true, '--no-seed' => true])->assertFailed();
+});
+
+it('reports a nonzero schema generation failure', function () {
+    Artisan::command('schemas:generate', fn () => 1);
+    $this->artisan('splicewire:beam:install', ['--no-interaction' => true, '--no-seed' => true])->assertFailed();
+});
+
+it('fails explicitly when the required schema generator is unavailable', function () {
+    $console = new class($this->app, $this->app['events'], 'test') extends Application
+    {
+        public function has(string $name): bool
+        {
+            return $name !== 'schemas:generate' && parent::has($name);
+        }
+    };
+    $console->resolve(BeamInstallCommand::class);
+    $this->app->make(Kernel::class)->setArtisan($console);
+    $this->artisan('splicewire:beam:install', ['--no-interaction' => true, '--no-seed' => true])
+        ->expectsOutputToContain('required schemas:generate command is not registered')
+        ->assertFailed();
+});
