@@ -180,6 +180,7 @@ use Splicewire\Beam\Surgeon\DuplicateRouteNameAudit;
 use Splicewire\Beam\Surgeon\EnvelopeCopyAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
+use Splicewire\Beam\Surgeon\InstallDesiredStateAudit;
 use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
 use Splicewire\Beam\Surgeon\ModelSurfaceCoverageAudit;
 use Splicewire\Beam\Surgeon\MorphAliasCoverageAudit;
@@ -1904,6 +1905,18 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             MarketingSampleAudit::class,
+        );
+
+        // prove-the-beam-starter 12: `beam.install.desired-state` — R1–R7, the measured definition of what a
+        // correct beam-tier install produces, as a program rather than as prose (01 ruling 1). Advisory, and
+        // there is no argued exception: every requirement is a fact about a HOST, and five of the seven are
+        // about a process that has already exited or a live HTTP server, so those report
+        // `Finding::inconclusive()` in their satisfied state rather than a green tick over a check that never
+        // ran. Bound lazily — it reads the finished route table.
+        $this->app->bind(InstallDesiredStateAudit::class, fn () => InstallDesiredStateAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            InstallDesiredStateAudit::class,
         );
 
         // particle-doctrine-followups #14: the schema leg's first drift guard. Advisory (a
