@@ -123,7 +123,7 @@ class InstallDesiredStateAuditTest extends TestCase
         $this->assertStringContainsString('grep -c', $r2->detail);
         // 01 recorded 194 WARN; it is not reproducible and is deliberately not encoded.
         $this->assertStringNotContainsString('194', $r2->detail);
-        $this->assertStringContainsString('0 / 154 / 89', $r2->detail);
+        $this->assertStringContainsString('0 / 153 / 99', $r2->detail);
     }
 
     /* ------------------------------------------------------------------ R3 */
@@ -164,6 +164,114 @@ class InstallDesiredStateAuditTest extends TestCase
         $this->assertSame(DoctorStatus::Warn, $two->status);
         $this->assertStringContainsString('a verdict', $one->detail);
         $this->assertStringContainsString('UNMEASURED', $two->detail);
+    }
+
+    /**
+     * `bin/ci-check` is a THREE-state runner and this is the only reader of its record, so exit 2 has to
+     * survive the round trip as itself. Both 1 and 2 are a Warn — neither is a pass — but they are
+     * different faults and must not be spelled the same: 1 means a gate ran and failed, 2 means a gate
+     * never reported. Telling an operator to go read a failing gate that does not exist is the exact
+     * substitution the runner's UNSPAWNED/TRUNCATED split exists to prevent, one repository over.
+     */
+    public function test_r3_never_calls_the_unmeasured_state_a_verdict(): void
+    {
+        $one = $this->byCheck($this->audit(ciRecord: ['exit' => 1, 'commit' => self::HEAD]))[InstallDesiredStateAudit::CHECK_R3];
+        $two = $this->byCheck($this->audit(ciRecord: ['exit' => 2, 'commit' => self::HEAD]))[InstallDesiredStateAudit::CHECK_R3];
+
+        $this->assertTrue($one->conclusive, 'A recorded failure against this HEAD is measured.');
+        $this->assertTrue($two->conclusive);
+
+        $this->assertStringContainsString('exit 1', $one->detail);
+        $this->assertStringContainsString('exit 2', $two->detail);
+        $this->assertStringContainsString('not a verdict', $two->detail);
+        $this->assertStringNotContainsString('not a verdict', $one->detail);
+        $this->assertNotSame($one->detail, $two->detail);
+    }
+
+    /**
+     * The `exit` a runner writes through `json_encode` is an int; a hand-edited or half-written record
+     * can carry anything. `is_numeric` is what separates "the record says something" from "the record
+     * says nothing", and a record that says nothing is not a pass.
+     */
+    public function test_r3_warns_on_a_record_that_says_nothing(): void
+    {
+        foreach ([['at' => 'now', 'commit' => self::HEAD], ['exit' => 'green', 'commit' => self::HEAD], ['exit' => null]] as $malformed) {
+            /** @var array{exit?: int|string, at?: string, commit?: string} $malformed */
+            $r3 = $this->byCheck($this->audit(ciRecord: $malformed))[InstallDesiredStateAudit::CHECK_R3];
+
+            $this->assertSame(DoctorStatus::Warn, $r3->status);
+            $this->assertStringContainsString('says nothing', $r3->detail);
+            $this->assertStringContainsString('not a pass', $r3->detail);
+        }
+    }
+
+    /**
+     * A record with no `commit` is unattributable, not fresh. The runner writes `null` there rather
+     * than guessing when it cannot read `.git`, so this is a shape the estate actually produces —
+     * a `--no-dev` container, a tarball deploy, a worktree without `.git`.
+     */
+    public function test_r3_warns_on_a_record_that_names_no_commit(): void
+    {
+        $r3 = $this->byCheck($this->audit(ciRecord: ['exit' => 0, 'at' => '2026-09-09T10:00:00Z']))[InstallDesiredStateAudit::CHECK_R3];
+
+        $this->assertSame(DoctorStatus::Warn, $r3->status);
+        $this->assertStringContainsString('STALE or unattributable', $r3->detail);
+        $this->assertStringContainsString('(none)', $r3->detail);
+    }
+
+    /**
+     * The mirror case, and the one that decides an ambiguity: the record names a commit and the AUDIT
+     * cannot read this tree's HEAD. That is not evidence the record is stale — it is evidence nothing
+     * can be compared — and it still may not read as a pass, because "recorded" is the only spelling
+     * this audit has and an unattributable pass is the thing it refuses to launder.
+     */
+    public function test_r3_warns_when_this_tree_has_no_readable_head_to_compare_against(): void
+    {
+        $audit = new InstallDesiredStateAudit(
+            setupSteps: [],
+            setupResidues: [],
+            ciCheckRecord: ['exit' => 0, 'at' => '2026-09-09T10:00:00Z', 'commit' => self::HEAD],
+            ciCheckRecordPath: '/host/storage/app/beam/ci-check.json',
+            headCommit: null,
+            rootRouteAction: null,
+            rootServedByEntryCatchAll: false,
+            docsResolution: [],
+            frameProbePath: null,
+            frameRouteUri: null,
+            frameRouteMiddleware: [],
+            lockfilePresent: true,
+            outsideTreeDeps: [],
+            nodeModulesPresent: true,
+            figures: [],
+        );
+
+        $r3 = $this->byCheck($audit)[InstallDesiredStateAudit::CHECK_R3];
+
+        $this->assertSame(DoctorStatus::Warn, $r3->status);
+        $this->assertStringContainsString('(unreadable)', $r3->detail);
+    }
+
+    /**
+     * Every record-reading branch names the path it read, because an operator whose record is not being
+     * found needs to know where the audit looked — the runner writes to its own default and a host that
+     * repoints the config key has to repoint the runner too.
+     */
+    public function test_every_r3_reading_names_the_path_it_read(): void
+    {
+        $records = [
+            null,
+            ['exit' => 0, 'commit' => self::HEAD],
+            ['exit' => 2, 'commit' => self::HEAD],
+            ['exit' => 0, 'commit' => str_repeat('b', 40)],
+            ['at' => 'now'],
+        ];
+
+        foreach ($records as $record) {
+            /** @var array{exit?: int|string, at?: string, commit?: string}|null $record */
+            $r3 = $this->byCheck($this->audit(ciRecord: $record))[InstallDesiredStateAudit::CHECK_R3];
+
+            $this->assertStringContainsString('/host/storage/app/beam/ci-check.json', $r3->detail);
+        }
     }
 
     /* ------------------------------------------------------------------ R4 */

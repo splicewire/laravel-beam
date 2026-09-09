@@ -113,7 +113,18 @@ use Splicewire\Beam\Doctor\BeamDoctorManifest;
  *
  * ⚠️ **01's `194 WARN` is not reproducible and is NOT encoded.** Re-derived 2026-09-08 for this class at
  * the clean-room tree with the extractor named in {@see BASELINE} — `0 ERROR / 154 WARN / 89 INFO`,
- * agreeing with 07's independent reading and not with 01's. 154 is what ships here.
+ * agreeing with 07's independent reading and not with 01's.
+ *
+ * ⚠️ **And that figure moved again within the day, which is the argument for the extractor rather than
+ * for the number.** Re-derived 2026-09-09 at a fresh clean room cut from `laravel-beam-starter`
+ * at 3073356 (the lock bump that resolved the family to `main`, so the published stub fix reaches the
+ * host): **`0 ERROR / 153 WARN / 99 INFO`**, and the suite **142 tests, 925 assertions** against 07's
+ * 92 / 509. That is what ships here. Both were taken at the substrate {@see BASELINE} names, not at a
+ * warm dev host — ⚠️ `~/Herd/beam` IS this starter (a symlink onto it), and reads
+ * **`2 ERROR / 176 WARN / 96 INFO`** the same hour, because a co-dev tree carries a path-resolved
+ * `composer.lock` and `lock path-free` is a conclusive ERROR there. **The clean room and the co-dev
+ * checkout are the same repository and disagree on ERROR by construction**; a figure taken at the
+ * second and filed under the first would be a different quantity wearing this one's label.
  *
  * Registered on {@see BeamDoctorManifest} only (registering in both places double-renders it), bound
  * lazily off the container because it reads the finished route table.
@@ -144,32 +155,38 @@ class InstallDesiredStateAudit implements DoctorAudit
 
     /**
      * The clean-room baseline, each figure beside the extractor that produced it. Descriptive: nothing
-     * compares against these and nothing may. Substrate: `git archive HEAD` of `laravel-beam-starter`
+     * compares against these and nothing may.
      *
-     * @ c94b44f into `/private/tmp`, `composer setup --no-interaction`, `~/Workspaces` unreachable.
+     * Substrate, re-taken 2026-09-09: `git archive HEAD` of `laravel-beam-starter` at 3073356 into
+     * `/private/tmp`, `composer setup --no-interaction` (exit 0, all eight steps). The tarball carries
+     * no `composer.local.json` — it is gitignored, so the overlay cannot travel — and the committed
+     * lock is path-free, which is what makes this a clean room rather than a copy of the dev tree.
+     * The four unchanged figures below were re-verified there in the same run, not carried forward.
      *
      * @var array<string, array{value: int|string, extractor: string, on: string}>
      */
     public const BASELINE = [
         'doctor ERROR / WARN / INFO' => [
-            'value' => '0 / 154 / 89',
+            'value' => '0 / 153 / 99',
             // --no-ansi rather than an ANSI-stripping regex on purpose: the estate's own reading of this
             // figure was taken through `perl -pe 's/<esc>...//g'`, and a backslash-dense extractor does not
             // survive being printed by a console renderer, so an operator copying it out of this output
             // would run a different command than the one that produced the number. Verified equal to the
-            // perl-stripped reading at ~/Herd/beam, 2026-09-08: 2 / 175 / 96 both ways.
+            // perl-stripped reading at ~/Herd/beam, 2026-09-08: 2 / 175 / 96 both ways; that same
+            // co-dev tree reads 2 / 176 / 96 on 2026-09-09, and its 2 ERRORs are the path-resolved lock
+            // — see the class docblock for why that is a different quantity, not drift in this one.
             'extractor' => "artisan splicewire:beam:doctor --no-ansi | grep -c -E '^[[:space:]]*ERROR[[:space:]]'  (and WARN, INFO)",
-            'on' => '2026-09-08',
+            'on' => '2026-09-09',
         ],
         'routes registered' => [
             'value' => 78,
             'extractor' => "count(app('router')->getRoutes())",
-            'on' => '2026-09-08',
+            'on' => '2026-09-09',
         ],
         'tables' => [
             'value' => 41,
             'extractor' => 'count(Schema::getTableListing())',
-            'on' => '2026-09-08',
+            'on' => '2026-09-09',
         ],
         // NOT 07's "migrations published by the install" (14, then 21 on 01) — a different quantity, and
         // conflating them is how that column drifted. This counts every migration file in the tree, the
@@ -178,17 +195,20 @@ class InstallDesiredStateAudit implements DoctorAudit
         'migration files on disk' => [
             'value' => 41,
             'extractor' => "glob('database/migrations/*.php') + glob('database/migrations/*/*.php')",
-            'on' => '2026-09-08',
+            'on' => '2026-09-09',
         ],
         'beam_ux_entries rows' => [
             'value' => 13,
             'extractor' => "DB::table('beam_ux_entries')->count()",
-            'on' => '2026-09-08',
+            'on' => '2026-09-09',
         ],
+        // ⚠️ `vendor/bin/phpunit` is NOT the extractor and refuses this repo outright — a neighbour's Pest
+        // files make it exit 255 with "Please run [./vendor/bin/pest] instead", which reads like a broken
+        // install rather than a wrong runner. `composer test` is the declared gate and resolves it.
         'suite' => [
-            'value' => '92 tests, 509 assertions',
-            'extractor' => "composer test — NOT run by this audit; recorded from 07's clean-room run",
-            'on' => '2026-09-08',
+            'value' => '142 tests, 925 assertions',
+            'extractor' => 'composer test — NOT run by this audit; run separately in the clean room',
+            'on' => '2026-09-09',
         ],
     ];
 
@@ -329,8 +349,10 @@ class InstallDesiredStateAudit implements DoctorAudit
                 'R3 (`composer ci:check` exits 0): NOT RUN — this audit never shells out to it, because ci:check runs '.
                 'the whole suite plus pint and phpstan and a multi-minute doctor is a doctor nobody runs. No recorded '.
                 'result at %s either, so this requirement is unmeasured. Run `composer ci:check` (exit 0 required; 2 '.
-                'means a gate could not be measured, which is not a verdict), or have it write '.
-                '{"exit":0,"at":"<iso8601>","commit":"<sha>"} there.',
+                'means a gate could not be measured, which is not a verdict) — the beam-tier `bin/ci-check` writes '.
+                '{"exit":<0|1|2>,"at":"<iso8601>","commit":"<sha|null>"} there on every run, whatever it concluded. '.
+                'A host that repoints this config key must point that runner\'s CI_CHECK_RECORD_PATH at the same '.
+                'file, or the record is written where nothing looks.',
                 $this->ciCheckRecordPath,
             ));
         }
@@ -366,11 +388,12 @@ class InstallDesiredStateAudit implements DoctorAudit
 
         if ($exit !== 0) {
             return Finding::warn(self::CHECK_R3, sprintf(
-                'R3 (`composer ci:check` exits 0): RECORDED FAILURE — exit %d at %s against this tree\'s HEAD (%s). '.
-                '%s',
+                'R3 (`composer ci:check` exits 0): RECORDED FAILURE — exit %d at %s against this tree\'s HEAD (%s), '.
+                'read from %s. %s',
                 $exit,
                 $at,
                 $commit,
+                $this->ciCheckRecordPath,
                 $exit === 2
                     ? 'Exit 2 is `bin/ci-check`\'s UNMEASURED state (a gate could not be spawned, wrote zero bytes, or '.
                       'exited 0 without a summary) — not a verdict, and it dominates 1.'
@@ -379,10 +402,11 @@ class InstallDesiredStateAudit implements DoctorAudit
         }
 
         return Finding::pass(self::CHECK_R3, sprintf(
-            'R3 (`composer ci:check` exits 0): RECORDED pass — exit 0 at %s against this tree\'s HEAD (%s). This audit '.
-            'did not re-run it; the reading is as fresh as the record.',
+            'R3 (`composer ci:check` exits 0): RECORDED pass — exit 0 at %s against this tree\'s HEAD (%s), read from '.
+            '%s. This audit did not re-run it; the reading is as fresh as the record.',
             $at,
             $commit,
+            $this->ciCheckRecordPath,
         ));
     }
 
