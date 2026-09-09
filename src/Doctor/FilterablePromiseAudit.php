@@ -100,6 +100,19 @@ use Splicewire\Beam\Routing\RouteMetadataReader;
  *
  * @see ParticleResourceAttribute::$filterable the default that makes this a promise by omission
  * @see RelativeEdgeIntegrityAudit the sibling detector for the OTHER consequence of that same default
+ * @see FilterStampReadPathAudit the sibling for the promise made by SAYING so — that one reads the ROUTE
+ *                               stamp against the handler that serves it, where this one reads the
+ *                               particle registry against the filter registry. Same family, opposite
+ *                               entry: a filter sub-surface with no read path behind it. It carried a
+ *                               `@see` to this class from the day it was written; this direction was
+ *                               missing until 2026-09-09, so a reader arriving here first met one half
+ *                               of the family and no sign of the other
+ * @see \Splicewire\Beam\Surgeon\BareParticleMountAudit a third, weaker relation — named precisely
+ *      because the resemblance invites over-citation. Its docblock DISCUSSES how `mount(...)->only([])`
+ *      still publishes this sub-surface (`only` gates the CRUD verbs; `filters` is a separate opt-out),
+ *      but it does not REPORT that shape: it reports second-spelling `Route::particle*()` call sites.
+ *      It is also `src/Surgeon/`, so unlike these two it is absent wherever the host skipped dev
+ *      dependencies
  */
 class FilterablePromiseAudit implements DoctorAudit
 {
