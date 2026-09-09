@@ -58,6 +58,19 @@ use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 #[ParticleResource(
     key: 'schemas',
     backing: BeamSchema::class,
+    // No data-filters query, so say so rather than promise one (`particle.filterable-promise`;
+    // `particle-write-surface` 09). The default is `true` and this declaration never opted out, so
+    // `ParticleController::index()` would raise on a key with no registration. It cannot be reached
+    // here — the "No CRUD verbs are mounted, deliberately" note above is why, and a route sweep at
+    // `~/Herd/splicewire-app` (926 routes; 54 `ParticleController` routes found, so the absence is
+    // real) finds this key only on `SchemaRegistryController`. Its seven `->beam()->inResource('schemas')`
+    // stamps carry NO `filters: true`, so nothing downstream is promised a vocabulary either.
+    //
+    // ⚠️ Not a demotion: a stem-rolling index across two tiers is not a row list, so there is no
+    // filterable list here to lose. If a generic index is ever mounted for this key it needs a `scope:`
+    // or a data-filters registration first — unscoped and policy-less it answers 403 rather than every
+    // row (`particle.ungated-read`), but 403 is not the intended surface either.
+    filterable: false,
     data: BeamSchemaData::class,
     input: BeamSchemaInputData::class,
     label: 'Schemas',
