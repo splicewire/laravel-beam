@@ -204,6 +204,7 @@ use Splicewire\Beam\Surgeon\Support\PackageOrigin;
 use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
 use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
 use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
+use Splicewire\Beam\Surgeon\MacroDeclaredSurfaceAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
 use Splicewire\Beam\Surgeon\UndeclaredWriteMapAudit;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
@@ -1866,6 +1867,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             UnseatedNavSectionAudit::class,
         );
 
+        // The attrition counter for the `->beam()->returns()` macro (particle-doctrine: it "deprecates
+        // by attrition, not by a rename"). ADVISORY for a reason worth stating: a macro declaration is
+        // CORRECT — it wins precedence and the generated client is typed off it — so this is migration
+        // debt, never a contract hole. It is deliberately NOT folded into UndeclaredSurfaceAudit: that
+        // audit's first legal declaration site IS the macro, and conflating the two is the exact defect
+        // cf93e8c repaired, where every macro-declared route counted as undeclared.
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            MacroDeclaredSurfaceAudit::class,
+        );
+
         // beam-docs-satellite 65: a resource whose LIST read is gated by nothing — no predicate in its
         // base query, no policy on its model, no tenancy on its mount. `ParticleController::index()`
         // fails that read closed at REQUEST time (403); this audit tells a host which mounts would answer
@@ -2181,10 +2193,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      * plainly, so an unguarded package registration would silently stomp a host that seeded its own
      * `hooks` key from `config('data-filters.resources')`. Guarded, this is strictly additive.
      *
-     * Only `hooks` today. `schemas` ({@see Data\BeamSchemaData}) and `git-repo`
-     * ({@see Data\GitRepoData}) are beam's other two unregistered filterable keys, but neither is
-     * mounted at the probed tenant — both answer 404 at `/api/v1/<key>`, so they are latent rather
-     * than broken, and each is left for its own measurement rather than folded in blind.
+     * `hooks` declares a filter vocabulary and registers it here. `git-repo`
+     * ({@see Data\GitRepoData}) declares no filter/sort vocabulary and explicitly opts out;
+     * its authorized filter-schema read is the declared empty vocabulary. `schemas`
+     * ({@see Data\BeamSchemaData}) remains outside this registration.
      */
     protected function declareFilterResources(): void
     {
