@@ -6,7 +6,11 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Rushing\SchemaConvergence\ConvergentTable;
+use Spatie\Activitylog\LogBatch;
 use Spatie\Activitylog\Models\Activity;
+use Splicewire\Beam\Console\BeamInstallCommand;
+use Splicewire\Beam\Install\TableOwnershipResolver;
+use Splicewire\Beam\Models\CentralActivityLog;
 
 /**
  * The spatie/laravel-activitylog table, as ONE shared/ stub — run in BOTH the central pass and every
@@ -21,7 +25,7 @@ use Spatie\Activitylog\Models\Activity;
  * THE CENTRAL SHAPE WINS AS CANONICAL, because it strictly dominates. Its morph id columns are STRINGS,
  * so a bigint personal-access-token id, a uuid user id, and a string tenant slug can all be a subject or
  * causer; the tenant copy's `nullableUuidMorphs` could hold only the uuid case. Nothing depended on the
- * narrower shape, and {@see \Splicewire\Beam\Models\CentralActivityLog} records tenant slugs as subjects.
+ * narrower shape, and {@see CentralActivityLog} records tenant slugs as subjects.
  *
  * `batch_uuid` IS NOW CONDITIONAL ON THE INSTALLED MAJOR, and its history is worth keeping because it
  * reverses twice.
@@ -69,8 +73,8 @@ use Spatie\Activitylog\Models\Activity;
  * outrank Lunar. That requirement had no mechanism behind it — it described a hand edit — and was
  * deleted rather than implemented. It now HAS one: `splicewire:beam:install` asks who owns each
  * colliding table (default beam, `--own-tables` to script it) and re-dates the published copy to one
- * tick below Lunar's stamp — see {@see \Splicewire\Beam\Install\TableOwnershipResolver}, driven from
- * {@see \Splicewire\Beam\Console\BeamInstallCommand}. So the ordering is caused by the install and
+ * tick below Lunar's stamp — see {@see TableOwnershipResolver}, driven from
+ * {@see BeamInstallCommand}. So the ordering is caused by the install and
  * reproduces from a fresh clone, and a host that declines gets the loud migrate above rather than a
  * quiet wrong table. Note the re-date is one tick, never a `0001_01_01_*` band: a band was rejected on
  * merit (beam-facade ticket 22) and would also outrank a host's own deliberate migration.
@@ -109,7 +113,7 @@ return new class extends Migration
                 // omitting it unconditionally reproduces `a5df9e1` — `column "batch_uuid" ... does not
                 // exist`, 4 failing tests — on the FLAGSHIP, which resolves 4.12.3 while beam resolves
                 // 5.0.0. `LogBatch` is the discriminator: present in 4.x, gone in 5.x.
-                if (class_exists(\Spatie\Activitylog\LogBatch::class)) {
+                if (class_exists(LogBatch::class)) {
                     $table->uuid('batch_uuid')->nullable();
                 }
 

@@ -3,8 +3,8 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Splicewire\Beam\Facades\Beam;
 use Rushing\SchemaConvergence\ConvergentTable;
+use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Storage\GitRepoRegistrar;
 
 /**
