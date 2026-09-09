@@ -36,8 +36,15 @@ use Splicewire\Beam\Routing\RouteMetadataReader;
  * No data-filters resource is registered under [<key>], so no list query can be composed for it.
  * ```
  *
- * The `filters/*` sub-surface resolves the same definition ({@see ResourceFiltersController::definition()}),
- * so it raises on exactly the same keys.
+ * The `filters/*` sub-surface resolves the same definition ({@see ResourceFiltersController::definition()})
+ * on exactly the same keys, but it does **not** raise: that path uses `tryResource()` and `abort(404)`,
+ * and `declaredEmptyVocabulary()` documents the 404 as deliberate. The two arms fail differently and the
+ * difference is the point — `index()` is a loud 500, `filters/*` is a silent capability loss (it feeds
+ * `sortableFields` and editable-cell typing, so what a 404 costs is sorting, not data). A third arm,
+ * Frame's, raises nothing at all: `ParticleFrameResourceHandler` catches the `BadMethodCallException`
+ * and degrades to `ParticleListQuery::forList()`. This audit's runtime message states all three; this
+ * block said "raises on exactly the same keys" until 2026-09-09, and that sentence sent at least one
+ * reader looking for a 500 on a surface that 404s.
  *
  * ## Why this is worth an audit rather than four more fixes
  *
