@@ -111,10 +111,19 @@ class CentralPinJustificationAudit implements DoctorAudit
      * **Why it recurs anyway** — which is the part worth remembering, because a refusal only holds if it
      * explains the attraction. The word names something real: a pin genuinely does become load-bearing
      * under database-per-tenant, where `public.<table>` is not in the tenant's catalog at all. It just
-     * names it in the **present tense** for a population of **zero** isolated tenants (0 of 18, measured
-     * 2026-09-01). A category minted for a hazard nobody has is a category that gets applied to the pins
-     * that do not have it — and three of this list's six existing members already have zero users, so the
-     * standing pressure on it is entirely toward opening.
+     * names it in the **present tense** for a population of **zero** isolated tenants (0 of 18 — every
+     * tenant row has a `tenant_*` schema; re-measured 2026-09-09). A category minted for a hazard nobody
+     * has is a category that gets applied to the pins that do not have it.
+     *
+     * ⚠️ That last sentence is the argument; it does not rest on a count, and an earlier revision of this
+     * note made it rest on one — *"three of this list's six existing members already have zero users"* —
+     * which was **wrong within eight days**: re-measured 2026-09-09 across the package and host roots,
+     * `kernel` and `query-engine` have zero users (**two**, not three), because `registry-runtime` has
+     * since acquired two. The structural point is unchanged and is what to argue from: a closed list
+     * whose members are cheap to add and impossible to retire drifts one way only, and members with no
+     * users are the evidence that adding is easier than needing. If you want the current spread, measure
+     * it — do not read it here. (Ticket 08 ground 4 and ticket 07's criterion 3 both say this in general:
+     * a docblock that argues from a row or usage count decays, and the decay is silent.)
      *
      * **What is correct instead.** A `public`-only pin is a **residency declaration, inert under today's
      * configuration** — true, worth keeping, and not floor. That is prose in the pinning model's own
