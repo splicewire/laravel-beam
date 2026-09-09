@@ -5,9 +5,8 @@ namespace Splicewire\Beam\Surgeon;
 use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\RelativeUriKey;
 use Splicewire\Beam\Schema\SchemaSources;
@@ -46,12 +45,8 @@ use Splicewire\Beam\Schema\SchemaSources;
  */
 #[IsRegistry(
     root: 'beam.surgeon.scan-paths',
-    of: 'package-contributed (controllersDir, routesDir) pairs joining the bypass/redundancy/house-style sweeps',
-    arity: RegistryArity::RunAll,
-    onDuplicate: OnDuplicate::Admit,
-    note: 'Admit, not Supersede: state today is an unkeyed append-only list, so a package registering '
-        .'twice contributes two rows and the sweep reads both. Migrating it to a keyed store would '
-        .'CHANGE that behaviour, so the declaration records what it does rather than what it should do.',
+    onKeyDuplicate: OnKeyDuplicate::Admit,
+    description: 'package-contributed (controllersDir, routesDir) pairs joining the bypass/redundancy/house-style sweeps. Admit, not Supersede: state today is an unkeyed append-only list, so a package registering twice contributes two rows and the sweep reads both. Migrating it to a keyed store would CHANGE that behaviour, so the declaration records what it does rather than what it should do.',
     order: 11,
 )]
 /**
@@ -67,7 +62,7 @@ class AuditScanPaths implements Registry
      * (`BeamExtensionInstallManifest`, `BeamSeedManifest`, `BeamInstallManifest`):
      * {@see RelativeUriKey}, coordinate preserved as spelled, lossless both ways.
      *
-     * `OnDuplicate::Admit` is unchanged and still load-bearing — the declaration's note says a package
+     * `OnKeyDuplicate::Admit` is unchanged and still load-bearing — the declaration's note says a package
      * registering twice contributes two rows and the sweep reads both, and `Admit` is what preserves
      * that under a keyed store.
      *

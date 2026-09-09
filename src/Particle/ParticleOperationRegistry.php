@@ -10,11 +10,10 @@ use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\RecordsSupersession;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\Superseded;
 
@@ -42,29 +41,14 @@ use Rushing\Popcorn\Registries\Superseded;
  * permission names `Rushing\PermissionCascade\Support\PermissionNamer::assemble()` emits. Dotting the
  * separator buys all three; it was never about the character being allowed.
  *
- * ## Arity is one step, and stays scalar
- *
- * `<resource>.<name>` is a FLAT keyspace: a read picks one entry by its full address in one step. It
- * is deliberately not `[PickOne, RunAll]` — registry-kernel ticket 47's rule is that arity describes
- * the read path a registry actually ships, and a level with addressable inner entries is keyspace, not
- * a second arity member. Enumerating a resource's operations is `matches('…operations.<resource>')`,
- * which is the same one-step read scoped to a branch.
+ * `<resource>.<name>` addresses one operation. Enumerate a resource's operations with
+ * `matches('…operations.<resource>')`.
  */
 #[IsRegistry(
     root: 'beam.particle.operations',
-    of: 'named particle operations (custom actions) mounted on the generic op controller',
-    arity: RegistryArity::PickOne,
     entryType: ParticleOperation::class,
-    onDuplicate: OnDuplicate::Supersede,
-    note: 'Keys are `<resource>.<name>` under the stamped root, off the self-keying entry '
-        .'({@see ParticleOperation::registryKey()}). The old note said `:` was REJECTED by Key and that '
-        .'this registry "cannot be migrated by rekeying alone" (registry-kernel ticket 05) — ⚠️ STALE '
-        .'since ticket 30 widened the charset: `:` is legal inside a segment, so `resource:name` always '
-        .'parsed, as ONE segment. The migration was about SHAPE (a flat key cannot enumerate a '
-        .'resource\'s operations, nest a relation scope, or line up with a dot-segmented permission '
-        .'name), not legality. `Supersede` is load-bearing rather than incidental: registering over a '
-        .'key is how a package OVERRIDES an operation it does not own, and {@see superseded()} is what '
-        .'makes that auditable.',
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
+    description: 'named particle operations (custom actions) mounted on the generic op controller. Keys are `<resource>.<name>` under the stamped root, off the self-keying entry ({@see ParticleOperation::registryKey()}). The old note said `:` was REJECTED by Key and that this registry "cannot be migrated by rekeying alone" (registry-kernel ticket 05) — ⚠️ STALE since ticket 30 widened the charset: `:` is legal inside a segment, so `resource:name` always parsed, as ONE segment. The migration was about SHAPE (a flat key cannot enumerate a resource\'s operations, nest a relation scope, or line up with a dot-segmented permission name), not legality. `Supersede` is load-bearing rather than incidental: registering over a key is how a package OVERRIDES an operation it does not own, and {@see superseded()} is what makes that auditable.',
     order: 13,
 )]
 class ParticleOperationRegistry implements Gated, RecordsSupersession, Registry

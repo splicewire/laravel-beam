@@ -309,7 +309,8 @@ class EventTypeCatalogTest extends TestCase
         $this->assertNotNull($declaration);
         $this->assertSame('beam.events.types', $declaration->root);
         $this->assertSame('beam.events.types', (string) Key::parse($declaration->root));
-        $this->assertNotSame('', $declaration->of);
+        $this->assertNotNull($declaration->description);
+        $this->assertNotSame('', $declaration->description);
         $this->assertSame(EventType::class, $declaration->entryType);
 
         // ⚠️ The harness trap: without `PopcornServiceProvider` in getPackageProviders() every `make()`

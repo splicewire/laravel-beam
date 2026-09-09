@@ -406,8 +406,8 @@ controller FQCN, so the population of exemptions stays countable.
 XDEBUG_MODE=off herd php artisan popcorn:registries --json
 ```
 
-The index of indexes: every registry that has described itself, its injection **seam**, its **arity**,
-and a **`registerHint`** — the one-liner for how you register into it. Available from any beam,
+The index of indexes: declared registry roots, entry types, duplicate and empty-registry policies,
+and optional descriptions of their purpose and use. Available from any beam,
 satellite, or tower package or site. Describing one registry opts your package into a **gate**: it
 must then describe *all* of its registry-shaped singletons, and `surgeon:audit` reports the ones it
 left out.

@@ -21,7 +21,7 @@ use UnitEnum;
  * ## The mechanism produced the evidence and nothing read it
  *
  * `ParticleResourceRegistry` and `ParticleOperationRegistry` are both
- * `onDuplicate: OnDuplicate::Supersede`, and both record every loser through popcorn's
+ * `onKeyDuplicate: OnKeyDuplicate::Supersede`, and both record every loser through popcorn's
  * {@see Superseded}. Until this audit, `superseded()` had **zero call sites in the estate outside
  * popcorn itself** — the registries were keeping a complete history of every shadowed declaration that
  * no instrument ever asked for. Measured at the booted `~/Herd/splicewire-app` on 2026-08-31: **21 of

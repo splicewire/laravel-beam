@@ -7,9 +7,8 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 
 /**
@@ -49,20 +48,9 @@ use Rushing\Popcorn\Registries\RegistryKey;
  */
 #[IsRegistry(
     root: 'beam.capabilities',
-    of: 'gated capabilities by key + entitlement (web search, schema-LLM migration, node types)',
-    arity: RegistryArity::PickOne,
     entryType: GatedCapability::class,
-    onDuplicate: OnDuplicate::Supersede,
-    note: 'The estate has several classes whose SHORT name is CapabilityRegistry — tower\'s '
-        .'ConduitCapabilityRegistry (root `conduit`) and CircuitCapabilityRegistry (root '
-        .'`circuit.capabilities`) among them — which is why the index keys on ROOT and never on short '
-        .'name. Two of the historical claimants are gone: registry-kernel ticket 44 (2026-08-26) '
-        .'renamed Tower\Circuit\Capabilities\CapabilityRegistry to CapabilityLadder, and this ticket '
-        .'(2026-08-28) deleted Tower\Capabilities\CapabilityRegistry, the attribute-less SUBCLASS of '
-        .'this class, in favour of provider-tier seeding. So this root now has exactly ONE class on it '
-        .'and no inherited declaration to resolve. Earlier readings of this note claimed the subclass '
-        .'declared its own root and its own OnDuplicate::Admit — false against the file even then, and '
-        .'the standing evidence that a restated argument is a place to drift (41 D11 found it).',
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
+    description: 'Gated capabilities resolved by key and entitlement, including web search, schema migration and node types.',
     order: 15,
 )]
 class CapabilityRegistry implements Gated, Registry

@@ -3,8 +3,7 @@
 namespace Splicewire\Beam\Tests\Doctor\Fixtures;
 
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
-use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 
 /**
  * Declares but does not implement — the state ~50 estate classes are in until registry-kernel 37/38, and
@@ -12,9 +11,8 @@ use Rushing\Popcorn\Registries\RegistryArity;
  */
 #[IsRegistry(
     root: 'fixture.declared-only',
-    of: 'a declared but non-conforming fixture registry',
-    arity: RegistryArity::PickOne,
-    onDuplicate: OnDuplicate::Supersede,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
+    description: 'a declared but non-conforming fixture registry',
 )]
 class DeclaredOnlyFixtureRegistry
 {

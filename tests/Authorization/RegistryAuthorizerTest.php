@@ -10,8 +10,7 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\Exceptions\MissReason;
 use Rushing\Popcorn\Registries\Exceptions\RegistryMiss;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
-use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Authorization\ActorPort;
@@ -79,10 +78,9 @@ class RegistryAuthorizerTest extends TestCase
 
         $this->registry = new BasicRegistry(new IsRegistry(
             root: 'beam.test.gated',
-            of: 'registry-kernel ticket 27 fixtures',
-            arity: RegistryArity::PickOne,
             entryType: 'string',
-            onDuplicate: OnDuplicate::Reject,
+            onKeyDuplicate: OnKeyDuplicate::Reject,
+            description: 'registry-kernel ticket 27 fixtures',
         ));
 
         $this->registry

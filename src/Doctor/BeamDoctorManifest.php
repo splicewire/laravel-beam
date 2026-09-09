@@ -8,9 +8,8 @@ use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\ClassKey;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Install\BeamInstallManifest;
@@ -50,12 +49,9 @@ use Splicewire\Beam\Install\BeamInstallManifest;
  */
 #[IsRegistry(
     root: 'beam.doctor.audits',
-    of: 'per-package readiness audits aggregated by splicewire:beam:doctor',
-    arity: RegistryArity::RunAll,
     entryType: DoctorRegistration::class,
-    onDuplicate: OnDuplicate::Supersede,
-    note: 'beam-core\'s OWN audits are deliberately not here — they predate the manifest and stay '
-        .'hardcoded in BeamDoctorCommand. This carries the consumer tail only.',
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
+    description: 'per-package readiness audits aggregated by splicewire:beam:doctor. beam-core\'s OWN audits are deliberately not here — they predate the manifest and stay hardcoded in BeamDoctorCommand. This carries the consumer tail only.',
     order: 2,
 )]
 /**

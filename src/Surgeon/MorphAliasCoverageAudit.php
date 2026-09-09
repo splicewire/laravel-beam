@@ -7,6 +7,10 @@ use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
 use Splicewire\Beam\Threads\Models\Thread;
+use Splicewire\Knowledge\Complying\Concept\Models\Concept;
+use Splicewire\Knowledge\Complying\Concept\Models\ConceptStatus;
+use Splicewire\Knowledge\Complying\Concept\Models\ConceptSynonym;
+use Splicewire\Knowledge\Complying\Models\Rule;
 use Symfony\Component\Finder\Finder;
 
 /**
@@ -113,6 +117,28 @@ class MorphAliasCoverageAudit implements DoctorAudit
             .'tower owns the single read-side entry. Write-side pin only, by design.',
         \Splicewire\Beam\Embed\Models\Thread::class => 'Tier variant of the `thread` particle; exists so '
             .'Embed (whose own morph is `embed`) can reach its `thread` version lineage. Write-side pin only.',
+
+        // The same shape, argued again for satellite-knowledge's four Complying models
+        // (determination-rename issue 09). Each rides the SAME row as a host subclass of it —
+        // `compliance_rules`, `concepts`, `concept_statuses`, `concept_synonyms` — through the
+        // `splicewire.knowledge.compliance.models.*` seam the package itself owns, so at a tower host
+        // `config()` resolves to `Splicewire\Tower\Compliance\Models\*` and the single read-side entry
+        // names the SUBCLASS. That is deliberate: the alias names the particle, and the highest tier
+        // the host composes owns the entry.
+        //
+        // Why they cannot simply be aliased here instead: `Relation::morphMap` is alias => class, one
+        // class per key. Registering the base as well would need a SECOND key for one table's rows,
+        // which is the durable-token defect in a new costume — the stored value would then depend on
+        // which tier happened to instantiate the row. Each carries a write-side `getMorphClass()` pin,
+        // so the token is durable whichever tier writes it; only the reverse entry is delegated.
+        Rule::class => 'Tier variant of the `rule` particle; the '
+            .'configured model (tower\'s subclass at a tower host) owns the read-side entry. Write-side pin only.',
+        Concept::class => 'Tier variant of the `concept` '
+            .'particle; the configured model owns the read-side entry. Write-side pin only.',
+        ConceptStatus::class => 'Tier variant of the '
+            .'`concept_status` particle; the configured model owns the read-side entry. Write-side pin only.',
+        ConceptSynonym::class => 'Tier variant of the '
+            .'`concept_synonym` particle; the configured model owns the read-side entry. Write-side pin only.',
     ];
 
     public function __construct(protected AttributedClassScanner $scanner) {}

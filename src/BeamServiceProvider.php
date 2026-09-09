@@ -180,6 +180,7 @@ use Splicewire\Beam\Surgeon\DuplicateRouteNameAudit;
 use Splicewire\Beam\Surgeon\EnvelopeCopyAudit;
 use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
+use Splicewire\Beam\Surgeon\InstallDesiredStateAudit;
 use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
 use Splicewire\Beam\Surgeon\ModelSurfaceCoverageAudit;
 use Splicewire\Beam\Surgeon\MorphAliasCoverageAudit;
@@ -1367,7 +1368,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $manifest->register('splicewire/laravel-beam', ModelSurfaceCoverageAudit::class);
         // Advisory, permanently. The explicit `beam.core.resources.classes` / `frame.resources` list is
         // registered FIRST — before beam's own manifest/scan and before every other package's provider
-        // boots — so under `OnDuplicate::Supersede` a host's listed override is the entry that LOSES,
+        // boots — so under `OnKeyDuplicate::Supersede` a host's listed override is the entry that LOSES,
         // silently, while the provider-boot route the registry's own docblock describes wins
         // (registry-kernel ticket 67). The population is a host fact — which classes this host lists and
         // which packages it composes them with — so by the estate's rule this reports rather than throws,
@@ -1906,6 +1907,18 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             MarketingSampleAudit::class,
         );
 
+        // prove-the-beam-starter 12: `beam.install.desired-state` — R1–R7, the measured definition of what a
+        // correct beam-tier install produces, as a program rather than as prose (01 ruling 1). Advisory, and
+        // there is no argued exception: every requirement is a fact about a HOST, and five of the seven are
+        // about a process that has already exited or a live HTTP server, so those report
+        // `Finding::inconclusive()` in their satisfied state rather than a green tick over a check that never
+        // ran. Bound lazily — it reads the finished route table.
+        $this->app->bind(InstallDesiredStateAudit::class, fn () => InstallDesiredStateAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            InstallDesiredStateAudit::class,
+        );
+
         // particle-doctrine-followups #14: the schema leg's first drift guard. Advisory (a
         // regeneration backlog that fails the build is just a blocked build) and unconditional here —
         // its forApp() degrades to a stated skip when data-schemas isn't installed, mirroring
@@ -2336,7 +2349,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // and all three are asserted by `ParticleResourceRegistrarOrderingTest`:
         //
         //  - it is attached in the OWNER's own `boot()`, so it runs before any consumer provider boots
-        //    and hand-registers — explicit registration lands second and wins by `OnDuplicate::Supersede`
+        //    and hand-registers — explicit registration lands second and wins by `OnKeyDuplicate::Supersede`
         //    alone, with no tier, no branch and no precedence rule (07 D9);
         //  - `attach()` FILLS IMMEDIATELY, so "when did you call attach" IS the ordering rule — there is
         //    no second `fill()` for anyone to put in the wrong place (24 D2);

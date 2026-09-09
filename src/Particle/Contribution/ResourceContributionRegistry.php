@@ -9,9 +9,8 @@ use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Attributes\WidgetIn;
 use Schemastud\Frame\Registry\WidgetContextProjector;
@@ -56,15 +55,9 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
  */
 #[IsRegistry(
     root: 'beam.particle.resource-contributions',
-    of: 'cross-package slices of a resource read projection — the contributor declares, the owner names nothing',
-    arity: RegistryArity::ComposeMany,
     entryType: ResourceContribution::class,
-    onDuplicate: OnDuplicate::Reject,
-    note: 'Reject is DECLARED, deliberately unlike the RealmResourceRegistry overlay beside it: an '
-        .'overlay means last-wins, a contribution means compose, and two packages claiming one '
-        .'sub-projection key has no correct silent resolution. State is `[key][as]`, two DIMENSIONS '
-        .'rather than a dotted key, mirroring the overlay registry\'s shape. Read-time only — nothing '
-        .'here is merged into a declaration at boot, because the contributor boots first.',
+    onKeyDuplicate: OnKeyDuplicate::Reject,
+    description: 'cross-package slices of a resource read projection — the contributor declares, the owner names nothing. Reject is DECLARED, deliberately unlike the RealmResourceRegistry overlay beside it: an overlay means last-wins, a contribution means compose, and two packages claiming one sub-projection key has no correct silent resolution. State is `[key][as]`, two DIMENSIONS rather than a dotted key, mirroring the overlay registry\'s shape. Read-time only — nothing here is merged into a declaration at boot, because the contributor boots first.',
     order: 13,
 )]
 /**
@@ -75,7 +68,7 @@ class ResourceContributionRegistry implements Gated, Registry
     /**
      * Contributions at `<owner key>.<as>` — the two DIMENSIONS the docblock describes, expressed as one
      * dotted address so the kernel can hold them. `for('tenants')` is then a `matches()` over the branch,
-     * which is exactly what `ComposeMany` means.
+     * returning every contribution for that owner.
      *
      * @var BasicRegistry<ResourceContribution>
      */
@@ -94,7 +87,7 @@ class ResourceContributionRegistry implements Gated, Registry
      * (beam-commerce, beam-embed, beam-accounts' test, and this package's own suite) and keeps its call
      * site byte-identical.
      *
-     * ⚠️ The duplicate throw below is kept in PHP rather than delegated to `OnDuplicate::Reject`. The
+     * ⚠️ The duplicate throw below is kept in PHP rather than delegated to `OnKeyDuplicate::Reject`. The
      * declaration still says Reject and still governs, but this message names the losing and winning
      * packages and the reason a contribution is not an override, and no caller's `expectException` has
      * to move — registry-kernel 38 pass 1's *"declining the exception change is legitimate and often

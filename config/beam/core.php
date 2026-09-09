@@ -435,6 +435,32 @@ return [
         ],
     ],
 
+    /*
+    | `beam.install.desired-state` — what a correct beam-tier install produces (prove-the-beam-starter
+    | 01/12). See {@see \Splicewire\Beam\Surgeon\InstallDesiredStateAudit}; the requirements themselves
+    | are R1–R7 and are NOT configurable, because they are the definition. What a host steers is only
+    | WHERE the audit points its three host-shaped probes.
+    |
+    | Every value below is also the audit's own inline default, so a host on a published copy of this
+    | file from before the audit existed reads exactly the same thing. Nothing here is a threshold, and
+    | the recorded figures deliberately have none (ruling 4).
+    */
+    'install' => [
+        'desired_state' => [
+            // R5. Site-realm paths that must resolve to a published entry for a GUEST. A host serving
+            // no docs sets this to [] and the requirement reports "nothing probed" rather than a warn.
+            'docs_paths' => ['docs', 'docs/api', 'docs/mcp'],
+
+            // R6. The auth-gated frame surface a guest must be REDIRECTED from rather than 500'd on.
+            'frame_probe_path' => '/frame/resources/tokens',
+
+            // R3. `composer ci:check` is never run by the doctor — it runs a whole suite. This is where
+            // a host may leave a RECORD of the last run: {"exit":0,"at":"<iso8601>","commit":"<sha>"}.
+            // A record whose commit is not this tree's HEAD is reported stale, never as a pass.
+            'ci_check_record' => storage_path('app/beam/ci-check.json'),
+        ],
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 

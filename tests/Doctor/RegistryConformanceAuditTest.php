@@ -235,7 +235,7 @@ class RegistryConformanceAuditTest extends TestCase
             [],
             $this->failuresFor($audit, InheritingFixtureRegistry::class),
             'The subclass writes nothing at its own site, but it RUNS under a complete declaration. '
-            .'Scoring its empty site instead would fail root/arity/onDuplicate on a class whose only '
+            .'Scoring its empty site instead would fail root/onKeyDuplicate on a class whose only '
             .'remedy is to stop extending.',
         );
     }
@@ -248,7 +248,7 @@ class RegistryConformanceAuditTest extends TestCase
         ]);
 
         // Both now report root `fixture.conforming`. They are one logical registry with two seeding
-        // sites — only one of them is ever the bound branch owner, so OnDuplicate::Reject never fires at
+        // sites — only one of them is ever the bound branch owner, so OnKeyDuplicate::Reject never fires at
         // describe() time and there is nothing here to catch statically either.
         $this->assertNotContains(
             RegistryConformanceAudit::CHECK_ROOT_COLLISION,

@@ -4,9 +4,8 @@ namespace Splicewire\Beam\Tests\Doctor\Fixtures;
 
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryIndex;
 
 /**
@@ -25,20 +24,18 @@ class RuntimeRootedFixtureRegistry implements Registry
 
     public function __construct(string $root, bool $writeOnDuplicate = true)
     {
-        // `onDuplicate` defaults, and an INSTANCE cannot say whether the author wrote `Supersede` or
+        // `onKeyDuplicate` defaults, and an INSTANCE cannot say whether the author wrote `Supersede` or
         // inherited it. Both spellings are constructed here so the gate can be shown treating the argument
         // as unanswerable rather than guessing — a guess would fail the registry on the second branch.
         $this->entries = new BasicRegistry($writeOnDuplicate
             ? new IsRegistry(
                 root: $root,
-                of: 'a registry whose root was computed at boot',
-                arity: RegistryArity::PickOne,
-                onDuplicate: OnDuplicate::Supersede,
+                onKeyDuplicate: OnKeyDuplicate::Supersede,
+                description: 'a registry whose root was computed at boot',
             )
             : new IsRegistry(
                 root: $root,
-                of: 'a registry whose root was computed at boot',
-                arity: RegistryArity::PickOne,
+                description: 'a registry whose root was computed at boot',
             ));
     }
 

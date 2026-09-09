@@ -22,7 +22,7 @@ use Splicewire\Beam\Tests\TestCase;
  * What was owed and unpayable until now is the same claim where **Laravel's boot order arbitrates**:
  * beam attaches an `AttributeRegistrar` in `BeamServiceProvider::boot()`, a consumer provider registered
  * after it hand-registers the same key in its own `boot()`, and the hand-registered entry is the one
- * that resolves — by `OnDuplicate::Supersede` alone, with no tier, no branch and no precedence rule.
+ * that resolves — by `OnKeyDuplicate::Supersede` alone, with no tier, no branch and no precedence rule.
  *
  * The criterion was unsatisfiable for as long as it was because `Registrar::fill()` needs a registry
  * that IMPLEMENTS `Registry`, and no registrar-fed estate registry did (ticket 21 D1: 53 declaring,

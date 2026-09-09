@@ -9,11 +9,10 @@ use Rushing\Popcorn\Registries\Filled;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
-use Rushing\Popcorn\Registries\OnDuplicate;
-use Rushing\Popcorn\Registries\Optionality;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\PopulationRequirement;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registry;
-use Rushing\Popcorn\Registries\RegistryArity;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 
@@ -43,7 +42,7 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
  *  1. the name parses as a {@see Key} and carries at least two segments — a resource key and a verb
  *     phrase, the verb phrase possibly multi-segment;
  *  2. unless the entry declares {@see EventType::$subjectless}, it carries a subject;
- *  3. the name is not already taken ({@see OnDuplicate::Reject}).
+ *  3. the name is not already taken ({@see OnKeyDuplicate::Reject}).
  *
  * ## The fourth check is ADVISORY, and that is a correction (api-surface-coherence ticket 91)
  *
@@ -92,22 +91,10 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
  */
 #[IsRegistry(
     root: 'beam.events.types',
-    of: 'publishable event types — enumerated by GET /hooks/events, looked up by name at subscribe time',
-    arity: RegistryArity::PickOne,
     entryType: EventType::class,
-    onDuplicate: OnDuplicate::Reject,
-    optionality: Optionality::Optional,
-    note: 'Keys ARE event names (`{resourceKey}.{verbPhrase}`, plural-verbatim) under the stamped root, '
-        .'off the self-keying entry. The resource key is segment ONE and the verb phrase may be '
-        .'multi-segment, so `withPrefix(\'compositions\')` is a segment-wise branch read rather than a '
-        .'string prefix test. Registration validates the name grammar and subject-unless-subjectless '
-        .'and throws; the prefix-against-LIVE-resources check is ADVISORY (`unresolvedPrefixes()`, '
-        .'read by EventCatalogPrefixAudit) because it is host-dependent and it took a host off the air '
-        .'as a throw — api-surface-coherence 91. Emission validates nothing. '
-        .'⚠️ The chartering ticket (api-surface-coherence 40 §4) specified a `describe(new '
-        .'ManifestDescriptor(seam: ManifestSeam::SingletonAccumulator, registerHint: …, where: …))` — '
-        .'that whole vocabulary was DELETED by registry-kernel ticket 21/07, and this attribute plus '
-        .'`RegistryIndex::describe()` in BeamServiceProvider::boot() is its successor.',
+    onKeyDuplicate: OnKeyDuplicate::Reject,
+    populationRequirement: PopulationRequirement::Optional,
+    description: 'Publishable event types, listed by GET /hooks/events and resolved by name when subscribing. Registration validates names and subject requirements; unresolved resource prefixes are reported by the catalog audit.',
     order: 14,
 )]
 class EventTypeRegistry implements Filled, Gated, Registry
@@ -221,7 +208,7 @@ class EventTypeRegistry implements Filled, Gated, Registry
      * The registration-time checks that THROW: grammar, then subject. Both are facts about the
      * declaration itself, so both are answerable at the declaration site by the person who wrote it and
      * neither can change depending on which host loaded the provider. (Duplicate rejection is the
-     * store's, via {@see OnDuplicate::Reject}.)
+     * store's, via {@see OnKeyDuplicate::Reject}.)
      *
      * The prefix check is deliberately absent — see the class docblock and {@see unresolvedPrefixes()}.
      */

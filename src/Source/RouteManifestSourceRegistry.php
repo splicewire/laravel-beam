@@ -4,8 +4,7 @@ namespace Splicewire\Beam\Source;
 
 use Rushing\Popcorn\Laravel\Registries\ConfigRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
-use Rushing\Popcorn\Registries\OnDuplicate;
-use Rushing\Popcorn\Registries\RegistryArity;
+use Rushing\Popcorn\Registries\OnKeyDuplicate;
 
 /**
  * The class `config('beam.client.sources')` never had.
@@ -22,7 +21,7 @@ use Rushing\Popcorn\Registries\RegistryArity;
  * declaration those three could never carry: the registry is now visible to the index, to
  * `popcorn:registries`, and to the conformance gate.
  *
- * ## `PickOne`, and entries are class-strings
+ * ## Keyed lookup of class-strings
  *
  * A read asks for one realm's source and gets one binding. The entries are class-strings resolved
  * through the container by the consumer — the config array is the storage, so the registry hands back
@@ -35,11 +34,9 @@ use Rushing\Popcorn\Registries\RegistryArity;
  */
 #[IsRegistry(
     root: 'beam.client.sources',
-    of: 'RouteManifestSource bindings by realm — the per-tier route manifests the client SDK codegen generates from',
-    arity: RegistryArity::PickOne,
     entryType: 'class-string<'.RouteManifestSource::class.'>',
-    onDuplicate: OnDuplicate::Supersede,
-    note: 'Storage is `config(\'beam.client.sources\')`, a realm-keyed map bound per host (env-overridable). An unbound realm is null and reads as absent, matching GenerateClientSdkCommand\'s own reading.',
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
+    description: 'RouteManifestSource bindings by realm — the per-tier route manifests the client SDK codegen generates from. Storage is `config(\'beam.client.sources\')`, a realm-keyed map bound per host (env-overridable). An unbound realm is null and reads as absent, matching GenerateClientSdkCommand\'s own reading.',
 )]
 class RouteManifestSourceRegistry extends ConfigRegistry
 {
