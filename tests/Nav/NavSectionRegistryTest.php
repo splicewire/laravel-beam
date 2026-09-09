@@ -6,6 +6,7 @@ use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\PopulationRequirement;
 use Splicewire\Beam\Nav\NavSection;
 use Splicewire\Beam\Nav\NavSectionRegistry;
+use Splicewire\Beam\Nav\NavSeatLock;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -274,7 +275,7 @@ class NavSectionRegistryTest extends TestCase
         // — no `laravel-beam-ux`, no `rushing/laravel-data-nav` — so the declaration site must be beam
         // core AND must not drag data-nav in behind it. A beam-UX projector turns a seat into an
         // `InvocableNavItem`; beam itself never names one.
-        foreach ([NavSection::class, NavSectionRegistry::class] as $class) {
+        foreach ([NavSection::class, NavSectionRegistry::class, NavSeatLock::class] as $class) {
             $source = file_get_contents((new \ReflectionClass($class))->getFileName());
 
             // Imports, not prose — both docblocks NAME data-nav to explain why they avoid it, and a
@@ -286,13 +287,41 @@ class NavSectionRegistryTest extends TestCase
             );
         }
 
-        // The signature is the other half: every NavSection field is a scalar or an array, so nothing a
-        // package passes can smuggle a nav-library type across the seam.
+        // The signature is the other half: nothing a package passes may smuggle a nav-library type
+        // across the seam.
+        //
+        // ⚠️ This used to read "every field is a scalar or an array" and assert `isBuiltin()`. That was
+        // a PROXY for the real invariant, and it was over-broad: it banned a beam-owned value object
+        // (`NavSeatLock`, the soft-gate declaration) which cannot smuggle anything, while proving
+        // nothing about a class it did admit. It now checks the invariant itself — a class-typed field
+        // is legal only if that class is in beam's own `Nav` namespace AND passes the same
+        // data-nav-free import probe above, recursively. Strictly stronger than the proxy: a
+        // `Rushing\DataNav\NavLocked` parameter fails on both clauses where `isBuiltin()` caught it on
+        // one, and any future value object is verified rather than merely forbidden.
         foreach ((new \ReflectionMethod(NavSection::class, '__construct'))->getParameters() as $parameter) {
             $type = $parameter->getType();
+            $name = $parameter->getName();
 
-            $this->assertInstanceOf(\ReflectionNamedType::class, $type, "\${$parameter->getName()} must be simply typed");
-            $this->assertTrue($type->isBuiltin(), "\${$parameter->getName()} must be a builtin type, not a class");
+            $this->assertInstanceOf(\ReflectionNamedType::class, $type, "\${$name} must be simply typed");
+
+            if ($type->isBuiltin()) {
+                continue;
+            }
+
+            $this->assertStringStartsWith(
+                'Splicewire\Beam\Nav\\',
+                $type->getName(),
+                "\${$name} may only be typed as a beam-owned Nav value object, never a nav-library type",
+            );
+
+            $this->assertSame(
+                0,
+                preg_match(
+                    '/^\s*use\s+Rushing\\\\DataNav/m',
+                    file_get_contents((new \ReflectionClass($type->getName()))->getFileName()),
+                ),
+                "\${$name}'s type must not import a data-nav type either",
+            );
         }
 
         // ⚠️ This used to also assert beam's composer.json does NOT require `rushing/laravel-data-nav`.

@@ -44,6 +44,20 @@ namespace Splicewire\Beam\Nav;
  * For the same reason `null` and `[]` are different values here and neither is normalised into the
  * other: `entitlement: null` is UNGATED (always visible), `entitlement: []` is an any-of list with no
  * members — a gate that was declared and admits nobody. {@see isEntitlementGated()} tells them apart.
+ *
+ * ## Why `$lock` DOES have a default, when the gate slots do not
+ *
+ * `$lock` is the one slot below that defaults, and the reason is that it is not a third gate axis.
+ * `entitlement` and `permission` decide WHETHER a seat is gated, and there is no behaviour-preserving
+ * answer to that question — which is exactly why they may not default. `$lock` decides how an
+ * ALREADY-DECLARED entitlement gate FAILS, and that question has a settled answer: hard, i.e. the
+ * omission every existing seat already gets. Defaulting it is what makes this addition inert, and it
+ * matches the plane above — {@see \Splicewire\Beam\Realm\RealmManifestProjector} reads a realm gate's
+ * `mode` as `$gate['mode'] ?? 'hard'`.
+ *
+ * A lock on a seat that declares NO entitlement is meaningless and is treated as such: there is no
+ * gate for it to soften, so the seat projects ungated and unlocked. {@see isSoftGated()} is the pair
+ * of conditions, not either one alone.
  */
 class NavSection
 {
@@ -68,6 +82,10 @@ class NavSection
      *                                                                                                               already passes through `section(static: [...])`. They merge
      *                                                                                                               into one ordering with the auto-attached resource children
      *                                                                                                               host-side; a row with no `navOrder` sorts last
+     * @param  NavSeatLock|null  $lock  softens this seat's ENTITLEMENT gate: an unentitled principal
+     *                                  gets the seat present-but-locked with this reason/upsell
+     *                                  instead of omitted. `null` (the default) = hard, today's
+     *                                  behaviour. See the class docblock for why this one defaults
      */
     public function __construct(
         public readonly string $key,
@@ -79,6 +97,7 @@ class NavSection
         public readonly ?array $entitlement,
         public readonly ?string $permission,
         public readonly array $static = [],
+        public readonly ?NavSeatLock $lock = null,
     ) {}
 
     /**
@@ -100,6 +119,46 @@ class NavSection
     public function isGated(): bool
     {
         return $this->isEntitlementGated() || $this->isPermissionGated();
+    }
+
+    /**
+     * Whether this seat's entitlement gate is SOFT — an unentitled principal sees it locked rather
+     * than not at all.
+     *
+     * BOTH conditions are required, and that is the whole point of the method. A lock with no
+     * entitlement gate has nothing to soften, and an entitlement gate with no lock is hard. Spelling
+     * the conjunction once here is what stops a projector from reading a stray `lock:` on an ungated
+     * seat as a reason to lock a section nobody gated.
+     */
+    public function isSoftGated(): bool
+    {
+        return $this->lock !== null && $this->isEntitlementGated();
+    }
+
+    /**
+     * The gate vocabulary MINUS the axis a lock has taken over — what a soft-gated seat's meta bag
+     * should carry.
+     *
+     * A soft seat must not also carry its `entitlement` key into the gate meta: a host that has
+     * registered an entitlement gate stage would read that key and OMIT the very node the lock exists
+     * to keep visible, and the lock would never reach the wire. The permission key is untouched,
+     * because the planes are orthogonal — a soft-gated seat still disappears for a principal who
+     * lacks the RBAC token, which is the denial a lock must never be confused with.
+     *
+     * Identical to {@see gate()} for a hard or ungated seat, so this is the only gate read a
+     * projector needs.
+     *
+     * @return array{entitlement?: list<string>, permission?: string}
+     */
+    public function gateAfterLock(): array
+    {
+        $gate = $this->gate();
+
+        if ($this->isSoftGated()) {
+            unset($gate['entitlement']);
+        }
+
+        return $gate;
     }
 
     /**
