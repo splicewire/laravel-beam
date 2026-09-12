@@ -2,7 +2,9 @@
 
 namespace Splicewire\Beam\Tests\Doctor;
 
+use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Events\Dispatcher;
+use Illuminate\Pagination\CursorPaginator as Paginator;
 use Illuminate\Routing\Router;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
 use Rushing\DataFilters\Registry\ResourceRegistry as FilterResourceRegistry;
@@ -11,6 +13,10 @@ use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\FilterablePromiseAudit;
 use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\Backing\DeclaredFacet;
+use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
+use Splicewire\Beam\Particle\Backing\FilterVocabulary;
+use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Routing\RouteActionMetadataReader;
@@ -254,6 +260,28 @@ class FilterablePromiseAuditTest extends TestCase
         $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
     }
 
+    /**
+     * A backing that DECLARES its vocabulary (composite-backing ticket 02) changes what the reachable
+     * arm costs: `filters/schema` is served from the declaration, so the only arm that raises is
+     * `ParticleController::index()`, and the repair is `filterable: false` — which keeps the panel. The
+     * finding has to say that, or it sends the reader to register a data-filters stub the estate just
+     * stopped needing.
+     */
+    public function test_a_declaring_backing_is_reported_with_the_repair_that_keeps_its_panel(): void
+    {
+        // Narrowed to what a streams-only backing can honour: the registry refuses an open write
+        // affordance against a backing that cannot write, and that is not the axis under test.
+        $this->resources->register(new ParticleResource(key: 'feed', backing: PromiseDeclaringBacking::class, readOnly: true, showable: false));
+        $this->declare('widgets');
+
+        $detail = $this->audit()->run()[0]->detail;
+
+        $this->assertStringContainsString('DECLARES ITS OWN VOCABULARY (1): feed', $detail);
+        $this->assertStringContainsString('`filterable: false` keeps the panel', $detail);
+        // The silent key is still counted in the population the finding is about.
+        $this->assertStringContainsString('2 of 2 filterable particle resources', $detail);
+    }
+
     public function test_reachable_is_not_reported_as_raising(): void
     {
         // The finding used to say every reachable key "500s the moment anything mounts it". Measured
@@ -267,8 +295,21 @@ class FilterablePromiseAuditTest extends TestCase
         $this->assertStringContainsString('REACHABLE is not the same as RAISES', $detail);
         $this->assertStringContainsString('404', $detail);
     }
-
 }
 
 /** A backing/Data stand-in — never instantiated; the audit reads keys and flags, never the class. */
 class PromiseSubject {}
+
+/** A streams-only backing that declares its vocabulary; read by `instanceof` only, never constructed. */
+class PromiseDeclaringBacking implements DeclaresFilterVocabulary, StreamsRecords
+{
+    public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
+    {
+        return new Paginator([], $perPage);
+    }
+
+    public function filterVocabulary(): FilterVocabulary
+    {
+        return FilterVocabulary::of(DeclaredFacet::search('keywords'));
+    }
+}

@@ -11,6 +11,8 @@ use Splicewire\Beam\Discovery\SubSurface;
 use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
+use Splicewire\Beam\Particle\Backing\BackingResolver;
+use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Routing\RouteMetadataReader;
@@ -45,6 +47,12 @@ use Splicewire\Beam\Routing\RouteMetadataReader;
  * and degrades to `ParticleListQuery::forList()`. This audit's runtime message states all three; this
  * block said "raises on exactly the same keys" until 2026-09-09, and that sentence sent at least one
  * reader looking for a 500 on a surface that 404s.
+ *
+ * A backing that DECLARES its vocabulary ({@see DeclaresFilterVocabulary}, composite-backing ticket 02)
+ * changes the second arm only: `filters/schema` is served from the declaration, so what the promise costs
+ * such a key is the index alone, and the repair is `filterable: false` — which keeps its panel. The finding
+ * lists those keys separately, because the generic repair (register a data-filters resource) is exactly the
+ * stub this capability made unnecessary.
  *
  * ## Why this is worth an audit rather than four more fixes
  *
@@ -132,7 +140,10 @@ class FilterablePromiseAudit implements DoctorAudit
         private FilterResourceRegistry $filters,
         private Router $router,
         private RouteMetadataReader $meta,
-    ) {}
+        private ?BackingResolver $backings = null,
+    ) {
+        $this->backings ??= new BackingResolver;
+    }
 
     /** @return list<Finding> */
     public function run(): array
@@ -154,10 +165,18 @@ class FilterablePromiseAudit implements DoctorAudit
         }
 
         $unregistered = [];
+        $declaring = [];
 
         foreach ($filterable as $resource) {
-            if (! $this->filters->has($resource->key)) {
-                $unregistered[] = $resource->key;
+            if ($this->filters->has($resource->key)) {
+                continue;
+            }
+
+            $unregistered[] = $resource->key;
+
+            // Static — an `instanceof` on the class-string. The audit never constructs a backing.
+            if ($this->backings->hasCapability($resource->backing, DeclaresFilterVocabulary::class)) {
+                $declaring[] = $resource->key;
             }
         }
 
@@ -198,7 +217,7 @@ class FilterablePromiseAudit implements DoctorAudit
                 .'so `ParticleController::index()` would raise "No data-filters resource is registered under '
                 .'[<key>], so no list query can be composed for it." ⚠️ None of these declarations SAYS '
                 .'`filterable: true` — `ParticleResource::$filterable` defaults to true, so the promise is '
-                .'made by not opting out. %s%sThe fix per key is a '
+                .'made by not opting out. %s%s%sThe fix per key is a '
                 .'`Rushing\DataFilters\Registry\ResourceDefinition` registered from the DECLARING '
                 .'package\'s provider, guarded by '
                 .'`has()` so a host that seeded its own key is not stomped (see '
@@ -230,6 +249,13 @@ class FilterablePromiseAudit implements DoctorAudit
                     implode('; ', $live)
                 ),
             $latent === [] ? '' : sprintf('LATENT (%d): %s. ', count($latent), implode(', ', $latent)),
+            $declaring === [] ? '' : sprintf(
+                'DECLARES ITS OWN VOCABULARY (%d): %s — the backing implements `DeclaresFilterVocabulary`, so '
+                    .'`filters/schema` is served from the declaration and only the index arm raises; here '
+                    .'`filterable: false` keeps the panel and is the repair, not a query stub. ',
+                count($declaring),
+                implode(', ', $declaring),
+            ),
         ))];
     }
 

@@ -35,9 +35,11 @@ use Illuminate\Contracts\Pagination\CursorPaginator;
  *
  * ## Deliberately not more than this
  *
- * Cursor + perPage + filters is what the shipped implementations actually need. Richer capabilities —
- * a declared filter/sort vocabulary a backing can advertise, the external-data cases — get their own
- * interfaces as those specs firm up, rather than being guessed at here.
+ * Cursor + perPage + filters is what the shipped implementations actually need. Richer capabilities get
+ * their own interfaces as those specs firm up, rather than being guessed at here. The first of them has
+ * landed: a backing that wants the Frame FilterPanel to render controls for the keys `records()` reads
+ * declares them through {@see DeclaresFilterVocabulary} (composite-backing ticket 02) — the vocabulary
+ * is declared beside the semantics, and this interface stays the opaque-bag contract it was.
  */
 interface StreamsRecords extends ResourceBacking
 {

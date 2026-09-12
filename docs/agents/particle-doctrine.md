@@ -112,6 +112,20 @@ backing implements the ones it genuinely has:
 - **`BacksModel`** — `modelClass()`: every row is an instance of ONE Eloquent model. **Conditionally**
   required: a backing whose rows are pivot rows, or span two record types, has no legal answer and must
   not invent one. That is exactly why it is a capability and not a method on the port.
+- **`DeclaresFilterVocabulary`** — `filterVocabulary(): FilterVocabulary`. The streams-only backing's way
+  to have a FilterPanel: a list of `DeclaredFacet`s (name, operator, control, options source or inline
+  domain, sortable flag) projected to the same `x-filter`/`x-sort` dialect data-filters reflects off a
+  `#[Filterable]` Data class, so `@schemastud/facets` is one client over one schema. It declares the
+  vocabulary only — `records()` still applies it — and it belongs to a backing WITHOUT `QueriesRecords`:
+  a queryable backing's vocabulary is its filter Data class, and one carrying both is reported by
+  `particle.capability-disagreement` as two vocabularies. `GET …/filters/schema` consults this capability
+  FIRST, before any data-filters registration under the key, so the host-side "stub `Query` that throws"
+  workaround (the flagship's `review-queue` registration in `config/data-filters.php`) is outranked
+  rather than raced; its removal follows composite-backing 03, and until then its Data class must
+  declare every facet the backing declares, because saved filters still validate against it
+  (beam ADR-0219). `…/filters/options/{ref}` answers only the handles the declaration names. Model
+  reading: `splicewire/tower` `src/Frame/Sources/ReviewQueueUnionSource.php`, whose tower test pins the
+  declared names against `ReviewInbox::applyFacets()`.
 
 ⚠️ **A declined capability is a legitimate answer, never an error, and the readers are written that way.**
 `EloquentBacking` deliberately declines `ResolvesRecord` — a model-backed detail runs through the
@@ -367,6 +381,15 @@ controller FQCN, so the population of exemptions stays countable.
   (`particle-doctrine-followups` 15). `filterable: true` needs one more thing nobody checks at
   registration: a backing implementing `QueriesRecords` — see the backing section above, and
   `particle.capability-disagreement` for the standing reading.
+
+  **A streams-only backing declares its facets on the BACKING, not on a Data class.** There is no
+  `Builder` to reflect off and no Data class data-filters hydrates, so a backing that implements only
+  `StreamsRecords` says what it filters and sorts on through `DeclaresFilterVocabulary` (backing section
+  above), keeps `filterable: false` (the flag means "the index rides the data-filters builder", which it
+  does not), and gets the same panel a `#[Filterable]` Data class buys — from `…/filters/schema`, which
+  consults the declaration first. Do NOT register a data-filters resource with a throwing `Query` to get
+  a panel; that was the pre-02 workaround, and `particle.filterable-promise` now names the declaring keys
+  separately so the repair it suggests is the flag, not a stub.
 - **Derived vs. published.** A rendering stays derived unless it becomes independently addressable
   *and* independently editable — at which point it is not a rendering, it is a publish, and
   `PublishPayload` is the seam. Fidelity (and therefore whether a write verb exists at all) is read

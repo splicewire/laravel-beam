@@ -3,10 +3,15 @@
 namespace Splicewire\Beam\Tests\Particle;
 
 use Illuminate\Contracts\Pagination\CursorPaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Splicewire\Beam\Particle\Backing\DeclaredFacet;
+use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
+use Splicewire\Beam\Particle\Backing\FilterVocabulary;
+use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\ResolvedRecord;
 use Splicewire\Beam\Particle\Backing\ResolvesRecord;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
@@ -118,6 +123,76 @@ class ResourceRegistryReportTest extends TestCase
         $row = $this->only($registry);
 
         $this->assertSame(['filterable but backing has no QueriesRecords'], $row->disagreements);
+    }
+
+    /**
+     * The sixth capability (composite-backing ticket 02) is a column like the other four: read by
+     * `instanceof` off the backing, never inferred from `filterable`, and spelled into the capability
+     * set so a streams-only resource with a panel reads differently from one without.
+     */
+    public function test_a_declared_vocabulary_is_a_capability_column_read_from_the_backing(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register(new ParticleResource(
+            key: 'feed',
+            backing: ReportDeclaringBacking::class,
+            filterable: false,
+            readOnly: true,
+            showable: false,
+        ));
+
+        $row = $this->only($registry);
+
+        $this->assertTrue($row->vocabulary);
+        $this->assertSame('list filters', $row->capabilities());
+        $this->assertTrue($row->toArray()['capabilities']['vocabulary']);
+        $this->assertSame([], $row->disagreements);
+    }
+
+    /**
+     * `filterable: true` still promises a data-filters QUERY, which a declaring backing cannot honour
+     * any more than a silent one can — but the repair differs, and the finding says so: closing the
+     * flag keeps the panel, because the declaration serves it.
+     */
+    public function test_filterable_against_a_declaring_backing_names_the_repair_that_keeps_the_panel(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register(new ParticleResource(
+            key: 'feed',
+            backing: ReportDeclaringBacking::class,
+            readOnly: true,
+            showable: false,
+        ));
+
+        $row = $this->only($registry);
+
+        $this->assertCount(1, $row->disagreements);
+        $this->assertStringStartsWith('filterable but backing has no QueriesRecords', $row->disagreements[0]);
+        $this->assertStringContainsString('declares a filter vocabulary', $row->disagreements[0]);
+        $this->assertStringContainsString('filterable: false', $row->disagreements[0]);
+    }
+
+    /**
+     * A backing that can compose a `Builder` already HAS a vocabulary — its filter Data class — and the
+     * schema endpoint would serve the declaration over it. Two vocabularies for one resource is intent
+     * exceeding what the two paths can jointly honour, so it is reported rather than silently shadowed.
+     */
+    public function test_a_querying_backing_that_also_declares_a_vocabulary_is_a_disagreement(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register(new ParticleResource(
+            key: 'feed',
+            backing: ReportQueryingDeclaringBacking::class,
+            readOnly: true,
+            showable: false,
+        ));
+
+        $row = $this->only($registry);
+
+        $this->assertSame(
+            ['declares a filter vocabulary but also QueriesRecords; a queryable backing\'s vocabulary is its filter Data class'],
+            $row->disagreements,
+        );
     }
 
     public function test_showable_against_a_backing_that_cannot_resolve_a_record_is_a_disagreement(): void
@@ -281,6 +356,37 @@ class ReportStreamOnlyBacking implements StreamsRecords
     public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
     {
         return new Paginator([], $perPage);
+    }
+}
+
+class ReportDeclaringBacking implements DeclaresFilterVocabulary, StreamsRecords
+{
+    public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
+    {
+        return new Paginator([], $perPage);
+    }
+
+    public function filterVocabulary(): FilterVocabulary
+    {
+        return FilterVocabulary::of(DeclaredFacet::set('source', options: 'feed_sources'));
+    }
+}
+
+class ReportQueryingDeclaringBacking implements DeclaresFilterVocabulary, QueriesRecords, StreamsRecords
+{
+    public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
+    {
+        return new Paginator([], $perPage);
+    }
+
+    public function query(array $filters): Builder
+    {
+        throw new \LogicException('The report never queries a backing.');
+    }
+
+    public function filterVocabulary(): FilterVocabulary
+    {
+        return FilterVocabulary::of(DeclaredFacet::search('keywords'));
     }
 }
 

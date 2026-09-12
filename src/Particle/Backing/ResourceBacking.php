@@ -9,8 +9,9 @@ namespace Splicewire\Beam\Particle\Backing;
  * ## Why this port has no methods
  *
  * `ResourceBacking` is a **marker**: every real job a backing does is a CAPABILITY declared by a
- * sub-interface ({@see QueriesRecords}, {@see WritesRecords}, {@see ResolvesRecord},
- * {@see BacksModel}). That is deliberate, and it is the whole reason the axis count came out at zero.
+ * sub-interface ({@see StreamsRecords}, {@see QueriesRecords}, {@see WritesRecords}, {@see ResolvesRecord},
+ * {@see BacksModel}, {@see DeclaresFilterVocabulary}). That is deliberate, and it is the whole reason the
+ * axis count came out at zero.
  *
  * The declaration used to carry three fields describing its backing — `sourceKind` ('model'|'service'),
  * `model` (an Eloquent class-string) and `source` (a `UnionSource` class-string) — bound by a `model`

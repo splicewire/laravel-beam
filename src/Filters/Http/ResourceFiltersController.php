@@ -23,7 +23,11 @@ use Splicewire\Beam\Filters\Data\ResourceFilterVariantsData;
 use Splicewire\Beam\Filters\Data\SavedFilterStoreInputData;
 use Splicewire\Beam\Filters\Data\SavedFilterUpdateInputData;
 use Splicewire\Beam\Http\Controller;
+use Splicewire\Beam\Particle\Backing\BackingResolver;
+use Splicewire\Beam\Particle\Backing\BacksModel;
+use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\ParticleListQuery;
+use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -180,15 +184,32 @@ class ResourceFiltersController extends Controller
      *
      * Facet names on the wire are **camelCase**: `filter[externalRef]`, not `filter[external_ref]`.
      *
-     * A resource that DECLARES no filter surface (`#[ParticleResource(filterable: false)]`) answers an
-     * EMPTY vocabulary — `{"type":"object","properties":{}}` — rather than 404. See
-     * {@see declaredEmptyVocabulary()} for why that is the honest answer and what still 404s.
+     * Three answers, consulted in this order:
+     *
+     *  1. **A backing that DECLARES its vocabulary** ({@see DeclaresFilterVocabulary}) is served that
+     *     declaration — the streams-only case, where there is no Data class to reflect a schema off. It
+     *     is consulted first, so a stub data-filters registration a host kept under the same key purely
+     *     to render a panel stops answering the day the backing declares (beam ADR-0219). See
+     *     {@see declaredVocabulary()}.
+     *  2. **A data-filters registration** is reflected the way it always was — the `QueriesRecords`
+     *     path, untouched.
+     *  3. **A declaration that opted out** (`#[ParticleResource(filterable: false)]`) answers an EMPTY
+     *     vocabulary — `{"type":"object","properties":{}}` — rather than 404. See
+     *     {@see declaredEmptyVocabulary()} for why that is the honest answer and what still 404s.
      *
      * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
      */
     public function schema(Request $request, ParticleResourceRegistry $resources): JsonResponse
     {
         $key = $this->resourceKey($request);
+        $declaring = $key === '' ? null : $this->declaringBacking($resources->find($key));
+
+        if ($declaring !== null) {
+            $this->gateOnBacking($declaring);
+
+            return response()->json(['data' => $declaring->filterVocabulary()->toSchema()]);
+        }
+
         $definition = $key === '' ? null : DataFilter::tryResource($key);
 
         if ($definition !== null) {
@@ -198,6 +219,42 @@ class ResourceFiltersController extends Controller
         }
 
         return $this->declaredEmptyVocabulary($key, $resources);
+    }
+
+    /**
+     * The resource's backing when it DECLARES its vocabulary, or null when there is no such resource or
+     * its backing does not carry the capability (composite-backing ticket 02).
+     *
+     * Asked statically first — {@see BackingResolver::hasCapability()} is an `instanceof` on the
+     * class-string and constructs nothing — and only then resolved, because {@see ParticleResource::backing()}
+     * is container resolution at request time and may build a backing that needs a tenant connection.
+     * Resolved ONCE: the caller gates on this instance ({@see gateOnBacking()}) and then asks it for
+     * the vocabulary, rather than resolving again through `ParticleResource::modelClass()`. An EMPTY
+     * declared vocabulary is a legitimate answer and is served as such (an object with no properties),
+     * not demoted to the declared-empty branch.
+     */
+    private function declaringBacking(?ParticleResource $resource): ?DeclaresFilterVocabulary
+    {
+        if ($resource === null || ! (new BackingResolver)->hasCapability($resource->backing, DeclaresFilterVocabulary::class)) {
+            return null;
+        }
+
+        $backing = $resource->backing();
+
+        return $backing instanceof DeclaresFilterVocabulary ? $backing : null;
+    }
+
+    /**
+     * Gate a declaring backing BEFORE asking it anything — the sub-surface's own rule ({@see store()}
+     * validates after the gate for the same reason). Same `viewAny` derivation as every other read
+     * here, keyed on the one model the backing backs when it backs one. A backing that backs none
+     * (the review queue: two record types) has no policy subject, so the read is gated by the route's
+     * middleware alone — which is exactly what the declared-empty branch and the flagship's stub
+     * registration (`model: CircuitNodeRun`, a model with no policy) amounted to before.
+     */
+    private function gateOnBacking(DeclaresFilterVocabulary $backing): void
+    {
+        $this->gateOnModel($backing instanceof BacksModel ? $backing->modelClass() : null);
     }
 
     /**
@@ -324,14 +381,38 @@ class ResourceFiltersController extends Controller
      *
      * The options registry is a flat, cross-resource namespace, which is exactly why the flat route had
      * nothing to authorize against. Reaching it through a resource does not make the vocabulary
-     * per-resource; it gives the read a subject.
+     * per-resource; it gives the read a subject. A resource whose backing DECLARES its vocabulary
+     * ({@see DeclaresFilterVocabulary}) goes one step further: it answers only the handles its own facets
+     * name, and 404s the rest.
      *
      * @urlParam ref string required The `optionsRef` a facet publishes in its `x-filter` keyword — the handle for one relational value list. Example: run-statuses
      * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
      */
-    public function options(Request $request, string $ref): JsonResponse
+    public function options(Request $request, ParticleResourceRegistry $resources): JsonResponse
     {
-        $this->definition($request);
+        // Read off the route, never taken as a positional method argument: at the Frame resource root
+        // the route carries TWO parameters (`{resource}`, `{ref}`) and the dispatcher hands them to the
+        // action positionally, so a `string $ref` parameter would receive the RESOURCE key there and
+        // the real ref would be dropped on the floor. Measured at the flagship 2026-09-12 — the
+        // frame-root options read answered 404 for a registered handle for exactly this reason.
+        // ⚠️ `show()`, `update()`, `destroy()` (`string $id`) and `variantSchema()` (`string $variant`)
+        // still take theirs positionally and are mounted at that same root; nominated to
+        // api-surface-coherence from composite-backing 02 rather than swept into it.
+        $ref = (string) $request->route('ref');
+        $key = $this->resourceKey($request);
+        $declaring = $key === '' ? null : $this->declaringBacking($resources->find($key));
+
+        if ($declaring !== null) {
+            // No data-filters definition to gate through, so the gate is {@see gateOnBacking()} — the
+            // backing's own model's `viewAny` when it backs one, the route middleware alone when it
+            // does not — and the read narrows the flat namespace further than the registry path can:
+            // only a handle one of ITS facets names is this resource's to enumerate.
+            $this->gateOnBacking($declaring);
+
+            abort_unless($declaring->filterVocabulary()->references($ref), Response::HTTP_NOT_FOUND, "No filter options [{$ref}] on resource [{$key}].");
+        } else {
+            $this->definition($request);
+        }
 
         abort_unless(DataFilter::hasOptions($ref), Response::HTTP_NOT_FOUND, "No filter options registered for [{$ref}].");
 

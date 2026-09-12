@@ -8,6 +8,7 @@ use Splicewire\Beam\Doctor\ParticleCapabilityDisagreementAudit;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\ResourceRegistryReport;
+use Splicewire\Beam\Tests\Particle\ReportQueryingDeclaringBacking;
 use Splicewire\Beam\Tests\Particle\ReportStreamOnlyBacking;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -60,6 +61,27 @@ class ParticleCapabilityDisagreementAuditTest extends TestCase
         $this->assertStringContainsString('1 of 2 registered particle resources', $findings[0]->detail);
         $this->assertStringContainsString('[feed] filterable but backing has no QueriesRecords', $findings[0]->detail);
         $this->assertStringNotContainsString('widgets', $findings[0]->detail);
+    }
+
+    /**
+     * The sixth capability reaches this audit through the report's rows: a backing carrying both a
+     * composable query and a declared vocabulary is two vocabularies for one resource, and the standing
+     * check names it the same way it names every other intent/capability disagreement.
+     */
+    public function test_a_declared_vocabulary_beside_a_query_is_reported_as_two_vocabularies(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register(new ParticleResource(
+            key: 'feed',
+            backing: ReportQueryingDeclaringBacking::class,
+            readOnly: true,
+            showable: false,
+        ));
+
+        $findings = $this->audit($registry)->run();
+
+        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
+        $this->assertStringContainsString('[feed] declares a filter vocabulary but also QueriesRecords', $findings[0]->detail);
     }
 
     public function test_it_is_registered_into_the_doctor_manifest_so_the_surgeon_sweep_discovers_it(): void

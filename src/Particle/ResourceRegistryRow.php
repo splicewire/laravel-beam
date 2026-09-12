@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Particle;
 
+use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
+
 /**
  * One registered particle resource, as {@see ResourceRegistryReport} sees it: its declared INTENT, its
  * backing's CAPABILITY, and the places the two disagree.
@@ -19,6 +21,9 @@ class ResourceRegistryRow
      *                                no primary nav, which is the DEFAULT and not a backlog
      * @param  class-string|null  $model  null is legal and common — a backing need not back one model
      * @param  class-string|null  $handler  null ⇒ no `FrameResourceHandlerResolver` is bound on this host
+     * @param  bool  $vocabulary  the backing declares its own filter vocabulary
+     *                            ({@see DeclaresFilterVocabulary}) — the
+     *                            streams-only way to have a panel
      * @param  list<string>  $disagreements  empty ⇒ intent stays within capability
      */
     public function __construct(
@@ -34,6 +39,7 @@ class ResourceRegistryRow
         public bool $queries,
         public bool $resolves,
         public bool $writes,
+        public bool $vocabulary,
         public bool $readOnly,
         public bool $creatable,
         public bool $editable,
@@ -45,8 +51,8 @@ class ResourceRegistryRow
     ) {}
 
     /**
-     * The capability set, shortest legible spelling — `list` / `query` / `show` / `write`, present only
-     * when the backing actually implements the interface behind it.
+     * The capability set, shortest legible spelling — `list` / `query` / `show` / `write` / `filters`,
+     * present only when the backing actually implements the interface behind it.
      */
     public function capabilities(): string
     {
@@ -55,6 +61,7 @@ class ResourceRegistryRow
             'query' => $this->queries,
             'show' => $this->resolves,
             'write' => $this->writes,
+            'filters' => $this->vocabulary,
         ]));
 
         return $names === [] ? '—' : implode(' ', $names);
@@ -96,6 +103,7 @@ class ResourceRegistryRow
                 'queries' => $this->queries,
                 'resolves' => $this->resolves,
                 'writes' => $this->writes,
+                'vocabulary' => $this->vocabulary,
             ],
             'intent' => [
                 'readOnly' => $this->readOnly,

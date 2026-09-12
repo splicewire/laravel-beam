@@ -6,6 +6,7 @@ use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\BacksModel;
+use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\ResolvesRecord;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
@@ -139,6 +140,7 @@ class ResourceRegistryReport
         $queries = $this->backings->hasCapability($backing, QueriesRecords::class);
         $resolves = $this->backings->hasCapability($backing, ResolvesRecord::class);
         $writes = $this->backings->hasCapability($backing, WritesRecords::class);
+        $vocabulary = $this->backings->hasCapability($backing, DeclaresFilterVocabulary::class);
 
         // The declaration's own affordances, with the nullable ones RESOLVED the way
         // `toResourceDefinition()` resolves them — a `null` editable follows the create gate, so
@@ -160,6 +162,7 @@ class ResourceRegistryReport
             queries: $queries,
             resolves: $resolves,
             writes: $writes,
+            vocabulary: $vocabulary,
             readOnly: $resource->readOnly,
             creatable: $creatable,
             editable: $editable,
@@ -167,7 +170,7 @@ class ResourceRegistryReport
             showable: $resource->showable,
             filterable: $resource->filterable,
             policy: $resource->policy,
-            disagreements: $this->disagreements($resource, $streams, $queries, $resolves, $writes, $creatable, $editable, $deletable),
+            disagreements: $this->disagreements($resource, $streams, $queries, $resolves, $writes, $vocabulary, $creatable, $editable, $deletable),
         );
     }
 
@@ -182,6 +185,7 @@ class ResourceRegistryReport
         bool $queries,
         bool $resolves,
         bool $writes,
+        bool $vocabulary,
         bool $creatable,
         bool $editable,
         bool $deletable,
@@ -196,9 +200,22 @@ class ResourceRegistryReport
 
         // `filterable` DEFAULTS to true, so this is the read-side disagreement that actually occurs:
         // the declaration says the index rides the data-filters builder, and the backing yields no
-        // composable Builder for it to ride.
+        // composable Builder for it to ride. A backing that DECLARES its vocabulary is in the same
+        // position for the index, but its repair differs — closing the flag costs it no panel, because
+        // the filter sub-surface serves the declaration (composite-backing ticket 02) — so the phrase
+        // names that repair rather than sending the reader to register a query stub.
         if ($resource->filterable && ! $queries) {
-            $found[] = 'filterable but backing has no QueriesRecords';
+            $found[] = $vocabulary
+                ? 'filterable but backing has no QueriesRecords; it declares a filter vocabulary, so `filterable: false` keeps the panel and drops the promise'
+                : 'filterable but backing has no QueriesRecords';
+        }
+
+        // Two vocabularies for one resource. A queryable backing's vocabulary is its filter Data class —
+        // that is what data-filters composes, validates saved filters and sorts against — and the schema
+        // endpoint consults a declaration FIRST, so a backing carrying both would shadow the path that
+        // actually runs its query. Reported, never refused: the backing may be mid-migration.
+        if ($queries && $vocabulary) {
+            $found[] = 'declares a filter vocabulary but also QueriesRecords; a queryable backing\'s vocabulary is its filter Data class';
         }
 
         // A detail read needs something to resolve one record against. An Eloquent-backed resource

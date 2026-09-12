@@ -134,6 +134,12 @@ Both are **overridable by the host** (last-binding-wins — an app provider regi
 beam-core's): bind your own `FrameResourceHandlerResolver` to map some keys to bespoke handlers,
 or a real `FrameFilterProvider` (e.g. one derived from a data-filters query class) for a faceted list.
 
+A resource whose backing is a service rather than a model — `StreamsRecords` without `QueriesRecords` —
+gets its facets by **declaring them on the backing**: implement `DeclaresFilterVocabulary` and return a
+`FilterVocabulary` of `DeclaredFacet`s; `GET {resource}/filters/schema` serves that declaration (before
+any data-filters registration under the key) and `…/filters/options/{ref}` answers the handles it names.
+Doctrine and the worked example: `docs/agents/particle-doctrine.md`, backing section.
+
 ## Per-realm resource presentation overrides (RDU-03)
 
 A realm may PRESENT the same resource differently — a different label, group, form, layout, or a
