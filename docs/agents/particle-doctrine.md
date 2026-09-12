@@ -207,6 +207,17 @@ difference between a typed hook and a bare path string.
 (`Splicewire.Tower.Data.AgentData`). There is no `App.Data` rebasing — that remap was removed because
 it had to be hand-kept in sync; native FQNs are globally unique, so this is collision-proof.
 
+**The Frame manifest row is the fifth consumer, and it speaks the same names.** `toResourceDefinition()`
+feeds `GET /frame/manifest`, and on that wire a resource is `{key, data, affordances, nav, …}` where
+`data` is the generated type's dot-form name (`Splicewire.Tower.Data.AgentData`) — the identifier the
+client already holds from `typescript:transform` — and there is **no `model` key at all**. The
+declaration still hands frame `modelClass()`, because frame's write gate resolves the policy subject
+from it; frame keeps it server-side and hides it from the JSON and the TS type
+(`schemastud/laravel-frame docs/adr/0002-…`). The rule this closes: the wire must not say "modelled"
+where the declaration says "backed" (ADR-0212). Measured 2026-09-12: zero manifest-entry readers of
+`.model` across every host UI, starter and JS package; the one PHP reader is frame's own
+`ResourceAuthorizer`.
+
 **Two schema-driven UI rungs terminate in `@schemastud/seam`**, and neither wants per-resource UI code:
 `@schemastud/frame` renders admin CRUD straight off a `#[ParticleResource]`'s manifest fields
 (`label`, `form`, `editData`, `layout`, …); BeamUx renders a site's own front-end off a `BeamUxEntry`'s

@@ -54,6 +54,34 @@ class ParticleResourceRegistryTest extends TestCase
         $this->assertSame(3, $def->nav->navOrder);
     }
 
+    /**
+     * The projection's WIRE form, at the seam beam owns (`toResourceDefinition()` → spatie
+     * `toArray()`, which is what `GET /frame/manifest` serializes). `model` is a server-side input —
+     * frame's write gate reads it from the object — and never a wire key; `data` names the GENERATED
+     * type in dot form, never the PHP class (schemastud/laravel-frame ADR-0002, composite-backing 01).
+     */
+    public function test_the_projection_wire_carries_no_model_and_names_the_generated_type(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register(new ParticleResourceRuntime(
+            key: 'widgets',
+            backing: 'App\\Models\\Widget',
+            data: WidgetGateData::class,
+            label: 'Widgets',
+        ));
+
+        $definition = $registry->definition('widgets');
+        $wire = $definition->toArray();
+
+        // Server-side, the class-strings are intact: the write gate and the schema endpoint reflect them.
+        $this->assertSame('App\\Models\\Widget', $definition->model);
+        $this->assertSame(WidgetGateData::class, $definition->data);
+
+        $this->assertArrayNotHasKey('model', $wire);
+        $this->assertSame(str_replace('\\', '.', WidgetGateData::class), $wire['data']);
+        $this->assertStringNotContainsString('\\', json_encode($wire['data']));
+    }
+
     public function test_it_projects_per_realm_at_build_not_frozen_at_registration(): void
     {
         $registry = new ParticleResourceRegistry;

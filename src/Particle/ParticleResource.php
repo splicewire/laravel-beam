@@ -322,6 +322,14 @@ class ParticleResource implements HasRegistryKey
      * they were beam's contract living in frame's class, with zero branching readers, and the backing
      * they discriminated is now a type rather than a pair of strings.
      *
+     * `model:` IS still passed, and deliberately: it is a **server-side input** to frame, not a wire
+     * field. Frame's own `ResourceAuthorizer` resolves the write-gate policy subject from it, and frame
+     * hides it from both `GET /frame/manifest` and the generated TS type (schemastud/laravel-frame
+     * ADR-0002). `data:` likewise stays the class-string here; frame projects it onto the wire as the
+     * generated type's dot-form name. So the manifest never contradicts ADR-0212 ("backed, not
+     * modelled") in the browser, while the declaration's `modelClass()` still reaches the one reader
+     * that needs it. `ParticleResourceRegistryTest` pins both halves.
+     *
      * @param  string|null  $realm  ACCEPTED but IGNORED for now (RDU-01) — the projection is identical for
      *                              every realm. The param exists so later issues (realm-addressable
      *                              projection) can vary the contract without changing this signature.
