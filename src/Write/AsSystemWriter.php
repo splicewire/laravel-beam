@@ -2,9 +2,6 @@
 
 namespace Splicewire\Beam\Write;
 
-use Illuminate\Contracts\Auth\Access\Gate;
-use Splicewire\Beam\Write\Contracts\WriteGate;
-
 /**
  * Run a body of work as the SYSTEM writer — under {@see PermissiveWriteGate}, restoring the host's own
  * binding afterwards.
@@ -47,21 +44,9 @@ trait AsSystemWriter
      */
     protected function asSystemWriter(callable $work): mixed
     {
-        $app = $this->laravel ?? app();
-        $previous = $app->getBindings()[WriteGate::class] ?? null;
-
-        $app->bind(WriteGate::class, fn () => new PermissiveWriteGate);
-
-        try {
-            return $work();
-        } finally {
-            if ($previous === null) {
-                $app->bind(WriteGate::class, fn ($a) => new GateWriteGate($a->make(Gate::class)));
-            } else {
-                // Restore the host's own binding verbatim — including its `shared` flag — rather than
-                // re-asserting beam's default over the top of a host that deliberately bound something else.
-                $app->bind(WriteGate::class, $previous['concrete'], $previous['shared'] ?? false);
-            }
-        }
+        // The bind/restore mechanism itself is {@see ScopedWriteGate}'s — shared with the after-persist
+        // hook, which binds the write's OWN gate the same way. What is stated HERE is the choice of
+        // gate, which is this trait's whole subject.
+        return ScopedWriteGate::run(new PermissiveWriteGate, $work, $this->laravel ?? app());
     }
 }

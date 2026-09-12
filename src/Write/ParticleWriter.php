@@ -12,6 +12,7 @@ use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Source\ParticleShadower;
+use Splicewire\Beam\Storage\ParticleStorageDriver;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\Contracts\WriteStage;
 use Splicewire\Beam\Write\Stages\AuthorizeStage;
@@ -100,13 +101,42 @@ class ParticleWriter
     public function write(Model|string $target, array $payload, mixed $actor = null, ?Closure $after = null, bool $emit = true): Model
     {
         $model = $target instanceof Model ? $target : new $target;
-        $context = new WriteContext($model, $payload, $actor, $after, $emit);
+        $context = new WriteContext($model, $payload, $actor, $this->authorized($after), $emit);
 
         return (new Pipeline)
             ->send($context)
             ->through($this->stages ?? $this->defaultStages())
             ->then(fn (WriteContext $context) => $context)
             ->model;
+    }
+
+    /**
+     * The after-persist hook, wrapped so the nested writes inside it ride THIS write's gate.
+     *
+     * A hook is where a record's immediate relations land, and in this estate some of those relations are
+     * themselves particles written through a container-resolved {@see ParticleWriter} — beam-ux's entry
+     * mints its body that way, through a storage driver that resolves its writer per call precisely so a
+     * rebound gate can reach it ({@see ParticleStorageDriver}). Unwrapped, such a
+     * hook ran under whatever the container had bound — beam-core's deny-by-default {@see GateWriteGate} on
+     * every host — while the record it belongs to had just been authorized by an authenticated editor
+     * surface. The outer write was permitted and its own relation refused, which is not a policy anyone
+     * declared: measured on beam.test as the Frame console's create form writing a `beam_ux_entries` row
+     * and then answering 403 `The write gate refused a write to [BeamParticle]`
+     * (ux-demo-convergence `G3-BEAM-FRAME-CREATE-WRITE-GATE`).
+     *
+     * So the hook inherits the gate the write itself passed — no more and no less. A
+     * {@see PolicyWriteGate} with no declared policy ("the surrounding auth middleware IS the gate")
+     * carries that same statement into the relation; one WITH a policy carries the policy, and a
+     * relation that policy does not admit is still refused. A host writing through the deny-by-default
+     * default sees no change at all, since the inherited gate is the one that was already bound.
+     */
+    private function authorized(?Closure $after): ?Closure
+    {
+        if ($after === null) {
+            return null;
+        }
+
+        return fn (Model $model) => ScopedWriteGate::run($this->gate, fn () => $after($model));
     }
 
     /**

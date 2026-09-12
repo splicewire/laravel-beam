@@ -21,10 +21,12 @@ use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV1;
 use Splicewire\Beam\Tests\Schema\Fixtures\FixtureCheapV2;
 use Splicewire\Beam\Tests\TestCase;
+use Splicewire\Beam\Write\AsSystemWriter;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\Contracts\WriteStage;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\PayloadRejected;
+use Splicewire\Beam\Write\PolicyWriteGate;
 use Splicewire\Beam\Write\Stages\AuthorizeStage;
 use Splicewire\Beam\Write\Stages\PersistStage;
 use Splicewire\Beam\Write\WriteContext;
@@ -188,6 +190,102 @@ class ParticleWriterTest extends TestCase
         $this->assertNotNull($seen, 'the after-persist hook should have run');
         $this->assertTrue($seen->is($record));
         $this->assertTrue($seen->exists, 'the hook runs AFTER the save, on the persisted model');
+    }
+
+    /**
+     * The after-persist hook is part of ONE write, and {@see PersistStage}'s own docblock has always
+     * said so ("one atomic 'the record and its immediate relations landed'"). It was not: the save had
+     * already committed when the hook ran, so a hook that refused or threw left the record behind it.
+     *
+     * Measured on beam.test (ux-demo-convergence `G3-BEAM-FRAME-CREATE-WRITE-GATE`, 2026-09-12): the
+     * Frame console's create form for `beam-ux-entry` wrote the `beam_ux_entries` row, then answered
+     * 403 `The write gate refused a write to [Splicewire\Beam\Models\BeamParticle]` from the hook that
+     * mints the entry's body — a half-created record standing behind a refusal, with the console's list
+     * showing an entry that could never be opened.
+     */
+    public function test_a_refused_after_hook_leaves_no_half_created_record(): void
+    {
+        $this->allowWrites();
+
+        try {
+            $this->writer()->write(
+                new AppRecordFixture,
+                ['title' => 'Half'],
+                after: function (Model $model): void {
+                    throw WriteNotAuthorized::for(new BeamParticle);
+                },
+            );
+            $this->fail('expected the refusing after-hook to propagate');
+        } catch (WriteNotAuthorized) {
+            // expected — and the point is what is NOT in the database.
+        }
+
+        $this->assertDatabaseCount('app_records', 0);
+    }
+
+    /**
+     * A nested write inside an after-persist hook rides the SAME gate the outer write passed.
+     *
+     * The hook is where a record's immediate relations land, and some of them are themselves particles
+     * written through a container-resolved {@see ParticleWriter} (beam-ux's entry mints its body through
+     * the storage seam that way, deliberately resolving the writer per call). Without this, such a hook
+     * ran under beam-core's deny-by-default container binding while the record it belongs to had just
+     * been authorized by an authenticated editor surface — so the outer write was permitted and its own
+     * relation was refused.
+     *
+     * The mechanism is {@see AsSystemWriter}'s, scoped to the hook and carrying
+     * the write's own gate rather than a permissive one.
+     */
+    public function test_the_after_hook_writes_under_the_gate_the_write_itself_passed(): void
+    {
+        // NO Gate::define here: the container's deny-by-default GateWriteGate refuses everything, which
+        // is what makes this discriminating. The outer writer carries the already-authorized-surface
+        // gate instead — exactly what ParticleFrameResourceHandler hands its writes.
+        $writer = new ParticleWriter(
+            new PolicyWriteGate($this->app->make(\Illuminate\Contracts\Auth\Access\Gate::class)),
+            $this->app->make(SchemaTargetResolver::class),
+            new AcceptanceGate,
+            $this->app->make(Dispatcher::class),
+        );
+
+        $nested = null;
+        $writer->write(
+            new AppRecordFixture,
+            ['title' => 'Outer'],
+            after: function (Model $model) use (&$nested): void {
+                // Resolved from the CONTAINER mid-hook, the way the storage seam resolves its writer.
+                $nested = $this->app->make(ParticleWriter::class)->write(
+                    new BeamParticle(['schema_ref' => self::CHEAP_REF]),
+                    ['title' => 'Body', 'body' => null, 'summary' => null],
+                );
+            },
+        );
+
+        $this->assertNotNull($nested, 'the hook should have written its particle');
+        $this->assertDatabaseHas(Beam::table('particles'), ['id' => $nested->id, 'schema_ref' => self::CHEAP_REF]);
+    }
+
+    /** The rebinding is scoped: whatever the host bound is back in place once the write returns. */
+    public function test_the_hosts_own_write_gate_binding_survives_the_hook(): void
+    {
+        $this->allowWrites();
+
+        $before = $this->app->make(WriteGate::class);
+        $inside = null;
+
+        $writer = new ParticleWriter(
+            new PolicyWriteGate($this->app->make(\Illuminate\Contracts\Auth\Access\Gate::class)),
+            $this->app->make(SchemaTargetResolver::class),
+            new AcceptanceGate,
+            $this->app->make(Dispatcher::class),
+        );
+
+        $writer->write(new AppRecordFixture, ['title' => 'Scoped'], after: function () use (&$inside): void {
+            $inside = $this->app->make(WriteGate::class);
+        });
+
+        $this->assertInstanceOf(PolicyWriteGate::class, $inside, 'the hook should see the write own gate');
+        $this->assertSame($before::class, $this->app->make(WriteGate::class)::class);
     }
 
     public function test_a_host_composes_a_custom_stage_into_the_write_chain(): void
