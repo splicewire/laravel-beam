@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
+use Throwable;
 
 /**
  * The umbrella asset generator (PROMOTED into laravel-beam) — one command for every committed
@@ -23,7 +24,8 @@ use Illuminate\Console\Command;
  * installed in this host is skipped with a note, never a hard failure — but the skip is REPORTABLE
  * (particle-doctrine-followups #13): `--json` emits a `{ran, skipped, failed}` summary, so a caller can
  * distinguish "this host legitimately lacks the generator" from "every generator ran clean". Silence is
- * no longer ambiguous.
+ * no longer ambiguous. A returned or thrown failure stops execution of the remaining dependent
+ * pipeline: those commands are also reported as skipped, with the failed prerequisite in `failed`.
  */
 class GenerateAssetsCommand extends Command
 {
@@ -57,6 +59,16 @@ class GenerateAssetsCommand extends Command
         $failed = [];
 
         foreach ($generators as $command) {
+            if ($failed !== []) {
+                $skipped[] = $command;
+
+                if (! $json) {
+                    $this->components->warn("Skipping '{$command}' — an earlier generator failed.");
+                }
+
+                continue;
+            }
+
             if (! $this->getApplication()->has($command)) {
                 $skipped[] = $command;
 
@@ -67,18 +79,14 @@ class GenerateAssetsCommand extends Command
                 continue;
             }
 
-            if ($json) {
-                if ($this->callSilently($command) === self::SUCCESS) {
-                    $ran[] = $command;
-                } else {
-                    $failed[] = $command;
+            $error = null;
+            $run = function () use ($command, $json, &$ran, &$failed, &$error): bool {
+                try {
+                    $ok = ($json ? $this->callSilently($command) : $this->call($command)) === self::SUCCESS;
+                } catch (Throwable $exception) {
+                    $error = $exception;
+                    $ok = false;
                 }
-
-                continue;
-            }
-
-            $this->components->task($command, function () use ($command, &$ran, &$failed): bool {
-                $ok = $this->call($command) === self::SUCCESS;
 
                 if ($ok) {
                     $ran[] = $command;
@@ -87,7 +95,17 @@ class GenerateAssetsCommand extends Command
                 }
 
                 return $ok;
-            });
+            };
+
+            if ($json) {
+                $run();
+            } else {
+                $this->components->task($command, $run);
+
+                if ($error !== null) {
+                    $this->components->error($error->getMessage());
+                }
+            }
         }
 
         if ($json) {
