@@ -220,6 +220,66 @@ class BeamHookMorphWideningTest extends TestCase
     }
 
     /**
+     * The single-user host that has NOT run the ALTER yet must keep working.
+     *
+     * `stampOwner()` casts the principal's key to a string, and most hosts in the estate are keyed
+     * bigint and will meet that cast before they meet this migration — a starter is installed long
+     * before it is upgraded. So the cast must not break the column it is about to outgrow: `'1'` has
+     * to reach a bigint `owner_id` exactly as `1` did. It does, because Postgres coerces an integer
+     * literal sent as text, and this is the assertion that says so rather than assuming it.
+     *
+     * Measured 2026-09-12 at `~/Herd/beam` (the Beam starter, live): `beam_hooks.owner_id` is still
+     * `bigint` there and the table is empty — its hooks console has no create affordance at all
+     * (`HookData`'s `createAffordance: 'host'` plus no bespoke dialog in that starter), so nothing
+     * writes an owner through the UI. This test is what covers the API door on such a host.
+     */
+    public function test_a_bigint_host_that_has_not_run_the_alter_still_takes_a_string_key(): void
+    {
+        $this->createLegacyTable();
+
+        DB::table(Beam::table('hooks'))->insert([
+            'id' => $id = (string) Str::uuid(),
+            'endpoint' => 'https://receiver.test/single-user',
+            'secret' => str_repeat('d', 64),
+            'events' => json_encode(['tenants.provisioned']),
+            'owner_type' => 'user',
+            // The string a post-repair `stampOwner()` produces on a bigint-keyed host.
+            'owner_id' => '1',
+            'consecutive_failures' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertSame('1', (string) DB::table(Beam::table('hooks'))->where('id', $id)->value('owner_id'));
+    }
+
+    /**
+     * A hook created through the PARTICLE door — which is the only door the starters' console has —
+     * carries no owner at all, and must not be made to. `stampOwner()` lives on the hand-rolled
+     * create; the particle write path never calls it, the column is nullable in both the legacy and
+     * the widened shape, and nothing reads `owner_*` as a scope (`HookData::scope()`).
+     */
+    public function test_an_ownerless_hook_is_legal_in_both_shapes(): void
+    {
+        foreach ([fn () => $this->createLegacyTable(), fn () => $this->create()->up()] as $build) {
+            Schema::dropIfExists(Beam::table('hooks'));
+            $build();
+
+            DB::table(Beam::table('hooks'))->insert([
+                'id' => $id = (string) Str::uuid(),
+                'endpoint' => 'https://receiver.test/ownerless',
+                'secret' => str_repeat('e', 64),
+                'events' => json_encode(['tenants.provisioned']),
+                'consecutive_failures' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $this->assertNull(DB::table(Beam::table('hooks'))->where('id', $id)->value('owner_id'));
+        }
+    }
+
+    /**
      * THE DEFECT ITSELF, and it only runs where it can be seen. sqlite's type affinity stores a uuid
      * in an `integer` column without complaint, so this skips there rather than asserting a pass it
      * has not earned — the Postgres subclass is where the 22P02 lives.
