@@ -106,6 +106,97 @@ class SchemaIntakeValidatorTest extends TestCase
         $this->assertStringContainsString('mystery', json_encode($errors));
     }
 
+    /**
+     * ## An empty JSON object survives the round-trip through PHP
+     *
+     * `{}` and `[]` are different documents in JSON and the same value in PHP: `json_decode($json,
+     * true)` gives `[]` for both, and re-encoding it produces `[]`. So a submitted section the author
+     * simply left blank arrived at opis as an array and was refused against its own `type: object`
+     * property — while the identical form with one key in that section was accepted.
+     *
+     * Measured on the flagship SPA (ux-demo-convergence `G3-FLAGSHIP-INTAKE-EMPTY-SECTION-422`,
+     * 2026-09-12): the guest intake posts `{menu:{},equipment:{},processes:{},establishment:{…}}` and
+     * got `422 /menu: The data (array) must match the type: object` for each blank section.
+     *
+     * The schema is what disambiguates — it is the only thing in the room that knows whether a given
+     * position is an object or an array — so the coercion is schema-driven and reaches every position
+     * the schema describes, not just the root.
+     */
+    public function test_a_blank_optional_section_is_an_empty_object_where_the_schema_says_object(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['establishment'],
+            'properties' => [
+                'establishment' => ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => ['type' => 'string']]],
+                'menu' => ['type' => 'object'],
+                'equipment' => ['type' => 'object'],
+                'processes' => ['type' => 'object'],
+            ],
+        ];
+
+        // Exactly what `json_decode($request->getContent(), true)` yields for
+        // {"establishment":{"name":"Bea's"},"menu":{},"equipment":{},"processes":{}}.
+        $payload = ['establishment' => ['name' => "Bea's"], 'menu' => [], 'equipment' => [], 'processes' => []];
+
+        $this->assertSame([], (new SchemaIntakeValidator)->validate($payload, $schema));
+    }
+
+    /** The same fact one level deeper: nesting is not a special case, it is the general one. */
+    public function test_the_coercion_reaches_a_nested_object_property(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => [
+                'establishment' => [
+                    'type' => 'object',
+                    'properties' => ['hours' => ['type' => 'object'], 'name' => ['type' => 'string']],
+                ],
+                'sections' => ['type' => 'array', 'items' => ['type' => 'object']],
+            ],
+        ];
+
+        $payload = ['establishment' => ['name' => 'B', 'hours' => []], 'sections' => [[], []]];
+
+        $this->assertSame([], (new SchemaIntakeValidator)->validate($payload, $schema));
+    }
+
+    /**
+     * The coercion must not invent an object where the schema wanted an array — the mirror defect, and
+     * the reason this reads the schema rather than guessing from the value's emptiness.
+     */
+    public function test_an_empty_array_stays_an_array_where_the_schema_says_array(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => [
+                'tags' => ['type' => 'array'],
+                'notes' => ['type' => 'array', 'minItems' => 1],
+            ],
+        ];
+
+        $this->assertSame([], (new SchemaIntakeValidator)->validate(['tags' => []], $schema));
+
+        // And a genuinely invalid one is still refused, with its own message rather than a type error.
+        $errors = (new SchemaIntakeValidator)->validate(['notes' => []], $schema);
+        $this->assertNotSame([], $errors);
+        $this->assertStringNotContainsString('must match the type: array', json_encode($errors));
+    }
+
+    /** A blank section is not an excuse to skip the section's own required content. */
+    public function test_a_required_property_inside_a_coerced_object_is_still_enforced(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => ['establishment' => ['type' => 'object', 'required' => ['name']]],
+        ];
+
+        $errors = (new SchemaIntakeValidator)->validate(['establishment' => []], $schema);
+
+        $this->assertNotSame([], $errors);
+        $this->assertStringContainsString('name', json_encode($errors));
+    }
+
     public function test_the_container_chain_resolves_vocabularies_through_the_schema_registry(): void
     {
         // The FULL production chain, no hand-built registry: the vocabulary artifact lives in a
