@@ -31,6 +31,7 @@ use Schemastud\DataSchemas\Generators\Generator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameFilterProvider;
+use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
 use Schemastud\Frame\Realm\RealmDefinition;
@@ -148,6 +149,7 @@ use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
+use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
 use Splicewire\Beam\Routing\RouteActionMetadataReader;
@@ -538,6 +540,16 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             DefaultParticleResourceHandlerResolver::class,
         );
         $this->app->bind(FrameFilterProvider::class, NullFrameFilterProvider::class);
+
+        // Frame's THIRD host-facing seam, and the one frame cannot answer for itself: may this actor
+        // address this resource on the socket at all? Frame ships an OpenResourceAccessGate because a
+        // frame-only host has no realms; beam owns realms and the membership authority, so beam binds
+        // the refusing answer. Without this line `config('frame.realms')` stays what it was measured to
+        // be on 2026-09-12 — a list that decided which links were DRAWN while `demo-member` read
+        // /frame/resources/{users,teams,tenants} with 200. See RealmEntitlementResourceGate.
+        //
+        // Overridable the same way as the two above: a host provider registering later wins.
+        $this->app->bind(ResourceAccessGate::class, RealmEntitlementResourceGate::class);
 
         // Tenant resolvability (realm-architecture ticket 08): the re-home of the retired
         // RealmDefinition::$tenancy flag. Default resolves the `tenant` realm when config('frame.tenancy')
