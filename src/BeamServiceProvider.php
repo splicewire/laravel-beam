@@ -31,8 +31,8 @@ use Schemastud\DataSchemas\Generators\Generator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameFilterProvider;
-use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
+use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
@@ -148,8 +148,8 @@ use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
-use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
+use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
 use Splicewire\Beam\Routing\RouteActionMetadataReader;
@@ -184,6 +184,7 @@ use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
 use Splicewire\Beam\Surgeon\InstallDesiredStateAudit;
 use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
+use Splicewire\Beam\Surgeon\MacroDeclaredSurfaceAudit;
 use Splicewire\Beam\Surgeon\ModelSurfaceCoverageAudit;
 use Splicewire\Beam\Surgeon\MorphAliasCoverageAudit;
 use Splicewire\Beam\Surgeon\MorphTokenBypassAudit;
@@ -206,7 +207,6 @@ use Splicewire\Beam\Surgeon\Support\PackageOrigin;
 use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
 use Splicewire\Beam\Surgeon\TypeScriptShortNameCollisionAudit;
 use Splicewire\Beam\Surgeon\TypeScriptUnknownResolutionAudit;
-use Splicewire\Beam\Surgeon\MacroDeclaredSurfaceAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
 use Splicewire\Beam\Surgeon\UndeclaredWriteMapAudit;
 use Splicewire\Beam\Surgeon\UndescribedRegistryAudit;
@@ -314,6 +314,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 // centrally, a tenant subscribes to its own. Same one-file-both-passes shape as every
                 // other core table, not a duplicated flat+tenant DDL pair.
                 'shared/create_beam_hooks_table',
+                // The morph-id widening (ux-demo-convergence G3-FLAGSHIP-HOOKS-GUEST-LINKS). DECLARED
+                // ORDER IS LOAD-BEARING: package-tools stamps each entry a second apart in listed
+                // order, which is the only thing making the create above precede its own ALTER on a
+                // host's disk. Editing the create reaches a fresh database only, and the convergent
+                // guard THROWS on a present column of the wrong type rather than repairing it — so an
+                // already-migrated host is reached by this file or by nothing.
+                'shared/widen_beam_hook_morph_ids_to_string',
             ]);
     }
 

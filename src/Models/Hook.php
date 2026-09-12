@@ -51,6 +51,10 @@ use Splicewire\Beam\Webhooks\HookSignature;
  * @property string|null $last_failure_request_log_id
  * @property Carbon|null $verified_at
  * @property array<int, string>|null $entitlement_keys
+ * @property string|null $owner_type
+ * @property string|null $owner_id audit only (12 §7). STRING, like `subject_id`: the principal's key
+ *                                 type is the host's — bigint `users` in the starters, uuid tenant
+ *                                 users at the flagship — so the column cannot be either one.
  */
 #[UseCascadePolicy]
 class Hook extends Model

@@ -56,16 +56,64 @@ class SharedMigrationStubsConvergeTest extends TestCase
     }
 
     /**
+     * The CREATE stubs — every shipped stub whose job is to bring a table into existence.
+     *
+     * ⚠️ Not every shared stub is one. A type change cannot be made by editing a create (that edit
+     * reaches only a fresh database) and cannot be made by the convergent guard either (it throws on
+     * a present column of the wrong type rather than converting it), so the estate's repair for one
+     * is a separately stamped ALTER shipped in this same directory — `widen_beam_hook_morph_ids_to_string`
+     * is the first. An ALTER creates no table and carries no `ConvergentTable`, so it fails both
+     * assertions below for reasons that are the point rather than a defect. {@see alterStubs()}
+     * holds them to their own, stricter contract instead.
+     *
+     * The split is by FILENAME, and deliberately so: `create_*` is what package-tools, the doctor's
+     * publish-gate coverage and the migration-ordering audit all key on, so a stub that creates a
+     * table and is not named `create_*` is already broken elsewhere.
+     *
      * @return array<string, array{string}>
      */
     public static function stubs(): array
+    {
+        $cases = [];
+
+        foreach (static::allStubs() as $name => $path) {
+            if (str_starts_with($name, 'create_')) {
+                $cases[$name] = [$path];
+            }
+        }
+
+        return $cases;
+    }
+
+    /**
+     * The ALTER stubs — everything in `shared/` that is not a create.
+     *
+     * @return array<string, array{string}>
+     */
+    public static function alterStubs(): array
+    {
+        $cases = [];
+
+        foreach (static::allStubs() as $name => $path) {
+            if (! str_starts_with($name, 'create_')) {
+                $cases[$name] = [$path];
+            }
+        }
+
+        return $cases;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected static function allStubs(): array
     {
         $directory = dirname(__DIR__, 2).'/database/migrations/shared';
 
         $cases = [];
 
         foreach (glob($directory.'/*.php.stub') ?: [] as $path) {
-            $cases[basename($path, '.php.stub')] = [$path];
+            $cases[basename($path, '.php.stub')] = $path;
         }
 
         return $cases;
@@ -109,6 +157,48 @@ class SharedMigrationStubsConvergeTest extends TestCase
         }
     }
 
+    /**
+     * An ALTER must survive the host it was never needed at. A host whose beam install predates the
+     * table it repairs has nothing to alter, and the only acceptable behaviour is silence — a throw
+     * here fails `migrate` on an install that is not broken, which is strictly worse than the defect
+     * the ALTER exists to fix.
+     */
+    #[DataProvider('alterStubs')]
+    public function test_an_alter_stub_is_silent_when_its_table_does_not_exist(string $path): void
+    {
+        $this->migration($path)->up();
+
+        $this->assertSame([], $this->snapshot(), 'An ALTER stub created a table. That is a create.');
+    }
+
+    /**
+     * …and a TRUE no-op, not merely a harmless one, on a database created from the current stubs.
+     *
+     * The comparable includes column TYPES, which {@see snapshot()} deliberately does not: this is
+     * the one test in the file whose whole subject is a type, and a name-and-index comparison would
+     * pass against an ALTER that silently rewrote every column it touched. `->change()` is a full
+     * column redefinition, so an unguarded ALTER shipped beside a correct create is a standing
+     * reset of anything a host legitimately changed about those columns.
+     */
+    #[DataProvider('alterStubs')]
+    public function test_an_alter_stub_changes_nothing_on_a_freshly_created_database(string $path): void
+    {
+        foreach (static::stubs() as [$create]) {
+            $this->migration($create)->up();
+        }
+
+        $before = $this->typedSnapshot();
+        $this->assertNotSame([], $before);
+
+        $this->migration($path)->up();
+        $this->assertSame($before, $this->typedSnapshot());
+
+        // Twice, because a publish that lands this file at a host is not the last time `migrate`
+        // will consider it — a re-published stem re-runs under a new stamp.
+        $this->migration($path)->up();
+        $this->assertSame($before, $this->typedSnapshot());
+    }
+
     protected function migration(string $path): Migration
     {
         return require $path;
@@ -136,6 +226,37 @@ class SharedMigrationStubsConvergeTest extends TestCase
             sort($indexes);
 
             $snapshot[$table] = ['columns' => $columns, 'indexes' => $indexes];
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * {@see snapshot()} plus each column's driver-reported type name — the comparable an ALTER test
+     * needs, and the one the convergence tests deliberately do without (their subject is what a
+     * second pass ADDS, and a type mismatch there is the guard's own job to throw about).
+     *
+     * @return array<string, array<string, string>>
+     */
+    protected function typedSnapshot(): array
+    {
+        $snapshot = [];
+
+        foreach ($this->tables as $table) {
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+
+            $types = [];
+
+            foreach (Schema::getColumns($table) as $column) {
+                $types[(string) $column['name']] = strtolower((string) ($column['type_name'] ?? '?'))
+                    .($column['nullable'] ?? false ? ' null' : ' not null');
+            }
+
+            ksort($types);
+
+            $snapshot[$table] = $types;
         }
 
         return $snapshot;

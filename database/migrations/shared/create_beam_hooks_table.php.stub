@@ -34,11 +34,41 @@ use Splicewire\Beam\Facades\Beam;
  *   ACTION-plane permission NAME is deliberately absent: it is re-derived from the particle stamp
  *   through `PermissionNamer` on every check.
  * - **`owner_type`/`owner_id` is AUDIT ONLY, not a scope** (12 §7). It records who created the
- *   hook. It does not filter reads and there is no index pretending otherwise.
+ *   hook. It does not filter reads, and {@see \Splicewire\Beam\Data\HookData::scope()} says why a
+ *   scope here would be the worse bug.
  *
  * `subject_type`/`subject_id` is the nullable morph a hook narrows to one record (12 §1). The hook
  * is DELETED when its subject is — enforced in {@see \Splicewire\Beam\Models\Hook}'s observer
  * rather than by a database FK, because a polymorphic reference cannot carry one.
+ *
+ * ## The morph ids are STRINGS, and that is not a widening for comfort
+ *
+ * Both morph pairs were `nullableMorphs()` until 2026-09-12, which emits an `unsignedBigInteger`
+ * id. A hook's owner is the authenticated principal and its subject is any record on the host —
+ * neither has one key type across the estate. The starters key `users` bigint; the flagship keys
+ * tenant users, circuits and compositions uuid; `tenants` are keyed by slug. So the bigint column
+ * could not hold the value the package's own writer puts in it.
+ *
+ * Measured 2026-09-12 on the `ux-demo-convergence` G3 flagship fixture (`fresh_flagship_20260912_002327`):
+ * subscribing a hook from the flagship SPA answered **500**, `SQLSTATE[22P02]: invalid input syntax
+ * for type bigint`, with the failing SQL, the bound uuid and the database name rendered verbatim in
+ * the client's toast. The writer is
+ * {@see \Splicewire\Beam\Webhooks\Http\HookSubscriptionController::stampOwner()} — package code, on
+ * the package's own primary path, so no host configuration could have avoided it.
+ *
+ * `string`, not `uuid`: `uuid` is the right call where the referent is known uuid-keyed (the
+ * `personal_access_tokens` precedent in `splicewire/laravel-beam-accounts`, whose `tokenable` is
+ * that package's own uuid `users`). A polymorphic column whose referents span uuid, bigint and slug
+ * keys has no such referent, and the estate already has the answer one directory over:
+ * `create_activity_log_table.php.stub:97-104` declares string morph ids for exactly this reason
+ * ("central subjects have mixed key types"). This file now matches it.
+ *
+ * ⚠️ **Editing this create reaches only a FRESH database.** The already-migrated hosts are repaired
+ * by the separately stamped `widen_beam_hook_morph_ids_to_string` stub beside this one, which is
+ * listed after this file in `BeamServiceProvider::configurePackage()` so package-tools stamps it
+ * later. That split is not optional: {@see \Rushing\SchemaConvergence\ConvergentTable} converges
+ * ABSENCE and throws on a present column of the wrong type, so a host carrying the bigint column
+ * cannot be repaired by re-running this guard — only by a real ALTER.
  */
 return new class extends Migration
 {
@@ -61,7 +91,14 @@ return new class extends Migration
                 // first segment; see the class docblock.
                 $table->json('events');
 
-                $table->nullableMorphs('subject');
+                // STRING morph ids, spelled out rather than `nullableMorphs('subject')` — see the
+                // class docblock's "the morph ids are strings" section. The index is declared
+                // unnamed on purpose: Laravel's generated name is byte-identical to the one
+                // `nullableMorphs` produced (`{table}_subject_type_subject_id_index`), so a host
+                // migrating THROUGH the widening ALTER keeps the index it already has.
+                $table->string('subject_type')->nullable();
+                $table->string('subject_id')->nullable();
+                $table->index(['subject_type', 'subject_id']);
 
                 $table->timestamp('paused_at')->nullable();
                 $table->timestamp('disabled_at')->nullable();
@@ -74,7 +111,10 @@ return new class extends Migration
                 // Snapshotted feature-plane requirement — see the class docblock.
                 $table->json('entitlement_keys')->nullable();
 
-                $table->nullableMorphs('owner');
+                // STRING morph ids — same reason, same index-name preservation, as `subject` above.
+                $table->string('owner_type')->nullable();
+                $table->string('owner_id')->nullable();
+                $table->index(['owner_type', 'owner_id']);
 
                 $table->timestamps();
             })

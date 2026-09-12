@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Webhooks;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Optional;
@@ -158,6 +159,24 @@ class HookSubscriptionReach
      * resource is the failure the subject-deletion rule exists to prevent, arriving through the front
      * door instead.
      *
+     * ## A malformed id is a 422 here, never an SQLSTATE at the client
+     *
+     * `subject_id` arrives as a caller-supplied STRING and the model it addresses may key on
+     * anything — a bigint `users`, a uuid circuit, a slug-keyed tenant. Handing an id the key cannot
+     * parse straight to `find()` is how a client error becomes a 500 that prints the failing SQL and
+     * the database name: measured 2026-09-12 on `EmbedSessionEraseInputData`'s endpoint
+     * (ux-demo-convergence G3-FLAGSHIP-PRIVACY), where `visitor_id=vis_flagship_probe_nonexistent`
+     * — an id shaped the way a human would guess one — returned the query verbatim in the body.
+     *
+     * So the id is vetted against the RESOLVED model's own key type before any query runs, and the
+     * lookup itself is fenced: a driver that refuses the literal for a reason this check does not
+     * model still answers the caller's mistake with the caller's 422. Both are needed. The type
+     * check alone cannot cover a uuid column that parses as a string but not as a uuid; the fence
+     * alone would let a `QueryException` decide the status code, which is the defect.
+     *
+     * `find()` is what returns null for a well-formed unknown id, and that stays a 422 too — the
+     * distinction a caller needs is "not a usable id" vs "no such record", and both are theirs.
+     *
      * @throws ValidationException
      */
     public function resolveSubject(?string $type, ?string $id): ?Model
@@ -180,7 +199,18 @@ class HookSubscriptionReach
             ]);
         }
 
-        $subject = $class::query()->find($id);
+        $this->requireUsableKey($class, $id);
+
+        try {
+            $subject = $class::query()->find($id);
+        } catch (QueryException) {
+            // The fence, not the check — see the docblock. Nothing about the failing statement is
+            // repeated to the caller: they supplied an id, and "this is not a usable id" is the
+            // whole of what they are owed.
+            throw ValidationException::withMessages([
+                'subject_id' => 'Not a usable id for a '.class_basename($class).'.',
+            ]);
+        }
 
         if ($subject === null) {
             throw ValidationException::withMessages([
@@ -189,6 +219,45 @@ class HookSubscriptionReach
         }
 
         return $subject;
+    }
+
+    /**
+     * Refuse an id the target model's own key type cannot hold, BEFORE any query is built.
+     *
+     * The question is deliberately narrow: it asks the MODEL (`getKeyType()`), not the column, so it
+     * needs no schema read and holds for a model whose table this host has not created. An `int`
+     * key accepts digits and nothing else — which is the exact case that produced
+     * `SQLSTATE[22P02]: invalid input syntax for type bigint` on the flagship fixture. A `string`
+     * key is not judged here: a uuid column is still a string key, so the honest verdict is
+     * "unverified", and the `QueryException` fence at the call site is what covers it.
+     *
+     * Not a Data-level validation rule, on purpose. The rule is *"can this id address THAT model"*,
+     * and which model it is depends on `subject_type`, which the rule would have to resolve
+     * itself — a `rules()` array cannot express a constraint whose referent is another field's
+     * resolved class, and spelling it as `uuid` (the `EmbedSessionEraseInputData` precedent, where
+     * both ids address known-uuid columns) would refuse the bigint-keyed subjects the starters have.
+     *
+     * @param  class-string<Model>  $class
+     *
+     * @throws ValidationException
+     */
+    protected function requireUsableKey(string $class, string $id): void
+    {
+        $model = new $class;
+
+        if ($model->getKeyType() !== 'int') {
+            return;
+        }
+
+        // `ctype_digit` and not `is_numeric`: `1e3`, `0x1f`, `-1` and ` 1` are all numeric and none
+        // of them is a key an auto-incrementing column ever issued.
+        if (ctype_digit($id)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'subject_id' => 'Not a usable id for a '.class_basename($class).' — that record is keyed by integer.',
+        ]);
     }
 
     /**

@@ -258,6 +258,15 @@ class HookSubscriptionController extends Controller
     /**
      * Stamp the owner morph — AUDIT ONLY (12 §7). Nothing scopes a read by it, deliberately: see
      * {@see HookData::scope()} for why a scope here would be the worse bug.
+     *
+     * ⚠️ The key is cast to STRING because `owner_id` is a string column, and it is a string column
+     * because the principal's key type is the host's business, not beam's: the starters key `users`
+     * bigint, the flagship keys tenant users uuid. Until 2026-09-12 the column was
+     * `nullableMorphs()`' bigint and this line put a uuid in it — `SQLSTATE[22P02]` out of the
+     * package's own primary write path, measured on the ux-demo-convergence G3 flagship fixture.
+     * The cast is not what fixed that (the column widening is); it is here so the value written and
+     * the value read back are the same shape on every driver, sqlite included, where an int key
+     * would otherwise round-trip as an int out of a varchar column.
      */
     protected function stampOwner(Hook $hook, Request $request): void
     {
@@ -265,7 +274,7 @@ class HookSubscriptionController extends Controller
 
         if ($actor instanceof Model) {
             $hook->owner_type = $actor->getMorphClass();
-            $hook->owner_id = $actor->getKey();
+            $hook->owner_id = (string) $actor->getKey();
         }
     }
 
