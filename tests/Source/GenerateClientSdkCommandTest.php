@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Source;
 
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Route;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
@@ -41,12 +42,7 @@ class GenerateClientSdkCommandTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['routes.ts', 'aliases.ts', 'hooks/library-lyrics.ts'] as $rel) {
-            @unlink($this->outDir.'/'.$rel);
-        }
-        @rmdir($this->outDir.'/hooks');
-        @rmdir($this->outDir.'/stores');
-        @rmdir($this->outDir);
+        (new Filesystem)->deleteDirectory($this->outDir);
 
         parent::tearDown();
     }
@@ -97,6 +93,58 @@ class GenerateClientSdkCommandTest extends TestCase
         $this->artisan('splicewire:beam:generate:client')->assertSuccessful();
 
         $this->assertDirectoryDoesNotExist($this->outDir.'/stores');
+    }
+
+    public function test_disabling_stores_removes_previous_output_without_touching_other_owners(): void
+    {
+        $files = new Filesystem;
+        $transitionDir = $this->outDir.'/transition';
+        $cleanDir = $this->outDir.'/clean';
+        $sentinels = [
+            'hand-owned.ts' => 'export const custom = true;',
+            'second-stack/model.ts' => 'export interface Model { id: string }',
+            'stores/README.md' => 'Host notes about generated stores.',
+            'stores/custom/adapter.ts' => 'export const adapter = true;',
+        ];
+
+        foreach ([$transitionDir, $cleanDir] as $dir) {
+            foreach ($sentinels as $relative => $contents) {
+                $files->ensureDirectoryExists(dirname($dir.'/'.$relative));
+                $files->put($dir.'/'.$relative, $contents);
+            }
+        }
+
+        config()->set('beam.client.out_dir', $transitionDir);
+        config()->set('beam.client.emit_stores', true);
+        $this->artisan('splicewire:beam:generate:client')->assertSuccessful();
+        $this->assertFileExists($transitionDir.'/stores/library-lyrics.ts');
+
+        config()->set('beam.client.emit_stores', false);
+        $this->artisan('splicewire:beam:generate:client')->assertSuccessful();
+        $this->assertFileDoesNotExist($transitionDir.'/stores/library-lyrics.ts');
+
+        config()->set('beam.client.out_dir', $cleanDir);
+        $this->artisan('splicewire:beam:generate:client')->assertSuccessful();
+
+        $snapshot = static function (string $dir) use ($files): array {
+            $contents = [];
+            foreach ($files->allFiles($dir) as $file) {
+                $contents[$file->getRelativePathname()] = $file->getContents();
+            }
+            ksort($contents);
+
+            return $contents;
+        };
+
+        $this->assertSame($snapshot($cleanDir), $snapshot($transitionDir));
+        foreach ($sentinels as $relative => $contents) {
+            $this->assertSame($contents, $files->get($transitionDir.'/'.$relative));
+        }
+
+        config()->set('beam.client.out_dir', $transitionDir);
+        config()->set('beam.client.emit_stores', true);
+        $this->artisan('splicewire:beam:generate:client')->assertSuccessful();
+        $this->assertFileExists($transitionDir.'/stores/library-lyrics.ts');
     }
 
     public function test_the_particle_source_reads_mounted_routes_and_derives_returns_from_the_output_dto(): void

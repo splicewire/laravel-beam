@@ -77,8 +77,9 @@ class GenerateClientSdkCommand extends Command
     }
 
     /**
-     * Write the generator's file map under the out dir. Hooks (and stores, when enabled) are reset
-     * first so a removed route leaves no orphan file — the drift guard depends on it.
+     * Write the generator's file map under the out dir. Reset owned hook/store files first so a
+     * removed route or disabled stores leave no orphan output. A clean disabled run creates no stores
+     * directory; other files and nested directories under the shared output root are preserved.
      *
      * @param  array<string, string>  $files
      */
@@ -87,7 +88,7 @@ class GenerateClientSdkCommand extends Command
         $this->ensureDir($dir);
         $this->resetDir($dir.'/hooks');
 
-        if ($emitStores) {
+        if ($emitStores || is_dir($dir.'/stores')) {
             $this->resetDir($dir.'/stores');
         }
 
