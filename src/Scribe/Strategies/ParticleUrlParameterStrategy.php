@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Scribe\Strategies;
 
+use BackedEnum;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -9,7 +10,14 @@ use Illuminate\Support\Str;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
 use Knuckles\Scribe\Tools\DocumentationConfig;
+use ReflectionMethod;
+use ReflectionNamedType;
 use RuntimeException;
+use Rushing\DataFilters\Facades\DataFilter;
+use Schemastud\Frame\Contracts\ResourceRegistry as FrameResources;
+use Schemastud\Frame\Http\Controllers\FrameResourceController;
+use Splicewire\Beam\Filters\Http\ResourceFiltersController;
+use Splicewire\Beam\Filters\ResourceFilterConstraints;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -95,6 +103,18 @@ class ParticleUrlParameterStrategy extends Strategy
             return null;
         }
 
+        if (isset($route->defaults[ResourceFiltersController::CONFIG])) {
+            return $this->filterParameters($endpointData);
+        }
+
+        if ($endpointData->method instanceof ReflectionMethod
+            && $endpointData->method->getDeclaringClass()->getName() === FrameResourceController::class
+            && in_array('resource', $route->parameterNames(), true)) {
+            $keys = array_map(fn ($definition) => $definition->key, app(FrameResources::class)->all());
+
+            return ['resource' => $this->vocabulary($endpointData, 'resource', $keys, 'The registered resource key.')];
+        }
+
         $stamped = $this->meta->resourceKey($route);
         $parameters = [];
 
@@ -102,6 +122,17 @@ class ParticleUrlParameterStrategy extends Strategy
 
         foreach ($matches[1] as $match) {
             $name = rtrim($match, '?');
+
+            foreach ($endpointData->method?->getParameters() ?? [] as $parameter) {
+                $type = $parameter->getType();
+                if ($parameter->getName() === $name && $type instanceof ReflectionNamedType
+                    && is_subclass_of($type->getName(), BackedEnum::class)) {
+                    $values = array_map(fn (BackedEnum $case) => $case->value, $type->getName()::cases());
+                    $parameters[$name] = $this->vocabulary($endpointData, $name, $values, '');
+
+                    continue 2;
+                }
+            }
 
             // Rung 1 — the subject of a stamped route, then rung 2 — the segment in front.
             $resource = ($name === ParticleController::SUBJECT ? $this->resource($stamped) : null)
@@ -125,6 +156,63 @@ class ParticleUrlParameterStrategy extends Strategy
         }
 
         return $parameters === [] ? null : $parameters;
+    }
+
+    /** Path semantics belong to the filter sub-surface, not to its parent particle's record. */
+    protected function filterParameters(ExtractedEndpointData $endpoint): array
+    {
+        $route = $endpoint->route;
+        $configured = $route->defaults[ResourceFiltersController::CONFIG]['resource'];
+        $canonical = $configured === null ? null : DataFilter::registry()->find($configured)?->resource;
+        $parameters = [];
+
+        foreach ($route->parameterNames() as $name) {
+            $parameters[$name] = match ($name) {
+                'resource' => $this->vocabulary($endpoint, $name, ResourceFilterConstraints::resourceValues($endpoint->method->getName()), 'The registered filter resource key.'),
+                'variant' => $this->vocabulary(
+                    $endpoint,
+                    $name,
+                    $configured !== null && $canonical === null ? [] : ResourceFilterConstraints::variants($canonical)->values(),
+                    'A filter variant belonging to this resource. See its /filters/variants endpoint.'
+                        .($configured === null ? ' The accepted subset depends on the resource parameter.' : ''),
+                ),
+                'ref' => [...$this->vocabulary(
+                    $endpoint, $name, ResourceFilterConstraints::options()->values(),
+                    'A registered filter options source key. A backing that declares its filter vocabulary accepts only the sources referenced by that resource’s /filters/schema.',
+                ), 'example' => null],
+                'id' => [
+                    'type' => 'string',
+                    'required' => true,
+                    'description' => 'The ID of the saved filter.',
+                    'example' => $this->uuid('saved-filter:id'),
+                ],
+                default => [
+                    'type' => 'string',
+                    'required' => true,
+                    'description' => $name === 'ref' ? 'The registered filter options source key.' : '',
+                ],
+            };
+        }
+
+        return $parameters;
+    }
+
+    /** Keep the complete schema for assembly: Scribe's path parameter writer discards enumValues. */
+    protected function vocabulary(ExtractedEndpointData $endpoint, string $name, array $values, string $description): array
+    {
+        $type = isset($values[0]) && is_int($values[0]) ? 'integer' : 'string';
+        $schema = $values === []
+            ? ['type' => $type, 'not' => new \stdClass]
+            : ['type' => $type, 'enum' => array_values($values)];
+        $endpoint->custom['dataPathParameterSchemas'][$name] = $schema;
+
+        return [
+            'type' => $type,
+            'required' => true,
+            'description' => $description,
+            'enumValues' => array_values($values),
+            'example' => $values[0] ?? null,
+        ];
     }
 
     /**

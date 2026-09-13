@@ -10,6 +10,7 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Scribe\ControllerDocblockTitle;
 
 /**
  * Give a DISSOLVED particle route its Scribe title + description DECLARATIVELY, off the particle
@@ -17,10 +18,9 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * same stamp).
  *
  * A dissolved route's handler is the generic {@see ParticleController} / {@see ParticleOperationController},
- * so `GetFromDocBlocks` finds no summary and the docs sidebar shows the bare path (`/api/v1/agents/{id} POST`)
- * beside the titled hand-written endpoints. The declaration already knows what the endpoint IS — the
- * resource's registry key + optional nav `label`, the operation's `name` + {@see OperationKind} — so this
- * strategy derives:
+ * whose method comments describe shared implementation details rather than an individual endpoint.
+ * The declaration names the endpoint through the resource key and label, or operation name and kind.
+ * This strategy derives:
  *
  *   - **CRUD verbs** — `index` → "List {Plural}", `show`/`store`/`update`/`destroy` → "{Verb} {Singular}",
  *     with the resource's declared `label` preferred over a {@see Str::headline} of its key. A relative
@@ -30,15 +30,16 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *     description (a Task documents its `?async` convention; a Stream its `text/event-stream` transport).
  *
  * **Ordering / precedence.** Registered AFTER Scribe's `GetFromDocBlocks` in `strategies.metadata`, so an
- * explicit docblock summary always WINS: this strategy returns `null` (defer) whenever a title is already
- * present, and for any non-particle route.
+ * authored title wins. Comments declared on the generic dispatchers yield to the particle declaration;
+ * explicit Scribe endpoint attributes and host method summaries remain authoritative.
  */
 class ParticleTitleStrategy extends Strategy
 {
     public function __invoke(ExtractedEndpointData $endpointData, array $settings = []): ?array
     {
-        // An explicit docblock summary already won (DocBlocks ran ahead of us): don't clobber it.
-        if (($endpointData->metadata->title ?? '') !== '') {
+        // Preserve authored titles; generic dispatcher's implementation notes are not endpoint names.
+        if (($endpointData->metadata->title ?? '') !== ''
+            && ! ControllerDocblockTitle::isImplementationDetail($endpointData, $this->config)) {
             return null;
         }
 

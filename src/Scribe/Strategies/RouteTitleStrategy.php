@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Scribe\Strategies;
 use Illuminate\Support\Str;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
+use Splicewire\Beam\Scribe\ControllerDocblockTitle;
 
 /**
  * LAST-RESORT title derivation for the endpoints nothing else titled — the hand-written thin controllers
@@ -28,8 +29,8 @@ use Knuckles\Scribe\Extracting\Strategies\Strategy;
  * **Ordering / precedence (load-bearing).** Registered LAST in `strategies.metadata`, after
  * `GetFromDocBlocks` AND the declaration strategies (beam-core's `GroupStrategy`,
  * {@see ParticleTitleStrategy}) — so an explicit docblock summary and every declaration-derived title
- * always WIN. It returns `null` (defers) whenever ANY earlier strategy already set a title; it never
- * overwrites one. It emits a title only — no description, because the route declares no behaviour to
+ * always WIN. Generic particle dispatcher implementation comments may be replaced; other earlier
+ * titles are preserved. It emits a title only — no description, because the route declares no behaviour to
  * describe and inventing one would be dishonest.
  */
 class RouteTitleStrategy extends Strategy
@@ -56,8 +57,9 @@ class RouteTitleStrategy extends Strategy
 
     public function __invoke(ExtractedEndpointData $endpointData, array $settings = []): ?array
     {
-        // A docblock summary or a declaration strategy already titled this endpoint: never overwrite.
-        if (($endpointData->metadata->title ?? '') !== '') {
+        // Preserve authored and declaration titles, but allow fallback from generic dispatcher comments.
+        if (($endpointData->metadata->title ?? '') !== ''
+            && ! ControllerDocblockTitle::isImplementationDetail($endpointData, $this->config)) {
             return null;
         }
 

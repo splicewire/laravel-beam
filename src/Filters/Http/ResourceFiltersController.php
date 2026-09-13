@@ -22,6 +22,7 @@ use Splicewire\Beam\Filters\Data\ResourceFilterVariantData;
 use Splicewire\Beam\Filters\Data\ResourceFilterVariantsData;
 use Splicewire\Beam\Filters\Data\SavedFilterStoreInputData;
 use Splicewire\Beam\Filters\Data\SavedFilterUpdateInputData;
+use Splicewire\Beam\Filters\ResourceFilterConstraints;
 use Splicewire\Beam\Http\Controller;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\BacksModel;
@@ -68,12 +69,10 @@ class ResourceFiltersController extends Controller
     public const CONFIG = '_resource_filters';
 
     /**
-     * Saved filters for this resource
+     * List saved filters
      *
      * Every saved filter on this resource the caller can see: their own, plus anything shared or
      * public. Ordered most-recently-updated first.
-     *
-     * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
      */
     public function index(Request $request): JsonResponse
     {
@@ -90,13 +89,11 @@ class ResourceFiltersController extends Controller
     }
 
     /**
-     * Save a filter on this resource
+     * Create saved filter
      *
      * The resource comes from the path, not the body. `query_parameters` is validated against the
      * resource's own filter vocabulary and rejected with a 422 if it names a facet the resource does
      * not allow.
-     *
-     * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
      */
     #[RequestFromData(SavedFilterStoreInputData::class)]
     public function store(Request $request, SavedFilterValidator $validator): JsonResponse
@@ -126,24 +123,20 @@ class ResourceFiltersController extends Controller
     }
 
     /**
-     * One saved filter
-     *
-     * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
+     * Show saved filter
      */
-    public function show(Request $request, string $id): JsonResponse
+    public function show(Request $request): JsonResponse
     {
-        return response()->json(['data' => $this->findVisible($request, $id)]);
+        return response()->json(['data' => $this->findVisible($request, (string) $request->route('id'))]);
     }
 
     /**
-     * Update a saved filter
-     *
-     * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
+     * Update saved filter
      */
     #[RequestFromData(SavedFilterUpdateInputData::class)]
-    public function update(Request $request, SavedFilterValidator $validator, string $id): JsonResponse
+    public function update(Request $request, SavedFilterValidator $validator): JsonResponse
     {
-        $saved = $this->findOwned($request, $id);
+        $saved = $this->findOwned($request, (string) $request->route('id'));
 
         // Below findOwned() so a caller who does not own the filter keeps the 404 that lookup raises
         // rather than a 422 that would confirm the field vocabulary.
@@ -164,19 +157,17 @@ class ResourceFiltersController extends Controller
     }
 
     /**
-     * Delete a saved filter
-     *
-     * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
+     * Delete saved filter
      */
-    public function destroy(Request $request, string $id): JsonResponse
+    public function destroy(Request $request): JsonResponse
     {
-        $this->findOwned($request, $id)->delete();
+        $this->findOwned($request, (string) $request->route('id'))->delete();
 
         return response()->json(status: Response::HTTP_NO_CONTENT);
     }
 
     /**
-     * The filter vocabulary for this resource
+     * Get filter schema
      *
      * The JSON Schema of the resource's filter vocabulary — every facet it accepts, with the operators
      * and option references each one carries. It is the runtime twin of the `filter[…]` parameters this
@@ -196,8 +187,6 @@ class ResourceFiltersController extends Controller
      *  3. **A declaration that opted out** (`#[ParticleResource(filterable: false)]`) answers an EMPTY
      *     vocabulary — `{"type":"object","properties":{}}` — rather than 404. See
      *     {@see declaredEmptyVocabulary()} for why that is the honest answer and what still 404s.
-     *
-     * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
      */
     public function schema(Request $request, ParticleResourceRegistry $resources): JsonResponse
     {
@@ -316,36 +305,27 @@ class ResourceFiltersController extends Controller
     }
 
     /**
-     * The filter vocabulary for one variant of this resource
+     * Get filter variant schema
      *
-     * `{variant}` is a registry key whose declaration names this resource. Omitting it — plain
-     * `/filters/schema` — means the canonical one. Today every non-canonical key on a resource is a
-     * legacy alias declared on the same Data class, so a variant schema is byte-identical to the
-     * canonical; that is correct, and `/filters/variants` says so per variant rather than leaving a
-     * caller to discover it by diffing.
-     *
-     * @urlParam variant string required A registry key whose declaration names this resource — one of the `key` values `GET /{resource}/filters/variants` lists. Example: circuit-runs
-     * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
+     * Returns the schema for a variant listed by this resource's `/filters/variants` endpoint.
+     * Use `/filters/schema` for the canonical vocabulary.
      */
-    public function variantSchema(Request $request, string $variant): JsonResponse
+    public function variantSchema(Request $request): JsonResponse
     {
         $definition = $this->definition($request);
-        $candidate = DataFilter::tryResource($variant);
+        $variant = (string) $request->route('variant');
 
-        // The variant must belong to THIS resource. Without that check the variant segment would be a
-        // second, ungated address for every other resource's schema — which is the flat
-        // `filter-schema/{resource}` leak re-opened one segment to the right.
-        if ($candidate === null || $candidate->resource !== $definition->resource) {
+        // The same scoped vocabulary drives the discovery list and the documented allowed values.
+        // Keep the resource gate above membership validation and the URL miss as a 404.
+        if (! ResourceFilterConstraints::variants($definition->resource)->contains($variant)) {
             abort(Response::HTTP_NOT_FOUND, "No filter variant [{$variant}] on resource [{$definition->key}].");
         }
 
-        return $this->schemaFor($candidate);
+        return $this->schemaFor(DataFilter::resource($variant));
     }
 
     /**
-     * The filter vocabularies this resource offers
-     *
-     * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
+     * List filter variants
      */
     #[ResponseFromData(ResourceFilterVariantsData::class)]
     public function variants(Request $request)
@@ -354,10 +334,8 @@ class ResourceFiltersController extends Controller
         $canonicalDataClass = $definition->data;
         $variants = [];
 
-        foreach (DataFilter::registry()->all() as $key => $candidate) {
-            if ($candidate->resource !== $definition->resource) {
-                continue;
-            }
+        foreach (ResourceFilterConstraints::variants($definition->resource)->values() as $key) {
+            $candidate = DataFilter::registry()->get($key);
 
             $variants[] = new ResourceFilterVariantData(
                 key: (string) $key,
@@ -384,9 +362,6 @@ class ResourceFiltersController extends Controller
      * per-resource; it gives the read a subject. A resource whose backing DECLARES its vocabulary
      * ({@see DeclaresFilterVocabulary}) goes one step further: it answers only the handles its own facets
      * name, and 404s the rest.
-     *
-     * @urlParam ref string required The `optionsRef` a facet publishes in its `x-filter` keyword — the handle for one relational value list. Example: run-statuses
-     * @urlParam resource string required Present only at the Frame resource root, which is parameterised BY the registry key; at a bespoke exposure the resource is frozen into the route and this segment does not exist. Example: circuit-runs
      */
     public function options(Request $request, ParticleResourceRegistry $resources): JsonResponse
     {
@@ -395,9 +370,6 @@ class ResourceFiltersController extends Controller
         // action positionally, so a `string $ref` parameter would receive the RESOURCE key there and
         // the real ref would be dropped on the floor. Measured at the flagship 2026-09-12 — the
         // frame-root options read answered 404 for a registered handle for exactly this reason.
-        // ⚠️ `show()`, `update()`, `destroy()` (`string $id`) and `variantSchema()` (`string $variant`)
-        // still take theirs positionally and are mounted at that same root; nominated to
-        // api-surface-coherence from composite-backing 02 rather than swept into it.
         $ref = (string) $request->route('ref');
         $key = $this->resourceKey($request);
         $declaring = $key === '' ? null : $this->declaringBacking($resources->find($key));
@@ -409,12 +381,12 @@ class ResourceFiltersController extends Controller
             // only a handle one of ITS facets names is this resource's to enumerate.
             $this->gateOnBacking($declaring);
 
-            abort_unless($declaring->filterVocabulary()->references($ref), Response::HTTP_NOT_FOUND, "No filter options [{$ref}] on resource [{$key}].");
+            abort_unless(ResourceFilterConstraints::options($declaring->filterVocabulary())->contains($ref), Response::HTTP_NOT_FOUND, "No filter options [{$ref}] on resource [{$key}].");
         } else {
             $this->definition($request);
         }
 
-        abort_unless(DataFilter::hasOptions($ref), Response::HTTP_NOT_FOUND, "No filter options registered for [{$ref}].");
+        abort_unless(ResourceFilterConstraints::options()->contains($ref), Response::HTTP_NOT_FOUND, "No filter options registered for [{$ref}].");
 
         return response()->json([
             'data' => DataFilter::resolveOptions($ref, $request->string('search')->toString() ?: null),

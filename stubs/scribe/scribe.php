@@ -68,6 +68,7 @@ use Splicewire\Beam\Scribe\Strategies\GroupStrategy;
 use Splicewire\Beam\Scribe\Strategies\ParticleRequestStrategy;
 use Splicewire\Beam\Scribe\Strategies\ParticleResponseStrategy;
 use Splicewire\Beam\Scribe\Strategies\ParticleTitleStrategy;
+use Splicewire\Beam\Scribe\Strategies\ParticleUrlParameterStrategy;
 use Splicewire\Beam\Scribe\Strategies\ReturnsResponseStrategy;
 use Splicewire\Beam\Scribe\Strategies\RouteTitleStrategy;
 use Splicewire\Beam\Scribe\Strategies\UrlParametersWithoutRowReads;
@@ -263,14 +264,14 @@ return [
             ...Defaults::METADATA_STRATEGIES,
 
             // Title + description for DISSOLVED particle routes, read off the declaration itself
-            // (resource key/label, op name/kind). A generated handler has no docblock for Scribe to
-            // summarize, so without this the sidebar shows a bare path. Defers to an explicit docblock.
+            // (resource key/label, op name/kind). Generic dispatcher implementation comments yield
+            // to the declaration; explicit endpoint attributes and host summaries remain authoritative.
             ParticleTitleStrategy::class,
 
             // LAST-RESORT titles for hand-written thin controllers with no docblock summary: derived
             // from what the route already declares — route name first
             // (`api.saved-filters.apply` → "Apply Saved Filter"), URI + method otherwise. Never
-            // overwrites a title that is already present.
+            // overwrites an authored title; generic dispatcher comments can yield to this fallback.
             RouteTitleStrategy::class,
 
             // The host's declared taxonomy. Registered LAST and AUTHORITATIVE over a docblock `@group`:
@@ -291,6 +292,7 @@ return [
         // (api-surface-coherence ticket 62.)
         'urlParameters' => [
             UrlParametersWithoutRowReads::class,
+            ParticleUrlParameterStrategy::class,
             Strategies\UrlParameters\GetFromUrlParamAttribute::class,
             Strategies\UrlParameters\GetFromUrlParamTag::class,
         ],
