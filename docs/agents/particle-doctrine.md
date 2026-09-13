@@ -121,9 +121,11 @@ backing implements the ones it genuinely has:
   `particle.capability-disagreement` as two vocabularies. `GET …/filters/schema` consults this capability
   FIRST, before any data-filters registration under the key, so the host-side "stub `Query` that throws"
   workaround (the flagship's `review-queue` registration in `config/data-filters.php`) is outranked
-  rather than raced; its removal follows composite-backing 03, and until then its Data class must
-  declare every facet the backing declares, because saved filters still validate against it
-  (beam ADR-0219). `…/filters/options/{ref}` answers only the handles the declaration names. Model
+  rather than raced. ⚠️ That stub is **still present** — composite-backing 03 landed the composite
+  without removing it, because saved filters and variants still validate against a Data class and this
+  capability deliberately declares none — so its Data class must keep declaring every facet the backing
+  declares (beam ADR-0219; tower's `ReviewQueueDeclaredVocabularyTest` pins the two together).
+  `…/filters/options/{ref}` answers only the handles the declaration names. Model
   reading: `splicewire/tower` `src/Frame/Sources/ReviewQueueUnionSource.php`, whose tower test pins the
   declared names against `ReviewInbox::applyFacets()`.
 
@@ -135,6 +137,54 @@ value here, never an exception* — an unknown key, or one whose backing declare
 `null` and lets the caller decide. `ModelResourceIndex` simply omits such a resource. Measured on the
 flagship 2026-08-29: **44 registered resources, 2 of them with a null model** (`members`,
 `review-queue`), and both read correctly rather than throwing.
+
+### Beam ships THREE backings, and two of them are not Eloquent
+
+`EloquentBacking` is the ordinary case and needs no declaration. The other two landed with
+composite-backing ticket 03, and between them they are how a multi-source list stops being hand-rolled
+per resource:
+
+- **`CompositeBacking`** — N arms read as one ordered, cursor-paged list. Implements `StreamsRecords`,
+  `ResolvesRecord` and `DeclaresFilterVocabulary`; **declines `BacksModel` and `WritesRecords`** (a
+  composite backs no single model, and a write across arms has no subject — so opening `creatable` on a
+  composite resource is refused at registration, not 405'd at runtime).
+- **`CollectionBacking`** — the smallest thing that can be an ARM: a materialized, ordered collection
+  given a keyset cursor on `(sortKey, idKey)`. It is the honest shape for a read-model whose narrowing
+  happens in PHP, and it says so rather than pretending a `LIMIT` would be correct.
+
+Declaring a composite is three methods. Arms are **keyed by the `source` discriminator** — the same value
+that rides `filter[source]` and the detail route's `?source=` — and an arm is anything `BackingResolver`
+accepts (a `ResourceBacking` instance or class-string, or a model class-string, so an Eloquent arm costs
+nothing):
+
+```php
+class MyQueue extends CompositeBacking
+{
+    public function __construct(protected Inbox $inbox)
+    {
+        parent::__construct(sortKey: 'createdAt');   // every arm pages by this, DESCENDING
+    }
+
+    protected function arms(): array                  // declaration order is the merge's tie-break
+    {
+        return ['circuit' => new CircuitArm($this->inbox), 'workflow' => new WorkflowArm($this->inbox)];
+    }
+}
+```
+
+What the composite then does for free: `filter[source]` **narrows the arm set before anything is read**;
+`resolve($id, $filters)` dispatches to `$filters['source']`'s arm (absent ⇒ the first arm that answers
+non-null, because the same row id can exist under two arms); `filterVocabulary()` declares `source` over
+the arm keys and unions whatever the arms declare, deduplicated by facet name — facets are **not** prefixed
+by arm, because a facet's name IS the wire key and `$filters` reaches every arm verbatim anyway.
+
+The merge itself is a **socket**: `MergeStrategy`, plugged by handle through the `beam.particle.merge`
+registry, mirroring the grounding kernel's fusion socket one tier over. Beam plugs `ordered` — a k-way
+merge whose cursor is an encoded `{arm => armCursor|null}` map, so page N resumes each arm exactly where
+page N−1 stopped. Ranked (relevance-fused) merging is a different plug under a different handle and beam
+never learns its name. **Ordered mode's whole contract with an arm is one sentence: every arm pages
+itself by the declared sort key, descending.** Model reading: `splicewire/tower`
+`src/Frame/Sources/ReviewQueueUnionSource.php` and `src/Review/Arms/` (beam ADR-0220).
 
 ### Capability is the CEILING; the affordance flags may only narrow
 

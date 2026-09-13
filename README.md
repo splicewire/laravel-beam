@@ -140,6 +140,16 @@ gets its facets by **declaring them on the backing**: implement `DeclaresFilterV
 any data-filters registration under the key) and `…/filters/options/{ref}` answers the handles it names.
 Doctrine and the worked example: `docs/agents/particle-doctrine.md`, backing section.
 
+A resource whose rows come from **several** sources declares `backing: <a CompositeBacking subclass>`
+instead of writing a merge and a cursor by hand. Arms are keyed by the `source` discriminator, every arm
+pages itself by one declared sort key, and the composite's cursor is an encoded `{arm => armCursor|null}`
+map — so page N resumes each arm where page N−1 stopped instead of re-deriving the whole stream to find
+its place. `filter[source]` narrows the arm set; the detail read dispatches to that arm; `BacksModel` and
+`WritesRecords` are declined. The merge itself is a socket (`beam.particle.merge.<handle>`, `ordered` by
+default) so a package can plug ranked fusion without beam knowing it exists. `CollectionBacking` is the
+smallest thing that can be an arm — a materialized, ordered collection with a keyset cursor. Worked
+example: `splicewire/tower`'s `ReviewQueueUnionSource` + `src/Review/Arms/` (ADR-0220).
+
 ## Per-realm resource presentation overrides (RDU-03)
 
 A realm may PRESENT the same resource differently — a different label, group, form, layout, or a

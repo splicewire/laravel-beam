@@ -133,6 +133,7 @@ use Splicewire\Beam\Ownership\OwnershipGraph;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
+use Splicewire\Beam\Particle\Backing\Merge\MergeStrategyRegistry;
 use Splicewire\Beam\Particle\Contribution\ContributionContextNodes;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\DeadResolvingHookGuard;
@@ -647,6 +648,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // as well as in role, so the two migrate as one archetype when registry-kernel's
         // per-resource-registry sweep reaches beam.
         $this->app->singleton(ParticleRelativeRegistry::class);
+
+        // The merge socket's plug board (root `beam.particle.merge`, composite-backing ticket 03) — the
+        // strategies a `CompositeBacking` picks from by handle. A SINGLETON for the same reason the
+        // capability registry below is one: a package that ships ranked fusion registers its plug from
+        // its own boot, and an auto-resolved fresh instance per read would mean its write landed on an
+        // object nobody reads. Beam's own `ordered` default is seeded in the registry's CONSTRUCTOR, not
+        // from boot() — see the class docblock for the measurement that decided it.
+        $this->app->singleton(MergeStrategyRegistry::class);
 
         // The gated-capability registry (root `beam.capabilities`, app ADR-0023). Bound HERE, by the
         // package that owns the root, because contributors now seed it from their OWN boot
