@@ -229,7 +229,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
         $parsed = $this->parseInput($definition, $input);
         $this->prepare($definition, $model, $parsed);
-        $this->writer($definition)->write($model, $this->toAttributes($parsed), auth()->user(), $this->afterHook($definition, $parsed));
+        $model = $this->writer($definition)->write($model, $this->toAttributes($parsed), auth()->user(), $this->afterHook($definition, $parsed));
 
         return $this->projectRead($definition, $model);
     }
@@ -242,7 +242,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
         $parsed = $this->parseInput($definition, $input);
         $this->prepare($definition, $model, $parsed);
-        $this->writer($definition)->write($model, $this->toAttributes($parsed), auth()->user(), $this->afterHook($definition, $parsed));
+        $model = $this->writer($definition)->write($model, $this->toAttributes($parsed), auth()->user(), $this->afterHook($definition, $parsed));
 
         return $this->projectRead($definition, $model->refresh());
     }
