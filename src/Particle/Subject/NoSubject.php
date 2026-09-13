@@ -14,6 +14,17 @@ use Splicewire\Beam\Particle\ParticleOperation;
  *
  * Downstream is unchanged by design: the null flows through `handle`, `runTask`, `runStream` and
  * `respond` exactly as any other subject would.
+ *
+ * ⚠️ **Emitting no coordinate puts the mount in the host's `{uri}/{id}` slot.** With
+ * {@see pathParameters()} empty the primary URL is the flat `{uri}/{op}`, which is the same two-segment
+ * shape as an ordinary record read. Laravel matches first-registered, so a host that declares an
+ * UNCONSTRAINED `{uri}/{id}` before the `Particle::ops()` call swallows the operation and answers its
+ * own controller with `id = "{op}"` — no error, both routes still in the table. Measured 2026-09-12
+ * (`fragment-producers-and-chunking` 02, the flagship's `fragments/search`). Mount a subject-free op
+ * ABOVE the resource's `{id}` routes, beside the literal siblings (`{uri}/schema`, `{uri}/filters`) that
+ * already had to go there, and pin the order in a test: `Doctor\ParticleSlotCollisionAudit` simulates
+ * the THREE-segment `{uri}/{id}/{segment}` slot and cannot see this one. The doctrine's
+ * "Where an operation MOUNTS" section carries the same warning.
  */
 class NoSubject implements ResolvesOperationSubject
 {

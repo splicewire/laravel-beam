@@ -69,6 +69,20 @@ specifically to answer *"is anything still calling it?"*, which is the only evid
 with renderings, CRUD, and hand-written routes in no registry. Simulated across 21 route tables before
 the drop, on both the URI and route-name axes: zero collisions.
 
+⚠️ **A `subject: NoSubject` op lands in a DIFFERENT slot, and that one is not audited.** Its
+`pathParameters()` is empty, so the primary mount emits no coordinate and the URL is the flat
+`{uri}/{op}` — which is the same two-segment shape as a host's own `{uri}/{id}`. Laravel matches
+FIRST-REGISTERED, so an unconstrained `{uri}/{id}` declared earlier in the route file swallows the op
+and answers its own controller with `id = "{op}"`; nothing raises, and the route table still lists both.
+Measured 2026-09-12 (`fragment-producers-and-chunking` 02): `Particle::ops('fragments', 'fragments',
+[SearchFragmentsOp::class])` placed beside the flagship's other `fragments` op mounts answered
+`FragmentController@show` with `id = "search"` — the op's handler never ran, and the only fix was
+declaration order. So **mount a subject-free op above the resource's `{id}` routes**, next to whatever
+literal siblings (`{uri}/schema`, `{uri}/filters`) already had to go there, and pin the order in a test —
+`ParticleSlotCollisionAudit` cannot see this, because the slot it simulates has three segments and this
+one has two. An `idConstraint:` on the *host's* wildcard would also close it, but that is the host's
+route to change and order is the fix that needs no other owner.
+
 ## What BACKS a resource — one polymorphic slot, and a capability is allowed to be absent
 
 ⚠️ **`#[ParticleResource]` is NOT model-required, and has not been since particle-contribution-seam
