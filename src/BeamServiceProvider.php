@@ -11,6 +11,7 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Rushing\DataFilters\Contracts\ResourceModelResolver;
+use Rushing\DataFilters\DataFilterManager;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
 use Rushing\DataFilters\Registry\ResourceRegistry as FilterResourceRegistry;
 use Rushing\Doctor\DoctorAudit;
@@ -144,6 +145,9 @@ use Splicewire\Beam\Particle\ParticleRelativeRegistry;
 use Splicewire\Beam\Particle\ParticleResourceModelResolver;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\ResourceRegistryReport;
+use Splicewire\Beam\Particle\Registry\RealmResourceSurfaceLocator;
+use Splicewire\Beam\Particle\Registry\ResourceRegistryBacking;
+use Splicewire\Beam\Particle\Registry\ResourceSurfaceLocator;
 use Splicewire\Beam\Query\HookResourceQuery;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;
@@ -1025,6 +1029,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bind(ParticleCapabilityDisagreementAudit::class, fn ($app) => new ParticleCapabilityDisagreementAudit(
             $app->make(ResourceRegistryReport::class),
         ));
+
+        // Where each registered resource is SERVED — the port the registry backing
+        // (`Particle\Registry\ResourceRegistryBacking`) asks per row. `bindIf`, because the route leaves and the
+        // navigation seats are a host's IA: beam answers only the realm half (membership, central, needs a
+        // tenant) and a host binds a subclass that fills in its own leaves.
+        $this->app->bindIf(ResourceSurfaceLocator::class, RealmResourceSurfaceLocator::class);
 
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', KeyTypeConformanceAudit::class);
@@ -2006,6 +2016,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // AFTER discovery, deliberately: the guard below asks data-filters what it already holds, and
         // the model port it leaves empty resolves off the particle registry discovery has just filled.
         $this->declareFilterResources();
+        $this->declareResourceRegistryOptions();
 
         // The event catalog's own registrars, attached on `booted()` rather than here — measured, not
         // cautious. Every `register()` validates the event name's prefix against the LIVE resource keys,
@@ -2188,6 +2199,29 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $this->app->make(ParticleOperationRegistry::class),
             $this->app->make(ParticleRelativeRegistry::class),
         ))->discover($classes, $paths);
+    }
+
+    /**
+     * The Options Sources behind the particle resource registry's picker facets
+     * ({@see ResourceRegistryBacking::OPTIONS}). Registered by beam because the backing is beam's: any host
+     * that declares a resource over it gets working pickers without restating six closures. Each resolves
+     * the backing per call through the CURRENT container (`app()`, never the boot-time `$this->app` a closure would
+     * otherwise capture — a worker that sandboxes the application per request hands the request its own), so a
+     * domain is always the current actor's visible set, and empty for an actor who may not read the area.
+     *
+     * Guarded like {@see declareFilterResources()}: without data-filters there is no options registry.
+     */
+    protected function declareResourceRegistryOptions(): void
+    {
+        if (! $this->app->bound(DataFilterManager::class)) {
+            return;
+        }
+
+        $filters = $this->app->make(DataFilterManager::class);
+
+        foreach (ResourceRegistryBacking::OPTIONS as $facet => $handle) {
+            $filters->options($handle, static fn (?string $search = null): array => app(ResourceRegistryBacking::class)->options($facet, $search));
+        }
     }
 
     /**

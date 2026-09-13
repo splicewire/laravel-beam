@@ -18,14 +18,16 @@ use Throwable;
  * declaration, carrying what it SAYS about itself beside what its backing can actually DO, and naming
  * the two where they disagree.
  *
- * ## Why this is a report and not a UI
+ * ## A report, read by a shell command AND by a gated screen
  *
- * The obvious version of this was an operator screen listing every resource. It cannot be built safely
- * at that tier: the host's nav gate (`FrameResourcesInvocable::resourceViewable()` at
- * `~/Herd/splicewire-app`) is what its own docblock calls *secure-by-omission* — a model-less resource
- * skips `viewAny` entirely — so a surface enumerating every registered key either reimplements that
- * gate or discloses the schema surface of resources the viewer is denied. A report read from a shell,
- * by an operator who already holds the host, answers the same question and gates nothing it should not.
+ * This class is deliberately UNGATED: it projects every registered declaration and knows nothing about
+ * who is asking. Two readers sit on it. `splicewire:beam:particle:resources` reads it whole, for an
+ * operator who already holds a shell on the host. The operator Resources area reads it through
+ * {@see Registry\ResourceRegistryBacking}, which drops every row
+ * {@see \Splicewire\Beam\Authorization\ResourceVisibility::listable()} refuses the viewer before anything
+ * crosses the wire — the same answer the nav collectors give, so the screen cannot disclose the schema
+ * surface of a resource the rail hides. A new in-product reader must go through that filter, never
+ * around it: rows straight from here are the whole registry.
  *
  * ## Capability is read from the backing, never from a flag
  *

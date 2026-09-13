@@ -8,10 +8,12 @@ use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
  * One registered particle resource, as {@see ResourceRegistryReport} sees it: its declared INTENT, its
  * backing's CAPABILITY, and the places the two disagree.
  *
- * A plain immutable value rather than a Data class on purpose — nothing here crosses a wire. It is read
- * by a console command and by an advisory doctor audit, both of which run inside the host, so it is not
- * a boundary shape and carries no particle declaration (AGENTS.md, particle doctrine: the doctrine
- * governs shapes that cross a boundary).
+ * A plain immutable value rather than a Data class on purpose — the row itself never crosses a wire. A
+ * console command and an advisory doctor audit read it inside the host; the operator Resources area
+ * reads it too, but what that area SERVES is {@see \Splicewire\Beam\Data\ResourceRegistry\ResourceRegistryEntryData},
+ * the declared projection {@see \Splicewire\Beam\Particle\Registry\ResourceRegistryBacking} builds from
+ * this row after the viewer's visibility filter has run. So the boundary shape is declared where it
+ * crosses (AGENTS.md, particle doctrine), and this value stays free to carry host-only facts.
  */
 class ResourceRegistryRow
 {
@@ -86,6 +88,43 @@ class ResourceRegistryRow
         return $names === [] ? 'read-only' : implode(' ', $names);
     }
 
+    /**
+     * What this resource can EFFECTIVELY do: capability ∩ intent, one boolean per surface verb.
+     *
+     * The backing's capability is the ceiling and the declared flags only narrow it (particle doctrine,
+     * "Capability is the CEILING; the affordance flags may only narrow"), so every verb is an AND of the
+     * two — never either one alone. That is the whole reason this exists beside {@see capabilities()} and
+     * {@see intent()}: a surface that offered `edit` off `editable` would draw a pencil the server 405s the
+     * moment the backing cannot write, and one that offered it off `writes` would draw a pencil on every
+     * resource declared `readOnly`.
+     *
+     *  - `list`   — the backing streams records. There is no declared flag to narrow a list: a registered
+     *               resource IS an index.
+     *  - `show`   — `showable`, and a record can be resolved one at a time: `ResolvesRecord`, or a query
+     *               the declaration's read projection runs over (`QueriesRecords`), the same two routes
+     *               {@see ResourceRegistryReport}'s disagreement column accepts.
+     *  - `create` / `edit` / `delete` — the resolved flag AND `WritesRecords`.
+     *  - `filter` — a panel exists: `filterable` over a composable query, or a vocabulary the backing
+     *               declares itself (which needs no flag — `filterable: false` is its correct spelling).
+     *
+     * ⚠️ These are the declaration's answer, not the viewer's. Who may do each is still asked server-side,
+     * per request, by the transport's own authorizers; a surface that reads this to HIDE a button has
+     * decided nothing about whether the request would be refused.
+     *
+     * @return array{list: bool, show: bool, create: bool, edit: bool, delete: bool, filter: bool}
+     */
+    public function affordances(): array
+    {
+        return [
+            'list' => $this->streams,
+            'show' => $this->showable && ($this->resolves || $this->queries),
+            'create' => $this->creatable && $this->writes,
+            'edit' => $this->editable && $this->writes,
+            'delete' => $this->deletable && $this->writes,
+            'filter' => ($this->filterable && $this->queries) || $this->vocabulary,
+        ];
+    }
+
     /** @return array<string, mixed> */
     public function toArray(): array
     {
@@ -114,6 +153,7 @@ class ResourceRegistryRow
                 'filterable' => $this->filterable,
                 'policy' => $this->policy,
             ],
+            'affordances' => $this->affordances(),
             'disagreements' => $this->disagreements,
         ];
     }

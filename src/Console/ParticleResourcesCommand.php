@@ -14,22 +14,29 @@ use Splicewire\Beam\Particle\ResourceRegistryRow;
  * Enumerate this host's whole particle-resource vocabulary — every registered declaration, what its
  * backing can actually do, what the declaration claims, and where the two disagree.
  *
- * ## Why a command and not an operator screen
+ * ## A command AND an operator screen — and why each exists
  *
- * The proposal this answers asked for a resource-registry AREA. Two measurements moved it to a command.
+ * The proposal this answers asked for a resource-registry AREA. Both now exist, over the one
+ * {@see ResourceRegistryReport}, and they answer the question for two different readers.
  *
- * **Nav-invisibility is the default, not a backlog.** Only ~29 of ~165 `#[ParticleResource]`
- * declarations in the estate name a nav `section`, and a resource without one matches no rail. So "the
- * registry is unreachable from nav" is not a gap a screen closes; it is the mechanism, and what was
- * missing is any way to READ the set.
+ * **Nav-invisibility is the default, not a backlog.** A resource that names no nav `section` matches no
+ * rail, and roughly half the registry names none. So "the registry is unreachable from nav" is not a gap
+ * a nav change closes; it is the mechanism, and what was missing was any way to READ the set.
  *
- * **A screen over that set cannot be built safely at that tier.** The host's nav gate
- * (`FrameResourcesInvocable::resourceViewable()`) is what its own docblock calls *secure-by-omission* —
- * a model-less resource skips `viewAny` entirely — so a surface enumerating every key either
- * reimplements the gate or discloses the schema surface of resources the viewer is denied. That is this
- * estate's recurring defect class (a check that reports success by not running) placed on the one
- * surface designed to show everything. A command answers the identical question, read-only, for an
- * operator who already holds a shell on the host.
+ * **This command is the shell reader: whole, unfiltered, ungated.** An operator who already holds a shell
+ * on the host holds more than any listing could disclose, so the command reports every declaration —
+ * including the ones a signed-in viewer is denied — which is what a doctor sweep, a census and a
+ * disagreement hunt need. Command-line invocation is ungated by policy (particle doctrine, "Authorization
+ * is per transport").
+ *
+ * **The operator Resources area is the in-product reader, and it is gated per ROW.** A screen enumerating
+ * every key must not become the bypass around the gate that hides a resource from the rail, and that was
+ * what kept it a command: the nav gate used to let a model-less resource skip `viewAny` entirely. Beam's
+ * `Splicewire\Beam\Authorization\ResourceVisibility::listable()` is now the one answer the nav collectors
+ * and the frame sockets share, so `Splicewire\Beam\Particle\Registry\ResourceRegistryBacking` filters
+ * every row through it and a viewer sees only resources it may list — absent, not disabled
+ * (registry-kernel ticket 17 D5). The screen is for opening a resource's surfaces; this command is for
+ * seeing all of them at once.
  *
  * ## The column that earns it
  *
