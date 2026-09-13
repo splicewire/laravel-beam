@@ -273,6 +273,10 @@ class DeclarationDocblockAudit implements DoctorAudit
      */
     private static function npmScopeOf(string $packageDir): ?string
     {
+        if (! is_readable($packageDir.'/package.json')) {
+            return null;
+        }
+
         $decoded = json_decode((string) @file_get_contents($packageDir.'/package.json'), true);
         $name = is_array($decoded) ? ($decoded['name'] ?? null) : null;
 

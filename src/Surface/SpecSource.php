@@ -84,7 +84,7 @@ class SpecSource
     /** Reads a `.json` / `.yaml` / `.yml` document off disk, dispatching on extension. */
     public static function fromFile(string $path): self
     {
-        $contents = @file_get_contents($path);
+        $contents = is_readable($path) ? @file_get_contents($path) : false;
 
         if ($contents === false) {
             throw new MalformedSpecException("Spec file is not readable: {$path}");

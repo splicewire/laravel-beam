@@ -467,10 +467,18 @@ class DeclarationDocblockAuditTest extends TestCase
         mkdir($root.'/php/packages/schemastud/laravel-frame/src', 0777, true);
         mkdir($root.'/js/packages/schemastud/frame/src', 0777, true);
 
-        $this->assertSame(
-            realpath($root.'/js/packages/schemastud/frame/src'),
-            DeclarationDocblockAudit::javascriptSibling(realpath($root.'/php/packages/schemastud/laravel-frame/src')),
-        );
+        set_error_handler(static function (int $severity, string $message): never {
+            throw new \ErrorException($message, 0, $severity);
+        });
+
+        try {
+            $this->assertSame(
+                realpath($root.'/js/packages/schemastud/frame/src'),
+                DeclarationDocblockAudit::javascriptSibling(realpath($root.'/php/packages/schemastud/laravel-frame/src')),
+            );
+        } finally {
+            restore_error_handler();
+        }
 
         // A package with no JS half resolves to null rather than to a directory that is not there.
         mkdir($root.'/php/packages/splicewire/laravel-beam/src', 0777, true);

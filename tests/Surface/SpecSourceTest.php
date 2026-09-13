@@ -132,7 +132,15 @@ class SpecSourceTest extends TestCase
     {
         $this->expectException(MalformedSpecException::class);
 
-        SpecSource::fromFile(__DIR__.'/fixtures/does-not-exist.yaml');
+        set_error_handler(static function (int $severity, string $message): never {
+            throw new \ErrorException($message, 0, $severity);
+        });
+
+        try {
+            SpecSource::fromFile(__DIR__.'/fixtures/does-not-exist.yaml');
+        } finally {
+            restore_error_handler();
+        }
     }
 
     public function test_it_rejects_an_unrecognized_extension(): void

@@ -13,10 +13,12 @@ use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Rushing\Popcorn\Registries\RegistryKey;
+use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\EntitlementRegistryAuthorizer;
 use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Entitlements\EntitlementGate;
+use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -31,22 +33,10 @@ use Splicewire\Beam\Tests\TestCase;
  * described into the container's real singleton {@see RegistryIndex}, and the authorizer is pushed down
  * by the index exactly as a host's `Popcorn::authorizeWith()` call does it.
  *
- * ## What is NOT here, and why
- *
- * Ticket 27's acceptance asked for this against a **live particle-gated resource**. There is no such
- * thing yet and it is not this ticket's to build: measured 2026-08-24, **zero** beam classes implement
- * `Rushing\Popcorn\Registries\Registry` — 53 declare `#[IsRegistry]`, none conform — so
- * {@see ParticleResourceRegistry} has no `ability:` parameter to declare
- * against and no filtered read to be absent from. Fifty-plus registries and, fleet-wide, zero production
- * `register(..., ability: ...)` call sites. Migrating them is registry-kernel ticket 37/38's; the two
- * acceptance items that need one are re-handed there, and the second is marked skipped below rather than
- * quietly dropped.
- *
- * What the adapter does is fully exercised regardless, because the seam is registry-agnostic by
- * construction: {@see RegistryIndex} holds ONE authorizer and pushes it into every registry it holds
- * (registry-kernel ticket 09 D7), so a particle registry that conforms tomorrow is filtered by this same
- * object with no further wiring — and must not need any, since per-registry wiring means a registry that
- * forgets is silently open.
+ * The particle registry composition test also exercises ticket 27's acceptance against the real
+ * {@see ParticleResourceRegistry}. It declares ability and realm membership through the public
+ * registration seam, then reads the manifest as actors gain and lose entitlement. The shared
+ * {@see RegistryIndex} pushes the authorizer into that registry without per-registry wiring.
  */
 class RegistryAuthorizerTest extends TestCase
 {
@@ -241,17 +231,55 @@ class RegistryAuthorizerTest extends TestCase
         $this->assertFalse($this->registry->has('beam.test.gated.orphan'));
     }
 
-    // ── Owed to ticket 37 ────────────────────────────────────────────────────────────────────────────
+    // ── Ability and realm composition through the migrated particle registry ────────────────────────
 
     public function test_ability_and_realm_are_orthogonal_axes_that_compose(): void
     {
-        $this->markTestSkipped(
-            'registry-kernel ticket 27 acceptance §5, re-handed to ticket 37. ParticleResourceRegistry does '
-                .'not implement Rushing\Popcorn\Registries\Registry (no beam class does), so it has no '
-                .'`ability:` to declare and ability filtering cannot reach realm filtering to compose with '
-                .'it or shadow it. Unskip in the commit that migrates it.',
-        );
+        $registry = $this->app->make(ParticleResourceRegistry::class);
+        $index = $this->app->make(RegistryIndex::class);
+
+        $this->assertSame($index, $this->app->make(RegistryIndex::class));
+        $this->assertSame($registry, $index->resolve('beam.particle.resources'));
+
+        foreach ([
+            ['authorizer-operator-gated', 'operator', 'workbench.enter'],
+            ['authorizer-tenant-gated', 'tenant', 'workbench.enter'],
+            ['authorizer-operator-open', 'operator', null],
+        ] as [$key, $realm, $ability]) {
+            $registry->register(new ParticleResource(
+                key: $key,
+                backing: UnentitledUser::class,
+                data: RegistryAuthorizerResourceData::class,
+                label: $key,
+            ), [$realm], ability: $ability);
+        }
+
+        $this->installAuthorizer();
+        $keys = fn (string $realm) => array_values(array_filter(
+            array_column($registry->definitions($realm), 'key'),
+            fn (string $key) => str_starts_with($key, 'authorizer-'),
+        ));
+
+        $this->assertSame(['authorizer-operator-open'], $keys('operator'));
+        $this->assertSame([], $keys('tenant'));
+        $this->assertFalse($registry->has('authorizer-operator-gated'));
+
+        $this->port->becomes(new SubscriberUser);
+
+        $this->assertSame(['authorizer-operator-gated', 'authorizer-operator-open'], $keys('operator'));
+        $this->assertSame(['authorizer-tenant-gated'], $keys('tenant'));
+        $this->assertTrue($registry->has('authorizer-operator-gated'));
+
+        $this->port->becomes(new UnentitledUser);
+
+        $this->assertSame(['authorizer-operator-open'], $keys('operator'));
+        $this->assertFalse($registry->has('authorizer-operator-gated'));
     }
+}
+
+class RegistryAuthorizerResourceData extends Data
+{
+    public function __construct(public string $id) {}
 }
 
 /** A host resolver: a SubscriberUser holds the workbench entitlement, everyone else holds nothing. */
