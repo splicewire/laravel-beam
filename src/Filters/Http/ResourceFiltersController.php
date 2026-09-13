@@ -15,6 +15,7 @@ use Rushing\DataFilters\SavedFilters\Visibility;
 use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
+use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Data\ResponseBody;
 use Splicewire\Beam\Doctor\FilterablePromiseAudit;
 use Splicewire\Beam\Facades\Particle;
@@ -191,6 +192,7 @@ class ResourceFiltersController extends Controller
     public function schema(Request $request, ParticleResourceRegistry $resources): JsonResponse
     {
         $key = $this->resourceKey($request);
+        $this->gateOnDeclaredRead($request, $key);
         $declaring = $key === '' ? null : $this->declaringBacking($resources->find($key));
 
         if ($declaring !== null) {
@@ -244,6 +246,29 @@ class ResourceFiltersController extends Controller
     private function gateOnBacking(DeclaresFilterVocabulary $backing): void
     {
         $this->gateOnModel($backing instanceof BacksModel ? $backing->modelClass() : null);
+    }
+
+    /**
+     * Refuse the whole sub-surface when the resource is model-less and declares a read ability the actor
+     * does not hold — {@see ResourceVisibility::readable()}, the same answer frame's socket and the nav ask.
+     *
+     * Every other gate in this controller is keyed on a MODEL, so a resource with none reached them all as
+     * "gated by the route middleware alone" whatever it declared: the vocabulary and its options (a flat
+     * list of whatever the handle enumerates) were served to every principal the mount admitted, and the
+     * saved-filter verbs — owner-scoped rows, but still this resource's surface — were reachable too. Asked FIRST, before a backing is resolved or a data-filters definition is looked up, and
+     * keyed on the particle declaration because that is where `policy:` is declared — a key the particle
+     * registry does not carry is not this gate's to answer and falls through to the 404s below.
+     *
+     * A no-op for a model-backed resource and for an undeclared model-less one (app ADR-0119 §2), so it
+     * adds a refusal only where a declaration asked for one.
+     */
+    private function gateOnDeclaredRead(Request $request, string $key): void
+    {
+        $resource = $key === '' ? null : app(ParticleResourceRegistry::class)->find($key);
+
+        if ($resource !== null && ! app(ResourceVisibility::class)->readable($resource, $request->user())) {
+            abort(Response::HTTP_FORBIDDEN, "This action is unauthorized for the '{$key}' resource.");
+        }
     }
 
     /**
@@ -372,6 +397,7 @@ class ResourceFiltersController extends Controller
         // frame-root options read answered 404 for a registered handle for exactly this reason.
         $ref = (string) $request->route('ref');
         $key = $this->resourceKey($request);
+        $this->gateOnDeclaredRead($request, $key);
         $declaring = $key === '' ? null : $this->declaringBacking($resources->find($key));
 
         if ($declaring !== null) {
@@ -402,6 +428,7 @@ class ResourceFiltersController extends Controller
     private function definition(Request $request): ResourceDefinition
     {
         $key = $this->resourceKey($request);
+        $this->gateOnDeclaredRead($request, $key);
 
         // `tryResource()`, never `resource()` — registry-kernel ticket 61. The throwing accessor raises
         // `RegistryMiss`, which escaping a controller is a 500; that is right for a key the code chose

@@ -17,6 +17,7 @@ use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
+use Splicewire\Beam\Doctor\ModelLessReadGateAudit;
 use Splicewire\Beam\Doctor\ParticleRouteResourceAudit;
 use Splicewire\Beam\Doctor\ParticleSlotCollisionAudit;
 use Splicewire\Beam\Doctor\RelativeEdgeIntegrityAudit;
@@ -202,6 +203,16 @@ class BeamDoctorCommand extends Command
                 RelativeEdgeIntegrityAudit::class,
                 false,
                 fn (RelativeEdgeIntegrityAudit $audit) => $audit->run(),
+            ),
+            // A model-less resource declaring no read gate rests on app ADR-0119 §2's "the API layer still
+            // enforces" — listed to every authenticated actor its realm admits, served on realm reach alone.
+            // Advisory like the edge audit above and for the same kind of reason: which resources a host
+            // registers is a host fact, and the posture is decided. It is the count a deny-by-default flip
+            // would wait on.
+            $this->guarded(
+                ModelLessReadGateAudit::class,
+                false,
+                fn (ModelLessReadGateAudit $audit) => $audit->run(),
             ),
         );
 
