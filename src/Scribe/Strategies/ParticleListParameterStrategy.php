@@ -274,11 +274,11 @@ class ParticleListParameterStrategy extends Strategy
     }
 
     /**
-     * Fold a local `$ref` back into the property.
+     * Fold a local `$ref`, including a nullable wrapper, back into the property.
      *
-     * A backed-enum facet emits `{$ref: #/$defs/Status}` and carries NO `type` of its own — so a reader
-     * that only looks at the property documents it as an untyped string and drops the one thing an enum
-     * facet is worth documenting for: its finite set of accepted values.
+     * A backed-enum facet emits `{$ref: #/$defs/Status}`, wrapped in `anyOf` with `null` when nullable,
+     * and carries no `type` of its own. Resolve only a sole non-null member: a wider union can admit
+     * values outside that enum and must not be documented as a finite domain.
      *
      * @param  array<string, mixed>  $property
      * @param  array<string, mixed>  $schema
@@ -287,6 +287,17 @@ class ParticleListParameterStrategy extends Strategy
     protected function dereference(array $property, array $schema): array
     {
         $ref = $property['$ref'] ?? null;
+
+        if ($ref === null) {
+            $members = array_values(array_filter(
+                $property['anyOf'] ?? [],
+                fn (array $member) => ($member['type'] ?? null) !== 'null',
+            ));
+
+            if (count($members) === 1) {
+                $ref = $members[0]['$ref'] ?? null;
+            }
+        }
 
         if (! is_string($ref) || ! str_starts_with($ref, '#/$defs/')) {
             return $property;

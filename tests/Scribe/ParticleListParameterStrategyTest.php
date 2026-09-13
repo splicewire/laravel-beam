@@ -54,6 +54,12 @@ enum ListFixtureStatus: string
     case Live = 'live';
 }
 
+enum ListFixturePriority: int
+{
+    case Normal = 1;
+    case Urgent = 2;
+}
+
 class ListFixtureFilterData extends Data
 {
     public function __construct(
@@ -75,6 +81,16 @@ class ListFixtureFilterData extends Data
 
         #[Filterable(Exact::class)]
         public ListFixtureStatus|Optional|null $status = null,
+
+        #[Description('The catalog review priority.')]
+        #[Filterable(Exact::class, name: 'priority')]
+        public ListFixturePriority|Optional|null $reviewPriority = null,
+
+        #[Filterable(Exact::class)]
+        public ListFixtureStatus $defaultStatus = ListFixtureStatus::Draft,
+
+        #[Filterable(Exact::class)]
+        public ListFixtureStatus|string|Optional|null $customStatus = null,
 
         #[Includable]
         public mixed $owner = null,
@@ -229,6 +245,38 @@ class ParticleListParameterStrategyTest extends TestCase
         $parameters = $this->strategy()($this->endpoint());
 
         $this->assertSame(['draft', 'live'], $parameters[$this->filterKey('status')]['enumValues']);
+    }
+
+    public function test_a_nullable_integer_enum_keeps_its_type_and_facet_metadata(): void
+    {
+        $this->register();
+
+        $parameters = $this->strategy()($this->endpoint());
+        $priority = $parameters[$this->filterKey('priority')];
+
+        $this->assertSame([1, 2], $priority['enumValues']);
+        $this->assertSame('integer', $priority['type']);
+        $this->assertSame('The catalog review priority. Matched with the `exact` operator.', $priority['description']);
+        $this->assertFalse($priority['required']);
+        $this->assertNull($priority['example']);
+    }
+
+    public function test_a_non_nullable_enum_still_carries_its_values(): void
+    {
+        $this->register();
+
+        $parameters = $this->strategy()($this->endpoint());
+
+        $this->assertSame(['draft', 'live'], $parameters[$this->filterKey('defaultStatus')]['enumValues']);
+    }
+
+    public function test_an_enum_union_accepting_arbitrary_strings_has_no_finite_domain(): void
+    {
+        $this->register();
+
+        $parameters = $this->strategy()($this->endpoint());
+
+        $this->assertSame([], $parameters[$this->filterKey('customStatus')]['enumValues']);
     }
 
     public function test_a_non_filterable_resource_documents_pagination_only(): void
