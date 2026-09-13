@@ -340,4 +340,25 @@ class ResponseBody extends Data
             'total' => $paginator->total(),
         ]);
     }
+
+    /**
+     * Static — PRODUCES. One CURSOR page: the rows, the size served, and the cursor for the next page
+     * (composite-backing ticket 04).
+     *
+     * `offset` and `total` stay null — a keyset page over N merged sources knows neither, and this
+     * class's projection would have published two invented numbers beside real rows. The cursor rides
+     * `meta` rather than becoming an eleventh property, because `meta` is already the slot for
+     * transport facts about the page and adding a property would change this class's generated
+     * TypeScript for every response shape, not just this one.
+     *
+     * @param  list<mixed>  $records  already-projected rows, in page order
+     */
+    public static function streamed(array $records, int $perPage, ?string $nextCursor): static
+    {
+        return static::from([
+            'data' => $records,
+            'limit' => $perPage,
+            'meta' => ['nextCursor' => $nextCursor],
+        ]);
+    }
 }

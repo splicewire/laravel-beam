@@ -40,4 +40,9 @@ class ResponseBodyEnvelope implements ResponseEnvelope
     {
         return ResponseBody::paginated($paginator);
     }
+
+    public function streamed(array $records, int $perPage, ?string $nextCursor): Responsable
+    {
+        return ResponseBody::streamed($records, $perPage, $nextCursor);
+    }
 }

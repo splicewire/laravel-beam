@@ -7,6 +7,7 @@ use Illuminate\Contracts\Support\Responsable;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\ResponseBodyEnvelope;
+use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Surgeon\ResponseEnvelopeAudit;
 
 /**
@@ -54,4 +55,25 @@ interface ResponseEnvelope
      * already-projected records (the controller runs `->through()` before handing the page here).
      */
     public function paginated(LengthAwarePaginator $paginator): Responsable;
+
+    /**
+     * Wrap ONE CURSOR PAGE as `{ data, limit, nextCursor }`, HTTP 200 — the list shape of a resource
+     * whose backing only {@see StreamsRecords} (composite-backing ticket 04).
+     *
+     * ⚠️ It takes the ROWS and the cursor, not a `CursorPaginator`, and that is deliberate. A stock
+     * `CursorPaginator` derives its next cursor from the LAST ITEM's own attributes, so a caller that
+     * projected the page first (every caller here does — the controller projects models to `Data`) would
+     * hand over a paginator that can no longer answer the question. Taking the encoded cursor as an
+     * argument makes "compute the cursor before you project" the signature rather than a comment.
+     *
+     * `offset` and `total` are absent, not null-filled: a cursor page knows neither, and an envelope
+     * that invents them would publish a count no arm ever produced. `nextCursor` is null on the last
+     * page — a positive "no more pages" rather than a missing key. There is no `previousCursor`, because
+     * ordered mode ships no backward paging and a parameter nothing can fill is speculative generality.
+     *
+     * @param  list<mixed>  $records  already-projected rows, in page order
+     * @param  int  $perPage  the page size actually served
+     * @param  string|null  $nextCursor  the encoded cursor for the following page, or null when there is none
+     */
+    public function streamed(array $records, int $perPage, ?string $nextCursor): Responsable;
 }

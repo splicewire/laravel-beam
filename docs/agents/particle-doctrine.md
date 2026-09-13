@@ -200,6 +200,14 @@ never learns its name. **Ordered mode's whole contract with an arm is one senten
 itself by the declared sort key, descending.** Model reading: `splicewire/tower`
 `src/Frame/Sources/ReviewQueueUnionSource.php` and `src/Review/Arms/` (beam ADR-0220).
 
+An arm does not have to be a collection. `splicewire/tower`'s `ActivityBacking` is two `EloquentBacking`
+arms over the SAME table on two different CONNECTIONS — the central schema's `activity_log` and the
+acting tenant's — merged on `created_at`, which is the union a `Builder` cannot express at all. It is also
+the first composite mounted over REST (composite-backing 04). Two things it demonstrates that the review
+queue does not: an arm that is a real query pages with a real `LIMIT` and needs no `CollectionBacking`; and
+`id` is a legal tiebreak WITHIN an arm and an illegal one ACROSS arms whose id sequences are independent —
+cross-arm ties break on **declaration order**, which is a fact rather than a coincidence.
+
 ### Capability is the CEILING; the affordance flags may only narrow
 
 `instanceof WritesRecords` is what the backing **can** do; `creatable`/`editable`/`deletable`/`showable`/
@@ -251,12 +259,18 @@ reflected, registered and read back clean, `modelClass()` null, `isFramed()` tru
 are declarable by attribute today.** Tower was deliberately left unchanged; this is a recorded finding,
 not a landed migration.
 
-⚠️ **The real constraint on those two is the TRANSPORT, not the attribute, and it is easy to swap them.**
-`ParticleController` (REST) demands `QueriesRecords` and refuses a merely-streaming backing by name;
-`ParticleFrameResourceHandler` serves a streams-only backing through its `streamedIndex()` /
-`resolvedShow()` branches. So a `StreamsRecords`-only resource is a Frame-transport resource whether it is
-declared by attribute or imperatively — moving it onto the attribute changes nothing about which
-transport can serve it.
+⚠️ **The transport constraint that used to sit here is GONE for lists** (composite-backing 04). This
+paragraph read *"`ParticleController` (REST) demands `QueriesRecords` and refuses a merely-streaming
+backing by name … a `StreamsRecords`-only resource is a Frame-transport resource"*. Since 04 both
+transports serve a streams-only LIST: `ParticleController::index()` branches to `streamedIndex()` when the
+backing streams and does not query, and answers through `ResponseEnvelope::streamed()` —
+`{ data, limit, nextCursor }`, no `offset`/`total`, because a cursor page over N sources knows neither.
+What still demands `QueriesRecords` is **subject resolution and the relative-mount base**: `show`,
+`update`, `destroy` and `/{parent}/{children}` all go on composing a builder, so a streams-only backing is
+list-only over REST and `queryableBacking()` still refuses it by name for the rest. A resource served that
+way declares `filterable: false` (there is no builder for data-filters to ride) and gets its panel from
+`DeclaresFilterVocabulary` instead. Model reading: `splicewire/tower`
+`src/Particle/Backing/ActivityBacking.php` — a REST-mounted composite — and beam ADR-0221.
 
 ## What a declaration buys — the generation chain
 

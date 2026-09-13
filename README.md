@@ -150,6 +150,13 @@ default) so a package can plug ranked fusion without beam knowing it exists. `Co
 smallest thing that can be an arm — a materialized, ordered collection with a keyset cursor. Worked
 example: `splicewire/tower`'s `ReviewQueueUnionSource` + `src/Review/Arms/` (ADR-0220).
 
+Such a resource is served by **both** transports. The REST index streams it too — `cursor` instead of
+`page`, answered as `{ data, limit, nextCursor }` with no invented `total` — while `show`/`update`/
+`destroy` and a relative mount still require an Eloquent backing, so a streams-only resource is list-only
+over REST. Declare it `filterable: false`; its panel comes from `DeclaresFilterVocabulary`. Worked example:
+`splicewire/tower`'s `ActivityBacking`, two connections' copies of one table merged on `created_at`
+(ADR-0221).
+
 ## Per-realm resource presentation overrides (RDU-03)
 
 A realm may PRESENT the same resource differently — a different label, group, form, layout, or a

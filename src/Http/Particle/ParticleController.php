@@ -24,6 +24,7 @@ use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
+use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\Backing\WritesRecords;
 use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
@@ -76,6 +77,13 @@ class ParticleController extends Controller
     public const PER_PAGE = 'perPage';
 
     /**
+     * The keyset cursor a STREAMED index reads instead of {@see PAGE} (composite-backing 04). Spelled
+     * the same word `ParticleFrameResourceHandler::streamedIndex()` already reads off the request, so
+     * one page-2 link works on both transports.
+     */
+    public const CURSOR = 'cursor';
+
+    /**
      * The route parameter naming the SUBJECT of a show/update/destroy — read by name (see
      * {@see subjectId()}), which is what makes a standalone and a relative mount resolve identically.
      * Named here for the same reason as {@see PAGE}: {@see ParticleUrlParameterStrategy} documents
@@ -118,6 +126,17 @@ class ParticleController extends Controller
         // read — never at the mount, because whether a host's mount is scoped is a host fact.
         if ($relativeQuery === null) {
             $this->denyUngatedRead($request, $resource);
+
+            // composite-backing 04: a backing that only STREAMS has no `Builder` for the three lines
+            // below to paginate, and until now that meant the whole resource was unservable over REST
+            // — `queryableBacking()` threw by name. It is served here instead, because a LIST does not
+            // actually need a builder; only subject resolution and a relative mount do, and both still
+            // demand `QueriesRecords`. Checked before `filterable`, since a streams-only backing has no
+            // data-filters builder to ride either — its declaration says `filterable: false` and its
+            // FACETS come from the vocabulary it declares (ticket 02).
+            if ($this->streamsOnly($resource)) {
+                return $this->streamedIndex($request, $resource, $ctx, $facets);
+            }
         }
 
         $query = $resource->filterable
@@ -144,8 +163,13 @@ class ParticleController extends Controller
      * The REST transport's subject resolution and relative-mount base both need a `Builder` they can go
      * on composing (a relation scope, the `scope` closure, `findOrFail`), which is
      * {@see QueriesRecords} — the Eloquent-only capability, not the general {@see StreamsRecords} one.
-     * A resource whose backing merely streams cannot be served here, and says so by name rather than
-     * failing later on a method the returned value does not have.
+     * A resource whose backing merely streams cannot be resolved to a SUBJECT here, and says so by name
+     * rather than failing later on a method the returned value does not have.
+     *
+     * ⚠️ This used to read "cannot be served here", and that was true of the whole resource until
+     * composite-backing 04: `index()` now serves a streams-only backing through
+     * {@see streamedIndex()}, because a list needs no builder. Show/update/destroy and a relative mount
+     * still do, and still come through this assertion.
      */
     protected function queryableBacking(ParticleResource $resource): QueriesRecords
     {
@@ -202,6 +226,91 @@ class ParticleController extends Controller
     protected function defaultSortedQuery(ParticleResource $resource, array $filters = []): Builder
     {
         return (new ParticleListQuery)->forList($resource, $filters);
+    }
+
+    /**
+     * Does this resource's list have to be STREAMED rather than queried — i.e. does its backing yield
+     * records without composing an Eloquent `Builder`?
+     *
+     * The question is asked as "streams AND does not query", not "is a composite": an Eloquent backing
+     * also streams (via `BacksEloquent`), and routing it here would drop the data-filters surface,
+     * saved filters and the declared default sort for ~30 resources that have all three.
+     */
+    protected function streamsOnly(ParticleResource $resource): bool
+    {
+        $backing = $resource->backing();
+
+        return $backing instanceof StreamsRecords && ! $backing instanceof QueriesRecords;
+    }
+
+    /**
+     * The list for a streams-only backing: the request's opaque `filter[…]` bag, cursor and `perPage`
+     * handed to the backing, whose page is projected and wrapped in the cursor envelope.
+     *
+     * Three things are worth stating about what this does NOT do, because each is a builder-shaped
+     * habit that has no meaning here:
+     *
+     *  - it does not apply `$resource->scope`, which is a `Closure(Builder)`. A streams-only list's row
+     *    gate is the backing's own narrowing (an arm that scopes to the actor), plus the class-level
+     *    gate `denyUngatedRead()` already required of the caller before this method runs;
+     *  - it does not sort. The order is the backing's declared one (a composite's `sortKey`, descending);
+     *    a `sort=` parameter naming something the arms do not page by cannot be honoured after the fact
+     *    without re-reading everything, which is the defect the composite exists to remove;
+     *  - it reads `cursor`, never `page`. Offsets across N merged sources are the O(everything) paging
+     *    this replaces.
+     *
+     * ⚠️ The next cursor is taken BEFORE the rows are projected. A stock `CursorPaginator` derives it
+     * from the last item's own attributes, so reading it off a page whose models have already become
+     * `Data` objects answers null (or throws) — the exact bug the {@see ResponseEnvelope::streamed()}
+     * signature is shaped to make impossible for its callers.
+     *
+     * @param  array<string, mixed>  $facets  the opaque `filter[...]` bag, forwarded verbatim
+     */
+    protected function streamedIndex(Request $request, ParticleResource $resource, ReadContext $ctx, array $facets): Responsable
+    {
+        /** @var StreamsRecords $backing */
+        $backing = $resource->backing();
+
+        $perPage = max(1, $request->integer(self::PER_PAGE, $resource->perPage));
+        $cursor = $request->query(self::CURSOR);
+
+        $page = $backing->records($facets, is_string($cursor) ? $cursor : null, $perPage);
+        $nextCursor = $page->nextCursor()?->encode();
+
+        return $this->envelope->streamed(
+            array_map(fn (mixed $item) => $this->projectStreamedRecord($resource, $item, $ctx, $facets), $page->items()),
+            $perPage,
+            $nextCursor,
+        );
+    }
+
+    /**
+     * Project one row of a streamed page.
+     *
+     * A streamed row is not necessarily a `Model` — an arm over a read-model yields whatever its service
+     * hands back — so this cannot be {@see projectRecord()}, which takes one and runs the contribution
+     * fold against it. The three cases, in the order they are asked:
+     *
+     *  - already a `Data` (an arm that projects its own rows, as `ResolvesRecord` arms do) — served as-is;
+     *  - a `Model` — the declaration's own `project:`/`data:` projection AND the contribution fold, so a
+     *    model-bearing arm reads exactly as the same model would through the queried path;
+     *  - anything else — the declaration's `data:` class named constructor, matching
+     *    {@see \Splicewire\Beam\Particle\ParticleFrameResourceHandler::streamedIndex()} so the two
+     *    transports project one row the same way.
+     *
+     * @param  array<string, mixed>  $facets
+     */
+    protected function projectStreamedRecord(ParticleResource $resource, mixed $item, ReadContext $ctx, array $facets): mixed
+    {
+        if ($item instanceof Data) {
+            return $item;
+        }
+
+        if ($item instanceof Model) {
+            return $this->projectRecord($resource, $item, $ctx, $facets);
+        }
+
+        return $resource->data !== null ? $resource->data::from($item) : $item;
     }
 
     public function show(Request $request, string $id): Responsable
@@ -737,7 +846,7 @@ class ParticleController extends Controller
 
     /**
      * The request's opaque `filter[...]` bag — forwarded verbatim to a contribution's arms. Beam does not
-     * interpret it; the same bag a {@see \Splicewire\Beam\Particle\Backing\StreamsRecords} backing is
+     * interpret it; the same bag a {@see StreamsRecords} backing is
      * already handed.
      *
      * @return array<string, mixed>

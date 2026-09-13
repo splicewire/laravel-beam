@@ -43,6 +43,15 @@ class ArrayResponseEnvelope implements ResponseEnvelope
         ], Response::HTTP_OK);
     }
 
+    public function streamed(array $records, int $perPage, ?string $nextCursor): Responsable
+    {
+        return $this->json([
+            'data' => array_map($this->normalize(...), $records),
+            'limit' => $perPage,
+            'nextCursor' => $nextCursor,
+        ], Response::HTTP_OK);
+    }
+
     /** Coerce a projected record (a spatie Data / Arrayable) to a JSON-serializable array; pass scalars through. */
     private function normalize(mixed $data): mixed
     {
