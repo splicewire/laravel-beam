@@ -32,6 +32,7 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\Generator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Schemastud\Frame\Authorization\OpenResourceAccessGate;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
@@ -546,6 +547,18 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         //
         // Overridable the same way as the two above: a host provider registering later wins.
         $this->app->bind(ResourceAccessGate::class, RealmEntitlementResourceGate::class);
+
+        // ...but FRAME's own default is not a host override. Frame binds its permit-everything
+        // `OpenResourceAccessGate` in its register(), so whichever of the two providers the host's
+        // discovery order runs LAST wins — measured in beam-ux's RealmDashboardTest, whose member got 200
+        // over a green suite until frame's provider was listed first. Discovery order is not a decision a
+        // host made, so once every provider has registered, frame's default is re-bound to the realm
+        // gate; a host that bound its OWN gate is not frame's default and is left exactly as it stands.
+        $this->app->booted(function (): void {
+            if ($this->app->make(ResourceAccessGate::class) instanceof OpenResourceAccessGate) {
+                $this->app->bind(ResourceAccessGate::class, RealmEntitlementResourceGate::class);
+            }
+        });
 
         // Tenant resolvability (realm-architecture ticket 08): the re-home of the retired
         // RealmDefinition::$tenancy flag. Default resolves the `tenant` realm when config('frame.tenancy')

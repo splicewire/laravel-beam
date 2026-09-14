@@ -3,13 +3,13 @@
 namespace Splicewire\Beam\Doctor;
 
 use Illuminate\Contracts\Container\Container;
-use ReflectionClass;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Schemastud\Frame\Contracts\ResourceSummaryProvider;
 use Schemastud\Frame\Registry\ResourceDefinition;
-use Schemastud\Frame\Registry\WidgetContextProjector;
-use Splicewire\Beam\Nav\NavSection;
+use Splicewire\Beam\Dashboard\DashboardParticipation;
+use Splicewire\Beam\Dashboard\RailLeaves;
+use Splicewire\Beam\Dashboard\RealmDashboard;
 use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -25,9 +25,8 @@ use Throwable;
  *
  * ## The three tiers
  *
- * For every resource ON a realm's dashboard — nav-seated in that realm (declares `section:` and a package
- * seated that section there), or opted in by declaring `summary`/`overview`, and not opted out by
- * `#[Summary(false)]`:
+ * For every resource ON a realm's dashboard — a leaf of the realm's rail resolves to it, or it declares
+ * `summary`/`overview`, and it is not opted out by `#[Summary(false)]` ({@see DashboardParticipation}):
  *
  *  - **declared** — its read Data class binds `summary` or `overview`, or it names its own summary
  *    provider. The card is what its author decided. PASS.
@@ -38,12 +37,14 @@ use Throwable;
  *    provider over a backing that only streams, a custom provider that declines or throws. The dashboard
  *    silently drops the card. WARN, by name.
  *
- * ## What it mirrors, and the cost of the mirror
+ * ## One rule, two rails
  *
- * "Is this resource on the dashboard" is decided by beam-ux's `DashboardBacking`, one package up, with
- * the actor in hand. This audit has no actor and re-states the actor-free half of that rule (seat,
- * declaration, opt-out); a resource the backing would hide from a given actor is still audited, because
- * the tier is a fact about the declaration, not about who is looking. Keep the two rules in step.
+ * "Is this resource on the dashboard" is {@see DashboardParticipation::contextFor()} — the same call
+ * beam-ux's `DashboardBacking` makes with the actor in hand. This audit has no actor, so it reads the
+ * DECLARED rail ({@see RailLeaves::declaredFor()}) rather than the projected one: a gated tree read as a
+ * guest hides every model-less resource, which is exactly the population the ABSENT tier names. A
+ * resource the backing would hide from a given actor is still audited, because the tier is a fact about
+ * the declaration, not about who is looking.
  *
  * ## Why an advisory
  *
@@ -73,34 +74,26 @@ class DashboardTierAudit implements DoctorAudit
         $absent = [];
 
         foreach (array_keys($this->realms->all()) as $realm) {
-            $seats = array_map(fn (NavSection $section): string => $section->key, $this->sections->for($realm));
+            $rail = RailLeaves::declaredFor($realm, $this->sections, $this->resources);
 
             foreach ($this->resources->keysForRealm($realm) as $key) {
                 $resource = $this->resources->find($key);
 
-                if ($resource === null || ! $resource->isFramed() || $key === $realm.'-dashboard') {
+                if ($resource === null || ! $resource->isFramed() || RealmDashboard::isKey($key, $realm)) {
                     continue;
                 }
 
                 try {
                     $definition = $this->resources->definition($key, $realm);
-                    $contexts = (new WidgetContextProjector)->forClass(new ReflectionClass($definition->data));
                 } catch (Throwable) {
                     continue; // a declaration that cannot be projected is another audit's finding
                 }
 
-                $binding = $this->binding($contexts);
-
-                if ($binding === null) {
-                    continue; // opted out, or neither seated nor declared: not on this dashboard
+                if (DashboardParticipation::contextFor($definition, $rail) === null) {
+                    continue; // opted out, or neither in the rail nor declared: not on this dashboard
                 }
 
-                $seated = $resource->section !== null && in_array($resource->section, $seats, true);
-
-                if ($binding === false && ! $seated) {
-                    continue;
-                }
-
+                $binding = DashboardParticipation::declares($definition);
                 $name = sprintf('[%s/%s]', $realm, $key);
                 $custom = $this->customProvider($resource);
 
@@ -120,8 +113,8 @@ class DashboardTierAudit implements DoctorAudit
                     }
                 }
 
-                if ($binding === false && ! $custom) {
-                    $derived[$name] = $name.' (section ['.$resource->section.'], one `total` figure)';
+                if (! $binding && ! $custom) {
+                    $derived[$name] = $name.' (in the rail'.($resource->section !== null ? ' under ['.$resource->section.']' : '').', one `total` figure)';
 
                     continue;
                 }
@@ -133,7 +126,7 @@ class DashboardTierAudit implements DoctorAudit
         $total = $declared + count($derived) + count($absent);
 
         if ($total === 0) {
-            return [Finding::inconclusive(self::CHECK, 'No realm resource is on any dashboard here — nothing is seated in a realm or declares a summary.')];
+            return [Finding::inconclusive(self::CHECK, 'No realm resource is on any dashboard here — nothing is in a realm\'s rail or declares a summary.')];
         }
 
         $findings = [];
@@ -142,7 +135,7 @@ class DashboardTierAudit implements DoctorAudit
             ksort($derived);
 
             $findings[] = Finding::warn(self::CHECK, sprintf(
-                '%d of %d dashboard card%s rest%s on the DERIVED tier — nav-seated, no `summary`/`overview` binding, default provider: %s. '
+                '%d of %d dashboard card%s rest%s on the DERIVED tier — in the rail, no `summary`/`overview` binding, default provider: %s. '
                 .'Each draws one `total` figure nobody chose. Declare `#[Summary]`/`#[Overview]` on the read Data class, name a `summaryProvider:`, or opt out with `#[Summary(false)]`.',
                 count($derived),
                 $total,
@@ -175,24 +168,6 @@ class DashboardTierAudit implements DoctorAudit
             $total,
             $total === 1 ? '' : 's',
         ))];
-    }
-
-    /**
-     * Whether the Data class binds a dashboard context: true for a participating `summary`/`overview`
-     * declaration, false for none, null for an explicit `#[Summary(false)]` opt-out.
-     *
-     * @param  array<string, array<string, mixed>>  $contexts
-     */
-    private function binding(array $contexts): ?bool
-    {
-        $summary = $contexts['summary'] ?? null;
-        $overview = $contexts['overview'] ?? null;
-
-        if ($summary !== null && ($summary['participates'] ?? true) === false) {
-            return null;
-        }
-
-        return $summary !== null || ($overview !== null && ($overview['participates'] ?? true) !== false);
     }
 
     private function customProvider(ParticleResource $resource): bool

@@ -9,6 +9,7 @@ use Illuminate\Pagination\CursorPaginator;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ActorPort;
+use Splicewire\Beam\Authorization\AuthenticatedActor;
 use Splicewire\Beam\Authorization\ModelLessReadPosture;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Data\ResourceRegistry\ResourceRegistryEntryData;
@@ -259,9 +260,7 @@ class ResourceRegistryBacking implements DeclaresFilterVocabulary, ResolvesRecor
 
     private function actor(): ?Authenticatable
     {
-        $actor = $this->actors->actor();
-
-        return $actor instanceof Authenticatable ? $actor : null;
+        return AuthenticatedActor::from($this->actors);
     }
 
     /**

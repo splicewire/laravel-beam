@@ -5,7 +5,6 @@ namespace Splicewire\Beam\Realm;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Support\Facades\Auth;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
-use Schemastud\Frame\Realm\RealmDefinition;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -160,26 +159,11 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
     }
 
     /**
-     * The Gate ability a realm's resources are gated on, or null when the realm gates nothing.
-     *
-     * Read live rather than resolved once: `realm_gates` is ordinary config a test or a host boot
-     * step can change, and the realm registry is computed on read for the same reason.
+     * The Gate ability a realm's resources are gated on, or null when the realm gates nothing — the one
+     * rule in {@see RealmGateAbility}, which the realm's dashboard declaration reads too.
      */
     protected function abilityFor(string $realm): ?string
     {
-        $gates = (array) config('beam.core.realm_gates', config('beam.realm_gates', []));
-        $declared = $gates[$realm]['entitlement'] ?? null;
-
-        if (is_string($declared) && $declared !== '') {
-            return 'entitlement:'.$declared;
-        }
-
-        $definition = $this->realms->tryResolve($realm);
-
-        if ($definition instanceof RealmDefinition && $definition->central) {
-            return 'entitlement:'.self::CentralRealmEntitlement;
-        }
-
-        return null;
+        return RealmGateAbility::for($realm, $this->realms);
     }
 }

@@ -17,6 +17,7 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\ResolvesRecord;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
+use Splicewire\Beam\Particle\Backing\Unpaged;
 use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
@@ -84,7 +85,10 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      * filter/pagination; Frame only wires it. Read-only by construction (`creatable: false` ⇒ store/
      * update/destroy/show already 405 via {@see assertWritable}).
      *
-     * @return array<int, array<string, mixed>>
+     * A flat row list, which frame's controller pages — or, for an {@see Unpaged} backing, the controller's
+     * own `{data,total,page,perPage}` envelope holding every row.
+     *
+     * @return array<int, array<string, mixed>>|array{data: array<int, array<string, mixed>>, total: int, page: int, perPage: int}
      */
     protected function streamedIndex(ResourceDefinition $definition): array
     {
@@ -103,9 +107,24 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
         $backing = $this->backing($definition, StreamsRecords::class);
 
-        return collect($backing->records($filters, $cursor, $perPage)->items())
+        $rows = collect($backing->records($filters, $cursor, $perPage)->items())
             ->map(fn (mixed $item) => ($item instanceof Data ? $item : $dataClass::from($item))->toArray())
             ->all();
+
+        // An {@see Unpaged} backing's whole population is one page. Frame's controller re-slices a flat
+        // list by `per_page` (default 25, max 100) but returns a pre-enveloped result untouched, so the
+        // envelope is built HERE, in the controller's own shape (`{data,total,page,perPage}`), and no
+        // row can land on a second page whatever the request asked for.
+        if ($backing instanceof Unpaged) {
+            return [
+                'data' => array_values($rows),
+                'total' => count($rows),
+                'page' => 1,
+                'perPage' => max(1, count($rows)),
+            ];
+        }
+
+        return $rows;
     }
 
     /**
@@ -123,10 +142,14 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     {
         // A stream-only backing resolves ONE record through {@see ResolvesRecord::resolve()} — a
         // payload-resolved detail (the `schemaRef` dereference seam), NOT a model edit
-        // projection. This runs BEFORE the `assertWritable` guard: a union is always detail-capable
-        // regardless of its (never-set) `showable`. Model-backed resources fall through to the `showable`-
-        // gated projection below (which, post-F04, serves a read-only browse's detail too).
+        // projection. A union leaves `showable` at its default (true) and is always detail-capable; a
+        // producer that CLOSED it is refused here too — a streams-only resource whose rows are projections
+        // of other resources (a realm dashboard) has no detail to serve, and asking its backing for a
+        // capability it does not carry would be a 500, not a refusal. Model-backed resources fall through
+        // to the `showable`-gated projection below (which, post-F04, serves a read-only browse's detail too).
         if ($this->streamsOnly($definition)) {
+            $this->assertWritable($definition, 'show');
+
             return $this->resolvedShow($definition, $id);
         }
 

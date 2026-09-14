@@ -146,6 +146,39 @@ class DashboardTierAuditTest extends TestCase
         $this->assertStringNotContainsString('[operator/custom]', $findings[0]->detail);
     }
 
+    /**
+     * The reference host's shape: `users`/`teams` declare NO `section:` and reach the rail as a seat's
+     * static children. "Nav-seated" means "a leaf of the rail resolves to it", so they are on the
+     * dashboard — and audited — exactly as a `section:` child is.
+     */
+    public function test_a_resource_reached_through_a_seats_static_child_is_on_the_dashboard(): void
+    {
+        $this->sections->register(
+            new NavSection(
+                key: 'operate', realm: 'operator', label: 'Operate', icon: 'Cog', href: '/operate', order: 5,
+                entitlement: null, permission: null,
+                static: [
+                    ['title' => 'Users', 'href' => '/operator/users', 'routeName' => 'users.index'],
+                    // A static naming no route joins by href.
+                    ['title' => 'Teams', 'href' => '/operator/teams'],
+                ],
+            ),
+            by: self::class,
+        );
+        $this->declare('users', BeamSchema::class, section: null);
+        // No route name, no section: only an href match could seat it, and beam derives none here.
+        $this->declare('teams', BeamSchema::class, section: null);
+        $this->declare('loose', BeamSchema::class, section: null);
+
+        $findings = $this->audit()->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
+        $this->assertStringContainsString('[operator/users]', $findings[0]->detail);
+        $this->assertStringNotContainsString('teams', $findings[0]->detail);
+        $this->assertStringNotContainsString('loose', $findings[0]->detail);
+    }
+
     public function test_derived_and_absent_are_reported_as_two_findings(): void
     {
         $this->declare('widgets', BeamSchema::class);
