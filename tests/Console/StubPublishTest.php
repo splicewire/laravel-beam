@@ -16,7 +16,7 @@ use Splicewire\Beam\Tests\TestCase;
  * Three things are asserted, and the last is the one the tag exists for:
  *
  * 1. **What the tag writes.** It publishes the package's whole `stubs/` DIRECTORY into `base_path('stubs')`,
- *    not a file list — so the payload is the six generator stubs *plus* `client-runtime/`,
+ *    not a file list — so the payload is the seven generator stubs *plus* `client-runtime/`,
  *    which have their own narrower tags (`beam-client-runtime`) pointing at real host
  *    destinations. `beam-stubs` deposits INERT copies of those two under `stubs/`; nothing reads them there,
  *    and it is not a substitute for either tag.
@@ -40,6 +40,7 @@ class StubPublishTest extends TestCase
         'particle-op-task.stub',
         'particle-op-stream.stub',
         'particle-data.stub',
+        'particle-summary-provider.stub',
     ];
 
     /** The boot-time `base_path('stubs')` the tag is bound to — cleaned up after each test that publishes. */
@@ -70,7 +71,7 @@ class StubPublishTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_the_beam_stubs_tag_publishes_the_six_generator_stubs_under_the_base_path(): void
+    public function test_the_beam_stubs_tag_publishes_every_generator_stub_under_the_base_path(): void
     {
         $this->assertDirectoryDoesNotExist($this->publishRoot, 'A leftover publish would make this vacuous.');
 
@@ -86,7 +87,7 @@ class StubPublishTest extends TestCase
 
     /**
      * The tag maps a DIRECTORY, so it carries two subdirectories that are not generator stubs and have their
-     * own tags. Asserted rather than left implicit: it is the difference between "six stubs" and what a host's
+     * own tags. Asserted rather than left implicit: it is the difference between "seven stubs" and what a host's
      * `stubs/` actually looks like after the publish, and the copies landing here are inert.
      */
     public function test_the_directory_mapping_also_deposits_the_client_runtime_sources(): void

@@ -189,6 +189,7 @@ class AttributedParticleDiscovery
             routeKey: $attribute->routeKey,
             handler: $attribute->handler,
             filterProvider: $attribute->filterProvider,
+            summaryProvider: $attribute->summaryProvider,
             createAffordance: $attribute->createAffordance,
         );
     }

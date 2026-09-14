@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Particle\Attributes;
 use Attribute;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\ResourceFilterProvider;
+use Schemastud\Frame\Contracts\ResourceSummaryProvider;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -91,6 +92,7 @@ class ParticleResource
      * @param  string|null  $routeKey  the column `{id}` resolves against for show/update/destroy (e.g. `'slug'`); null ⇒ the primary key, today's path. A declared route key is the resource saying how it is NAMED — never where it is hung. Resolution still runs through the relative base query and the `scope` gate, so the column need only be unique per PARENT under a relative mount. See {@see \Splicewire\Beam\Particle\ParticleResource::$routeKey}
      * @param  class-string<FrameResourceHandler>|null  $handler  the Frame CRUD handler this resource is served by; null ⇒ {@see ParticleFrameResourceHandler}, the generic one. See {@see \Splicewire\Beam\Particle\ParticleResource::$handler} for why this is a declaration slot rather than a host-side lookup table
      * @param  'frame'|'host'  $createAffordance  WHERE this resource's create affordance lives — carried verbatim onto {@see \Splicewire\Beam\Particle\ParticleResource::$createAffordance} and from there onto frame's `ResourceDefinition`. `'frame'` (the default, and today's behaviour for every resource) means frame's own list Toolbar emits the "New …" button; `'host'` means the host's page chrome owns it — a title-row button, a chooser dialog — so frame emits none. PRESENTATION only: see the runtime twin's docblock for why it is never ANDed with a capability gate
+     * @param  class-string<ResourceSummaryProvider>|null  $summaryProvider  the frame summary provider this resource answers `resources/{key}/summary` through — carried verbatim onto {@see \Splicewire\Beam\Particle\ParticleResource::$summaryProvider}; null ⇒ beam's default, which counts through the same scoped builder the index reads. `splicewire:beam:make:particle-resource --summary` emits a provider class to name here
      */
     public function __construct(
         public string $key,
@@ -122,5 +124,7 @@ class ParticleResource
         public string $createAffordance = 'frame',
         /** @var class-string<ResourceFilterProvider>|null */
         public ?string $filterProvider = null,
+        /** @var class-string<ResourceSummaryProvider>|null */
+        public ?string $summaryProvider = null,
     ) {}
 }

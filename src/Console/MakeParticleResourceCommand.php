@@ -22,6 +22,12 @@ use Symfony\Component\Console\Input\InputOption;
  * in `App\Data` cannot import the model `App\Models\Lyric`. Appending the suffix makes that unreachable
  * rather than merely unlikely.
  *
+ * ## `--summary` emits a third file, and prints the line it will not write
+ * A summary provider is a class the attribute NAMES (`summaryProvider:`), not one the generator can place: the
+ * attribute sits on the read class, which the same run may or may not have just written and the author may have
+ * since edited. So the provider is emitted and the `summaryProvider:` line is printed, exactly as the mount line
+ * is. Absent the flag, the resource keeps beam's default provider (a scoped `total` count) with no file at all.
+ *
  * ## What it deliberately does NOT do
  * It does not mount a route. Routing is a host concern by design (`Particle::mount($uri, $key)`) —
  * the attribute declares, the host routes — so the command prints the mount line and stops. A generator that
@@ -41,6 +47,8 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
     protected string $resolvedKey = '';
 
     protected string $inputClass = '';
+
+    protected string $summaryClass = '';
 
     protected function getStub(): string
     {
@@ -96,7 +104,24 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             'readClass' => class_basename($qualified),
         ]);
 
+        if ($this->option('summary')) {
+            $this->summaryClass = $this->rootNamespace().'Particle\\Summaries\\'.$base.'SummaryProvider';
+            $this->writeCompanion('stubs/particle-summary-provider.stub', $this->summaryClass, [
+                'key' => $this->resolvedKey,
+                'model' => class_basename($this->resolvedModel),
+                'readClass' => class_basename($qualified),
+            ]);
+        }
+
         $this->report(sprintf("Particle::mount('%s', '%s');", $this->resolvedKey, $this->resolvedKey));
+
+        if ($this->summaryClass !== '') {
+            // Printed, not edited: the generator never rewrites a declaration it did not just write, for the
+            // same reason it never edits a route file — it would be guessing at a file the author owns.
+            $this->newLine();
+            $this->components->info('Declare it — add to the #[ParticleResource] attribute on '.class_basename($qualified).':');
+            $this->line(sprintf('    summaryProvider: \\%s::class,', $this->summaryClass));
+        }
 
         return self::SUCCESS;
     }
@@ -124,6 +149,7 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             ['model', 'm', InputOption::VALUE_REQUIRED, 'The Eloquent model the resource resolves — a bare name resolves under App\Models\, a namespaced one is used as given (default: App\Models\<Name>)'],
             ['key', 'k', InputOption::VALUE_REQUIRED, 'The registry key and data-filters resource key (default: the kebab-cased plural of <Name>)'],
             ['force', 'f', InputOption::VALUE_NONE, 'Overwrite the read Data class if it already exists'],
+            ['summary', 's', InputOption::VALUE_NONE, 'Also emit a summary provider (App\\Particle\\Summaries\\<Name>SummaryProvider) implementing ResourceSummaryProvider, and print the summaryProvider: line to add to the attribute'],
         ];
     }
 }

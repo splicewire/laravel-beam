@@ -5,10 +5,12 @@ namespace Splicewire\Beam\Tests\Frame;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceFilterProvider;
+use Schemastud\Frame\Contracts\ResourceSummaryProvider;
 use Schemastud\Frame\Data\FilterOptionsResponseData;
 use Schemastud\Frame\Data\FilterSchemaResponseData;
 use Schemastud\Frame\Data\FilterVariantsData;
 use Schemastud\Frame\Data\FilterVariantsResponseData;
+use Schemastud\Frame\Data\SummaryResponseData;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Filters\BeamResourceFilterProvider;
@@ -20,6 +22,7 @@ use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Summary\BeamResourceSummaryProvider;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -165,11 +168,22 @@ class DefaultFrameBindingsTest extends TestCase
         $resource = AttributedParticleDiscovery::resourceFromAttribute(DeclaredProviderData::class);
         $this->assertSame(DeclaredFilterProvider::class, $resource->toResourceDefinition()->filterProvider);
     }
+
+    /** The summary slot mirrors the filter slot: beam's default when undeclared, the declaration's class when declared. */
+    public function test_beam_projects_its_summary_provider_by_default_and_a_declaration_overrides_it(): void
+    {
+        $resource = new ParticleResource(key: 'subjects', backing: BeamSchema::class, data: SavedFilterData::class);
+        $this->assertSame(BeamResourceSummaryProvider::class, $resource->toResourceDefinition()->summaryProvider);
+
+        $declared = AttributedParticleDiscovery::resourceFromAttribute(DeclaredProviderData::class);
+        $this->assertSame(DeclaredSummaryProvider::class, $declared->toResourceDefinition()->summaryProvider);
+        $this->assertArrayNotHasKey('summaryProvider', $declared->toResourceDefinition()->toArray());
+    }
 }
 
 #[\Splicewire\Beam\Particle\Attributes\ParticleResource(
     key: 'declared-provider', backing: BeamSchema::class, data: DeclaredProviderData::class,
-    input: false, frame: true, filterProvider: DeclaredFilterProvider::class,
+    input: false, frame: true, filterProvider: DeclaredFilterProvider::class, summaryProvider: DeclaredSummaryProvider::class,
 )]
 class DeclaredProviderData extends Data {}
 
@@ -188,5 +202,13 @@ class DeclaredFilterProvider implements ResourceFilterProvider
     public function variants(ResourceDefinition $resource): FilterVariantsResponseData
     {
         return new FilterVariantsResponseData(new FilterVariantsData($resource->key, []));
+    }
+}
+
+class DeclaredSummaryProvider implements ResourceSummaryProvider
+{
+    public function summary(ResourceDefinition $resource): ?SummaryResponseData
+    {
+        return null;
     }
 }

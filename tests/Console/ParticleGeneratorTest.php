@@ -105,6 +105,32 @@ class ParticleGeneratorTest extends TestCase
         $this->assertStringContainsString('public function toModelAttributes(): array', $input);
     }
 
+    /**
+     * `--summary` emits the provider and PRINTS the `summaryProvider:` line — it never edits the attribute,
+     * for the same reason it never edits a route file. Without the flag no provider file exists: the resource
+     * keeps beam's default (a scoped `total` count), which needs no class of its own.
+     */
+    public function test_the_resource_generator_emits_a_summary_provider_only_when_asked_and_prints_the_slot(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Lyric'])->assertSuccessful();
+        $this->assertFileDoesNotExist($this->host.'/app/Particle/Summaries/LyricSummaryProvider.php');
+
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Lyric', '--summary' => true, '--force' => true])
+            ->expectsOutputToContain('summaryProvider: \\App\\Particle\\Summaries\\LyricSummaryProvider::class,')
+            ->assertSuccessful();
+
+        $provider = $this->read('app/Particle/Summaries/LyricSummaryProvider.php');
+
+        $this->assertStringContainsString('namespace App\\Particle\\Summaries;', $provider);
+        $this->assertStringContainsString('class LyricSummaryProvider implements ResourceSummaryProvider', $provider);
+        $this->assertStringContainsString('public function summary(ResourceDefinition $resource): ?SummaryResponseData', $provider);
+        // Counts through the shared scoped builder — the stub must not teach `Lyric::query()`.
+        $this->assertStringContainsString('ScopedIndexQuery', $provider);
+        $this->assertStringNotContainsString('Lyric::query()', $provider);
+        // The read class is untouched: the generator prints the slot, it does not write it.
+        $this->assertStringNotContainsString('summaryProvider:', $this->read('app/Data/LyricData.php'));
+    }
+
     // ── a qualified --model is a fully-qualified class, not a suffix ─────────────────────────────────
 
     /**

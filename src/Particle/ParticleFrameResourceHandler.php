@@ -108,60 +108,14 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     }
 
     /**
-     * The list query for a Frame index. A registered, `filterable` {@see ParticleResource} rides the
-     * data-filters builder ({@see ParticleHydrator::query}) — the SAME owner-scoped, `filter[...]`-aware,
-     * saved-filter-capable query the REST {@see ParticleController::index}
-     * uses — so a Frame list and a REST list are one read (a pinned `filter[circuitId]` and per-caller
-     * row-scoping hold in the editor exactly as they do over REST). A manifest-only resource, a
-     * non-filterable one, or a host whose hydrator does not compose queries falls back to the plain
-     * includes-eager-loaded query, ordered by the declaration's default sort.
-     *
-     * That fallback rides {@see ParticleListQuery}, the same builder the REST transport's
-     * {@see ParticleController::defaultSortedQuery} calls. Until ticket 05 this method hardcoded
-     * `orderByDesc('created_at')` here, silently ignoring the `#[Sortable(default: true)]` attribute the
-     * REST twin reads and calls "the SINGLE source of truth for a resource's default order" — so the two
-     * transports ordered the same declaration's list differently whenever it declared one.
+     * The list query for a Frame index — {@see ScopedIndexQuery::forDefinition()}, the ONE scoped builder
+     * this index and beam's default summary provider both read. It used to live here; it was extracted
+     * (realm-dashboards ticket 02) so a summary figure and the list it summarizes are provably one read
+     * rather than two hand-synced queries — the drift ticket 05 already collapsed once between REST and Frame.
      */
     protected function indexQuery(ResourceDefinition $definition): object
     {
-        $resource = $this->resource($definition);
-
-        if ($resource !== null && $resource->filterable) {
-            try {
-                return $this->hydrator->query(
-                    $resource->key,
-                    ReadContext::list($resource->includes, auth()->user()),
-                );
-            } catch (\BadMethodCallException) {
-                // This hydrator cannot compose a list query for this resource — the degenerate beam-core
-                // reader ({@see \Splicewire\Beam\Read\PayloadParticleReader::query()}) never can, and a
-                // query-composing one cannot for a key with no filter wiring behind it. Either way: fall
-                // through to the plain query.
-                //
-                // ⚠️ This was `catch (\LogicException)` — a net wide enough to swallow things it was never
-                // aimed at, and it did: a data-filters registry miss threw `InvalidArgumentException`,
-                // which IS a `LogicException`, so an unwired resource degraded here silently. When
-                // `data-filters.resources` conformed to the popcorn kernel that miss became a
-                // `RegistryMiss` (a `RuntimeException`) and seven frame reads 500ed at once. Narrowed to
-                // the exception the port actually declares, and the real condition is now stated at the
-                // hydrator rather than inferred from a base class (registry-kernel ticket 61).
-            }
-        }
-
-        // A manifest-only resource (no registered ParticleResource) has no declaration to read includes
-        // or a default sort off — it keeps the framework default, which is what `created_at desc` was.
-        if ($resource === null) {
-            return $definition->model::query()->latest();
-        }
-
-        // The facet bag rides along for the same reason the REST twin forwards it: a CONTRIBUTED include
-        // may be request-parameterized (a constrained eager-load). Frame does not interpret `filter[...]`
-        // on a non-filterable resource — it never did — but uninterpreted is not the same as absent, and
-        // dropping it here would leave the two transports honouring `filter[period]` differently, which
-        // is precisely the drift ticket 05 collapsed these queries to stop.
-        $filters = array_filter((array) app(Request::class)->input('filter', []));
-
-        return $this->scoped((new ParticleListQuery)->forList($resource, $filters), $resource);
+        return $this->listQuery()->forDefinition($definition);
     }
 
     public function show(ResourceDefinition $definition, string $id): array
@@ -375,21 +329,18 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     /**
      * Apply the declaration's row-level `scope` closure, with the resolved editor realm as its second
-     * argument. Extracted so the subject-resolution base ({@see query()}) and the non-filterable list base
-     * ({@see indexQuery()}) gate identically — ticket 05 split the two queries apart, and an authorization
-     * gate applied in only one of them is exactly the drift that split caused elsewhere.
-     *
-     * Null resource, or a declaration with no `scope`, returns the query untouched.
+     * argument — {@see ScopedIndexQuery::scoped()}, so the subject-resolution base ({@see query()}) and
+     * the non-filterable list base gate identically.
      */
     protected function scoped(Builder $query, ?ParticleResource $resource): Builder
     {
-        if ($resource?->scope === null) {
-            return $query;
-        }
+        return $this->listQuery()->scoped($query, $resource);
+    }
 
-        $realm = app(Request::class)->route()?->defaults['realm'] ?? null;
-
-        return ($resource->scope)($query, $realm) ?? $query;
+    /** The shared scoped-list builder, over this handler's own hydrator and registry. */
+    protected function listQuery(): ScopedIndexQuery
+    {
+        return new ScopedIndexQuery($this->hydrator, $this->registry);
     }
 
     /**

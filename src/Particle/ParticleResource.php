@@ -11,6 +11,7 @@ use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\ResourceFilterProvider;
+use Schemastud\Frame\Contracts\ResourceSummaryProvider;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
@@ -20,6 +21,7 @@ use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\EloquentBacking;
 use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
 use Splicewire\Beam\Particle\Backing\ResourceBacking;
+use Splicewire\Beam\Summary\BeamResourceSummaryProvider;
 use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
 
 /**
@@ -237,6 +239,18 @@ class ParticleResource implements HasRegistryKey
      *                                 resolved value server-side in `ResourceDefinition::resolvedCreateAffordance()`,
      *                                 where `creatable` WINS: this slot can move an affordance, never re-open a
      *                                 closed write path.
+     * @param  class-string<ResourceSummaryProvider>|null  $summaryProvider  the frame summary capability this
+     *                                                                       resource answers at
+     *                                                                       `resources/{key}/summary` — figures
+     *                                                                       for a dashboard tile. Null (the
+     *                                                                       default) projects
+     *                                                                       {@see BeamResourceSummaryProvider},
+     *                                                                       which counts through the SAME scoped
+     *                                                                       builder the index reads and declines
+     *                                                                       for a backing that cannot count.
+     *                                                                       Mirrors `$filterProvider` slot for
+     *                                                                       slot: hidden from the wire, preserved
+     *                                                                       by overrides.
      */
     public function __construct(
         public string $key,
@@ -272,6 +286,8 @@ class ParticleResource implements HasRegistryKey
         public string $createAffordance = 'frame',
         /** @var class-string<ResourceFilterProvider>|null */
         public ?string $filterProvider = null,
+        /** @var class-string<ResourceSummaryProvider>|null */
+        public ?string $summaryProvider = null,
     ) {}
 
     /**
@@ -350,6 +366,7 @@ class ParticleResource implements HasRegistryKey
         return new ResourceDefinition(
             key: $this->key,
             filterProvider: $this->filterProvider ?? BeamResourceFilterProvider::class,
+            summaryProvider: $this->summaryProvider ?? BeamResourceSummaryProvider::class,
             model: $this->modelClass(),
             data: $this->data,
             creatable: ! $this->readOnly,

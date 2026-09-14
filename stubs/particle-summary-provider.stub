@@ -1,0 +1,46 @@
+<?php
+
+namespace {{ namespace }};
+
+use Schemastud\Frame\Contracts\ResourceSummaryProvider;
+use Schemastud\Frame\Data\SummaryFigureData;
+use Schemastud\Frame\Data\SummaryResponseData;
+use Schemastud\Frame\Registry\ResourceDefinition;
+use Splicewire\Beam\Particle\ScopedIndexQuery;
+
+/**
+ * The summary provider for the `{{ key }}` particle resource — the figures its dashboard tile shows.
+ *
+ * Declared on the resource, not looked up: add `summaryProvider: {{ class }}::class` to the
+ * `#[ParticleResource]` attribute on {{ readClass }}. Frame resolves it after the resource's access gate
+ * and serves it at `resources/{{ key }}/summary`.
+ *
+ * Count through {@see ScopedIndexQuery} — the SAME owner-scoped, `filter[...]`-aware, `scope()`-gated
+ * builder the index reads — never the bare {{ model }} query builder, which is the unscoped table and would
+ * show a tenant the global total. Return `null` to decline (the route answers 404) rather than inventing a zero.
+ */
+class {{ class }} implements ResourceSummaryProvider
+{
+    public function __construct(private ScopedIndexQuery $query) {}
+
+    public function summary(ResourceDefinition $resource): ?SummaryResponseData
+    {
+        if (! $this->query->queryable($resource)) {
+            return null;
+        }
+
+        $rows = $this->query->forDefinition($resource);
+
+        return new SummaryResponseData(
+            key: $resource->key,
+            label: $resource->nav->label,
+            icon: $resource->nav->icon,
+            figures: [
+                new SummaryFigureData(key: 'total', label: $resource->nav->label, value: (clone $rows)->count()),
+                // Group by domain state here, each figure off a clone of the same scoped builder, e.g.
+                // new SummaryFigureData(key: 'active', label: 'Active', value: (clone $rows)->where('status', 'active')->count(), tone: 'positive'),
+            ],
+            overview: null,
+        );
+    }
+}
