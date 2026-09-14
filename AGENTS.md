@@ -75,7 +75,7 @@ an authenticated door. The key recipe is write-once. See
 
 ## Customizing the scaffolder stubs — `beam-stubs`
 
-`vendor:publish --tag=beam-stubs` writes the six generator stubs into `base_path('stubs')`, and
+`vendor:publish --tag=beam-stubs` writes the seven generator stubs into `base_path('stubs')`, and
 `ParticleGeneratorCommand::resolveStubPath()` prefers the host copy at the same relative path — so
 publish-once-edit-in-place needs no flag on the generate. Two things a reader gets wrong otherwise:
 it is **deliberately not** a `splicewire:beam:install` step (*an unpublished stub is not a missing

@@ -129,6 +129,12 @@ class ParticleGeneratorTest extends TestCase
         $this->assertStringNotContainsString('Lyric::query()', $provider);
         // The read class is untouched: the generator prints the slot, it does not write it.
         $this->assertStringNotContainsString('summaryProvider:', $this->read('app/Data/LyricData.php'));
+
+        // …and it PARSES. Every assertion above is a substring match, which a stub that lost a brace to a
+        // placeholder edit would still satisfy — "the right words appeared" is not "the file compiles".
+        $lint = new Process([PHP_BINARY, '-l', $this->host.'/app/Particle/Summaries/LyricSummaryProvider.php']);
+        $lint->run();
+        $this->assertSame(0, $lint->getExitCode(), $lint->getOutput().$lint->getErrorOutput());
     }
 
     // ── a qualified --model is a fully-qualified class, not a suffix ─────────────────────────────────

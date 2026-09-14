@@ -22,7 +22,7 @@ file carries your edit.
 
 ## What the tag writes
 
-Six generator stubs, one per thing a `make:particle-*` command can emit:
+Seven generator stubs, one per thing a `make:particle-*` command can emit:
 
 | stub | read by |
 | --- | --- |
@@ -32,6 +32,7 @@ Six generator stubs, one per thing a `make:particle-*` command can emit:
 | `particle-op-task.stub` | the same command, `--kind=task` |
 | `particle-op-stream.stub` | the same command, `--kind=stream` |
 | `particle-data.stub` | the same command's input/output Data companions |
+| `particle-summary-provider.stub` | `splicewire:beam:make:particle-resource --summary` — the resource's `ResourceSummaryProvider` |
 
 The tag maps a directory, so it also deposits `stubs/client-runtime/{api,routes}.ts`.
 Those files are wired by `beam-client-runtime`, which publishes to `resource_path('js/lib/')`.

@@ -2,7 +2,6 @@
 
 namespace Splicewire\Beam\Summary;
 
-use Illuminate\Support\Str;
 use Schemastud\Frame\Contracts\ResourceSummaryProvider;
 use Schemastud\Frame\Data\SummaryFigureData;
 use Schemastud\Frame\Data\SummaryResponseData;
@@ -17,6 +16,10 @@ use Splicewire\Beam\Particle\ScopedIndexQuery;
  * reads — so the figure a tenant-realm tile shows equals that actor's index total, never the table's.
  * A resource whose backing cannot compose a builder (streams-only, or model-less with no declaration)
  * DECLINES with null, and frame answers 404: an honest absence rather than an invented zero.
+ *
+ * The display word comes from {@see ResourceDefinition::resolvedLabel()}, never from `$nav->label` bare:
+ * a resource that declares no nav label would otherwise tile as an empty string, and the fallback belongs
+ * to the definition that owns the label rather than to each producer that renders one.
  */
 class BeamResourceSummaryProvider implements ResourceSummaryProvider
 {
@@ -28,7 +31,7 @@ class BeamResourceSummaryProvider implements ResourceSummaryProvider
             return null;
         }
 
-        $label = $resource->nav->label !== '' ? $resource->nav->label : Str::headline($resource->key);
+        $label = $resource->resolvedLabel();
 
         return new SummaryResponseData(
             key: $resource->key,

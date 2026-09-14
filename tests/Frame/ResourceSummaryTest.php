@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Rushing\DataFilters\Attributes\Filterable;
 use Rushing\DataFilters\Facades\DataFilter;
@@ -14,8 +15,8 @@ use Rushing\DataFilters\Operators\Exact;
 use Rushing\DataFilters\Query\ResourceQuery;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterDefinition;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
-use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\FrameServiceProvider;
+use Schemastud\Frame\Routing\ResourceRoutes;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -102,6 +103,15 @@ class ResourceSummaryTest extends TestCase
             filterable: false, frame: true, readOnly: true, label: 'Streamed',
         ));
 
+        // Realm-VARYING: the scope closure READS its second argument, so the same declaration answers a
+        // different set per realm. Owner 1 holds two rows, owner 2 holds one — the counts differ, which is
+        // the only shape in which "the realm reached the closure" is observable from outside.
+        $registry->register(new ParticleResource(
+            key: 'realm-widgets', backing: SummaryWidget::class, data: SummaryWidgetData::class,
+            filterable: false, frame: true, readOnly: true, label: 'Realm widgets',
+            scope: fn (Builder $q, ?string $realm) => $q->where('owner_id', $realm === 'alpha' ? 1 : 2),
+        ), ['alpha', 'beta']);
+
         // Realm-gated: operator membership, refused to a principal without the entitlement.
         $registry->register(new ParticleResource(
             key: 'gated-widgets', backing: SummaryWidget::class, data: SummaryWidgetData::class,
@@ -173,11 +183,30 @@ class ResourceSummaryTest extends TestCase
         $this->assertSame($total, $figure);
     }
 
+    /**
+     * The realm actually reaches the declared `scope` closure's SECOND argument.
+     *
+     * Every other test here would pass unchanged if the closure were called with `null` in that slot — they
+     * all declare closures that ignore it. This one does not: the same resource, mounted under two realms,
+     * must answer two different totals, so a summary counted with the realm dropped is a failing test rather
+     * than a silently global tile.
+     */
+    public function test_the_declared_scope_receives_the_mounted_realm_and_the_figure_differs_per_realm(): void
+    {
+        foreach (['alpha', 'beta'] as $realm) {
+            Route::prefix($realm)->group(function () use ($realm): void {
+                ResourceRoutes::summary(at: 'resources/{resource}', names: $realm.'.resources', defaults: ['realm' => $realm]);
+            });
+        }
+
+        $this->actingAs($this->actor(1));
+
+        $this->getJson('alpha/resources/realm-widgets/summary')->assertOk()->assertJsonPath('figures.0.value', 2);
+        $this->getJson('beta/resources/realm-widgets/summary')->assertOk()->assertJsonPath('figures.0.value', 1);
+    }
+
     public function test_a_streams_only_backing_declines_and_the_route_answers_not_found(): void
     {
-        $definition = $this->app->make(ResourceRegistry::class)->get('streamed');
-        $this->assertNull($this->app->make(BeamResourceSummaryProvider::class)->summary($definition));
-
         $this->actingAs($this->actor(1));
         $this->getJson('frame/resources/streamed')->assertOk();
         $this->getJson('frame/resources/streamed/summary')->assertNotFound();

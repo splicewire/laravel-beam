@@ -54,6 +54,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         protected Gate $gate,
         protected ParticleResourceRegistry $registry,
         protected ParticleHydrator $hydrator,
+        protected ScopedIndexQuery $listQuery,
     ) {}
 
     public function index(ResourceDefinition $definition, array $params): array
@@ -115,7 +116,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      */
     protected function indexQuery(ResourceDefinition $definition): object
     {
-        return $this->listQuery()->forDefinition($definition);
+        return $this->listQuery->forDefinition($definition);
     }
 
     public function show(ResourceDefinition $definition, string $id): array
@@ -295,10 +296,14 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      * The registered particle declaration for this resource key, if any — carries the enrichment
      * ({@see ParticleResource::$includes} / `$project` / `$prepare` / `$afterWrite` / `$input`). Null for a
      * manifest-only resource (the zero-glue default).
+     *
+     * Delegated to {@see ScopedIndexQuery::resource()} rather than repeated: the two bodies were
+     * byte-identical over the same registry, and the helper this handler already holds is the one place
+     * that lookup is spelled.
      */
     protected function resource(ResourceDefinition $definition): ?ParticleResource
     {
-        return $this->registry->has($definition->key) ? $this->registry->get($definition->key) : null;
+        return $this->listQuery->resource($definition);
     }
 
     /**
@@ -334,13 +339,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      */
     protected function scoped(Builder $query, ?ParticleResource $resource): Builder
     {
-        return $this->listQuery()->scoped($query, $resource);
-    }
-
-    /** The shared scoped-list builder, over this handler's own hydrator and registry. */
-    protected function listQuery(): ScopedIndexQuery
-    {
-        return new ScopedIndexQuery($this->hydrator, $this->registry);
+        return $this->listQuery->scoped($query, $resource);
     }
 
     /**

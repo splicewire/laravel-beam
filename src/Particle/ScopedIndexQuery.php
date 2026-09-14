@@ -5,22 +5,20 @@ namespace Splicewire\Beam\Particle;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Schemastud\Frame\Registry\ResourceDefinition;
-use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
-use Splicewire\Beam\Summary\BeamResourceSummaryProvider;
 
 /**
  * The ONE scoped list query behind a Frame resource — what {@see ParticleFrameResourceHandler::index()}
- * reads and what {@see BeamResourceSummaryProvider} counts.
+ * reads and what `Splicewire\Beam\Summary\BeamResourceSummaryProvider` counts.
  *
  * Extracted from the handler (realm-dashboards ticket 02) so a summary figure and the index it summarizes
  * are provably one read. A count taken off `QueriesRecords::query([])` directly would be the UNSCOPED
  * builder: no owner scope, no `filter[...]`, no declared `scope` closure, no realm — a tenant-realm tile
  * showing the global total. Every caller that wants "the rows this actor's index would list" comes here.
  *
- * Two paths, mirroring both transports (REST {@see ParticleController::index}
+ * Two paths, mirroring both transports (REST `Splicewire\Beam\Http\Particle\ParticleController::index()`
  * applies the same split):
  *  - a registered, `filterable` declaration rides the data-filters builder ({@see ParticleHydrator::query}),
  *    which is its own owner-scoped, `filter[...]`-aware, saved-filter-capable gate;
@@ -51,7 +49,7 @@ class ScopedIndexQuery
     /**
      * The list query for a Frame index. A registered, `filterable` {@see ParticleResource} rides the
      * data-filters builder ({@see ParticleHydrator::query}) — the SAME owner-scoped, `filter[...]`-aware,
-     * saved-filter-capable query the REST {@see ParticleController::index}
+     * saved-filter-capable query the REST `Splicewire\Beam\Http\Particle\ParticleController::index()`
      * uses — so a Frame list and a REST list are one read (a pinned `filter[circuitId]` and per-caller
      * row-scoping hold in the editor exactly as they do over REST). A manifest-only resource, a
      * non-filterable one, or a host whose hydrator does not compose queries falls back to the plain
@@ -124,8 +122,14 @@ class ScopedIndexQuery
         return ($resource->scope)($query, $realm) ?? $query;
     }
 
-    /** The registered particle declaration for this resource key, if any (null for a manifest-only resource). */
-    protected function resource(ResourceDefinition $definition): ?ParticleResource
+    /**
+     * The registered particle declaration for this resource key, if any (null for a manifest-only resource).
+     *
+     * Public because it is the ONE spelling of the lookup: `ParticleFrameResourceHandler::resource()` was a
+     * byte-identical copy of this body, over the same registry, and two copies of a registry lookup are two
+     * places a miss can start meaning something different.
+     */
+    public function resource(ResourceDefinition $definition): ?ParticleResource
     {
         return $this->registry->has($definition->key) ? $this->registry->get($definition->key) : null;
     }

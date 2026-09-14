@@ -30,13 +30,16 @@ class {{ class }} implements ResourceSummaryProvider
         }
 
         $rows = $this->query->forDefinition($resource);
+        // `resolvedLabel()` and not `$resource->nav->label`: a resource that declares no nav label would
+        // tile as an empty string, and the definition owns that fallback.
+        $label = $resource->resolvedLabel();
 
         return new SummaryResponseData(
             key: $resource->key,
-            label: $resource->nav->label,
+            label: $label,
             icon: $resource->nav->icon,
             figures: [
-                new SummaryFigureData(key: 'total', label: $resource->nav->label, value: (clone $rows)->count()),
+                new SummaryFigureData(key: 'total', label: $label, value: (clone $rows)->count()),
                 // Group by domain state here, each figure off a clone of the same scoped builder, e.g.
                 // new SummaryFigureData(key: 'active', label: 'Active', value: (clone $rows)->where('status', 'active')->count(), tone: 'positive'),
             ],

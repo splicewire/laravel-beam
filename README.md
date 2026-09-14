@@ -322,11 +322,11 @@ them once and edits the copies in place:
 php artisan vendor:publish --tag=beam-stubs
 ```
 
-Six stubs land in `stubs/` (`particle-resource`, `particle-resource-input`, `particle-op`,
-`particle-op-task`, `particle-op-stream`, `particle-data`), and every later generate prefers the host
-copy with no flag. **Not publishing is the default, not a missing file** — this is deliberately not a
-`splicewire:beam:install` step. The tag maps the whole `stubs/` directory, so it also deposits inert
-copies of the `client-runtime/` and `scribe/` sources that have their own tags; see
+Seven stubs land in `stubs/` (`particle-resource`, `particle-resource-input`, `particle-op`,
+`particle-op-task`, `particle-op-stream`, `particle-data`, `particle-summary-provider`), and every later
+generate prefers the host copy with no flag. **Not publishing is the default, not a missing file** — this
+is deliberately not a `splicewire:beam:install` step. The tag maps the whole `stubs/` directory, so it
+also deposits inert copies of the `client-runtime/` and `scribe/` sources that have their own tags; see
 `docs/agents/stub-publishing.convention.md`.
 
 ## Conventions
