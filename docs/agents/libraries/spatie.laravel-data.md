@@ -76,7 +76,7 @@ The half beam kept reimplementing.
 **The doctrine is beam's own, and it is stricter than the library.** Three legal declaration sites,
 no fourth: `#[ParticleResource]` and `#[ParticleOp]` (`src/Particle/Attributes/`), plus the
 `#[ResponseFromData]` / `#[RequestFromData]` / `#[StreamsFromData]` / `#[QueryFromData]` set that
-lives in `vendor/rushing/laravel-data-schemas-scribe/src/Attributes/` for non-particle surfaces.
+lives in `vendor/schemastud/laravel-data-schemas/src/Http/Attributes/` for non-particle surfaces.
 Full statement: `docs/agents/particle-doctrine.md`.
 
 **Extend `Splicewire\Beam\Data\BeamData`, not spatie's.** `src/Data/BeamData.php` adds the response

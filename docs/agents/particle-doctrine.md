@@ -1,8 +1,8 @@
 # Particle doctrine — declare every boundary-crossing shape
 
 > **Seam:** beam-tier contract reference · stack-blind · every mechanism it names is a beam dependency
-> — `splicewire/laravel-beam`'s own attributes and `rushing/laravel-data-schemas-scribe`'s, which beam
-> requires so this doctrine can mandate them without pointing outside its own dependency graph.
+> — `splicewire/laravel-beam`'s own attributes and the declarations supplied by its
+> `schemastud/laravel-data-schemas` dependency. Scribe tooling is optional.
 
 *Homed in `splicewire/laravel-beam`, next to the registries it governs. Moved here from the beam
 runbook so a repo that vendors beam reaches it through beam's own `AGENTS.md` rather than a path on
@@ -22,7 +22,8 @@ Three legal declaration sites — no fourth:
    `ParticleOperation`'s constructor rejects the wrong pairing, so a mis-shaped declaration fails at
    registration rather than generating a wrong client type.
 3. **`#[ResponseFromData]` / `#[RequestFromData]` / `#[StreamsFromData]`** on a controller method —
-   for surfaces that are not particles. All three live in `rushing/laravel-data-schemas-scribe`
+   for surfaces that are not particles. All three live in `schemastud/laravel-data-schemas/src/Http/Attributes`, retaining their
+   `Rushing\LaravelDataSchemasScribe\Attributes` PHP namespace
    (`StreamsFromData` is repeatable and carries the wire event name). Precedence for a route's type is
    **macro → method attribute → particle-derived**; the host-side `->returns()` macro deprecates by
    attrition, not by a rename.
