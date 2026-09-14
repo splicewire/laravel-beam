@@ -119,20 +119,29 @@ Additive: a schema with no namespace content validates byte-for-byte as before, 
 with no json-ns wiring keeps plain structural validation (the enforcement engine resolves
 lazily from the container's `JsonNsServiceProvider` binding).
 
-## Frame operator seams — OOTB default bindings
+## Frame operator seams
 
 `beam → frame` (ADR-0156): beam owns the model-backed CRUD driver behind Frame's agnostic
-operator/admin sockets. Two of Frame's host-facing seams ship **out of the box** from
-`BeamServiceProvider`, so a fresh host gets a working operator area with **no `app/Frame/` glue**:
+operator/admin sockets. `BeamServiceProvider` supplies the handler resolver, and each framed
+particle resource projects its declared filter capability into Frame:
 
 | Frame contract | beam default | what it does |
 | --- | --- | --- |
-| `Schemastud\Frame\Contracts\FrameResourceHandlerResolver` | `Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver` | a constant map — every registered particle-resource key → the ONE `ParticleFrameResourceHandler` (which applies a registered `ParticleResource`'s enrichment when one exists under the key) |
-| `Schemastud\Frame\Contracts\FrameFilterProvider` | `Splicewire\Beam\Frame\NullFrameFilterProvider` | an empty facet schema, so the ListShell's `filter-schema` / `filter-options` socket mounts without erroring (a resource declaring no data-filters `query` has no facets) |
+| `Schemastud\Frame\Contracts\FrameResourceHandlerResolver` | `Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver` | resolves the resource's declared `handler:` when present, otherwise uses `ParticleFrameResourceHandler` |
+| `Schemastud\Frame\Contracts\ResourceFilterProvider` | `Splicewire\Beam\Filters\BeamResourceFilterProvider` | serves the addressed resource's schema, options and variants through the shared Beam filter runtime |
 
-Both are **overridable by the host** (last-binding-wins — an app provider registers after
-beam-core's): bind your own `FrameResourceHandlerResolver` to map some keys to bespoke handlers,
-or a real `FrameFilterProvider` (e.g. one derived from a data-filters query class) for a faceted list.
+Declare `filterProvider: YourProvider::class` on `#[ParticleResource]` to override its filter
+capability. A custom host `FrameResourceHandlerResolver` must honor each resource's declared
+`handler:` before falling back to its own generic driver.
+
+Beam registers the contextual `saved-filters` resource for ordinary Frame CRUD. Its index
+requires `filter[resource]`, creation requires `resource`, and a persisted target is immutable.
+Schema metadata advertises `savedViewsResource: 'saved-filters'` only when the target has a
+real data-filters validation registration. Canonical and retained `Particle::filters()` routes
+share authorization and persistence, including owner visibility and target-scoped defaults.
+Publish the shared `saved_filters` migration with `php artisan vendor:publish --tag=beam-migrations`
+(also included by the Beam installer), then run the host's normal migration process. The migration
+converges an existing table while preserving records and existing morph-ID column types.
 
 A resource whose backing is a service rather than a model — `StreamsRecords` without `QueriesRecords` —
 gets its facets by **declaring them on the backing**: implement `DeclaresFilterVocabulary` and return a

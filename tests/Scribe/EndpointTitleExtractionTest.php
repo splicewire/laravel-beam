@@ -102,8 +102,6 @@ class EndpointTitleExtractionTest extends TestCase
         foreach ([
             'schema' => 'Get Resource Schema',
             'destroy' => 'Delete Resource',
-            'filterSchema' => 'Get Filter Schema',
-            'savedFilters' => 'List Saved Filters',
         ] as $method => $title) {
             $action = FrameResourceController::class.'@'.$method;
             $endpoint = $this->extract(new Route(['GET'], 'frame/resources/{resource}', [

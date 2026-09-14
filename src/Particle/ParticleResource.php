@@ -10,9 +10,12 @@ use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
+use Schemastud\Frame\Contracts\ResourceFilterProvider;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Doctor\UndeclaredInputAudit;
+use Splicewire\Beam\Filters\BeamResourceFilterProvider;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\EloquentBacking;
 use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
@@ -98,7 +101,7 @@ class ParticleResource implements HasRegistryKey
      *                                          the residue, not a design. `null` is scheduled to become a
      *                                          synonym for `false`, and the gate on that flip is a
      *                                          MEASUREMENT rather than a memory:
-     *                                          {@see \Splicewire\Beam\Doctor\UndeclaredInputAudit}'s
+     *                                          {@see UndeclaredInputAudit}'s
      *                                          `particle.resource-input` check (api-surface-coherence 117)
      *                                          counts the residue over REACHABLE write mounts, derived from
      *                                          the router on every run
@@ -267,6 +270,8 @@ class ParticleResource implements HasRegistryKey
         public ?string $routeKey = null,
         public ?string $handler = null,
         public string $createAffordance = 'frame',
+        /** @var class-string<ResourceFilterProvider>|null */
+        public ?string $filterProvider = null,
     ) {}
 
     /**
@@ -344,6 +349,7 @@ class ParticleResource implements HasRegistryKey
 
         return new ResourceDefinition(
             key: $this->key,
+            filterProvider: $this->filterProvider ?? BeamResourceFilterProvider::class,
             model: $this->modelClass(),
             data: $this->data,
             creatable: ! $this->readOnly,

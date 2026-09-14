@@ -14,6 +14,7 @@ use Rushing\DataFilters\Contracts\ResourceModelResolver;
 use Rushing\DataFilters\DataFilterManager;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
 use Rushing\DataFilters\Registry\ResourceRegistry as FilterResourceRegistry;
+use Rushing\DataFilters\SavedFilters\SavedFilter;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Rushing\PermissionCascade\Support\CascadePolicyRegistrar;
@@ -31,7 +32,6 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\Generator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
-use Schemastud\Frame\Contracts\FrameFilterProvider;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
@@ -106,9 +106,10 @@ use Splicewire\Beam\Events\HookEventRegistrar;
 use Splicewire\Beam\Events\ParticlePersistedEventRegistrar;
 use Splicewire\Beam\Events\ResourceKeyOracle;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Filters\Data\SavedFilterData;
+use Splicewire\Beam\Filters\SavedFilterPolicy;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Frame\FrameResourceManifest;
-use Splicewire\Beam\Frame\NullFrameFilterProvider;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\ConfiguredResponseEnvelope;
@@ -144,10 +145,10 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleRelativeRegistry;
 use Splicewire\Beam\Particle\ParticleResourceModelResolver;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
-use Splicewire\Beam\Particle\ResourceRegistryReport;
 use Splicewire\Beam\Particle\Registry\RealmResourceSurfaceLocator;
 use Splicewire\Beam\Particle\Registry\ResourceRegistryBacking;
 use Splicewire\Beam\Particle\Registry\ResourceSurfaceLocator;
+use Splicewire\Beam\Particle\ResourceRegistryReport;
 use Splicewire\Beam\Query\HookResourceQuery;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;
@@ -300,6 +301,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 'shared/create_beam_submissions_table',
                 'shared/create_beam_ownership_edges_table',
                 'shared/create_beam_schemas_table',
+                'shared/create_saved_filters_table',
                 // spatie/laravel-activitylog's table, squashed here from the former central-only
                 // `central_activity_log` + tenant-only `activity_log` pair (the same consolidation
                 // tower already did for model-status' `statuses`). Homed alongside
@@ -535,23 +537,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // each boot; `splicewire:beam:frame:cache` writes it, `splicewire:beam:frame:clear` / `optimize:clear` remove it.
         $this->app->singleton(FrameResourceManifest::class, fn ($app) => new FrameResourceManifest($app));
 
-        // Frame's two host-facing seams, promoted OOTB (beam-ux-uplift ticket 09) so a fresh host gets a
-        // working operator area with NO `app/Frame/` glue — retiring the host-local
-        // BeamFrameResourceHandlerResolver + NullFrameFilterProvider whose docblocks said "neither
-        // laravel-frame nor laravel-beam binds this — the host does." Beam already ships the singular
-        // ParticleFrameResourceHandler (ADR-0156), so the default resolver is a constant map: every
-        // registered particle key → that one handler. The default filter provider answers an empty facet
-        // schema (a particle resource declaring no data-filters `query` has no facets), so the ListShell's
-        // filter-schema/filter-options socket mounts without erroring.
-        //
-        // Both are OVERRIDABLE by the host: an app provider registers AFTER beam-core's, so a host that
-        // binds its own FrameResourceHandlerResolver (bespoke handlers per key) or a real FrameFilterProvider
-        // (faceted lists) wins — the same override mechanism as the schema-migration defaults above.
+        // Beam supplies the default CRUD resolver. Filter capabilities are projected per resource
+        // through ParticleResource::toResourceDefinition(), including a declared provider override.
         $this->app->bind(
             FrameResourceHandlerResolver::class,
             DefaultParticleResourceHandlerResolver::class,
         );
-        $this->app->bind(FrameFilterProvider::class, NullFrameFilterProvider::class);
 
         // Frame's THIRD host-facing seam, and the one frame cannot answer for itself: may this actor
         // address this resource on the socket at all? Frame ships an OpenResourceAccessGate because a
@@ -2397,6 +2388,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
     protected function discoverResources(): void
     {
         $registry = $this->app->make(ParticleResourceRegistry::class);
+        $registry->registerClass(SavedFilterData::class);
+        \Illuminate\Support\Facades\Gate::policy(SavedFilter::class, SavedFilterPolicy::class);
 
         // The explicit list is always registered, cache or no cache.
         $explicit = config('beam.core.resources.classes', config('frame.resources', []));

@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Particle\Attributes;
 
 use Attribute;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
+use Schemastud\Frame\Contracts\ResourceFilterProvider;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -119,5 +120,7 @@ class ParticleResource
         public ?string $routeKey = null,
         public ?string $handler = null,
         public string $createAffordance = 'frame',
+        /** @var class-string<ResourceFilterProvider>|null */
+        public ?string $filterProvider = null,
     ) {}
 }

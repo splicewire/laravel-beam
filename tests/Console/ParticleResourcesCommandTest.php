@@ -22,6 +22,8 @@ class ParticleResourcesCommandTest extends TestCase
     /** How many resources beam itself had registered before this test added its two. */
     private int $baseline = 0;
 
+    private array $baselineUnseated = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -32,6 +34,8 @@ class ParticleResourcesCommandTest extends TestCase
         // count here is relative — hard-coding 2 would pass today and break the day beam declares a
         // second one of its own, which is the estate's stale-census failure in miniature.
         $this->baseline = count($registry->all());
+        $this->baselineUnseated = array_values(array_map(fn ($resource) => $resource->key,
+            array_filter($registry->all(), fn ($resource) => $resource->section === null)));
 
         $registry->register(new ParticleResource(
             key: 'widgets',
@@ -62,9 +66,10 @@ class ParticleResourcesCommandTest extends TestCase
             // One substring, not four: the whole census is a single written line, and the runner
             // consumes at most one expectation per line.
             ->expectsOutputToContain(sprintf(
-                '%d registered · %d opt into nav (1 in no section) · 1 with an intent/capability disagreement',
+                '%d registered · %d opt into nav (%d in no section) · 1 with an intent/capability disagreement',
                 $this->baseline + 2,
-                $this->baseline + 1,
+                $this->baseline - count($this->baselineUnseated) + 1,
+                count($this->baselineUnseated) + 1,
             ))
             ->expectsOutputToContain('1 row(s) shown by the active filter')
             ->assertSuccessful();
@@ -77,7 +82,7 @@ class ParticleResourcesCommandTest extends TestCase
 
         $rows = $this->rowsFor(['--section' => 'none']);
 
-        $this->assertSame(['feed'], array_column($rows, 'key'));
+        $this->assertSame([...$this->baselineUnseated, 'feed'], array_column($rows, 'key'));
         $this->assertNull($rows[0]['section']);
     }
 

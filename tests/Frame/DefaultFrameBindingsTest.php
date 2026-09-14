@@ -2,14 +2,21 @@
 
 namespace Splicewire\Beam\Tests\Frame;
 
-use Schemastud\Frame\Contracts\FrameFilterProvider;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
+use Schemastud\Frame\Contracts\ResourceFilterProvider;
+use Schemastud\Frame\Data\FilterOptionsResponseData;
+use Schemastud\Frame\Data\FilterSchemaResponseData;
+use Schemastud\Frame\Data\FilterVariantsData;
+use Schemastud\Frame\Data\FilterVariantsResponseData;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Spatie\LaravelData\Data;
+use Splicewire\Beam\Filters\BeamResourceFilterProvider;
+use Splicewire\Beam\Filters\Data\SavedFilterData;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
-use Splicewire\Beam\Frame\NullFrameFilterProvider;
 use Splicewire\Beam\Frame\UnknownFrameResource;
 use Splicewire\Beam\Models\BeamSchema;
+use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -45,8 +52,7 @@ class BespokeTestFrameHandler implements FrameResourceHandler
 }
 
 /**
- * beam-ux-uplift ticket 09: the two Frame host-facing seams ship OOTB from BeamServiceProvider, so a fresh
- * host gets a working operator area with no `app/Frame/` glue — AND the host can still override either.
+ * Beam supplies resource handlers and per-resource filter capabilities; hosts can override either.
  */
 class DefaultFrameBindingsTest extends TestCase
 {
@@ -124,13 +130,10 @@ class DefaultFrameBindingsTest extends TestCase
         ));
     }
 
-    public function test_beam_binds_the_null_filter_provider_ootb(): void
+    public function test_beam_projects_its_filter_provider_by_default(): void
     {
-        $provider = $this->app->make(FrameFilterProvider::class);
-
-        $this->assertInstanceOf(NullFrameFilterProvider::class, $provider);
-        $this->assertSame(['properties' => []], $provider->for('operator-customers'));
-        $this->assertSame([], $provider->options('anything'));
+        $resource = new ParticleResource(key: 'subjects', backing: BeamSchema::class, data: SavedFilterData::class);
+        $this->assertSame(BeamResourceFilterProvider::class, $resource->toResourceDefinition()->filterProvider);
     }
 
     public function test_a_host_resolver_binding_wins(): void
@@ -157,27 +160,33 @@ class DefaultFrameBindingsTest extends TestCase
         $this->assertNotInstanceOf(DefaultParticleResourceHandlerResolver::class, $resolved);
     }
 
-    public function test_a_host_filter_provider_binding_wins(): void
+    public function test_a_resource_can_override_the_projected_filter_provider(): void
     {
-        $hostProvider = new class implements FrameFilterProvider
-        {
-            public function for(string $resource): array
-            {
-                return ['properties' => ['status' => ['type' => 'string']]];
-            }
+        $resource = AttributedParticleDiscovery::resourceFromAttribute(DeclaredProviderData::class);
+        $this->assertSame(DeclaredFilterProvider::class, $resource->toResourceDefinition()->filterProvider);
+    }
+}
 
-            public function options(string $ref): array
-            {
-                return [['value' => 'open', 'label' => 'Open']];
-            }
-        };
+#[\Splicewire\Beam\Particle\Attributes\ParticleResource(
+    key: 'declared-provider', backing: BeamSchema::class, data: DeclaredProviderData::class,
+    input: false, frame: true, filterProvider: DeclaredFilterProvider::class,
+)]
+class DeclaredProviderData extends Data {}
 
-        $this->app->bind(FrameFilterProvider::class, fn () => $hostProvider);
+class DeclaredFilterProvider implements ResourceFilterProvider
+{
+    public function schema(ResourceDefinition $resource, ?string $variant = null): FilterSchemaResponseData
+    {
+        return new FilterSchemaResponseData(['type' => 'object', 'properties' => []]);
+    }
 
-        $resolved = $this->app->make(FrameFilterProvider::class);
+    public function options(ResourceDefinition $resource, string $ref, ?string $search = null): FilterOptionsResponseData
+    {
+        return new FilterOptionsResponseData([]);
+    }
 
-        $this->assertSame($hostProvider, $resolved);
-        $this->assertNotInstanceOf(NullFrameFilterProvider::class, $resolved);
-        $this->assertArrayHasKey('status', $resolved->for('x')['properties']);
+    public function variants(ResourceDefinition $resource): FilterVariantsResponseData
+    {
+        return new FilterVariantsResponseData(new FilterVariantsData($resource->key, []));
     }
 }
