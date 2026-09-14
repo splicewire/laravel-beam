@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Filters;
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Gate;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Query\ResourceQuery;
@@ -22,6 +23,7 @@ use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 /** The filter runtime shared by Frame's capability port and retained particle mounts. */
 class ResourceFilters
@@ -71,10 +73,10 @@ class ResourceFilters
     {
         $this->authorize($key, $legacy);
         if ($variant !== null) {
-            $definition = $this->definition($key, $legacy);
-            abort_unless(ResourceFilterConstraints::variants($definition->resource)->contains($variant), 404);
+            $this->definition($key, $legacy);
+            $selected = app(FilterQuerySelection::class)->definition($key, $variant);
 
-            return new FilterSchemaResponseData($this->schemaFor(DataFilter::resource($variant)), $this->savedResource($key));
+            return new FilterSchemaResponseData($this->schemaFor($selected), $this->savedResource($key));
         }
         $particle = $this->particles->find($key);
         if ($particle !== null && (new BackingResolver)->hasCapability($particle->backing, DeclaresFilterVocabulary::class)) {
@@ -99,9 +101,9 @@ class ResourceFilters
         $declares = $particle !== null && (new BackingResolver)->hasCapability($particle->backing, DeclaresFilterVocabulary::class);
         $definition = DataFilter::registry()->find($key);
         if (! $declares && $definition !== null) {
-            foreach (ResourceFilterConstraints::variants($definition->resource)->values() as $variant) {
-                if ($variant !== $key) {
-                    $schemas[] = $this->schemaFor(DataFilter::resource($variant));
+            foreach ($this->availableVariants($key, $definition) as $candidate) {
+                if ($candidate->key !== $key) {
+                    $schemas[] = $this->schemaFor($candidate);
                 }
             }
         }
@@ -123,12 +125,33 @@ class ResourceFilters
     {
         $definition = $this->definition($key, $legacy);
         $variants = [];
-        foreach (ResourceFilterConstraints::variants($definition->resource)->values() as $variant) {
-            $candidate = DataFilter::resource($variant);
+        foreach ($this->availableVariants($key, $definition) as $candidate) {
+            $variant = $candidate->key;
             $variants[] = new FilterVariantData((string) $variant, $definition->resource, $variant === $definition->resource, $candidate->data === $definition->data);
         }
 
         return new FilterVariantsResponseData(new FilterVariantsData($definition->resource, $variants));
+    }
+
+    /** @return list<FilterDefinition> */
+    private function availableVariants(string $key, FilterDefinition $definition): array
+    {
+        $available = [];
+        foreach (ResourceFilterConstraints::variants($definition->resource)->values() as $variant) {
+            try {
+                $available[] = app(FilterQuerySelection::class)->definition($key, $variant);
+            } catch (AuthorizationException $e) {
+                if (! in_array($e->status() ?? 403, [403, 404], true)) {
+                    throw $e;
+                }
+            } catch (HttpExceptionInterface $e) {
+                if (! in_array($e->getStatusCode(), [403, 404], true)) {
+                    throw $e;
+                }
+            }
+        }
+
+        return $available;
     }
 
     public function supportsSavedFilters(string $key): bool

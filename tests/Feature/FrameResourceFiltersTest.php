@@ -27,15 +27,17 @@ use Splicewire\Beam\Filters\SavedFilterResourceHandler;
 use Splicewire\Beam\Particle\Backing\DeclaredFacet;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\FilterVocabulary;
+use Splicewire\Beam\Particle\Backing\ResourceBacking;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
 use Splicewire\Beam\Tests\TestCase;
 
 class FrameResourceFiltersTest extends TestCase
 {
     protected function getPackageProviders($app): array
     {
-        return [...parent::getPackageProviders($app), FrameServiceProvider::class];
+        return [FrameServiceProvider::class, ...parent::getPackageProviders($app)];
     }
 
     protected function defineEnvironment($app): void
@@ -84,6 +86,7 @@ class FrameResourceFiltersTest extends TestCase
 
     public function test_beam_projects_the_capability_and_a_contextual_saved_filter_resource(): void
     {
+        $this->assertInstanceOf(RealmEntitlementResourceGate::class, app(ResourceAccessGate::class));
         $registry = app(ResourceRegistry::class);
         $this->assertSame(BeamResourceFilterProvider::class, $registry->get('papers')->filterProvider);
         $saved = $registry->get('saved-filters');
@@ -294,6 +297,8 @@ class FrameResourceFiltersTest extends TestCase
         $this->getJson("tenant/host/saved/{$id}")->assertNotFound();
         $this->putJson("tenant/host/saved/{$id}", [])->assertNotFound();
         $this->deleteJson("tenant/host/saved/{$id}")->assertNotFound();
+        $this->getJson("operator/host/saved/{$id}")->assertForbidden();
+        Gate::define('entitlement:os.operate', fn () => true);
         $this->getJson("operator/host/saved/{$id}")->assertOk();
         $this->app->bind(ResourceAccessGate::class, fn () => new class implements ResourceAccessGate
         {
@@ -333,7 +338,31 @@ class FrameResourceFiltersTest extends TestCase
         $this->postJson('tenant/saved', $this->payload('books'))->assertNotFound();
         $this->postJson('tenant/books/filters', [])->assertNotFound();
         $this->getJson('tenant/books/filters/schema')->assertNotFound();
+        $this->postJson('operator/saved', $this->payload('books'))->assertForbidden();
+        Gate::define('entitlement:os.operate', fn () => true);
         $this->postJson('operator/saved', $this->payload('books'))->assertOk();
+    }
+
+    public function test_legacy_only_saved_variant_permissions_follow_current_variant_access(): void
+    {
+        DataFilter::registry()->registerDefinition(new FilterDefinition('legacy-only', ResourceFilterData::class, ResourceFilterQuery::class, FilterRecord::class));
+        DataFilter::registry()->registerDefinition(new FilterDefinition('legacy-variant', ResourceFilterData::class, ResourceFilterQuery::class, FilterRecord::class, 'legacy-only'));
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'legacy-variant', backing: LegacyVariantPolicyBacking::class, data: ResourceFilterData::class,
+            frame: false, readOnly: true, policy: 'legacy.variant',
+        ));
+        Particle::filters('legacy-only', at: 'legacy-only');
+        Gate::define('legacy.variant', fn () => true);
+        $canonical = $this->postJson('legacy-only/filters', ['name' => 'Canonical'])->assertCreated()->json('data.id');
+        $variant = $this->postJson('legacy-only/filters', ['name' => 'Selected', 'query_parameters' => ['filterVariant' => 'legacy-variant']])
+            ->assertCreated()->assertJsonPath('data.can.delete', true)->json('data.id');
+        Gate::define('legacy.variant', fn () => false);
+        $rows = array_column($this->getJson('legacy-only/filters')->assertOk()->json('data'), null, 'id');
+        $this->assertFalse($rows[$variant]['can']['delete']);
+        $this->assertTrue($rows[$canonical]['can']['delete']);
+        $this->getJson('legacy-only/filters/'.$variant)->assertForbidden();
+        $this->deleteJson('legacy-only/filters/'.$variant)->assertForbidden();
+        $this->deleteJson('legacy-only/filters/'.$canonical)->assertNoContent();
     }
 
     public function test_canonical_saved_targets_require_frame_membership_while_legacy_only_targets_keep_working(): void
@@ -341,7 +370,9 @@ class FrameResourceFiltersTest extends TestCase
         DataFilter::registry()->registerDefinition(new FilterDefinition('legacy-only', ResourceFilterData::class, ResourceFilterQuery::class, FilterRecord::class));
         Particle::filters('legacy-only', at: 'legacy-only');
         $this->postJson('frame/resources/saved-filters', $this->payload('legacy-only'))->assertNotFound();
-        $this->postJson('legacy-only/filters', ['name' => 'Existing API'])->assertCreated();
+        $id = $this->postJson('legacy-only/filters', ['name' => 'Existing API'])->assertCreated()->json('data.id');
+        $this->putJson('legacy-only/filters/'.$id, ['name' => 'Renamed'])->assertOk()->assertJsonPath('data.can.delete', true);
+        $this->deleteJson('legacy-only/filters/'.$id)->assertNoContent();
     }
 }
 
@@ -383,3 +414,5 @@ class DeniedSavedFilterPolicy
         return false;
     }
 }
+
+class LegacyVariantPolicyBacking implements ResourceBacking {}

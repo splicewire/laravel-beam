@@ -3,12 +3,13 @@
 namespace Splicewire\Beam\Filters;
 
 use Schemastud\Frame\Contracts\ResourceFilterProvider;
+use Schemastud\Frame\Contracts\ResourceFilterValidator;
 use Schemastud\Frame\Data\FilterOptionsResponseData;
 use Schemastud\Frame\Data\FilterSchemaResponseData;
 use Schemastud\Frame\Data\FilterVariantsResponseData;
 use Schemastud\Frame\Registry\ResourceDefinition;
 
-class BeamResourceFilterProvider implements ResourceFilterProvider
+class BeamResourceFilterProvider implements ResourceFilterProvider, ResourceFilterValidator
 {
     public function __construct(private ResourceFilters $filters) {}
 
@@ -25,5 +26,10 @@ class BeamResourceFilterProvider implements ResourceFilterProvider
     public function variants(ResourceDefinition $resource): FilterVariantsResponseData
     {
         return $this->filters->variants($resource->key);
+    }
+
+    public function validate(ResourceDefinition $resource, array $parameters): array
+    {
+        return app(FilterQuerySelection::class)->validate($resource->key, $parameters);
     }
 }

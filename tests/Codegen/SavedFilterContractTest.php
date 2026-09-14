@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Codegen;
 
 use ReflectionClass;
 use Schemastud\DataSchemas\Generators\Generator;
+use Schemastud\Frame\Data\ResourceCapabilitiesData;
 use Splicewire\Beam\Codegen\DeclaredParticleTypes;
 use Splicewire\Beam\Filters\Data\SavedFilterData;
 use Splicewire\Beam\Filters\Data\SavedFilterEditData;
@@ -27,11 +28,15 @@ class SavedFilterContractTest extends TestCase
         $this->assertSame('object', $input['properties']['query_parameters']['type']);
         $this->assertSame('string', $read['properties']['id']['type']);
         $this->assertSame('boolean', $read['properties']['is_default']['type']);
+        $this->assertSame('#/$defs/ResourceCapabilitiesData', $read['properties']['can']['$ref']);
+        foreach (['create', 'update', 'delete'] as $action) {
+            $this->assertSame('boolean', $read['$defs']['ResourceCapabilitiesData']['properties'][$action]['type']);
+        }
         $this->assertSame('array', $list['properties']['data']['type']);
         $this->assertSame('#/$defs/SavedFilterData', $list['properties']['data']['items']['$ref']);
         $this->assertArrayHasKey(SavedFilterData::class, app(DeclaredParticleTypes::class)->declared());
         $this->assertArrayHasKey(SavedFilterInputData::class, app(DeclaredParticleTypes::class)->declared());
-        $empty = new SavedFilterData('id', 'Empty', 'papers', [], 'private', false);
+        $empty = new SavedFilterData('id', 'Empty', 'papers', [], 'private', false, new ResourceCapabilitiesData(true, true, true));
         $this->assertInstanceOf(\stdClass::class, json_decode($empty->toJson())->query_parameters);
         $this->assertSame([], $empty->queryParameters);
     }

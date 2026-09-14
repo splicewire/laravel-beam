@@ -8,10 +8,13 @@ use RuntimeException;
 use Rushing\LaravelDataSchemasScribe\Attributes\QueryFromData;
 use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
+use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Data\FilterOptionsQueryData;
 use Schemastud\Frame\Data\FilterOptionsResponseData;
 use Schemastud\Frame\Data\FilterSchemaResponseData;
 use Schemastud\Frame\Data\FilterVariantsResponseData;
+use Schemastud\Frame\Data\ResourceQueryData;
+use Schemastud\Frame\Filters\ResourceFilters as FrameResourceFilters;
 use Splicewire\Beam\Filters\Data\SavedFilterData;
 use Splicewire\Beam\Filters\Data\SavedFilterListResponseData;
 use Splicewire\Beam\Filters\Data\SavedFilterResponseData;
@@ -20,6 +23,7 @@ use Splicewire\Beam\Filters\Data\SavedFilterUpdateInputData;
 use Splicewire\Beam\Filters\ResourceFilters;
 use Splicewire\Beam\Filters\SavedFilterService;
 use Splicewire\Beam\Http\Controller;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /** Retained Particle::filters() HTTP projection of the shared resource runtime. */
 class ResourceFiltersController extends Controller
@@ -28,6 +32,7 @@ class ResourceFiltersController extends Controller
 
     public function __construct(private ResourceFilters $filters, private SavedFilterService $saved) {}
 
+    #[QueryFromData(ResourceQueryData::class)]
     #[ResponseFromData(SavedFilterListResponseData::class)]
     public function index(Request $request): JsonResponse
     {
@@ -71,19 +76,29 @@ class ResourceFiltersController extends Controller
     #[ResponseFromData(FilterSchemaResponseData::class)]
     public function schema(Request $request): JsonResponse
     {
-        return response()->json($this->filters->schema($this->resourceKey($request), legacy: true)->toArray());
+        $key = $this->resourceKey($request);
+
+        return response()->json(($this->frame($key)?->schema($key)
+            ?? $this->filters->schema($key, legacy: true))->toArray());
     }
 
     #[ResponseFromData(FilterSchemaResponseData::class)]
     public function variantSchema(Request $request): JsonResponse
     {
-        return response()->json($this->filters->schema($this->resourceKey($request), (string) $request->route('variant'), legacy: true)->toArray());
+        $key = $this->resourceKey($request);
+        $variant = (string) $request->route('variant');
+
+        return response()->json(($this->frame($key)?->schema($key, $variant)
+            ?? $this->filters->schema($key, $variant, legacy: true))->toArray());
     }
 
     #[ResponseFromData(FilterVariantsResponseData::class)]
     public function variants(Request $request): JsonResponse
     {
-        return response()->json($this->filters->variants($this->resourceKey($request), legacy: true)->toArray());
+        $key = $this->resourceKey($request);
+
+        return response()->json(($this->frame($key)?->variants($key)
+            ?? $this->filters->variants($key, legacy: true))->toArray());
     }
 
     #[QueryFromData(FilterOptionsQueryData::class)]
@@ -91,10 +106,31 @@ class ResourceFiltersController extends Controller
     public function options(Request $request): JsonResponse
     {
         $key = $this->resourceKey($request);
-        $this->filters->authorize($key, legacy: true);
+        $frame = $this->frame($key);
+        if ($frame !== null) {
+            $frame->definition($key);
+        } else {
+            $this->filters->authorize($key, legacy: true);
+        }
         $query = FilterOptionsQueryData::validateAndCreate($request->query());
+        $ref = (string) $request->route('ref');
+        $search = is_string($query->search) ? $query->search : null;
 
-        return response()->json($this->filters->options($key, (string) $request->route('ref'), is_string($query->search) ? $query->search : null, legacy: true)->toArray());
+        return response()->json(($frame?->options($key, $ref, $search)
+            ?? $this->filters->options($key, $ref, $search, legacy: true))->toArray());
+    }
+
+    /** Only explicitly non-Frame retained resources use Beam's default runtime directly. */
+    private function frame(string $key): ?FrameResourceFilters
+    {
+        $realm = request()->route('realm');
+        if (is_string($realm) && $realm !== '') {
+            abort_unless(in_array($realm, app(ParticleResourceRegistry::class)->realmsFor($key), true), 404);
+        }
+
+        return app()->bound(ResourceRegistry::class) && app(ResourceRegistry::class)->find($key) !== null
+            ? app(FrameResourceFilters::class)
+            : null;
     }
 
     private function resourceKey(Request $request): string

@@ -17,6 +17,8 @@ use Illuminate\Routing\Route;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Rushing\LaravelDataSchemasScribe\Attributes\QueryFromData;
+use Schemastud\Frame\Data\ResourceQueryData;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\RowAuthorization;
@@ -109,6 +111,7 @@ class ParticleController extends Controller
         protected ResponseEnvelope $envelope,
     ) {}
 
+    #[QueryFromData(ResourceQueryData::class)]
     public function index(Request $request): Responsable
     {
         $resource = $this->particleResource($request);

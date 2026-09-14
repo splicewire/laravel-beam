@@ -11,6 +11,7 @@ use Rushing\DataFilters\Facades\DataFilter;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Doctor\FilterablePromiseAudit;
+use Splicewire\Beam\Filters\FilterQuerySelection;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
@@ -122,7 +123,7 @@ class PayloadParticleReader implements ParticleHydrator
             );
         }
 
-        $builder = DataFilter::query($recordType)->apply(app(Request::class));
+        $builder = app(FilterQuerySelection::class)->query($recordType, app(Request::class));
 
         if ($ctx->includes !== []) {
             $builder->with($ctx->includes);

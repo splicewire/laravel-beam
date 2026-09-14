@@ -136,9 +136,29 @@ capability. A custom host `FrameResourceHandlerResolver` must honor each resourc
 
 Beam registers the contextual `saved-filters` resource for ordinary Frame CRUD. Its index
 requires `filter[resource]`, creation requires `resource`, and a persisted target is immutable.
-Schema metadata advertises `savedViewsResource: 'saved-filters'` only when the target has a
-real data-filters validation registration. Canonical and retained `Particle::filters()` routes
-share authorization and persistence, including owner visibility and target-scoped defaults.
+Schema metadata advertises `savedViewsResource: 'saved-filters'` when the selected provider
+can validate saved queries and the saved resource is reachable in the current realm. Beam's
+default provider adapts its data-filters registration. A custom provider can instead implement
+`Schemastud\Frame\Contracts\ResourceFilterValidator::validate(ResourceDefinition, array): array`
+and advertise the saved resource from its schema, without registering a DataFilter. It receives
+the complete query parameters and returns their validated form; generic facet fields belong in
+`filter[...]`. Retained `Particle::filters()` reads use the declared provider for framed targets;
+only explicitly non-Frame retained targets fall back to Beam's default runtime.
+
+The top-level `filterVariant` selects a registered query vocabulary for ordinary list reads and
+is retained in saved `query_parameters`. Default Beam variants must use a `ResourceQuery`, belong
+to the same resource and resolve to the same model. Both target and candidate authorization and
+row scopes apply; canonical pagination does not restrict the target scope's ID subquery. Beam's
+reader and Tower's `DataFilterRecordHydrator` use this shared selection. Unknown, inaccessible or
+ineligible variants cannot fall back to canonical execution. When a provider advertises saved
+views only for a variant, pass that `filterVariant` on the saved-resource list request too.
+
+The typed `savedViewsCan` metadata governs create controls; each saved row's typed `can` records
+its allowed mutations, including ownership and stored target/variant access. Missing or denied
+persistence removes the saved-resource reference while leaving readable vocabulary available.
+Canonical Frame access denials are 403; retained mounts preserve 404 for a target outside the
+explicit route realm. Canonical and retained routes share owner visibility, persistence and
+target-scoped defaults, and retain 404 for mutations of another owner's view.
 Publish the shared `saved_filters` migration with `php artisan vendor:publish --tag=beam-migrations`
 (also included by the Beam installer), then run the host's normal migration process. The migration
 converges an existing table while preserving records and existing morph-ID column types.

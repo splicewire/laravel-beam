@@ -36,6 +36,9 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * Given a resource, {@see ParticleResourceRegistry::realmsFor()} — "the declared membership
  * authority", and the only reader that climbs both membership rungs — names its realms.
  *
+ * An explicit route `realm` requires membership in that realm and its entitlement. The union
+ * rules below apply only when the route does not select a realm.
+ *
  *  1. **No realms ⇒ permit.** An unrealmed resource is not a resource someone forgot to protect; it
  *     is one this host never placed in a console. The estate leans on this: every starter
  *     deliberately leaves `members`, `invitations` and `tokens` out of `frame.realms` (their config
@@ -119,6 +122,17 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
         }
 
         $realms = $this->particles->realmsFor($definition->key);
+
+        // An explicitly mounted realm is the door being used; other memberships cannot open it.
+        $mountedRealm = request()->route('realm');
+        if (is_string($mountedRealm) && $mountedRealm !== '') {
+            if (! in_array($mountedRealm, $realms, true)) {
+                return false;
+            }
+            $ability = $this->abilityFor($mountedRealm);
+
+            return $ability === null || $this->gate->allows($ability);
+        }
 
         if ($realms === []) {
             return true;

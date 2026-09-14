@@ -4,11 +4,15 @@ namespace Splicewire\Beam\Filters\Data;
 
 use Rushing\DataFilters\SavedFilters\SavedFilter;
 use Schemastud\DataSchemas\Attributes\MapValues;
+use Schemastud\Frame\Authorization\ResourceAuthorizer;
+use Schemastud\Frame\Contracts\ResourceRegistry;
+use Schemastud\Frame\Data\ResourceCapabilitiesData;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\WithTransformer;
 use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Filters\SavedFilterResourceHandler;
+use Splicewire\Beam\Filters\SavedFilterService;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 
 /** Contextual CRUD resource; an empty label and section keep it out of primary navigation. */
@@ -35,6 +39,7 @@ class SavedFilterData extends BeamData
         public string $visibility,
         #[MapName('is_default')]
         public bool $isDefault,
+        public ResourceCapabilitiesData $can,
         #[MapName('owner_type')]
         public string|Optional|null $ownerType = new Optional,
         #[MapName('owner_id')]
@@ -51,11 +56,24 @@ class SavedFilterData extends BeamData
 
     public static function fromSavedFilter(SavedFilter $saved): self
     {
-        return new self($saved->id, $saved->name, $saved->resource, $saved->query_parameters ?? [], $saved->visibility->value, $saved->is_default);
+        return new self($saved->id, $saved->name, $saved->resource, $saved->query_parameters ?? [], $saved->visibility->value, $saved->is_default, self::capabilities($saved));
     }
 
     public static function withLegacyMetadata(SavedFilter $saved): self
     {
-        return self::from([...$saved->toArray(), 'query_parameters' => $saved->query_parameters ?? []]);
+        return self::from([...$saved->toArray(), 'query_parameters' => $saved->query_parameters ?? [], 'can' => self::capabilities($saved)]);
+    }
+
+    private static function capabilities(SavedFilter $saved): ResourceCapabilitiesData
+    {
+        $definition = app(ResourceRegistry::class)->get('saved-filters');
+
+        $capabilities = app(ResourceAuthorizer::class)->recordCapabilities($definition, $saved);
+        if (! app(SavedFilterService::class)->allowsMutation($saved)) {
+            $capabilities['update'] = false;
+            $capabilities['delete'] = false;
+        }
+
+        return ResourceCapabilitiesData::from($capabilities);
     }
 }
