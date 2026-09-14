@@ -33,19 +33,17 @@ Six generator stubs, one per thing a `make:particle-*` command can emit:
 | `particle-op-stream.stub` | the same command, `--kind=stream` |
 | `particle-data.stub` | the same command's input/output Data companions |
 
-⚠️ **The tag maps a DIRECTORY, not a file list**, so it also deposits `stubs/client-runtime/{api,routes}.ts`
-and `stubs/scribe/scribe.php`. Those two have their own tags — `beam-client-runtime` and `beam-scribe` —
-which publish to the destinations that are actually *read* (`resource_path('js/lib/')` and
-`config_path('scribe.php')`). **The copies `beam-stubs` leaves under `stubs/` are inert.** Publishing
-`beam-stubs` is not a way to get either of them wired; publishing them and then also publishing
-`beam-stubs` leaves a second, unread copy on disk that will drift.
+The tag maps a directory, so it also deposits `stubs/client-runtime/{api,routes}.ts`.
+Those files are wired by `beam-client-runtime`, which publishes to `resource_path('js/lib/')`.
+The copies left under `stubs/` are inert. Scribe configuration belongs to optional
+`splicewire/laravel-beam-docs`; its `beam-scribe` tag publishes `config_path('scribe.php')`.
 
 ## Why it is not an install step
 
 `splicewire:beam:install` deliberately does not publish this tag (the provider's comment is the
 authority): *an unpublished stub is not a missing file, it is the default.* A host that never
 customizes should carry no copy — a published stub is a snapshot that stops tracking the package, and
-the estate has enough of those. `beam-scribe` is an install step for the opposite reason: a fresh host
+the estate has enough of those. `beam-scribe` is an optional docs-package install step for the opposite reason: a fresh host
 cannot generate a spec worth reading from Scribe's stock config (ADR-0211 §7).
 
 For the same reason there is **no doctor finding for an unpublished stub**. Absence is correct here,

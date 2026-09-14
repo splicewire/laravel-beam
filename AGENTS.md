@@ -80,8 +80,8 @@ an authenticated door. The key recipe is write-once. See
 publish-once-edit-in-place needs no flag on the generate. Two things a reader gets wrong otherwise:
 it is **deliberately not** a `splicewire:beam:install` step (*an unpublished stub is not a missing
 file, it is the default*), and the tag maps the whole `stubs/` **directory**, so it also deposits
-INERT copies of `client-runtime/` and `scribe/` — those are wired by `beam-client-runtime` and
-`beam-scribe`, which publish to the paths that are actually read. See
+an inert copy of `client-runtime/`, wired separately by `beam-client-runtime`. Optional
+`splicewire/laravel-beam-docs` owns `beam-scribe` and its read configuration path. See
 `docs/agents/stub-publishing.convention.md`.
 
 ## Asking what the convergent guards would do, without publishing
