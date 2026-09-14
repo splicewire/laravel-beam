@@ -80,10 +80,15 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     /**
      * The list for a resource whose backing only {@see StreamsRecords}: take the request's opaque
      * `filter[…]` bag + cursor/perPage, hand them to the backing, and project
-     * each merged item through the resource's read Data class (its spatie magic named constructor, e.g.
-     * `ReviewItemResourceData::fromReviewItem`, resolves off the item type). The source owns merge/sort/
-     * filter/pagination; Frame only wires it. Read-only by construction (`creatable: false` ⇒ store/
-     * update/destroy/show already 405 via {@see assertWritable}).
+     * each merged item through {@see ScopedIndexQuery::projectListRow()} — the declaration's `project`
+     * closure when it declares one, else the resource's read Data class (its spatie magic named
+     * constructor, e.g. `ReviewItemResourceData::fromReviewItem`, resolves off the item type). The source
+     * owns merge/sort/filter/pagination; Frame only wires it. Read-only by construction
+     * (`creatable: false` ⇒ store/update/destroy/show already 405 via {@see assertWritable}).
+     *
+     * The per-row projection lives on {@see ScopedIndexQuery} and not here because a summary provider
+     * showing "the rows this index would list" has to apply the SAME ladder, and re-spelling it there is
+     * how the two drift (realm-dashboards 06a review).
      *
      * A flat row list, which frame's controller pages — or, for an {@see Unpaged} backing, the controller's
      * own `{data,total,page,perPage}` envelope holding every row.
@@ -93,9 +98,6 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     protected function streamedIndex(ResourceDefinition $definition): array
     {
         $request = app(Request::class);
-
-        /** @var class-string<Data> $dataClass */
-        $dataClass = $definition->data;
 
         // The WHOLE `filter[...]` bag, passed through opaquely — the backing owns its own query
         // semantics and beam does not interpret it. Every backing reads only the keys it knows
@@ -108,7 +110,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         $backing = $this->backing($definition, StreamsRecords::class);
 
         $rows = collect($backing->records($filters, $cursor, $perPage)->items())
-            ->map(fn (mixed $item) => ($item instanceof Data ? $item : $dataClass::from($item))->toArray())
+            ->map(fn (mixed $item) => $this->listQuery->projectListRow($definition, $item)->toArray())
             ->all();
 
         // An {@see Unpaged} backing's whole population is one page. Frame's controller re-slices a flat

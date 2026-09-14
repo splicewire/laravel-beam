@@ -12,8 +12,9 @@ use Splicewire\Beam\Particle\ScopedIndexQuery;
  * Beam's default answer to frame's {@see ResourceSummaryProvider} — the provider every `#[ParticleResource]`
  * projects unless it declares its own `summaryProvider:`.
  *
- * One figure, `total`, counted through {@see ScopedIndexQuery} — the SAME scoped builder the Frame index
- * reads — so the figure a tenant-realm tile shows equals that actor's index total, never the table's.
+ * One figure, `total`, counted through {@see ScopedIndexQuery::forAggregate()} — the SAME scoped builder
+ * the Frame index reads, in the shape an aggregate reads it (includes dropped, ordering cleared) — so the
+ * figure a tenant-realm tile shows equals that actor's index total, never the table's.
  * A resource whose backing cannot compose a builder (streams-only, or model-less with no declaration)
  * DECLINES with null, and frame answers 404: an honest absence rather than an invented zero.
  *
@@ -38,7 +39,7 @@ class BeamResourceSummaryProvider implements ResourceSummaryProvider
             label: $label,
             icon: $resource->nav->icon,
             figures: [
-                new SummaryFigureData(key: 'total', label: $label, value: $this->query->forDefinition($resource)->count()),
+                new SummaryFigureData(key: 'total', label: $label, value: $this->query->forAggregate($resource)->count()),
             ],
             overview: null,
         );

@@ -5,9 +5,11 @@ namespace Splicewire\Beam\Particle;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Spatie\LaravelData\Data;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
+use Splicewire\Beam\Summary\BeamResourceSummaryProvider;
 
 /**
  * The ONE scoped list query behind a Frame resource — what {@see ParticleFrameResourceHandler::index()}
@@ -101,6 +103,66 @@ class ScopedIndexQuery
         $filters = array_filter((array) app(Request::class)->input('filter', []));
 
         return $this->scoped((new ParticleListQuery)->forList($resource, $filters), $resource);
+    }
+
+    /**
+     * The same scoped list query, in the shape an AGGREGATE reads it: {@see forDefinition()} with the
+     * declared eager-loads dropped and the declared ordering cleared.
+     *
+     * Both removals are about the aggregate, not about the scope — the gate is whatever `forDefinition()`
+     * applied and is untouched here:
+     *  - **includes dropped.** They exist to make the row PROJECTION free; a `count()`/`GROUP BY` projects
+     *    no row, so every declared eager-load is a query per figure for nothing.
+     *  - **ordering cleared.** An `ORDER BY` a `GROUP BY` does not cover is an ERROR on Postgres, and the
+     *    declaration's default sort (`#[Sortable(default: true)]`) is exactly such a column. A provider
+     *    that grouped off `forDefinition()` directly worked on sqlite and 500ed at a real host.
+     *
+     * Every summary provider that counts or groups comes here, so the aggregate shape is spelled once:
+     * {@see BeamResourceSummaryProvider} and the tenancy/commerce providers each
+     * used to re-spell some subset of it, and only one of them had both halves (realm-dashboards 06a review).
+     */
+    public function forAggregate(ResourceDefinition $definition): object
+    {
+        // `setEagerLoads()` / `reorder()` are Eloquent builder methods; a data-filters query builder
+        // forwards both to its subject. Either way what comes back is a builder an aggregate can run on.
+        return $this->forDefinition($definition)->setEagerLoads([])->reorder();
+    }
+
+    /**
+     * Project ONE list row to its `Data` — the projection
+     * {@see ParticleFrameResourceHandler::streamedIndex()} applies to every row it emits, and therefore
+     * the one a provider must apply to show "the rows this resource's index would list".
+     *
+     * The ladder, in order:
+     *  1. the declaration's `project` closure, when it declares one (a Data class whose constructor a
+     *     row cannot reach — `CentralActivityData::fromModel`, `CustomerData::fromModel`);
+     *  2. the item itself, when a backing already streams `Data` (a composite arm may);
+     *  3. `$definition->data::from($item)`, spatie's magic named constructor.
+     *
+     * The list read's own projection DECLARATION — includes and actor — is the `ReadContext::list()`
+     * {@see forDefinition()} hands the hydrator; it shapes the query, not this per-row step, which is why
+     * the two live on the same object and why a caller that has one has the other.
+     *
+     * ⚠️ NOT the same as `ParticleFrameResourceHandler::projectRead()`: that one additionally folds
+     * CONTRIBUTED slices onto a `Model`-backed row and guarantees an `id`. A streamed row has no model to
+     * contribute against. Callers wanting the model-backed list row want the handler's, not this.
+     */
+    public function projectListRow(ResourceDefinition $definition, mixed $item): Data
+    {
+        $resource = $this->resource($definition);
+
+        if ($resource?->project !== null) {
+            return ($resource->project)($item);
+        }
+
+        if ($item instanceof Data) {
+            return $item;
+        }
+
+        /** @var class-string<Data> $dataClass */
+        $dataClass = $definition->data;
+
+        return $dataClass::from($item);
     }
 
     /**
