@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Surgeon;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\File;
 use Rushing\Surgeon\Audit\PackageGraph;
 use Splicewire\Beam\Console\DocblockCommand;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
@@ -30,6 +31,31 @@ use Symfony\Component\Console\Input\ArrayInput;
  */
 class DocblockTierAuditWiringTest extends TestCase
 {
+    private string $hostRoot;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // A host has a vendor tree. Testbench's skeleton does not promise that symlink, so create
+        // the actual consumer layout this wiring test needs instead of inheriting a prior run's files.
+        $this->hostRoot = sys_get_temp_dir().'/beam-docblock-host-'.bin2hex(random_bytes(6));
+        mkdir($this->hostRoot.'/vendor/rushing', 0777, true);
+        file_put_contents($this->hostRoot.'/composer.json', '{"name":"fixture/host"}');
+        symlink(
+            dirname((new \ReflectionClass(PackageGraph::class))->getFileName(), 3),
+            $this->hostRoot.'/vendor/rushing/laravel-surgeon',
+        );
+        $this->app->setBasePath($this->hostRoot);
+    }
+
+    protected function tearDown(): void
+    {
+        unlink($this->hostRoot.'/vendor/rushing/laravel-surgeon');
+        File::deleteDirectory($this->hostRoot);
+        parent::tearDown();
+    }
+
     /**
      * The provider binding. `Rushing\Surgeon\Audit\PackageGraph` is a real vendored family class in this
      * package's own `vendor/` (which the testbench skeleton symlinks), so it resolves to

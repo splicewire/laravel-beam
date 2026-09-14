@@ -3,7 +3,6 @@
 namespace Splicewire\Beam\Rendering;
 
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
-use Splicewire\Beam\Scribe\Strategies\ParticleOperationParameterStrategy;
 
 /**
  * Optional companion to {@see ResourceRendering}: what a rendering puts ON THE WIRE, stated statically
@@ -94,7 +93,7 @@ interface DeclaresDelivery
      * declaration. Its two readers are
      * {@see ParticleOperationController::format()}, which 422s an
      * unlisted value before the handler runs, and
-     * {@see ParticleOperationParameterStrategy}, which publishes the
+     * the optional documentation projection, which publishes the
      * enum — the enforced set and the published set are one expression, never two that agree today.
      *
      * An EMPTY list means "no format axis": one representation, no `?format` parameter documented,

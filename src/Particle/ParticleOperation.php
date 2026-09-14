@@ -24,8 +24,6 @@ use Splicewire\Beam\Rendering\DeclaresDelivery;
 use Splicewire\Beam\Rendering\ResourceRendering;
 use Splicewire\Beam\Routing\HttpMethod;
 use Splicewire\Beam\Routing\IdConstraint;
-use Splicewire\Beam\Scribe\OpenApi\DeliveryGenerator;
-use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
 
 /**
  * A named operation on a particle resource, mounted at `{$method} /{resource}/{id}/{name}` by
@@ -381,8 +379,8 @@ use Splicewire\Beam\Scribe\Strategies\ParticleOperationDeliveryStrategy;
  *      outside the declared enumeration, BEFORE `handle` runs. This is the ENFORCEMENT half, and it is
  *      the clause `RenderingsController` owned until ticket 13 (11 A6). Without it 13's dissolution
  *      would have regressed format validation from enforced-and-published to per-rendering ad hoc.
- *   2. {@see ParticleOperationDeliveryStrategy} +
- *      {@see DeliveryGenerator} — the PUBLICATION half: one
+ *   2. the optional documentation projection +
+ *      the optional documentation projection — the PUBLICATION half: one
  *      `content` entry per declared media type at 200, the declared response headers, and the 422 the
  *      enumeration implies. Scribe's own model is one-content-type-per-status and structurally cannot
  *      say this, which is why the pair exists.

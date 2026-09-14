@@ -16,8 +16,8 @@ use Splicewire\Beam\Tests\TestCase;
  * Three things are asserted, and the last is the one the tag exists for:
  *
  * 1. **What the tag writes.** It publishes the package's whole `stubs/` DIRECTORY into `base_path('stubs')`,
- *    not a file list — so the payload is the six generator stubs *plus* `client-runtime/` and `scribe/`,
- *    which have their own narrower tags (`beam-client-runtime`, `beam-scribe`) pointing at real host
+ *    not a file list — so the payload is the six generator stubs *plus* `client-runtime/`,
+ *    which have their own narrower tags (`beam-client-runtime`) pointing at real host
  *    destinations. `beam-stubs` deposits INERT copies of those two under `stubs/`; nothing reads them there,
  *    and it is not a substitute for either tag.
  * 2. **Where it writes.** `base_path()` in the `publishes()` call is evaluated at BOOT, so the destination is
@@ -89,13 +89,13 @@ class StubPublishTest extends TestCase
      * own tags. Asserted rather than left implicit: it is the difference between "six stubs" and what a host's
      * `stubs/` actually looks like after the publish, and the copies landing here are inert.
      */
-    public function test_the_directory_mapping_also_deposits_the_client_runtime_and_scribe_sources(): void
+    public function test_the_directory_mapping_also_deposits_the_client_runtime_sources(): void
     {
         $this->artisan('vendor:publish', ['--tag' => 'beam-stubs'])->assertExitCode(0);
 
         $this->assertFileExists($this->publishRoot.'/client-runtime/api.ts');
         $this->assertFileExists($this->publishRoot.'/client-runtime/routes.ts');
-        $this->assertFileExists($this->publishRoot.'/scribe/scribe.php');
+        $this->assertFileDoesNotExist($this->publishRoot.'/scribe/scribe.php');
 
         // …and nowhere else. `beam-stubs` is not a substitute for `beam-client-runtime` or `beam-scribe`:
         // its ONLY destination is `base_path('stubs')`, so a host that publishes just this tag has an

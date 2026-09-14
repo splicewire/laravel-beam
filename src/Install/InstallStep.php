@@ -26,5 +26,7 @@ class InstallStep
         public bool $migrates = false,
         public int $order = 100,
         public ?string $note = null,
+        /** @var list<string> Commands run after publication and migration, only for selected steps. */
+        public array $commands = [],
     ) {}
 }

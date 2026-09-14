@@ -34,7 +34,6 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\Subject\ResourceRecordLookup;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
-use Splicewire\Beam\Scribe\Strategies\ParticleListParameterStrategy;
 use Splicewire\Beam\Write\ModelAttributeMapper;
 use Splicewire\Beam\Write\ParticleWriter;
 
@@ -68,7 +67,7 @@ class ParticleController extends Controller
 
     /**
      * The pagination query keys the generic index reads. Named here rather than inlined so the reference
-     * DOCUMENTS the same words the controller ACCEPTS — {@see ParticleListParameterStrategy}
+     * DOCUMENTS the same words the controller ACCEPTS — the optional documentation projection
      * derives the parameter names from these constants instead of restating them, which is what lets the
      * camelCase cutover flip one word in one place and carry the docs with it.
      */

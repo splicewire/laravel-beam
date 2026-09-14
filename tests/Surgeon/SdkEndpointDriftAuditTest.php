@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Surgeon;
 
+use Illuminate\Container\Container;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Routing\Router;
@@ -40,7 +41,8 @@ class SdkEndpointDriftAuditTest extends TestCase
     public function test_missing_and_empty_request_directories_are_inconclusive_in_both_channels(): void
     {
         $directory = sys_get_temp_dir().'/sdk-endpoint-audit-'.bin2hex(random_bytes(8));
-        $previousRouter = Route::getFacadeRoot();
+        $previousApplication = Route::getFacadeApplication();
+        Route::setFacadeApplication(new Container);
         $router = new Router(new Dispatcher);
         $router->get('api/v1/things', fn () => null);
         Route::swap($router);
@@ -84,7 +86,8 @@ class SdkEndpointDriftAuditTest extends TestCase
                 $this->assertSame('fail', $findings[0]->status->value);
             }
         } finally {
-            Route::swap($previousRouter);
+            Route::clearResolvedInstance('router');
+            Route::setFacadeApplication($previousApplication);
             if (is_file($directory.'/ListThings.php')) {
                 unlink($directory.'/ListThings.php');
             }

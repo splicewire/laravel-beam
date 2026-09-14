@@ -3,7 +3,6 @@
 namespace Splicewire\Beam\Routing;
 
 use Illuminate\Routing\Route;
-use Splicewire\Beam\Scribe\OpenApi\OperationIdGenerator;
 
 /**
  * The read side of the `->beam()` route-metadata namespace, as a SEAM (api-surface-coherence tickets
@@ -60,7 +59,7 @@ interface RouteMetadataReader
 
     /**
      * The OpenAPI `operationId` the MOUNT declared for this route, or null when it declared none — rung (E)
-     * of {@see OperationIdGenerator} (api-surface-coherence 36/78).
+     * of the optional documentation projection (api-surface-coherence 36/78).
      *
      * One key, N declarers. The alternative — a generator with an arm per stamp family — needs a new arm
      * every time a macro is added, and there were already five stamp shapes. An undeclared route falls to

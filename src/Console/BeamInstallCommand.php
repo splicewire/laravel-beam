@@ -14,7 +14,6 @@ use Splicewire\Beam\Install\MigrationCollision;
 use Splicewire\Beam\Install\MigrationTravel;
 use Splicewire\Beam\Install\RehearsedMigration;
 use Splicewire\Beam\Install\TableOwnershipResolver;
-use Splicewire\Beam\OpenApi\ConfiguredArtifactSpecSource;
 use Splicewire\Beam\Seed\BeamSeedManifest;
 
 use function Laravel\Prompts\confirm;
@@ -187,11 +186,7 @@ class BeamInstallCommand extends Command
         // App-owned Data classes also have a disk projection; OpenAPI only generates in memory.
         $schemasGenerated = $this->generateSchemaArtifacts();
 
-        // 4b. Generate the OpenAPI artifact, so a fresh host serves its OWN spec at
-        //     beam/openapi.{yaml,json} on first boot rather than 404ing until someone remembers to run
-        //     the generator. Publishing beam's scribe stub happened above; this is the step that turns it
-        //     into bytes.
-        $this->generateOpenApiArtifact();
+        $completionSucceeded = $this->runCompletionCommands($runSteps);
 
         // 4c. Run the package-registered seed pass, so a fresh host boots with the data its packages
         //     need to serve anything at all — beam-ux's `site` realm root above all (ADR-0209 §9: the
@@ -228,6 +223,12 @@ class BeamInstallCommand extends Command
             // scroll away behind publishing, migrating and spec generation.
             $this->error('beam stack installed, but SEEDING REPORTED FAILURES — re-run `splicewire:beam:seed` '
                 .'to see them. The host is installed; its package-owned data is incomplete.');
+
+            return self::FAILURE;
+        }
+
+        if (! $completionSucceeded) {
+            $this->components->error('One or more package completion commands failed; re-run the reported command after fixing its cause.');
 
             return self::FAILURE;
         }
@@ -686,22 +687,6 @@ class BeamInstallCommand extends Command
     }
 
     /**
-     * Generate the OpenAPI artifact so the OTB docs promise holds on FIRST boot (ADR-0211 §4).
-     *
-     * Three things this deliberately does:
-     *
-     *  - **Re-reads the just-published config.** `config/scribe.php` was written by the publish pass a few
-     *    steps up, in a process that loaded its config before that file existed. Without this the install's
-     *    own generate would run against Scribe's STOCK defaults — Postman on, `add_routes` on, none of
-     *    beam's strategies — and produce an artifact of bare paths that looks like a successful install.
-     *  - **Never fails the install.** Extraction reflects over every route in the application, which is
-     *    exactly where a half-configured fresh host throws. A host that cannot generate yet still has a
-     *    working stack and a doctor check telling it so; a host that cannot *install* has nothing.
-     *  - **Skips silently when Scribe is not registered.** It is a hard transitive dependency of beam
-     *    today, so this is defence rather than a real branch — but a host that removed it should not get a
-     *    crash out of an installer.
-     */
-    /**
      * Run `splicewire:beam:seed` — the seed-side twin of this command, over the same self-registration
      * shape. Install has always publish-and-migrated without ever seeding, which was invisible while the
      * only registered seeder was a nav restamp; it stopped being invisible when ADR-0209 made the realm
@@ -784,51 +769,27 @@ class BeamInstallCommand extends Command
         }
     }
 
-    private function generateOpenApiArtifact(): void
+    /** @param list<InstallStep> $steps */
+    private function runCompletionCommands(array $steps): bool
     {
-        $app = $this->getApplication();
+        $succeeded = true;
 
-        if ($app === null || ! $app->has('scribe:generate')) {
-            return;
-        }
+        foreach ($steps as $step) {
+            foreach ($step->commands as $command) {
+                $this->line("{$step->package} → {$command}");
 
-        $this->line('splicewire:beam:install → OpenAPI artifact (scribe:generate)');
-
-        $published = config_path('scribe.php');
-
-        if (is_file($published)) {
-            try {
-                $fresh = require $published;
-
-                if (is_array($fresh)) {
-                    config(['scribe' => $fresh]);
+                try {
+                    if ($this->call($command) !== self::SUCCESS) {
+                        $succeeded = false;
+                    }
+                } catch (\Throwable $exception) {
+                    $succeeded = false;
+                    $this->warn("{$command} failed: {$exception->getMessage()}");
                 }
-            } catch (\Throwable $e) {
-                $this->warn('  ↳ could not read the published config/scribe.php — generating against the '.
-                    'config already loaded. ('.$e->getMessage().')');
             }
         }
 
-        try {
-            $this->callSilent('scribe:generate');
-        } catch (\Throwable $e) {
-            $this->warn('  ↳ extraction failed, so no spec was written: '.$e->getMessage());
-            $this->line('     beam/openapi.{yaml,json} will 404 until `php artisan scribe:generate` '.
-                'succeeds. The rest of the install is unaffected; `beam:doctor` reports the missing artifact.');
-
-            return;
-        }
-
-        $artifact = app(ConfiguredArtifactSpecSource::class)->artifactPath();
-
-        if (is_file($artifact)) {
-            $this->line("  ↳ OK — {$artifact} written; beam/openapi.yaml + beam/openapi.json now serve it.");
-
-            return;
-        }
-
-        $this->warn("  ↳ scribe:generate ran but no artifact landed at {$artifact} — check that ".
-            '`scribe.openapi.enabled` is true and that `beam.core.openapi.artifact` points where Scribe writes.');
+        return $succeeded;
     }
 
     /**

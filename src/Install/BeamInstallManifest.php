@@ -79,6 +79,7 @@ class BeamInstallManifest implements Registry
         bool $migrates = false,
         int $order = 100,
         ?string $note = null,
+        array $commands = [],
     ): static {
         // The key is a COMPOSER PACKAGE NAME, so `/` makes it illegal as a bare `Key` — 58 D5's
         // ruling for `BeamExtensionInstallManifest` applies verbatim: `RelativeUriKey`, coordinate
@@ -89,7 +90,7 @@ class BeamInstallManifest implements Registry
         // Herd host and every starter, not a three-package sample.
         $this->store->register(
             $package instanceof RegistryKey ? $package : RelativeUriKey::of($package),
-            new InstallStep((string) $package, is_array($publishTags) ? $publishTags : [], $migrates, $order, $note),
+            new InstallStep((string) $package, is_array($publishTags) ? $publishTags : [], $migrates, $order, $note, $commands),
             $by,
             $ability,
         );
