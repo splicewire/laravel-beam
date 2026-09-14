@@ -35,10 +35,19 @@ final class DashboardParticipation
     /**
      * @param  string|null  $href  the resource's mounted list href when the caller knows it; the rail
      *                             is matched by route name first, so this is the fallback join
+     * @param  NavLeaf|null  $seat  OUT: the rail leaf this resource matched, or null when no leaf does
+     *                              (a resource that participates only by declaring `summary`/`overview`,
+     *                              or one that does not participate at all). Returned rather than left
+     *                              to the caller so a caller that needs the resource's RAIL POSITION —
+     *                              beam-ux's `DashboardBacking`, which orders a card with no declared
+     *                              `navOrder` by it — reads the match this rule already made instead of
+     *                              walking the rail a second time and risking a different answer.
      * @return 'summary'|'overview'|null
      */
-    public static function contextFor(ResourceDefinition $definition, RailLeaves $rail, ?string $href = null): ?string
+    public static function contextFor(ResourceDefinition $definition, RailLeaves $rail, ?string $href = null, ?NavLeaf &$seat = null): ?string
     {
+        $seat = null;
+
         try {
             $contexts = (new WidgetContextProjector)->forClass(new ReflectionClass($definition->data));
         } catch (Throwable) {
@@ -49,8 +58,13 @@ final class DashboardParticipation
         $overview = $contexts[self::CONTEXT_OVERVIEW] ?? null;
 
         if ($summary !== null && ($summary['participates'] ?? true) === false) {
-            return null;
+            return null; // opted out: no context, and no seat either — it is on no dashboard
         }
+
+        // Matched even when a declaration decides the context below: a resource that declares
+        // `summary`/`overview` AND sits in the rail still has a rail position, and a caller ordering by
+        // it must get the same number the tile for that leaf gets.
+        $seat = $rail->find(ListRouteName::of($definition), $href);
 
         if ($overview !== null && ($overview['participates'] ?? true) !== false) {
             return self::CONTEXT_OVERVIEW;
@@ -60,7 +74,7 @@ final class DashboardParticipation
             return self::CONTEXT_SUMMARY;
         }
 
-        return $rail->find(ListRouteName::of($definition), $href) !== null ? self::CONTEXT_SUMMARY : null;
+        return $seat !== null ? self::CONTEXT_SUMMARY : null;
     }
 
     /**
