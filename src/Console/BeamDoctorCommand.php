@@ -12,6 +12,7 @@ use Rushing\Doctor\Finding;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BeamManifestAudit;
+use Splicewire\Beam\Doctor\DashboardTierAudit;
 use Splicewire\Beam\Doctor\EventCatalogPrefixAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\IntakeDoorAudit;
@@ -213,6 +214,15 @@ class BeamDoctorCommand extends Command
                 ModelLessReadGateAudit::class,
                 false,
                 fn (ModelLessReadGateAudit $audit) => $audit->run(),
+            ),
+            // Which realm dashboard cards rest on the DERIVED tier (seated, no `summary`/`overview`
+            // binding, default provider) and which are ABSENT (on the dashboard, provider cannot answer).
+            // Advisory: which resources a host seats in which realm is a host fact, and a derived card is
+            // a working card. It is the work-list realm-dashboards ticket 04 asked for.
+            $this->guarded(
+                DashboardTierAudit::class,
+                false,
+                fn (DashboardTierAudit $audit) => $audit->run(),
             ),
         );
 
