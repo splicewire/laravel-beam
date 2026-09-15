@@ -106,6 +106,51 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
         $this->getJson('promised-papers/filters/schema')->assertNotFound();
     }
 
+    public function test_a_resource_that_declares_no_filter_surface_answers_an_empty_variant_list(): void
+    {
+        // The sibling sub-surface. `variants()` used to route through `definition()`, so every frame
+        // list of a `filterable: false` resource (the `{realm}-dashboard` resources) logged a
+        // `filters/variants` 404 on load while `filters/schema` had already stopped. Same narrowing,
+        // same three answers: empty for the opt-out, 404 for the unknown key, untouched when registered.
+        $this->declareResource('opted-out-variants', filterable: false);
+        Particle::filters('opted-out-variants', at: 'opted-out-variants');
+
+        $response = $this->withoutExceptionHandling()->getJson('opted-out-variants/filters/variants');
+
+        $response->assertOk();
+        $this->assertSame('opted-out-variants', $response->json('data.resource'));
+        $this->assertSame([], $response->json('data.variants'));
+    }
+
+    public function test_a_filterable_resource_with_no_registration_still_404s_its_variants(): void
+    {
+        $this->declareResource('promised-variants', filterable: true);
+        Particle::filters('promised-variants', at: 'promised-variants');
+
+        $this->getJson('promised-variants/filters/variants')->assertNotFound();
+    }
+
+    public function test_a_key_no_registry_carries_still_404s_its_variants(): void
+    {
+        Particle::filters('undeclared-variants', at: 'undeclared-variants');
+
+        $this->getJson('undeclared-variants/filters/variants')->assertNotFound();
+    }
+
+    public function test_a_registered_filter_resource_still_serves_its_canonical_variant(): void
+    {
+        $this->declareResource('kept-variants', filterable: false);
+        $this->registerFilterResource('kept-variants');
+        Particle::filters('kept-variants', at: 'kept-variants');
+
+        $response = $this->withoutExceptionHandling()->getJson('kept-variants/filters/variants');
+
+        $response->assertOk();
+        $this->assertSame('kept-variants', $response->json('data.resource'));
+        $this->assertCount(1, $response->json('data.variants'));
+        $this->assertTrue($response->json('data.variants.0.canonical'));
+    }
+
     public function test_a_key_no_registry_carries_still_404s(): void
     {
         // Nothing is declared under this key in EITHER registry. 404 is true, and it is also what keeps

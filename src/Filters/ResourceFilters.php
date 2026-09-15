@@ -123,7 +123,17 @@ class ResourceFilters
 
     public function variants(string $key, bool $legacy = false): FilterVariantsResponseData
     {
-        $definition = $this->definition($key, $legacy);
+        $this->authorize($key, $legacy);
+        $definition = DataFilter::tryResource($key);
+        if ($definition === null) {
+            // Mirrors schema(): a declared `filterable: false` resource is not an absence. Its list
+            // page asks for variants on every mount, and the honest answer is "none", not 404.
+            $particle = $this->particles->find($key);
+            abort_if($particle === null || $particle->filterable, 404, "No filter resource registered for [{$key}].");
+
+            return new FilterVariantsResponseData(new FilterVariantsData($key, []));
+        }
+        $this->authorizeModel($definition->model);
         $variants = [];
         foreach ($this->availableVariants($key, $definition) as $candidate) {
             $variant = $candidate->key;
