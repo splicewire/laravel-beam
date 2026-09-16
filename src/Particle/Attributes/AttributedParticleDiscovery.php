@@ -190,6 +190,7 @@ class AttributedParticleDiscovery
             handler: $attribute->handler,
             filterProvider: $attribute->filterProvider,
             summaryProvider: $attribute->summaryProvider,
+            schemaRef: $attribute->schemaRef,
             createAffordance: $attribute->createAffordance,
         );
     }

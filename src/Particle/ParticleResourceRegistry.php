@@ -29,6 +29,7 @@ use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
+use Splicewire\Beam\Schema\SchemaBindingIndex;
 use Splicewire\Beam\Surgeon\ListedResourceDisplacementAudit;
 use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
 
@@ -387,6 +388,8 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
             'editable' => $resource->editable ?? ! $resource->readOnly,
             'deletable' => $resource->deletable ?? ! $resource->readOnly,
         ]);
+
+        (new SchemaBindingIndex($this))->assertCanRegister($resource);
 
         $this->entries->register($resource->key, $resource, $by, $ability);
         $this->registerRealms($resource->key, $realms);
