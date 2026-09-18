@@ -129,10 +129,14 @@ particle resource projects its declared filter capability into Frame:
 | --- | --- | --- |
 | `Schemastud\Frame\Contracts\FrameResourceHandlerResolver` | `Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver` | resolves the resource's declared `handler:` when present, otherwise uses `ParticleFrameResourceHandler` |
 | `Schemastud\Frame\Contracts\ResourceFilterProvider` | `Splicewire\Beam\Filters\BeamResourceFilterProvider` | serves the addressed resource's schema, options and variants through the shared Beam filter runtime |
+| `Schemastud\Frame\Contracts\ResourceSummaryProvider` | `Splicewire\Beam\Summary\BeamResourceSummaryProvider` | answers `resources/{key}/summary` with one `total` figure counted through the same scoped index query the Frame index reads |
 
 Declare `filterProvider: YourProvider::class` on `#[ParticleResource]` to override its filter
-capability. A custom host `FrameResourceHandlerResolver` must honor each resource's declared
-`handler:` before falling back to its own generic driver.
+capability. Declare `summaryProvider: YourProvider::class` to override its summary capability: the
+default counts through the scoped index query, a `StreamsRecords`-only backing declines (404), and
+the response is a `SummaryResponseData` with an optional `OverviewData`. A custom host
+`FrameResourceHandlerResolver` must honor each resource's declared `handler:` before falling back
+to its own generic driver.
 
 Beam registers the contextual `saved-filters` resource for ordinary Frame CRUD. Its index
 requires `filter[resource]`, creation requires `resource`, and a persisted target is immutable.
