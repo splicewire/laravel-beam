@@ -70,6 +70,8 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
 - **Promoted to fleet tier 2026-09-18** as `rushing/splicewire-beam-runbook docs/adr/0005-a-realm-dashboard-is-one-read-only-resource-per-realm-of-card-rows.md`
   (the sixth surface in its `references/frontend-surfaces.md`), after three hosts proved a dashboard
   config-only: beam `de4f17b`, satellite `da03bc4`, tower `cc19025` (realm-dashboards tickets 05, 10).
+- The bespoke operator dashboard endpoint and page were deleted at parity on 2026-09-18 (tower `a6392cb`,
+  tower-ux `7dcddde`, flagship `9347808a3`): the OTB realm dashboard is the dashboard.
 
 ## Alternatives rejected
 
@@ -83,6 +85,9 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
 
 ## Records
 
-- Commits: laravel-beam `d28504c`, `6c9135a` (ticket 02), `b058cb8`, `5fb0764` (ticket 04);
-  laravel-beam-ux `c989626`, `946336b`; `~/Workspaces/js/packages/beam` `d86e0cb`, `7db0efd`.
+- Commits: laravel-beam `d28504c`, `6c9135a` (ticket 02), `b058cb8`, `5fb0764` (ticket 04), `7158dd9`,
+  `d1982f2`, `32eeec9`; laravel-beam-ux `c989626`, `946336b`, `9332c82`, `827a979`;
+  `~/Workspaces/js/packages/beam` `d86e0cb`, `7db0efd`, `507f87c`, `203393a`, `1d0f392`;
+  `~/Workspaces/js/packages/splicewire/tower-ux` `7dcddde`; tower `a6392cb` (the bespoke operator
+  dashboard controller deleted at parity).
 - Map: `~/Workspaces/splicewire-ecosystem/.scratch/splicewire/splicewire-ecosystem/realm-dashboards/`.
