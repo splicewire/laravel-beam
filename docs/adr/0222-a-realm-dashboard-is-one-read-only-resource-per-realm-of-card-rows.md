@@ -67,8 +67,9 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
   not a default.
 - Two repos spell the rule's two halves: participation and grammar in beam, seating and hrefs in beam-ux.
   The audit and the backing cannot drift because they call one function.
-- **Runbook promotion is deferred** until a second host proves a dashboard config-only; repo-local per
-  `docs/conventions/adr-placement.md`.
+- **Promoted to fleet tier 2026-09-18** as `rushing/splicewire-beam-runbook docs/adr/0005-a-realm-dashboard-is-one-read-only-resource-per-realm-of-card-rows.md`
+  (the sixth surface in its `references/frontend-surfaces.md`), after three hosts proved a dashboard
+  config-only: beam `de4f17b`, satellite `da03bc4`, tower `cc19025` (realm-dashboards tickets 05, 10).
 
 ## Alternatives rejected
 
