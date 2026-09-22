@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Data;
 
+use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\LaravelData\Attributes\Validation\ActiveUrl;
 use Spatie\LaravelData\Attributes\Validation\Url;
 use Spatie\LaravelData\Optional;
@@ -79,9 +80,11 @@ class HookInputData extends BeamData implements MapsToModelAttributes
     public function __construct(
         #[Url]
         #[ActiveUrl]
+        #[Description('Receiver URL to which webhook deliveries are sent.')]
         public ?string $endpoint = null,
 
         /** @var list<string>|null */
+        #[Description('Event names from the live webhook catalog that this subscription receives.')]
         public ?array $events = null,
 
         /**
@@ -90,6 +93,7 @@ class HookInputData extends BeamData implements MapsToModelAttributes
          * field is the `Optional` sentinel and an explicit null is a real null that reaches the column.
          * See the class docblock; do not restore the default.
          */
+        #[Description('Optional bearer credential sent to the receiver in addition to the generated signing secret; send null to revoke the bearer.')]
         public string|Optional|null $token = new Optional,
 
         /**
@@ -105,10 +109,13 @@ class HookInputData extends BeamData implements MapsToModelAttributes
          * converting these two without changing that computation would have written the clear while
          * skipping the re-vet. The two changes are one change; do not split them.
          */
+        #[Description('Registered subject type used with subjectId to narrow delivery reach; clearing it requires authorization for the broader subscription.')]
         public string|Optional|null $subject_type = new Optional,
 
+        #[Description('Record identifier within subjectType that narrows delivery reach; clearing it requires authorization for the broader subscription.')]
         public string|Optional|null $subject_id = new Optional,
 
+        #[Description('Whether webhook delivery is paused; a paused subscription is stored without dispatching a creation ping.')]
         public ?bool $paused = null,
     ) {}
 
