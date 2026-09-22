@@ -35,7 +35,7 @@ use Splicewire\Beam\Tests\TestCase;
  * `ParticleMounter::op()` used to spell its URI from the literal `{uri}/{id}/{op}`, while the declared
  * subject already carried the list — `ResolvesOperationSubject::pathParameters()` — and nothing read it.
  * These pin the three readers 16 named: the mount derives `{uri}[/{param}…]/{name}` from the list; the
- * `/op/` alias mounts only for the `['id']` shape; `ParentSubject` ships and resolves the edge's bound
+ * canonical mount has no aliases; `ParentSubject` ships and resolves the edge's bound
  * parent; and the published manifest reads the same list because it reads the route table the mount
  * produced. The first test is the route-table diff the ticket asked for: a declaration with no subject
  * spells exactly what the literal spelled, so the existing population's URLs are byte-identical.
@@ -140,8 +140,7 @@ class OperationCoordinatesMountTest extends TestCase
     public function test_a_declaration_with_no_subject_spells_exactly_what_the_id_literal_spelled(): void
     {
         // Two declarations: the implicit default and the explicit `RecordSubject::class`. Both are the
-        // `['id']` shape, so both must reproduce the pre-20 route table — primary AND deprecated alias,
-        // names included — with nothing moved.
+        // `['id']` shape, so both keep the canonical record coordinate and derived name.
         $this->register($this->op('crews', 'promote'));
         $this->register($this->op('crews', 'demote', subject: RecordSubject::class));
 
@@ -149,8 +148,6 @@ class OperationCoordinatesMountTest extends TestCase
 
         $this->assertSame([
             ['crews.demote', 'crews/{id}/demote'],
-            ['crews.op.demote', 'crews/{id}/op/demote'],
-            ['crews.op.promote', 'crews/{id}/op/promote'],
             ['crews.promote', 'crews/{id}/promote'],
         ], $this->table('crews'));
 
@@ -175,8 +172,7 @@ class OperationCoordinatesMountTest extends TestCase
 
     public function test_an_actor_subject_op_mounts_with_no_coordinate_and_no_alias(): void
     {
-        // The `me` shape: `users/me`, not `users/{id}/me`. And no `/op/` alias — nothing ever answered
-        // at `users/{id}/op/me`, so there is no published URL to keep.
+        // The actor subject uses `users/me`, with no record coordinate.
         $this->register($this->op('crews', 'me', subject: ActorSubject::class, handle: fn ($actor) => [
             'data' => ['actor' => $actor::class],
         ]));
@@ -213,7 +209,7 @@ class OperationCoordinatesMountTest extends TestCase
 
         Particle::ops('crews', 'crews', 'rename');
 
-        // `{uri}/{id}/{section}/{name}` — and no alias: the `['id', 'section']` shape never answered under `/op/`.
+        // `{uri}/{id}/{section}/{name}` follows the resolver's declared coordinate order.
         $this->assertSame([['crews.rename', 'crews/{id}/{section}/rename']], $this->table('crews'));
 
         $this->postJson('/crews/7/deck/rename')->assertOk()->assertJson([
@@ -245,7 +241,7 @@ class OperationCoordinatesMountTest extends TestCase
         // The parent's coordinate is the EDGE's; the op emits none of its own — no `{id}`, no doubled `{crate}`.
         $this->assertSame('crates/{crate}/crate-slots/reorder', $reorder->uri());
         $this->assertSame('crate', $reorder->defaults[ParticleController::RELATIVE]);
-        $this->assertNull($this->route('crate-slots.op.reorder'), 'a collection op has no `/op/` legacy to keep');
+        $this->assertNull($this->route('crate-slots.op.reorder'), 'a collection operation mounts only its canonical name');
 
         $crate = CoordCrate::create();
         CoordCrate::create();
@@ -329,7 +325,7 @@ class OperationCoordinatesMountTest extends TestCase
         $this->assertSame('crews/{id}/promote', $manifest['crews.promote']['path']);
         $this->assertSame('crews/me', $manifest['crews.me']['path']);
         $this->assertSame('crews/{id}/{section}/rename', $manifest['crews.rename']['path']);
-        $this->assertArrayNotHasKey('crews.op.promote', $manifest, 'the deprecated alias must not reach the client');
+        $this->assertArrayNotHasKey('crews.op.promote', $manifest, 'no alias is mounted or published');
     }
 
     // ── 7. The boot-time read constructs nothing ──────────────────────────────────────────────────────

@@ -92,7 +92,7 @@ class ParticleRouteResourceAuditTest extends TestCase
 
     public function test_an_unregistered_operation_stamp_is_reported_on_its_own_axis(): void
     {
-        app(Router::class)->post('widgets/{id}/op/publish', fn () => null)->defaults(
+        app(Router::class)->post('widgets/{id}/publish', fn () => null)->defaults(
             ParticleOperationController::RESOURCE, 'widgets',
         )->defaults(ParticleOperationController::NAME, 'publish');
 

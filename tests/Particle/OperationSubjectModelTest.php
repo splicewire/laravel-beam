@@ -144,7 +144,7 @@ class OperationSubjectModelTest extends TestCase
         $this->resource();
         $this->mount($this->op());
 
-        $this->postJson('/subject-model-widgets/1/op/ping')->assertOk()->assertJson(['id' => 1]);
+        $this->postJson('/subject-model-widgets/1/ping')->assertOk()->assertJson(['id' => 1]);
     }
 
     public function test_a_column_subject_resolves_past_the_scope_with_no_declared_model(): void
@@ -157,7 +157,7 @@ class OperationSubjectModelTest extends TestCase
         $this->resource(scope: fn (Builder $q) => $q->where('visible', true));
         $this->mount($this->op(subject: new ColumnSubject('token', throughResource: false)));
 
-        $this->postJson('/subject-model-widgets/tok-a/op/ping')->assertOk()->assertJson(['id' => 1]);
+        $this->postJson('/subject-model-widgets/tok-a/ping')->assertOk()->assertJson(['id' => 1]);
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────

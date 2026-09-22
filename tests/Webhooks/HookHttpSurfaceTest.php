@@ -368,10 +368,10 @@ class HookHttpSurfaceTest extends TestCase
         Particle::ops('hooks', 'hooks', [ResetHookOp::class]);
         Route::getRoutes()->refreshNameLookups();
 
-        $route = Route::getRoutes()->getByName('hooks.op.reset');
+        $route = Route::getRoutes()->getByName('hooks.reset');
 
         $this->assertNotNull($route, 'op/reset must mount through Particle::ops so the name is DERIVED.');
-        $this->assertSame('hooks/{id}/op/reset', $route->uri());
+        $this->assertSame('hooks/{id}/reset', $route->uri());
     }
 }
 

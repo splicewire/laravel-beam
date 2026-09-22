@@ -20,7 +20,7 @@ use Splicewire\Beam\Tests\TestCase;
  *
  * ## The failure this pins, which happened TWICE on one operation
  *
- * `beam-accounts`' `users.login-as` is mounted `GET users/{id}/op/login-as` and reached by a
+ * `beam-accounts`' `users.login-as` is mounted `GET users/{id}/login-as` and reached by a
  * short-lived link `URL::temporarySignedRoute()` mints. Before this slot existed, beam could express
  * neither half of what that implies, and the gap surfaced through two unrelated-looking slots:
  *
@@ -79,7 +79,7 @@ class SignedRequestCredentialTest extends TestCase
         // caller back on the ability plane, which is where the authenticated-operator half lives.
         $this->mount($this->op(ability: 'assume', signed: true));
 
-        $this->get('/sigils/1/op/assume')->assertForbidden();
+        $this->get('/sigils/1/assume')->assertForbidden();
     }
 
     public function test_a_tampered_signature_admits_nothing(): void
@@ -93,7 +93,7 @@ class SignedRequestCredentialTest extends TestCase
     {
         $this->mount($this->op(ability: 'assume', signed: true));
 
-        $url = URL::temporarySignedRoute('sigils.op.assume', now()->addMinute(), ['id' => 1]);
+        $url = URL::temporarySignedRoute('sigils.assume', now()->addMinute(), ['id' => 1]);
 
         $this->travelTo(now()->addMinutes(2));
 
@@ -125,7 +125,7 @@ class SignedRequestCredentialTest extends TestCase
         // path (declared-ungated) for the reason the next test measures.
         $this->mount($this->op(name: 'poke', ability: false, signed: true, input: false));
 
-        $this->getJson('/sigils/1/op/poke?colour=red')->assertStatus(422);
+        $this->getJson('/sigils/1/poke?colour=red')->assertStatus(422);
     }
 
     public function test_extra_query_input_on_a_signed_url_invalidates_the_signature_before_the_input_guard_sees_it(): void
@@ -147,7 +147,7 @@ class SignedRequestCredentialTest extends TestCase
         // other. Asserted so the fix cannot quietly widen into "everyone forgives these two keys".
         $this->mount($this->op(name: 'prod', ability: false, signed: false, input: false));
 
-        $this->getJson('/sigils/1/op/prod?signature=abc')->assertStatus(422);
+        $this->getJson('/sigils/1/prod?signature=abc')->assertStatus(422);
     }
 
     public function test_the_framework_parameter_list_is_the_operations_and_unions_the_kinds(): void
@@ -166,7 +166,7 @@ class SignedRequestCredentialTest extends TestCase
 
     private function signedUrl(): string
     {
-        return URL::temporarySignedRoute('sigils.op.assume', now()->addMinutes(30), ['id' => 1]);
+        return URL::temporarySignedRoute('sigils.assume', now()->addMinutes(30), ['id' => 1]);
     }
 
     private function op(

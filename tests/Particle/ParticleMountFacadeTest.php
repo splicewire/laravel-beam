@@ -12,8 +12,6 @@ use Splicewire\Beam\Particle\Mount\PendingParticleMount;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
-use Splicewire\Beam\Routing\BeamRouteAction;
-use Splicewire\Beam\Routing\RouteVisibility;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -168,13 +166,8 @@ class ParticleMountFacadeTest extends TestCase
         $this->assertSame('sprockets', $route->defaults[ParticleOperationController::RESOURCE]);
         $this->assertSame('spin', $route->defaults[ParticleOperationController::NAME]);
 
-        // The deprecated alias rides alongside, under the OLD name, so every shipped caller keeps
-        // resolving (particle-operation-surface 12).
-        $alias = $this->named('sprockets.op.spin');
+        $this->assertNull($this->named('sprockets.op.spin'));
 
-        $this->assertNotNull($alias);
-        $this->assertSame('sprockets/{id}/op/spin', $alias->uri());
-        $this->assertSame(RouteVisibility::Deprecated, BeamRouteAction::visibility($alias));
     }
 
     /**
@@ -194,7 +187,6 @@ class ParticleMountFacadeTest extends TestCase
         $this->assertSame([
             ['GET|HEAD', 'sprockets/hooks/events', 'sprockets.hooks.events'],
             ['GET|HEAD', 'sprockets/{id}/spin', 'sprockets.spin'],
-            ['GET|HEAD', 'sprockets/{id}/op/spin', 'sprockets.op.spin'],
         ], $this->tableAt('sprockets'));
     }
 

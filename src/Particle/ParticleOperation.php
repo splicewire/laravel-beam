@@ -29,9 +29,8 @@ use Splicewire\Beam\Routing\IdConstraint;
  * A named operation on a particle resource, mounted at `{$method} /{resource}/{id}/{name}` by
  * {@see ParticleMounter::op()} and run by {@see ParticleOperationController}.
  *
- * ⚠️ Two spellings this docblock used to carry are gone and must not come back: the `/op/` path segment
- * (dropped by particle-operation-surface 12, which left the old URL mounted as a deprecated alias) and
- * the `Route::particleOp()` macro (deleted by api-surface-coherence 93). `Particle::ops()` is the door.
+ * `Particle::ops()` is the mounting door. The route uses the declared method and subject
+ * coordinates; no legacy operation alias mounts.
  *
  * This generalizes the CRUD verbs to arbitrary named actions — the escape hatch that lets the bespoke
  * (bucket-D) controllers dissolve their *actions* while the framework supplies the cross-cutting plumbing

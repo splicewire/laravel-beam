@@ -343,7 +343,7 @@ class ParticleGeneratorTest extends TestCase
             $this->registerOp($class, $kind->value.'-it');
             Route::prefix('api')->group(fn () => Particle::ops('lyrics', 'lyrics', $kind->value.'-it'));
 
-            $this->assertNoFindingsFor('api/lyrics/{id}/op/'.$kind->value.'-it');
+            $this->assertNoFindingsFor('api/lyrics/{id}/'.$kind->value.'-it');
         }
     }
 

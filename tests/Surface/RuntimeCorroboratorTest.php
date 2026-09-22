@@ -146,8 +146,8 @@ class RuntimeCorroboratorTest extends TestCase
 
         Particle::ops('widgets', 'widgets', ['gated', 'ungated']);
 
-        $gated = $this->postureFor('POST /widgets/{id}/op/gated');
-        $ungated = $this->postureFor('POST /widgets/{id}/op/ungated');
+        $gated = $this->postureFor('POST /widgets/{id}/gated');
+        $ungated = $this->postureFor('POST /widgets/{id}/ungated');
 
         $this->assertNotNull($gated, 'the gated op route was not mounted');
         $this->assertTrue($gated->facet(PostureFacet::AuthorizationPolicy));

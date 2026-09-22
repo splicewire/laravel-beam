@@ -160,7 +160,7 @@ class PendingParticleMount
      * - `ops([DownloadMedia::class, 'reorder', new ParticleOperation(…)])` mounts an explicit list, in
      *   the three forms {@see ParticleMounter::ops()} documents. A bare string is the one-op spelling.
      *
-     * `$options` carries `method`, `idConstraint`, `name` and `alias` through to each mounted op, exactly
+     * `$options` carries `method`, `idConstraint` and `name` through to each mounted op, exactly
      * as the `Route::particleOps()` spelling did (`streams` was reaped by particle-operation-surface 15 —
      * a Stream declares its event map through `output:`). The mount's own `names()` stem reaches every
      * op too, so an op under a relative edge is named off the edge rather than off the child's flat key.

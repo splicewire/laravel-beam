@@ -255,22 +255,13 @@ and mounts it, keeping its **own** middleware/prefix `group()`.
 | `Particle::relatives($parent, $relatives)` | the declared edges of a parent | `#[ParticleRelative]`-driven |
 | `Particle::filters($resource, …)` | the saved-filter sub-surface | — |
 
-### Where an operation lands — `/op/` is gone, and the old URL still answers
+### Where an operation lands
 
-⚠️ **`particle-operation-surface` 12 (landed 2026-08-29) dropped the `/op/` segment.** Each operation now
-mounts **twice**, and the two spellings split the route name, because two routes cannot share one:
-
-| | URL | route name | |
-|---|---|---|---|
-| primary | `{uri}/{id}/{op}` | `{key}.{op}` | write new code against this |
-| alias | `{uri}/{id}/op/{op}` | `{key}.op.{op}` | **deprecated**, still answers |
-
-The alias deliberately keeps the **old** name, so every existing `route('users.op.login-as')` kept
-resolving — meaning **a `.op.` route name is not stale code**, it is the supported name of the deprecated
-mount. The alias is not decoration either: eight files across five roots hand-write `…/op/…` as a
-template literal and reach no generated client, so nothing in PHP, type-checking or the doctor audits can
-see them. `Http\Particle\LegacyOperationAlias` rides the alias to answer *"is anything still calling
-it?"* — the only evidence that can ever retire it.
+Each operation mounts once at `{uri}[/{coordinate}…]/{op}`, named `{key}.{op}`.
+Coordinates come from the declared subject's `pathParameters()` and default to `{id}`.
+The mount's `names` option supplies a relative name stem; `name` overrides the full name.
+Legacy `{uri}/{id}/op/{op}` URLs and `{key}.op.{op}` names are not mounted.
+Callers, including signed links and editor transports, use the canonical route.
 
 ### `Particle::ops` — the plural loop-collapse (HTTP-02)
 

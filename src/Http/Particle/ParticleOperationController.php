@@ -25,9 +25,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /**
  * Runs a declared {@see ParticleOperation} mounted by `Particle::ops()` at
  * `{$method} /{resource}[/{coordinate}…]/{name}` — the coordinates being the declared subject's
- * `pathParameters()`, `{id}` for the default (particle-operation-surface 20) — plus the deprecated
- * `…/{id}/op/{name}` alias that keeps shipped callers working on the `['id']` shape
- * (particle-operation-surface 12 — see `ParticleMounter::op()`). It supplies the
+ * `pathParameters()`, `{id}` for the default (particle-operation-surface 20). It supplies the
  * cross-cutting plumbing so the host's `handle` closure stays ordinary code:
  *
  *   1. resolve the operation (from the route defaults) + its SUBJECT, through the operation's declared

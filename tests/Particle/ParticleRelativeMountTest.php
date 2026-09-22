@@ -225,15 +225,15 @@ class ParticleRelativeMountTest extends TestCase
         $this->assertSame('caption', $registry->get('photos', 'caption')->name);
         $this->assertSame('archive', $registry->get('photos', 'archive')->name);
 
-        // …and all three are mounted at POST /photos/{id}/op/{name}.
+        // …and all three are mounted at POST /photos/{id}/{name}.
         $names = collect(Route::getRoutes()->getRoutes())
             ->map(fn ($r) => $r->uri())
-            ->filter(fn ($u) => str_starts_with($u, 'photos/{id}/op/'))
+            ->filter(fn ($u) => str_starts_with($u, 'photos/{id}/'))
             ->values()->all();
 
-        $this->assertContains('photos/{id}/op/feature', $names);
-        $this->assertContains('photos/{id}/op/caption', $names);
-        $this->assertContains('photos/{id}/op/archive', $names);
+        $this->assertContains('photos/{id}/feature', $names);
+        $this->assertContains('photos/{id}/caption', $names);
+        $this->assertContains('photos/{id}/archive', $names);
     }
 }
 

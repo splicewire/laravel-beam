@@ -57,14 +57,14 @@ class HttpTransportAbilityTest extends TestCase
         $this->mount($this->op(ability: 'tune'));
         $this->actingAs(new PlainUser);
 
-        $this->postJson('/gadgets/1/op/tune')->assertForbidden();
+        $this->postJson('/gadgets/1/tune')->assertForbidden();
     }
 
     public function test_a_guest_is_forbidden_rather_than_erroring(): void
     {
         $this->mount($this->op(ability: 'tune'));
 
-        $this->postJson('/gadgets/1/op/tune')->assertForbidden();
+        $this->postJson('/gadgets/1/tune')->assertForbidden();
     }
 
     public function test_an_operation_the_actor_may_invoke_runs(): void
@@ -72,7 +72,7 @@ class HttpTransportAbilityTest extends TestCase
         $this->mount($this->op(ability: 'tune'));
         $this->actingAs(new PrivilegedUser);
 
-        $this->postJson('/gadgets/1/op/tune')->assertOk()->assertJson(['ran' => true]);
+        $this->postJson('/gadgets/1/tune')->assertOk()->assertJson(['ran' => true]);
     }
 
     // ── The handler must not run on a denial ─────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ class HttpTransportAbilityTest extends TestCase
         }));
         $this->actingAs(new PlainUser);
 
-        $this->postJson('/gadgets/1/op/tune')->assertForbidden();
+        $this->postJson('/gadgets/1/tune')->assertForbidden();
 
         $this->assertFalse($ran, 'A forbidden operation must be refused before its handler runs.');
     }
@@ -99,10 +99,10 @@ class HttpTransportAbilityTest extends TestCase
         $this->mount($this->op(name: 'ping', ability: null));
 
         // No actor at all — an ungated operation was never gated and must not become gated.
-        $this->postJson('/gadgets/1/op/ping')->assertOk()->assertJson(['ran' => true]);
+        $this->postJson('/gadgets/1/ping')->assertOk()->assertJson(['ran' => true]);
 
         $this->actingAs(new PlainUser);
-        $this->postJson('/gadgets/1/op/ping')->assertOk()->assertJson(['ran' => true]);
+        $this->postJson('/gadgets/1/ping')->assertOk()->assertJson(['ran' => true]);
     }
 
     public function test_a_cross_model_ability_is_checked_against_the_declared_class_not_the_instance(): void
@@ -114,10 +114,10 @@ class HttpTransportAbilityTest extends TestCase
         $this->mount($this->op(name: 'forge', ability: 'forge', abilityModel: Gadget::class));
 
         $this->actingAs(new PlainUser);
-        $this->postJson('/gadgets/1/op/forge')->assertForbidden();
+        $this->postJson('/gadgets/1/forge')->assertForbidden();
 
         $this->actingAs(new PrivilegedUser);
-        $this->postJson('/gadgets/1/op/forge')->assertOk();
+        $this->postJson('/gadgets/1/forge')->assertOk();
     }
 
     // ── The actor arrives through the port, not ambient auth ─────────────────────────────────────────
@@ -132,7 +132,7 @@ class HttpTransportAbilityTest extends TestCase
         $this->actingAs(new PlainUser);
         $this->app->instance(ActorPort::class, new FixedActorPort(new PrivilegedUser));
 
-        $this->postJson('/gadgets/1/op/tune')->assertOk();
+        $this->postJson('/gadgets/1/tune')->assertOk();
     }
 
     public function test_the_default_port_binding_reports_the_guard_user(): void
@@ -172,7 +172,7 @@ class HttpTransportAbilityTest extends TestCase
         // live instance, and an ability there locks the operator inside the impersonated session.
         $this->mount($this->op(name: 'stop', ability: false));
 
-        $this->postJson('/gadgets/1/op/stop')->assertOk()->assertJson(['ran' => true]);
+        $this->postJson('/gadgets/1/stop')->assertOk()->assertJson(['ran' => true]);
     }
 
     public function test_ability_model_false_routes_the_check_to_the_subject_free_entitlement_plane(): void
@@ -189,8 +189,8 @@ class HttpTransportAbilityTest extends TestCase
 
         $this->actingAs(new PrivilegedUser);
 
-        $this->postJson('/gadgets/1/op/subject-free')->assertOk();
-        $this->postJson('/gadgets/1/op/subject-bound')->assertForbidden();
+        $this->postJson('/gadgets/1/subject-free')->assertOk();
+        $this->postJson('/gadgets/1/subject-bound')->assertForbidden();
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────

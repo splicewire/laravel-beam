@@ -32,43 +32,20 @@ Don't hand-roll: `splicewire:beam:make:particle-resource` and `splicewire:beam:m
 emit the attribute with every SHAPE slot filled (`input:`, `output:`, `ability:` — a default-valued slot such as `method:` or `signed:` is deliberately omitted, because an omission and a decision must not be spelled the same), the classes those slots name, and the
 `Particle::mount()` / `Particle::ops()` mount line to paste into the host's route file.
 
-## Where an operation MOUNTS — `/op/` is gone, and the old spelling still answers
+## Where an operation mounts
 
-⚠️ **This section exists because the URL keeps being mis-stated from memory.** Two changes landed
-separately and each invalidated a spelling that is still in circulation.
+The `Particle` facade owns mounting: `Particle::mount()`, `::ops()`, `::relative()`,
+`::relatives()` and `::filters()`. The former `Route::particle*` macros are deleted.
 
-**1. The macros are deleted.** `api-surface-coherence` 93 removed all six —
-`Route::particleResource`, `particleOp`, `particleOps`, `particleRelative`, `resourceRenderings`,
-`resourceFilters`. **The `Particle` facade is the only door**: `Particle::mount()`, `::ops()`,
-`::relative()`, `::relatives()`, `::filters()` (`src/Facades/Particle.php:53-57`). Any `Route::particle*`
-you meet in prose is historical; do not write new prose in it.
+An operation mounts once at `{uri}[/{coordinate}…]/{op}`, named `{resourceKey}.{op}`.
+Coordinates come from the declared subject's `pathParameters()` and default to `{id}`.
+`names` supplies the enclosing mount's name stem; `name` overrides the full name.
+The greenfield operation contract has no `{uri}/{id}/op/{op}` URL or
+`{resourceKey}.op.{op}` name alias. Update callers directly; no alias option or telemetry
+prerequisite remains. Historical dual-mount decisions are superseded by this contract.
 
-**2. The `/op/` segment left** (`particle-operation-surface` 12, landed 2026-08-29). An operation now
-mounts **twice** — the primary and a deprecated alias — and they split the two names, because two routes
-cannot share one and `RouteCollection::addLookups()` overwrites silently while Laravel only refuses the
-pair at `route:cache`:
-
-| | URL | route name | |
-|---|---|---|---|
-| primary | `{uri}[/{coordinate}…]/{op}` | `{resourceKey}.{op}` | write new code against this — the coordinates are the declared `subject:`'s `pathParameters()`, `{id}` by default (particle-operation-surface 20) |
-| alias | `{uri}/{id}/op/{op}` | `{resourceKey}.op.{op}` | **deprecated**, still answers — mounted only for the `['id']` shape |
-
-**The alias deliberately keeps the OLD name.** That is what made the drop a non-event for PHP callers:
-every `route('users.op.login-as')` and `URL::temporarySignedRoute('sigils.op.assume', …)` in the estate
-kept resolving. So *a route name containing `.op.` is not evidence of stale code* — it is the supported
-spelling of the deprecated mount, and grepping for `.op.` to find callers to migrate will mostly find
-correct ones.
-
-⚠️ **Do not delete the alias on the grounds that the suite is green.** Eight files across five roots
-hand-write `…/op/…` as a **template literal** and reach no generated client at all — `~/Herd/audiostud`,
-`~/Herd/splicewire`, and `resources/js/editor/transport.ts` in all three starters. Nothing in PHP, no
-type-check and no doctor audit can see them; deleting the segment would leave live 404s that every
-instrument reports as green. `Http\Particle\LegacyOperationAlias` is the middleware that rides the alias
-specifically to answer *"is anything still calling it?"*, which is the only evidence that can retire it.
-
-`Doctor\ParticleSlotCollisionAudit` watches the slot the drop lands in — `{uri}/{id}/{segment}`, shared
-with renderings, CRUD, and hand-written routes in no registry. Simulated across 21 route tables before
-the drop, on both the URI and route-name axes: zero collisions.
+`Doctor\ParticleSlotCollisionAudit` compares actual URI slots (including domain and method)
+and route names. Literal `op` segments in resource prefixes remain part of those keys.
 
 ⚠️ **A `subject: NoSubject` op lands in a DIFFERENT slot, and that one is not audited.** Its
 `pathParameters()` is empty, so the primary mount emits no coordinate and the URL is the flat

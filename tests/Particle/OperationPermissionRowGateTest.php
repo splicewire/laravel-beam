@@ -11,7 +11,9 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Spatie\Permission\PermissionServiceProvider;
 use Spatie\Permission\Traits\HasRoles;
+use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -26,10 +28,10 @@ use Splicewire\Beam\Tests\TestCase;
  * permission name) rests on one claim that had never been exercised:
  *
  * > a `spatie/laravel-permission` permission ROW named `{resource}.{name}` is sufficient to pass
- * > `ability:` through {@see \Splicewire\Beam\Http\Particle\ParticleOperationController}, with **no
+ * > `ability:` through {@see ParticleOperationController}, with **no
  * > policy existing** on the subject model.
  *
- * It was *inferred* from {@see \Splicewire\Beam\Authorization\AbilityResolver::allows()} —
+ * It was *inferred* from {@see AbilityResolver::allows()} —
  * `Gate::forUser($actor)->allows($ability, $subject)` — plus spatie's
  * `PermissionRegistrar::registerPermissions()`, whose `Gate::before` ignores the subject argument
  * entirely. Inference, on both halves. This class turns it into a measurement.
@@ -130,7 +132,7 @@ class OperationPermissionRowGateTest extends TestCase
         $thing = GateProbeThing::create([]);
         $this->actingAs($this->user());
 
-        $this->postJson("/gate-probe-things/{$thing->id}/op/touch")->assertForbidden();
+        $this->postJson("/gate-probe-things/{$thing->id}/touch")->assertForbidden();
 
         $this->assertFalse($thing->fresh()->touched, 'refused ⇒ no state change');
     }
@@ -150,7 +152,7 @@ class OperationPermissionRowGateTest extends TestCase
         $thing = GateProbeThing::create([]);
         $this->actingAs($holder);
 
-        $this->postJson("/gate-probe-things/{$thing->id}/op/touch")->assertOk();
+        $this->postJson("/gate-probe-things/{$thing->id}/touch")->assertOk();
 
         $this->assertTrue($thing->fresh()->touched, 'admitted ⇒ the effect happened');
     }
@@ -174,8 +176,8 @@ class OperationPermissionRowGateTest extends TestCase
         $a = GateProbeThing::create([]);
         $b = GateProbeThing::create([]);
 
-        $this->postJson("/gate-probe-things/{$a->id}/op/touch")->assertOk();
-        $this->postJson("/gate-probe-things/{$b->id}/op/touch")->assertOk();
+        $this->postJson("/gate-probe-things/{$a->id}/touch")->assertOk();
+        $this->postJson("/gate-probe-things/{$b->id}/touch")->assertOk();
 
         $this->assertTrue($a->fresh()->touched);
         $this->assertTrue($b->fresh()->touched);

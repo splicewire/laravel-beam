@@ -18,7 +18,6 @@ use Splicewire\Beam\Doctor\ParticleSlotCollisionAudit;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Filters\Data\ResourceFilterVariantsData;
 use Splicewire\Beam\Filters\Http\ResourceFiltersController;
-use Splicewire\Beam\Http\Particle\LegacyOperationAlias;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
@@ -30,9 +29,7 @@ use Splicewire\Beam\Particle\ParticleRelative;
 use Splicewire\Beam\Particle\ParticleRelativeRegistry;
 use Splicewire\Beam\Particle\Subject\SubjectResolvers;
 use Splicewire\Beam\Routing\BeamRouteAction;
-use Splicewire\Beam\Routing\BeamRouteProxy;
 use Splicewire\Beam\Routing\IdConstraint;
-use Splicewire\Beam\Routing\RouteVisibility;
 use Splicewire\Beam\Webhooks\Data\EventCatalogData;
 use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
 
@@ -221,9 +218,7 @@ class ParticleMounter
     }
 
     /**
-     * One particle operation: `POST {uri}[/{coordinate}…]/{name}`, plus the deprecated
-     * `POST {uri}/{id}/op/{name}` alias it replaced (particle-operation-surface 12) — mounted only for
-     * the `['id']` shape, which is the only shape that ever answered there.
+     * One particle operation at `{method} {uri}[/{coordinate}…]/{name}`.
      *
      * The body behind one op of `Particle::ops(…)`. Was `Route::macro('particleOp', …)` until 93 deleted the macro.
      *
@@ -263,78 +258,10 @@ class ParticleMounter
      * `whereUuid('id')` on a route with no `{id}` is a constraint on nothing, and Laravel would
      * quietly keep it.
      *
-     * ## Why `/op/` left, and why the old spelling is still mounted
-     *
-     * `/op/` was a segment nothing needed. Measured across the whole estate on 2026-08-29 — 21 bootable
-     * `~/Herd/*` roots (Herd symlinks resolved with `pwd -P`, so the three starter-backed roots are not
-     * double-counted), **3,135 routes, 61 of them under `/op/`** — the estate already writes 118
-     * `{id}/<verb>` routes without it against 21 with it, so the segment was the minority spelling of a
-     * thing the same estate spells plainly everywhere else.
-     *
-     * Dropping it lands every operation in the slot `{uri}/{id}/{segment}`, which is occupied — by
-     * renderings, by CRUD, and (the class that decides the design) by hand-written routes in no registry
-     * at all. {@see ParticleSlotCollisionAudit} is the instrument that watches
-     * that slot; simulated over all 21 route tables immediately before this landed, on BOTH axes (URI
-     * with parameters normalised, and route name), the drop created **zero** collisions.
-     *
-     * **A URL that shipped is a published contract**, so the old spelling stays mounted as a deprecated
-     * alias rather than being deleted. It is not decoration: eight files across five roots hand-write
-     * `…/op/…` as a template literal and reach no generated client at all
-     * (`~/Herd/audiostud/resources/js/…`, `~/Herd/splicewire/resources/js/editor/…`, and
-     * `resources/js/editor/transport.ts` in all three starters). Deleting the segment outright would
-     * have left those as live 404s that every test suite, type-check and doctor audit in the estate
-     * reports as green.
-     *
-     * ## The alias keeps the OLD name, and the primary takes the new one
-     *
-     * Two routes cannot share one name — `RouteCollection::addLookups()` overwrites silently and Laravel
-     * only refuses the pair at `route:cache` — so the pair has to split the two spellings:
-     *
-     *   primary  `{uri}/{id}/{op}`      named `{resourceKey}.{op}`
-     *   alias    `{uri}/{id}/op/{op}`   named `{resourceKey}.op.{op}`   (deprecated)
-     *
-     * The alias keeping the *old* name is what makes this a non-event for PHP callers: every
-     * `route('users.op.login-as')`, `URL::temporarySignedRoute('sigils.op.assume', …)` and
-     * `getByName('beam-ux-entry.op.body')` in the estate keeps resolving, to a URL that still answers.
-     * They are, deliberately, now resolving to the deprecated spelling — that is the migration signal,
-     * and it is visible rather than silent because the alias is stamped
-     * {@see RouteVisibility::Deprecated} and therefore vanishes from the generated client.
-     *
-     * ## `alias: false` — an operation that was never AT `/op/` must not be given a legacy there
-     *
-     * And the same rule, decided by the declaration rather than the caller: **the alias mounts only for a
-     * subject whose coordinates are exactly `['id']`.** Every URL that ever shipped under `/op/` was the
-     * `{uri}/{id}/op/{op}` shape, so a collection op, an actor op or a two-coordinate op has no legacy to
-     * keep, and manufacturing one would be the exact defect the option below exists to refuse.
-     *
-     * The alias is a BACK-COMPAT affordance for the 61 URLs that shipped under `/op/`. An operation
-     * declared after that segment left never had one, so mounting the alias for it manufactures a
-     * deprecated URL nobody ever called, stamps it {@see RouteVisibility::Deprecated}, and hangs
-     * {@see LegacyOperationAlias}'s `Deprecation` header + per-call log line off a route that is not a
-     * migration from anything. particle-operation-surface 13 is the first caller: its three Exports
-     * answer at `{resource}/{id}/export` today and have never answered at `{resource}/{id}/op/export`.
-     *
-     * It is opt-OUT rather than opt-in because the default has to keep serving the sixty-one, and
-     * because a caller who forgets it gets a harmless extra route rather than a broken contract.
-     *
-     * `$options['name']` overrides the PRIMARY name only. Zero call sites in the estate pass it — swept
-     * the package `src` roots, every `~/Herd` `routes` and `app` tree, and the starters, with the globs
-     * written literally rather than through a variable (zsh does not glob after parameter expansion). If
-     * an override happens to equal the alias's own derived name, the alias is skipped rather than
-     * mounted into a name collision.
-     *
-     * `$options['names']` is the route-name STEM the enclosing mount already uses for its CRUD
-     * (`PendingParticleMount::names()`), and the primary op name derives from it — `{stem}.{op}` — for
-     * the reason api-surface-coherence 51 §3 gave the stem to CRUD: an op mounted under a relative edge
-     * would otherwise derive `{child}.{op}`, the same name the child's flat mount derives, and Laravel's
-     * name table is last-wins. The alias keeps the flat `{resourceKey}.op.{op}` regardless, because the
-     * alias exists to keep OLD `route()` calls resolving and no old call ever spelled a stem.
-     *
-     * ⚠️ A `'streams'` option used to be read here and chained as `->streams()` onto the route. It is
-     * gone (particle-operation-surface 11 §A1 measured zero call sites; 12 assigned the reap to the last
-     * of {12,13,14,15} to hold this method; 15 held it). A Stream-kind op declares its event map through
-     * `output:`, and the response strategy reads it from the declaration — the route-level stamp was a
-     * second place to say the same thing.
+     * The operation mounts once, named `{stem}.{op}`. `names` supplies the enclosing mount's
+     * name stem (including relative edges); `name` overrides the complete name. No legacy
+     * URI, route name or alias option is mounted. Slot collisions are audited against the
+     * actual route table by {@see ParticleSlotCollisionAudit}.
      */
     public function op(Router $router, string $uri, string $resourceKey, string $op, array $options = []): void
     {
@@ -366,7 +293,6 @@ class ParticleMounter
 
         $stem = $options['names'] ?? $resourceKey;
         $name = $options['name'] ?? "{$stem}.{$op}";
-        $legacyName = "{$resourceKey}.op.{$op}";
 
         // The subject's coordinates (see the docblock) — a static read of the declaration, so a
         // class-string resolver is never constructed at boot. `null` declaration ⇒ `['id']`.
@@ -374,57 +300,23 @@ class ParticleMounter
         $carried = $this->carriedParameters($router, $uri);
         $emitted = array_values(array_filter($coordinates, fn (string $parameter) => ! in_array($parameter, $carried, true)));
 
-        $mount = function (string $path, string $routeName) use ($router, $verb, $idConstraint, $resourceKey, $op, $emitted) {
-            $route = $router->{$verb}($path, [ParticleOperationController::class, 'invoke'])
-                ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
-                ->defaults(ParticleOperationController::NAME, $op)
-                ->name($routeName);
-
-            // Only `Uuid` is enforced — {@see IdConstraint} states why `Ulid`/`Int` are declared-but-inert
-            // and what has to read zero before that flips. And only on a route that actually carries `{id}`.
-            if ($idConstraint?->enforced() && in_array('id', $emitted, true)) {
-                $route->whereUuid('id');
-            }
-
-            return $route;
-        };
-
         $path = $uri;
 
         foreach ($emitted as $parameter) {
             $path .= '/{'.$parameter.'}';
         }
 
-        $mount("{$path}/{$op}", $name);
+        $route = $router->{$verb}("{$path}/{$op}", [ParticleOperationController::class, 'invoke'])
+            ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
+            ->defaults(ParticleOperationController::NAME, $op)
+            ->name($name);
 
-        // The `/op/` alias belongs to the `{uri}/{id}/op/{op}` shape and to nothing else — see the
-        // docblock. A subject whose coordinates are not exactly `['id']` never answered there.
-        if ($coordinates !== ['id']) {
-            return;
+        // Only `Uuid` is enforced — {@see IdConstraint} states why `Ulid`/`Int` are declared-but-inert.
+        // Apply it only when this mount emits `{id}`.
+        if ($idConstraint?->enforced() && in_array('id', $emitted, true)) {
+            $route->whereUuid('id');
         }
 
-        // See the docblock: `false` is for an operation that never answered at `/op/`, so there is no
-        // published URL to keep alive and an alias would be a legacy invented rather than preserved.
-        if (($options['alias'] ?? true) === false) {
-            return;
-        }
-
-        if ($legacyName === $name) {
-            return;
-        }
-
-        $alias = $mount("{$uri}/{id}/op/{$op}", $legacyName);
-
-        // Constructed rather than chained off `->beam()`: the namespace is a route MACRO booted by
-        // {@see \Splicewire\Beam\Concerns\BootsBeamRouteNamespace}, and the mounter should not depend on
-        // provider boot order to stamp its own route.
-        (new BeamRouteProxy($alias))->visibility(RouteVisibility::Deprecated);
-
-        // The measurement half of "when is the alias removed?". Nothing in this estate could previously
-        // answer whether a deprecated URL was still being called; this middleware answers it two ways —
-        // a `Deprecation`/`Link` header pair on every response (RFC 8594, so an integrator's own client
-        // can see it) and one log line per call (so the host can, without instrumenting anything).
-        $alias->middleware(LegacyOperationAlias::class);
     }
 
     /**

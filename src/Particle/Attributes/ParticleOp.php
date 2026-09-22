@@ -18,10 +18,7 @@ use Splicewire\Beam\Routing\IdConstraint;
  * runtime {@see ParticleOperation} mounted at `{$method} /{resource}/{id}/{name}` by
  * `Particle::ops()` and run by {@see ParticleOperationController}.
  *
- * ⚠️ This docblock used to say `POST …/{id}/op/{name}` *"via `Route::particleOp()`"*. Both halves are
- * dead: particle-operation-surface 12 dropped the `/op/` segment (leaving the old URL as a deprecated
- * alias) and api-surface-coherence 93 deleted the macro. The verb is no longer fixed at POST either —
- * see `method:` below.
+ * The route uses the declared method and subject coordinates; no legacy operation alias mounts.
  *
  * The op's HOST CODE — which an attribute cannot carry — lives as `public static` convention methods on
  * the SAME annotated class, wired in by {@see AttributedParticleDiscovery}:

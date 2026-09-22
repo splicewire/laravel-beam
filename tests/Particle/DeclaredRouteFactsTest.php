@@ -164,22 +164,15 @@ class DeclaredRouteFactsTest extends TestCase
         );
     }
 
-    public function test_the_declared_constraint_also_reaches_the_deprecated_alias(): void
+    public function test_the_declared_get_method_and_uuid_constraint_share_the_canonical_route(): void
     {
         $this->registerOperation('probe', method: HttpMethod::Get, idConstraint: IdConstraint::Uuid);
-
         Route::prefix('resources')->group(fn () => Particle::ops('gadgets', 'gadgets', 'probe'));
 
-        $alias = $this->routeNamed('gadgets.op.probe');
-
-        $this->assertSame(['GET', 'HEAD'], $alias->methods());
-        $this->assertArrayHasKey(
-            'id',
-            $alias->wheres,
-            'The alias is the SAME operation at an older URL. A declared fact that reached only the '
-                .'primary would make the deprecated spelling behave differently from the one it is an '
-                .'alias of — which is the one thing an alias must never do.',
-        );
+        $route = $this->routeNamed('gadgets.probe');
+        $this->assertSame(['GET', 'HEAD'], $route->methods());
+        $this->assertSame('resources/gadgets/{id}/probe', $route->uri());
+        $this->assertArrayHasKey('id', $route->wheres);
     }
 
     private function registerOperation(string $name, ?HttpMethod $method = null, ?IdConstraint $idConstraint = null): void

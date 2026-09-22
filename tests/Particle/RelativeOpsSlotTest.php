@@ -102,11 +102,9 @@ class RelativeOpsSlotTest extends TestCase
         // The list was ONE op; the other registered op stays unmounted.
         $this->assertNull($this->route('hulls.holds.inspect'));
 
-        // The deprecated `/op/` alias keeps the OLD flat name (particle-operation-surface 12) — the stem
-        // reaches the primary only, because the alias exists to keep old `route()` calls resolving.
-        $alias = $this->route('holds.op.seal');
-        $this->assertNotNull($alias);
-        $this->assertSame('hulls/{hull}/holds/{id}/op/seal', $alias->uri());
+        $this->assertNull($this->route('holds.op.seal'));
+        $this->assertNull($this->route('holds.seal'));
+
     }
 
     public function test_ops_true_is_the_wildcard_and_mounts_every_registered_op_for_the_child(): void

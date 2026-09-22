@@ -11,7 +11,7 @@ use Splicewire\Beam\Routing\RouteActionMetadataReader;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * The gate particle-operation-surface 05 must pass before `/op/` may be dropped.
+ * Actual operation slots retain URI, method, domain and route-name distinctions.
  *
  * Two assertions carry the ticket. {@see test_a_rendering_and_an_operation_sharing_a_name_collide}
  * is the collision the ticket was written about — two popcorn roots that structurally cannot see each
@@ -31,6 +31,27 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class ParticleSlotCollisionAuditTest extends TestCase
 {
+    public function test_literal_op_segments_and_names_are_distinct_slots(): void
+    {
+        $this->operation('resources/op/widgets/{id}/publish', 'resources.op.widgets', 'publish');
+        app(Router::class)->post('resources/widgets/{id}/publish', fn () => null)->name('resources.widgets.publish');
+        $this->operation('widgets/{id}/op/run', 'widgets.op', 'run');
+        app(Router::class)->get('widgets/{id}/run', fn () => null)->name('widgets.run');
+
+        $this->assertSame(DoctorStatus::Pass, $this->audit()->run()[0]->status);
+    }
+
+    public function test_different_methods_and_domains_do_not_share_uri_slots(): void
+    {
+        $this->operation('widgets/{id}/publish', 'widgets', 'publish');
+        app(Router::class)->get('widgets/{id}/publish', fn () => null)->name('widgets.preview');
+        app(Router::class)->domain('other.test')->group(function (): void {
+            app(Router::class)->post('widgets/{id}/publish', fn () => null)->name('other.widgets.publish');
+        });
+
+        $this->assertSame(DoctorStatus::Pass, $this->audit()->run()[0]->status);
+    }
+
     private function audit(): ParticleSlotCollisionAudit
     {
         return new ParticleSlotCollisionAudit(app(Router::class), new RouteActionMetadataReader);
@@ -38,10 +59,11 @@ class ParticleSlotCollisionAuditTest extends TestCase
 
     private function operation(string $uri, string $resource, string $name, string $verb = 'post'): void
     {
-        app(Router::class)->{$verb}($uri, fn () => null)
+        // Overlapping method sets keep both registrations in Laravel's route table for collision tests.
+        app(Router::class)->match([$verb, 'PATCH'], $uri, fn () => null)
             ->defaults(ParticleOperationController::RESOURCE, $resource)
             ->defaults(ParticleOperationController::NAME, $name)
-            ->name("{$resource}.op.{$name}");
+            ->name("{$resource}.{$name}");
     }
 
     /**
@@ -63,9 +85,9 @@ class ParticleSlotCollisionAuditTest extends TestCase
         $this->assertStringContainsString('nothing to collide over', $findings[0]->detail);
     }
 
-    public function test_operations_that_move_into_a_free_slot_pass(): void
+    public function test_operations_in_a_free_slot_pass(): void
     {
-        $this->operation('widgets/{id}/op/publish', 'widgets', 'publish');
+        $this->operation('widgets/{id}/publish', 'widgets', 'publish');
         $this->rendering('widgets/{id}/export', 'widgets.export');
 
         $findings = $this->audit()->run();
@@ -76,9 +98,8 @@ class ParticleSlotCollisionAuditTest extends TestCase
 
     public function test_a_rendering_and_an_operation_sharing_a_name_collide(): void
     {
-        // `POST widgets/{id}/op/export` collapses to `POST widgets/{id}/export`, which the rendering's
-        // certified write twin already claims. Neither registry can see this: they are different roots.
-        $this->operation('widgets/{id}/op/export', 'widgets', 'export');
+        // The operation and hand-written route claim the same POST URI.
+        $this->operation('widgets/{id}/export', 'widgets', 'export');
         $this->rendering('widgets/{id}/export', 'widgets.export', verb: 'post');
 
         $findings = $this->audit()->run();
@@ -92,7 +113,7 @@ class ParticleSlotCollisionAuditTest extends TestCase
 
     public function test_a_hand_written_route_in_the_slot_collides_too(): void
     {
-        $this->operation('circuits/{id}/op/intake', 'circuits', 'intake');
+        $this->operation('circuits/{id}/intake', 'circuits', 'intake');
         app(Router::class)->post('circuits/{id}/intake', fn () => null)->name('circuits.intake');
 
         $findings = $this->audit()->run();
@@ -105,7 +126,7 @@ class ParticleSlotCollisionAuditTest extends TestCase
     {
         // The quieter axis: `route()` generates the last registration's URL while a request matches the
         // first, and Laravel only refuses the pair at `route:cache`.
-        $this->operation('widgets/{id}/op/run', 'widgets', 'run');
+        $this->operation('widgets/{id}/run', 'widgets', 'run');
         app(Router::class)->get('widgets/{id}/runs', fn () => null)->name('widgets.run');
 
         $findings = $this->audit()->run();
@@ -117,8 +138,8 @@ class ParticleSlotCollisionAuditTest extends TestCase
     public function test_two_non_operation_routes_sharing_a_slot_are_not_this_audits_business(): void
     {
         // `prognosix-api`'s OPTIONS catch-all and `prognosix-web-app`'s `settings` redirect are both
-        // legitimate pre-existing pairs. Dropping `/op/` neither creates nor disturbs them.
-        $this->operation('widgets/{id}/op/publish', 'widgets', 'publish');
+        // legitimate pre-existing pairs outside this audit's operation scope.
+        $this->operation('widgets/{id}/publish', 'widgets', 'publish');
         app(Router::class)->get('settings', fn () => null)->name('settings');
         app(Router::class)->get('settings', fn () => null);
 
@@ -129,7 +150,7 @@ class ParticleSlotCollisionAuditTest extends TestCase
 
     public function test_a_crud_verb_claimant_is_named_as_such(): void
     {
-        $this->operation('widgets/{id}/op/latest', 'widgets', 'latest');
+        $this->operation('widgets/{id}/latest', 'widgets', 'latest');
         app(Router::class)->post('widgets/{id}/latest', fn () => null)
             ->defaults(ParticleController::RESOURCE, 'widgets');
 

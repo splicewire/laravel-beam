@@ -58,8 +58,8 @@ class OperationSubjectResolutionTest extends TestCase
         $this->mount($this->op());
 
         // 404, not a load-then-403: the excluded row must never resolve at all.
-        $this->postJson('/subject-widgets/2/op/ping')->assertNotFound();
-        $this->postJson('/subject-widgets/1/op/ping')->assertOk()->assertJson(['id' => 1]);
+        $this->postJson('/subject-widgets/2/ping')->assertNotFound();
+        $this->postJson('/subject-widgets/1/ping')->assertOk()->assertJson(['id' => 1]);
     }
 
     public function test_a_resource_declaring_no_scope_resolves_exactly_as_before(): void
@@ -70,7 +70,7 @@ class OperationSubjectResolutionTest extends TestCase
         $this->resource();
         $this->mount($this->op());
 
-        $this->postJson('/subject-widgets/2/op/ping')->assertOk()->assertJson(['id' => 2]);
+        $this->postJson('/subject-widgets/2/ping')->assertOk()->assertJson(['id' => 2]);
     }
 
     // ── A declared route key is the op's identifier too ──────────────────────────────────────────────
@@ -82,11 +82,11 @@ class OperationSubjectResolutionTest extends TestCase
         $this->resource(routeKey: 'slug');
         $this->mount($this->op());
 
-        $this->postJson('/subject-widgets/blue/op/ping')->assertOk()->assertJson(['id' => 1]);
+        $this->postJson('/subject-widgets/blue/ping')->assertOk()->assertJson(['id' => 1]);
 
         // One public identifier per resource, never two: the PK stops resolving, exactly as on the
         // read path.
-        $this->postJson('/subject-widgets/1/op/ping')->assertNotFound();
+        $this->postJson('/subject-widgets/1/ping')->assertNotFound();
     }
 
     // ── The `$model` fallback is load-bearing, not residue ───────────────────────────────────────────
@@ -99,7 +99,7 @@ class OperationSubjectResolutionTest extends TestCase
         // `Sharing::attachTo()`, `beam-rank`'s `Resources::attachTo()`, and `market-products.*`.
         $this->mount($this->op());
 
-        $this->postJson('/subject-widgets/1/op/ping')->assertOk()->assertJson(['id' => 1]);
+        $this->postJson('/subject-widgets/1/ping')->assertOk()->assertJson(['id' => 1]);
     }
 
     // ── The two subject-less shipped resolvers ───────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ class OperationSubjectResolutionTest extends TestCase
         $this->actingAs($actor);
 
         // No coordinate: the mount reads `pathParameters() === []` (particle-operation-surface 20), so
-        // the op answers at `subject-widgets/ping` and has no `{id}` to carry and no `/op/` alias.
+        // the op answers at `subject-widgets/ping` and has no `{id}` coordinate.
         $this->postJson('/subject-widgets/ping')->assertOk()->assertJson(['class' => SubjectUser::class]);
         $this->assertSame([], (new ActorSubject)->pathParameters());
         $this->assertTrue((new ActorSubject)->yieldsSubject());

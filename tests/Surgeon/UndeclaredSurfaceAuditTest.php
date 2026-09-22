@@ -170,7 +170,7 @@ class UndeclaredSurfaceAuditTest extends TestCase
 
         Route::prefix('resources')->group(fn () => Particle::ops('widgets', 'widgets', 'recalculate'));
 
-        $this->assertNotContains('resources/widgets/{id}/op/recalculate', $this->uris());
+        $this->assertNotContains('resources/widgets/{id}/recalculate', $this->uris());
     }
 
     public function test_a_stream_declaration_counts_as_declared(): void

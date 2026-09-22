@@ -199,14 +199,11 @@ class GenerateClientSdkCommandTest extends TestCase
         $this->assertSame('resources/widgets/{id}/recalculate', $manifest['widgets.recalculate']['path']);
         $this->assertSame(['POST'], $manifest['widgets.recalculate']['methods']);
 
-        // ...and its DEPRECATED `/op/` alias does not. The alias is mounted (particle-operation-surface
-        // 12 keeps every shipped URL answering) but it is not part of the published surface, so the
-        // generated client carries the new spelling and ONLY the new spelling. This assertion is the
-        // whole of that ticket's acceptance #2, and it is the reason `RouteVisibility::Deprecated`
-        // exists at all — the tier had no reader before it.
+        // The published route and the mounted table both contain only the canonical operation.
         $this->assertArrayNotHasKey('widgets.op.recalculate', $manifest);
         $mounted = array_map(fn ($route) => $route->uri(), Route::getRoutes()->getRoutes());
-        $this->assertContains('resources/widgets/{id}/op/recalculate', $mounted);
+        $this->assertContains('resources/widgets/{id}/recalculate', $mounted);
+        $this->assertNotContains('resources/widgets/{id}/op/recalculate', $mounted);
 
         // Resource entries are untouched by the widening.
         $this->assertSame('App.Data.WidgetData', $manifest['widgets.index']['returns']);

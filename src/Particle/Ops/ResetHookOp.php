@@ -33,8 +33,7 @@ use Splicewire\Beam\Routing\IdConstraint;
  *
  *     Particle::ops('hooks', 'hooks', [ResetHookOp::class]);
  *
- * ⚠️ Mount it through `Particle::ops()`, which derives the route name `hooks.reset` — and, since
- * particle-operation-surface 12, the deprecated `hooks.op.reset` alias alongside it. A bare
+ * Mount it through `Particle::ops()`, which derives the route name `hooks.reset`. A bare
  * `Route::post()` lands in the flat name space `RouteManifest` resolves
  * LAST-WINS, silently — which has bitten this map three times.
  */

@@ -682,7 +682,7 @@ class SdkReturnsCoverageAuditTest extends TestCase
 
         // The stream's own declaration site — an event-name → payload-variants map.
         $this->assertTrue(SdkReturnsCoverageAudit::declaresShape([
-            'path' => 'circuits/{id}/op/run',
+            'path' => 'circuits/{id}/run',
             'streams' => ['node_status' => ['NodeStatusData']],
         ]));
 

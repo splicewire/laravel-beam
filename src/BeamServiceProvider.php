@@ -2249,8 +2249,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      *
      *   Particle::ops('timeline-projects', 'timeline_project', 'regenerate')
      *      → {method} {uri}[/{coordinate}…]/{op} → invoke  ({resourceKey}.{op}, or the 'name' override)
-     *        the coordinates being the declared subject's pathParameters() — {id} by default (ticket 20) —
-     *        plus the deprecated {uri}/{id}/op/{op} alias keeping the OLD name (ticket 12), ['id'] only
+     *        the coordinates being the declared subject's pathParameters() — {id} by default (ticket 20)
      *      stamped with the operation controller's RESOURCE + NAME defaults.
      *
      *      ⚠️ Two of the options this line used to list have MOVED ONTO THE DECLARATION

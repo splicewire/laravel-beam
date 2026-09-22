@@ -55,7 +55,7 @@ class ColumnSubjectResolutionTest extends TestCase
         $this->resource();
         $this->mount($this->op(subject: new ColumnSubject('token')));
 
-        $this->postJson('/column-widgets/tok-b/op/ping')->assertOk()->assertJson(['id' => 2]);
+        $this->postJson('/column-widgets/tok-b/ping')->assertOk()->assertJson(['id' => 2]);
     }
 
     public function test_a_miss_is_a_clean_404_rather_than_a_null_subject(): void
@@ -65,7 +65,7 @@ class ColumnSubjectResolutionTest extends TestCase
         $this->resource();
         $this->mount($this->op(subject: new ColumnSubject('token')));
 
-        $this->postJson('/column-widgets/nope/op/ping')->assertNotFound();
+        $this->postJson('/column-widgets/nope/ping')->assertNotFound();
     }
 
     public function test_the_primary_key_stops_resolving_for_that_operation(): void
@@ -77,7 +77,7 @@ class ColumnSubjectResolutionTest extends TestCase
 
         // The column REPLACES the identifier, it does not widen it — otherwise the operation would
         // carry two public identifiers, which is the thing `routeKey` refuses to do.
-        $this->postJson('/column-widgets/1/op/ping')->assertNotFound();
+        $this->postJson('/column-widgets/1/ping')->assertNotFound();
     }
 
     public function test_it_overrides_the_resources_declared_route_key(): void
@@ -87,8 +87,8 @@ class ColumnSubjectResolutionTest extends TestCase
         $this->resource(routeKey: 'slug');
         $this->mount($this->op(subject: new ColumnSubject('token')));
 
-        $this->postJson('/column-widgets/tok-a/op/ping')->assertOk()->assertJson(['id' => 1]);
-        $this->postJson('/column-widgets/a/op/ping')->assertNotFound();
+        $this->postJson('/column-widgets/tok-a/ping')->assertOk()->assertJson(['id' => 1]);
+        $this->postJson('/column-widgets/a/ping')->assertNotFound();
     }
 
     // ── The resource scope, and the opt-out the tower case needs ────────────────────────────────────
@@ -101,7 +101,7 @@ class ColumnSubjectResolutionTest extends TestCase
         $this->mount($this->op(subject: new ColumnSubject('token')));
 
         // 404, not a load-then-403: the scoped-out row must never resolve at all.
-        $this->postJson('/column-widgets/tok-a/op/ping')->assertNotFound();
+        $this->postJson('/column-widgets/tok-a/ping')->assertNotFound();
     }
 
     public function test_through_resource_false_resolves_past_the_resources_scope(): void
@@ -114,7 +114,7 @@ class ColumnSubjectResolutionTest extends TestCase
         $this->resource(scope: fn (Builder $q) => $q->where('visible', true));
         $this->mount($this->op(subject: new ColumnSubject('token', throughResource: false)));
 
-        $this->postJson('/column-widgets/tok-a/op/ping')->assertOk()->assertJson(['id' => 1]);
+        $this->postJson('/column-widgets/tok-a/ping')->assertOk()->assertJson(['id' => 1]);
     }
 
     public function test_an_unregistered_resource_key_resolves_through_the_declared_model(): void
@@ -124,7 +124,7 @@ class ColumnSubjectResolutionTest extends TestCase
         // No `ParticleResource` registered — the `Sharing::attachTo()` / `Resources::attachTo()` shape.
         $this->mount($this->op(subject: new ColumnSubject('token')));
 
-        $this->postJson('/column-widgets/tok-a/op/ping')->assertOk()->assertJson(['id' => 1]);
+        $this->postJson('/column-widgets/tok-a/ping')->assertOk()->assertJson(['id' => 1]);
     }
 
     // ── The port's declarative half ─────────────────────────────────────────────────────────────────

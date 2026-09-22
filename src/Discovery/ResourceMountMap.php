@@ -39,11 +39,9 @@ use Splicewire\Beam\Routing\RouteMetadataReader;
  * `…/{id}/op` — and `op` is a LITERAL, which the trailing-parameter strip cannot remove. Knowing the
  * route is an OPERATION is what recovers `…/market-products`.
  *
- * ⚠️ The drop did not retire that need, it MOVED it, so do not read the example above as today's URL.
- * The primary spelling is now `…/market-products/{id}/{name}` (the deprecated alias still carries the
- * old one, and {@see rootOf()} branches on both). There the tail is the operation's own name and is
- * dropped by IDENTITY rather than by position — see the ⚠️ in `rootOf()`, where a resource whose ONLY
- * mounted route is an operation is precisely the case a prefix-and-strip gets wrong.
+ * The canonical spelling is `…/market-products/{id}/{name}`. The tail is the operation's declared
+ * name and is dropped by identity before stripping coordinates. Literal `op` segments in the mount
+ * prefix are ordinary resource path segments and remain intact.
  *
  * Roots that nest then absorb into their shortest ancestor, which is what folds `api/v1/beam/schemas`,
  * `…/schemas/freeze` and `…/schemas/{stem}/latest` into one mount instead of four — and leaves
@@ -123,24 +121,9 @@ class ResourceMountMap
         $defaults = $route->defaults;
 
         if (isset($defaults[ParticleOperationController::NAME])) {
-            // Two spellings, because particle-operation-surface 12 dropped the `/op/` segment and left
-            // the old URL mounted as a deprecated alias. The alias still carries it and slices on the
-            // word; the PRIMARY is `{root}/{id}/{name}`, where the tail is the operation's own name and
-            // is dropped by identity rather than by position — `sliceBeforeLast` on a word that is no
-            // longer there returns the segments UNCHANGED, so the trailing-parameter strip below never
-            // reached `{id}` and the root came back as `{root}/{id}/{name}`.
-            //
-            // ⚠️ This was latent from 12 until particle-operation-surface 13. It only shows on a
-            // resource whose ONLY mounted route is an operation: every other resource has a CRUD or
-            // filter route computing the same root correctly, and `absorbNestedRoots()` folds the wrong
-            // one into it. 13 made `disclosures` exactly that resource — its export became an operation
-            // and it mounts nothing else — and `disclosures.discovery` moved from
-            // `api/v1/disclosures/discovery` to `api/v1/disclosures/{id}/export/discovery`.
+            // Strip the declared operation tail, preserving literal `op` segments in its mount prefix.
             $name = (string) $defaults[ParticleOperationController::NAME];
-
-            $segments = in_array('op', $segments, true)
-                ? $this->sliceBeforeLast($segments, 'op')
-                : $this->sliceBeforeLast($segments, $name);
+            $segments = $this->sliceBeforeLast($segments, $name);
         } elseif (SubSurface::of($route) === SubSurface::EVENTS) {
             $segments = $this->sliceBeforeLast($segments, 'hooks');
         } elseif (isset($defaults[ResourceFiltersController::CONFIG])) {
@@ -206,8 +189,8 @@ class ResourceMountMap
      * `threads.discovery` beside `thread.index` and `thread.filters.*` would introduce the drift rather
      * than inherit it.
      *
-     * The truncation at the stamp is what stops `plans.op.checkout` — the only named route on that
-     * mount — from yielding `plans.op.checkout.discovery`. Falls back to the stamp when the mount's
+     * The truncation at the stamp is what stops `plans.checkout` — the only named route on that
+     * mount — from yielding `plans.checkout.discovery`. Falls back to the stamp when the mount's
      * routes share no name at all (one unnamed route is enough to empty the intersection).
      *
      * @param  list<Route>  $routes

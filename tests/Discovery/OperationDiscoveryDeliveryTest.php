@@ -57,10 +57,20 @@ class OperationDiscoveryDeliveryTest extends TestCase
         ));
     }
 
+    public function test_a_literal_op_prefix_is_retained_in_an_operation_only_discovery_root(): void
+    {
+        Particle::ops('resources/op/papers', 'papers', 'export');
+        app(ResourceDiscoveryAutoMounter::class)->mount();
+        Route::getRoutes()->refreshNameLookups();
+
+        $this->assertSame('resources/op/papers/discovery', Route::getRoutes()->getByName('papers.discovery')->uri());
+        $this->getJson('/resources/op/papers/discovery')->assertOk();
+    }
+
     /** The discovery entry for one operation of the `papers` mount. */
     protected function entry(string $operation): array
     {
-        Particle::ops('papers', 'papers', ['export', 'reindex'], ['alias' => false]);
+        Particle::ops('papers', 'papers', ['export', 'reindex']);
 
         // The auto-mounter runs from the framework's `booted` hook in a real app; a test mounting
         // post-boot has to call it itself.
@@ -118,7 +128,7 @@ class OperationDiscoveryDeliveryTest extends TestCase
      */
     public function test_an_operation_only_resource_mounts_its_discovery_at_the_resource_root(): void
     {
-        Particle::ops('papers', 'papers', 'export', ['alias' => false]);
+        Particle::ops('papers', 'papers', 'export');
 
         app(ResourceDiscoveryAutoMounter::class)->mount();
 

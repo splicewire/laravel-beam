@@ -57,7 +57,7 @@ class GroupRegistryTest extends TestCase
 
     public function test_the_guess_strips_version_and_tier_noise(): void
     {
-        $this->assertSame('Circuits', $this->registry()->guessFromUri('api/v1/splice/circuits/{id}/op/run')->name);
+        $this->assertSame('Circuits', $this->registry()->guessFromUri('api/v1/splice/circuits/{id}/run')->name);
     }
 
     public function test_a_nav_label_resolves_to_the_same_group_as_the_canonical_name(): void
