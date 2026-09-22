@@ -5,6 +5,8 @@ namespace Splicewire\Beam\Console;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Process;
+use Spatie\TypeScriptTransformer\TypeScriptTransformerConfig;
+use Splicewire\Beam\Codegen\ClientTypeReferences;
 use Splicewire\Beam\Codegen\RouteManifestModelSource;
 use Splicewire\Beam\Codegen\TsClientGenerator;
 use Splicewire\Beam\Source\RouteManifestSource;
@@ -51,6 +53,9 @@ class GenerateClientSdkCommand extends Command
                 'client_import' => $this->clientImport(),
                 'routes_import' => $this->routesImport(),
                 'emit_stores' => (bool) config('beam.client.emit_stores', false),
+                'type_references' => $this->container->bound(TypeScriptTransformerConfig::class)
+                    ? (new ClientTypeReferences)->resolve($model->toArray(), $dir, $this->container->make(TypeScriptTransformerConfig::class))
+                    : [],
             ],
         ]);
 

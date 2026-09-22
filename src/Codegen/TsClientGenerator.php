@@ -127,6 +127,24 @@ class TsClientGenerator implements Generator
 
     // ── config-driven bits (now from options) ─────────────────────────────────────────────────────
 
+    private function typeReference(string $reference, bool $nested = true): string
+    {
+        $resolved = $this->options['type_references'][$reference] ?? null;
+        if ($resolved === null) {
+            return $reference;
+        }
+        if (! isset($resolved['module'])) {
+            return $resolved['name'];
+        }
+
+        $module = $resolved['module'];
+        if ($nested) {
+            $module = '../'.(str_starts_with($module, './') ? substr($module, 2) : $module);
+        }
+
+        return 'import('.json_encode($module, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR).').'.$resolved['name'];
+    }
+
     private function clientImport(): string
     {
         $v = $this->options['client_import'] ?? null;
@@ -278,7 +296,7 @@ class TsClientGenerator implements Generator
             $out[] = [
                 'name' => $name,
                 'realm' => $realm,
-                'type' => $entry['returns'].(($entry['returnsMany'] ?? false) ? '[]' : ''),
+                'type' => $this->typeReference($entry['returns']).(($entry['returnsMany'] ?? false) ? '[]' : ''),
                 'returns' => $entry['returns'],
                 'responseExpression' => ($entry['returnsBody'] ?? false) ? 'res.data' : 'res.data.data',
                 'domainKey' => $domainSlug,
@@ -383,7 +401,7 @@ class TsClientGenerator implements Generator
         $streams = $e['streams'];
 
         foreach ($streams as $eventName => $dtoRefs) {
-            $dataType = implode(' | ', $dtoRefs);
+            $dataType = implode(' | ', array_map(fn (string $ref) => $this->typeReference($ref), $dtoRefs));
             $variants[] = "    | { event: '{$eventName}'; data: {$dataType} }";
         }
 
@@ -597,6 +615,7 @@ class TsClientGenerator implements Generator
             ."// Friendly, non-namespaced re-exports of each return DTO (the `type X = App.Data.Y` bridges).\n\n";
 
         foreach ($aliases as $leaf => $type) {
+            $type = $this->typeReference($type, nested: false);
             $body .= "export type {$leaf} = {$type};\n";
         }
 
