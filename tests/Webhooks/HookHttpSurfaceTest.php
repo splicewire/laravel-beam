@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Schemastud\Frame\FrameServiceProvider;
+use Schemastud\Frame\Http\Controllers\FrameResourceController;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Events\EventType;
 use Splicewire\Beam\Events\EventTypeRegistry;
@@ -18,7 +20,6 @@ use Splicewire\Beam\Webhooks\DispatchWebhookJob;
 use Splicewire\Beam\Webhooks\HookEmitter;
 use Splicewire\Beam\Webhooks\Http\HookDeliveriesController;
 use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
-use Splicewire\Beam\Webhooks\Http\HookSubscriptionController;
 use Splicewire\Beam\Webhooks\WebhookDelivery;
 
 /**
@@ -41,6 +42,17 @@ use Splicewire\Beam\Webhooks\WebhookDelivery;
  */
 class HookHttpSurfaceTest extends TestCase
 {
+    protected function getEnvironmentSetUp($app): void
+    {
+        parent::getEnvironmentSetUp($app);
+        $app['config']->set('app.key', str_repeat('h', 32));
+    }
+
+    protected function getPackageProviders($app): array
+    {
+        return [FrameServiceProvider::class, ...parent::getPackageProviders($app)];
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -68,9 +80,20 @@ class HookHttpSurfaceTest extends TestCase
         // purpose: it is what proves an eventless resource answers with an empty catalog, not an error.
         Particle::hookEvents(resource: 'compositions', at: 'compositions');
         Particle::hookEvents(resource: 'unicorns', at: 'unicorns');
-        Route::post('hooks', [HookSubscriptionController::class, 'store'])->name('hooks.subscribe');
-        Route::post('{resource}/hooks', [HookSubscriptionController::class, 'store'])->name('resources.hooks.subscribe');
         Route::get('hooks/{hook}/deliveries', [HookDeliveriesController::class, 'index'])->name('hooks.deliveries');
+    }
+
+    public function test_paused_canonical_creation_mints_secret_without_dispatch(): void
+    {
+        Bus::fake();
+        $created = $this->postJson('/frame/resources/hooks', [
+            'endpoint' => 'https://receiver.test/inbox', 'events' => ['tenants.provisioned'], 'paused' => true,
+        ])->assertOk()->json('data');
+        $this->assertNotEmpty($created['secret']);
+        $this->assertFalse($created['pinged']);
+        $this->assertNotNull($created['hook']['paused_at']);
+        $this->assertSame($created['secret'], Hook::findOrFail($created['hook']['id'])->secret);
+        Bus::assertNothingDispatched();
     }
 
     private function hook(array $attributes = []): Hook
@@ -134,10 +157,10 @@ class HookHttpSurfaceTest extends TestCase
     {
         Bus::fake();
 
-        $created = $this->postJson('/hooks', [
+        $created = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['tenants.provisioned'],
-        ])->assertCreated()->json('data');
+        ])->assertOk()->json('data');
 
         $this->assertNotEmpty($created['secret']);
 
@@ -148,16 +171,27 @@ class HookHttpSurfaceTest extends TestCase
         $projected = HookData::project($hook)->toArray();
         $this->assertArrayNotHasKey('secret', $projected);
         $this->assertNotSame($created['secret'], $projected['secret_preview']);
+        $id = $hook->getKey();
+        $read = $this->getJson("/frame/resources/hooks/records/{$id}")->assertOk()->json('data');
+        $updated = $this->putJson("/frame/resources/hooks/records/{$id}", ['paused' => true])->assertOk()->json('data');
+        $listed = $this->getJson('/frame/resources/hooks')->assertOk()->json('data.0');
+        foreach ([$read, $updated, $listed] as $payload) {
+            $this->assertArrayNotHasKey('secret', $payload);
+            $this->assertArrayNotHasKey('token', $payload);
+            $this->assertStringNotContainsString($created['secret'], json_encode($payload));
+        }
+        $this->assertSame($created['secret'], $hook->refresh()->secret);
+
     }
 
     public function test_create_queues_the_verification_ping_and_leaves_the_hook_unverified_until_it_answers(): void
     {
         Bus::fake();
 
-        $created = $this->postJson('/hooks', [
+        $created = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['tenants.provisioned'],
-        ])->assertCreated()->json('data');
+        ])->assertOk()->json('data');
 
         $this->assertTrue($created['pinged']);
         $this->assertNull($created['hook']['verified_at']);
@@ -172,7 +206,7 @@ class HookHttpSurfaceTest extends TestCase
     {
         Bus::fake();
 
-        $this->postJson('/hooks', [
+        $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['tenants.exploded'],
         ])
@@ -182,27 +216,45 @@ class HookHttpSurfaceTest extends TestCase
         $this->assertSame(0, Hook::query()->count());
     }
 
-    public function test_the_scoped_exposure_prefills_the_prefix_and_refuses_a_foreign_event(): void
+    public function test_old_subscription_post_surfaces_are_absent(): void
+    {
+        $this->postJson('/hooks', [])->assertNotFound();
+        $this->postJson('/compositions/hooks', [])->assertNotFound();
+        $this->assertFalse(class_exists('Splicewire\\Beam\\Webhooks\\Http\\HookSubscriptionController'));
+        $this->assertSame(0, Hook::count());
+    }
+
+    public function test_creation_requires_explicit_events_and_endpoint(): void
     {
         Bus::fake();
+        foreach ([[], ['events' => []], ['events' => null]] as $payload) {
+            $this->postJson('/frame/resources/hooks', ['endpoint' => 'https://receiver.test/inbox', ...$payload])
+                ->assertUnprocessable()->assertJsonValidationErrors('events');
+        }
+        foreach ([[], ['endpoint' => null], ['endpoint' => '']] as $payload) {
+            $this->postJson('/frame/resources/hooks', ['events' => ['tenants.provisioned'], ...$payload])
+                ->assertUnprocessable()->assertJsonValidationErrors('endpoint');
+        }
+        $this->assertSame(0, Hook::count());
+        Bus::assertNothingDispatched();
+    }
 
-        $created = $this->postJson('/compositions/hooks', [
-            'endpoint' => 'https://receiver.test/inbox',
-        ])->assertCreated()->json('data');
-
-        $this->assertSame(['compositions.render.completed'], $created['hook']['events']);
-
-        $this->postJson('/compositions/hooks', [
-            'endpoint' => 'https://receiver.test/inbox',
-            'events' => ['tenants.provisioned'],
-        ])->assertStatus(422);
+    public function test_queue_failure_preserves_the_created_subscription_and_reveals_its_secret(): void
+    {
+        $this->mock(HookEmitter::class)->shouldReceive('ping')->once()->andThrow(new \RuntimeException('Queue unavailable'));
+        $created = $this->postJson('/frame/resources/hooks', [
+            'endpoint' => 'https://receiver.test/inbox', 'events' => ['tenants.provisioned'],
+        ])->assertOk()->json('data');
+        $this->assertFalse($created['pinged']);
+        $this->assertNotEmpty($created['secret']);
+        $this->assertSame($created['secret'], Hook::findOrFail($created['hook']['id'])->secret);
     }
 
     public function test_a_half_supplied_subject_pair_is_refused_rather_than_read_as_no_subject(): void
     {
         Bus::fake();
 
-        $this->postJson('/hooks', [
+        $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['tenants.provisioned'],
             'subject_type' => 'tenant',
@@ -213,21 +265,16 @@ class HookHttpSurfaceTest extends TestCase
     {
         Bus::fake();
 
-        // Deliberately NOT `gated/hooks`: the scoped exposure `{resource}/hooks` is already mounted and
-        // would swallow it, reading "gated" as a resource key. That collision is real at a host too,
-        // which is why the scoped mount belongs under a constrained prefix rather than at the root.
-        // A pass-through stand-in for the commerce middleware: the snapshot is read off the route's
-        // DECLARED middleware string, so what the alias resolves to is irrelevant to what is asserted —
-        // and beam core deliberately does not ship the commerce gate (13 §8).
+        // The snapshot reads the actual route middleware; this fixture does not implement commerce.
         Route::aliasMiddleware('entitlement', PassThroughEntitlement::class);
 
-        Route::post('subscribe-gated', [HookSubscriptionController::class, 'store'])
+        Route::post('gated/resources/{resource}', [FrameResourceController::class, 'store'])
             ->middleware('entitlement:composition-engine');
 
-        $created = $this->postJson('/subscribe-gated', [
+        $created = $this->postJson('/gated/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['tenants.provisioned'],
-        ])->assertCreated()->json('data');
+        ])->assertOk()->json('data');
 
         $this->assertSame(
             ['composition-engine'],
@@ -239,10 +286,10 @@ class HookHttpSurfaceTest extends TestCase
     {
         Bus::fake();
 
-        $created = $this->postJson('/hooks', [
+        $created = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['tenants.provisioned'],
-        ])->assertCreated()->json('data');
+        ])->assertOk()->json('data');
 
         $hook = Hook::query()->findOrFail($created['hook']['id']);
 

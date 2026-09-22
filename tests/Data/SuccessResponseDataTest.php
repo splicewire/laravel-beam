@@ -16,8 +16,6 @@ use Spatie\TypeScriptTransformer\Transformers\AttributedClassTransformer;
 use Splicewire\Beam\Data\ResponseBody;
 use Splicewire\Beam\Data\SuccessResponseData;
 use Splicewire\Beam\Tests\TestCase;
-use Splicewire\Beam\Webhooks\Data\CreatedHookData;
-use Splicewire\Beam\Webhooks\Data\CreatedHookResponseData;
 use Splicewire\Beam\Webhooks\Data\EventCatalogData;
 use Splicewire\Beam\Webhooks\Data\EventCatalogResponseData;
 use Splicewire\Beam\Webhooks\Data\HookDeliveriesResponseData;
@@ -60,5 +58,4 @@ it('generates typed webhook payloads inside the inherited metadata without losin
 })->with([
     'catalog' => [EventCatalogResponseData::class, EventCatalogData::class, false],
     'deliveries' => [HookDeliveriesResponseData::class, HookDeliveryData::class, true],
-    'created hook' => [CreatedHookResponseData::class, CreatedHookData::class, false],
 ]);

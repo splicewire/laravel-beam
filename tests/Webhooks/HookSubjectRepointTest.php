@@ -5,8 +5,10 @@ namespace Splicewire\Beam\Tests\Webhooks;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
+use Schemastud\Frame\FrameServiceProvider;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Events\EventType;
@@ -41,6 +43,17 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class HookSubjectRepointTest extends TestCase
 {
+    protected function getEnvironmentSetUp($app): void
+    {
+        parent::getEnvironmentSetUp($app);
+        $app['config']->set('app.key', str_repeat('h', 32));
+    }
+
+    protected function getPackageProviders($app): array
+    {
+        return [FrameServiceProvider::class, ...parent::getPackageProviders($app)];
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -74,6 +87,35 @@ class HookSubjectRepointTest extends TestCase
         ));
 
         Particle::mount('hooks')->only(['update']);
+    }
+
+    public function test_canonical_create_preserves_subject_reach_and_subjectless_denial(): void
+    {
+        Bus::fake();
+        $mine = ReachRecord::create(['reachable' => true]);
+        $theirs = ReachRecord::create(['reachable' => false]);
+        $input = ['endpoint' => 'https://receiver.test/inbox', 'events' => ['reaches.happened'], 'paused' => true];
+
+        $this->postJson('/frame/resources/hooks', $input)->assertForbidden();
+        $this->postJson('/frame/resources/hooks', [
+            ...$input, 'subject_type' => $theirs->getMorphClass(), 'subject_id' => (string) $theirs->getKey(),
+        ])->assertForbidden();
+        $this->assertSame(0, Hook::count());
+
+        $this->postJson('/frame/resources/hooks', [
+            ...$input, 'subject_type' => $mine->getMorphClass(), 'subject_id' => (string) $mine->getKey(),
+        ])->assertOk()->assertJsonPath('data.hook.subject_id', (string) $mine->getKey());
+        $this->assertSame(1, Hook::count());
+        Bus::assertNothingDispatched();
+    }
+
+    public function test_canonical_create_policy_denial_precedes_invalid_input_and_writes_nothing(): void
+    {
+        Bus::fake();
+        Gate::policy(Hook::class, UncreatableHookPolicy::class);
+        $this->postJson('/frame/resources/hooks', [])->assertForbidden();
+        $this->assertSame(0, Hook::count());
+        Bus::assertNothingDispatched();
     }
 
     private function hook(?ReachRecord $subject = null, array $events = ['reaches.happened']): Hook
@@ -277,6 +319,16 @@ class ReachRecordData extends Data
 
 class UpdatableHookPolicy
 {
+    public function viewAny($user): bool
+    {
+        return true;
+    }
+
+    public function create($user): bool
+    {
+        return true;
+    }
+
     public function view($user, Hook $hook): bool
     {
         return true;
@@ -329,5 +381,13 @@ class WideOpenReachRecordPolicy
     public function viewAny($user): bool
     {
         return true;
+    }
+}
+
+class UncreatableHookPolicy extends UpdatableHookPolicy
+{
+    public function create($user): bool
+    {
+        return false;
     }
 }

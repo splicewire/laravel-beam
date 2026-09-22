@@ -14,12 +14,11 @@ use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
-use Splicewire\Beam\Webhooks\Http\HookSubscriptionController;
 use Throwable;
 
 /**
  * The REACH check on a subscription — "may this principal receive these events, for this subject?" —
- * lifted out of {@see HookSubscriptionController} so BOTH write doors ask it
+ * lifted out of {@see CreateHookSubscription} so BOTH write doors ask it
  * (particle-write-surface ticket 04).
  *
  * ## Why this class exists at all
@@ -35,7 +34,7 @@ use Throwable;
  * The repair is NOT "call the controller's method from the generic controller". It is this object,
  * asked from two places:
  *
- *   - {@see HookSubscriptionController::authorizeSubscription()} — create, unchanged in behaviour.
+ *   - {@see CreateHookSubscription::create()} — create, unchanged in behaviour.
  *   - {@see HookData::prepare()} — the particle convention hook, which `ParticleController` runs on
  *     create AND update alike. `RankTreeData::prepare()` re-rooting `parent_id` on both paths is the
  *     estate's existing example of that seam carrying a rule the generic controller must not know.

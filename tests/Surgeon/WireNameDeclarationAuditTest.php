@@ -9,6 +9,9 @@ use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\CamelCaseMapper;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
+use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Surgeon\WireNameDeclarationAudit;
 
 /**
@@ -28,6 +31,20 @@ use Splicewire\Beam\Surgeon\WireNameDeclarationAudit;
  */
 class WireNameDeclarationAuditTest extends TestCase
 {
+    public function test_a_create_result_only_dto_is_part_of_the_declared_wire_population(): void
+    {
+        $resources = new ParticleResourceRegistry;
+        $resources->register(new ParticleResource(
+            key: 'receipts', backing: 'App\\Models\\Receipt', createResultData: UndeclaredWireData::class,
+        ));
+        $findings = WireNameDeclarationAudit::forRegistries(
+            $resources, new ParticleOperationRegistry, input: CamelCaseMapper::class,
+        )->run();
+        $details = implode(' ', array_map(fn ($finding) => $finding->detail, $findings));
+        $this->assertStringContainsString('UndeclaredWireData', $details);
+        $this->assertStringContainsString('calendar_id', $details);
+    }
+
     /** Defaults to the flagship's real posture: camel on input, nothing on output. */
     private function detailsFor(string ...$classes): array
     {

@@ -3,17 +3,22 @@
 namespace Splicewire\Beam\Tests\Codegen;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Route;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Codegen\AmbientTypeIndex;
 use Splicewire\Beam\Codegen\ContributedTypesGenerator;
 use Splicewire\Beam\Codegen\DeclaredParticleTypes;
+use Splicewire\Beam\Data\HookData;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Routing\RouteReturnType;
 use Splicewire\Beam\Tests\TestCase;
+use Splicewire\Beam\Webhooks\Data\CreatedHookData;
 
 /**
  * The enumeration half of the whole-surface emit guarantee: what the estate DECLARES, versus what a
@@ -37,6 +42,20 @@ class DeclaredParticleTypesTest extends TestCase
     private function enumerator(): DeclaredParticleTypes
     {
         return $this->app->make(DeclaredParticleTypes::class);
+    }
+
+    public function test_hook_create_result_is_discovered_and_projected_without_changing_read_data(): void
+    {
+        $resource = $this->resources()->get('hooks');
+        $definition = $resource->toResourceDefinition();
+        $this->assertSame(CreatedHookData::class, $definition->resolvedCreateResultData());
+        $this->assertSame(HookData::class, $definition->data);
+        Particle::mount('hook-rest', 'hooks')->only(['store']);
+        $route = collect(Route::getRoutes()->getRoutes())
+            ->first(fn ($route) => $route->uri() === 'hook-rest');
+        $this->assertSame('Splicewire.Beam.Data.HookData', app(RouteReturnType::class)->for($route)['type']);
+
+        $this->assertSame(['resource [hooks] createResultData:'], $this->enumerator()->declared()[CreatedHookData::class]);
     }
 
     /**

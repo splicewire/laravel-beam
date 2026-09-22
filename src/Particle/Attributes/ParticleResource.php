@@ -126,5 +126,7 @@ class ParticleResource
         public ?string $summaryProvider = null,
         /** Explicit schema identity; null uses the read Data class as the binding. */
         public ?string $schemaRef = null,
+        /** @var class-string|null Frame handler create result; null uses the read Data class. */
+        public ?string $createResultData = null,
     ) {}
 }

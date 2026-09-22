@@ -81,7 +81,7 @@ class WireNameDeclarationAudit implements DoctorAudit
 
     /**
      * The estate population: every Data class named in a DECLARED slot — a resource's `data:`,
-     * `input:` and `editData:`, and an operation's `input:` and `output:`.
+     * `input:`, `editData:` and `createResultData:`, and an operation's `input:` and `output:`.
      *
      * That is exactly the particle doctrine's own scope ("every boundary-crossing data shape is a
      * declared Data class"), which is what makes the population defensible rather than arbitrary: a
@@ -99,7 +99,7 @@ class WireNameDeclarationAudit implements DoctorAudit
         $classes = [];
 
         foreach ($resources->all() as $resource) {
-            foreach ([$resource->data ?? null, $resource->input ?? null, $resource->editData ?? null] as $slot) {
+            foreach ([$resource->data ?? null, $resource->input ?? null, $resource->editData ?? null, $resource->createResultData ?? null] as $slot) {
                 if (is_string($slot) && $slot !== '') {
                     $classes[$slot] = true;
                 }

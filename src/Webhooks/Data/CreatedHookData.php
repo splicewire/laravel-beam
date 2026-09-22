@@ -21,11 +21,8 @@ use Splicewire\Beam\Models\Hook;
  * to strip" is not a security boundary. The secret is instead absent from the projection entirely
  * and present only here, on a shape only the create endpoint can return.
  *
- * That is also why create is hand-rolled REST beside the particle resource rather than the
- * resource's own `store`: the generic controller returns the `data:` projection, and there is no
- * slot in the particle contract for "the create response is a different shape than the read one".
- * Frame's generic create has the identical hole, which is exactly what `TokenData`'s docblock says
- * ("Frame's generic create has no notion of a create-response carrying a display-once secret").
+ * The resource declares this shape as `createResultData:` for its Frame create handler. Generic
+ * Particle REST still projects `data:`; it does not claim this result shape.
  */
 #[TypeScript]
 class CreatedHookData extends BeamData
@@ -37,7 +34,7 @@ class CreatedHookData extends BeamData
         #[Description('The HMAC signing secret, in the clear, for the only time it is ever transmitted. Store it now — every later read projects `secretPreview` and nothing more.')]
         public string $secret,
 
-        #[Description('Whether a `hooks.ping` verification delivery was queued for this endpoint. False when the host disabled outbound delivery.')]
+        #[Description('Whether a `hooks.ping` verification delivery was queued for this endpoint. False when paused or when queueing the verification delivery fails.')]
         public bool $pinged,
     ) {}
 

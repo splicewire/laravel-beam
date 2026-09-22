@@ -8,9 +8,9 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Schemastud\Frame\FrameServiceProvider;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Events\EventType;
@@ -20,7 +20,6 @@ use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\Schema\BeamHookMorphWideningPostgresTest;
 use Splicewire\Beam\Tests\TestCase;
-use Splicewire\Beam\Webhooks\Http\HookSubscriptionController;
 
 /**
  * The two morph ids on `beam_hooks` at the HTTP boundary — who may OWN a hook, and what happens to a
@@ -34,7 +33,7 @@ use Splicewire\Beam\Webhooks\Http\HookSubscriptionController;
  * met there and both are fixed, in different places, because either one alone still produces a 500:
  *
  *   1. The COLUMN could not hold the value the package's own writer put in it —
- *      `HookSubscriptionController::stampOwner()` writes `$request->user()->getKey()`, and a
+ *      `CreateHookSubscription::stampOwner()` writes `$request->user()->getKey()`, and a
  *      `nullableMorphs()` id is a bigint. Repaired in the schema (the create stub plus
  *      `widen_beam_hook_morph_ids_to_string` for already-migrated hosts).
  *   2. A caller-supplied `subject_id` reached `find()` unvetted, so an id the target model's key
@@ -58,6 +57,17 @@ use Splicewire\Beam\Webhooks\Http\HookSubscriptionController;
  */
 class HookMorphIdBoundaryTest extends TestCase
 {
+    protected function getEnvironmentSetUp($app): void
+    {
+        parent::getEnvironmentSetUp($app);
+        $app['config']->set('app.key', str_repeat('h', 32));
+    }
+
+    protected function getPackageProviders($app): array
+    {
+        return [FrameServiceProvider::class, ...parent::getPackageProviders($app)];
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -90,7 +100,6 @@ class HookMorphIdBoundaryTest extends TestCase
             key: 'uuids', backing: UuidKeyedRecord::class, data: MorphProbeData::class,
         ));
 
-        Route::post('hooks', [HookSubscriptionController::class, 'store'])->name('hooks.subscribe');
     }
 
     protected function tearDown(): void
@@ -112,10 +121,10 @@ class HookMorphIdBoundaryTest extends TestCase
         $actor = new UuidKeyedUser;
         $this->actingAs($actor);
 
-        $id = $this->postJson('/hooks', [
+        $id = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['uuids.happened'],
-        ])->assertCreated()->json('data.hook.id');
+        ])->assertOk()->json('data.hook.id');
 
         $hook = Hook::findOrFail($id);
 
@@ -129,10 +138,10 @@ class HookMorphIdBoundaryTest extends TestCase
 
         $this->actingAs(new IntKeyedUser);
 
-        $id = $this->postJson('/hooks', [
+        $id = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['ints.happened'],
-        ])->assertCreated()->json('data.hook.id');
+        ])->assertOk()->json('data.hook.id');
 
         // `'1'`, not `1`: the column is a string, and the stamp casts so that what a host reads back
         // is what it wrote on every driver. An int here would mean the two disagree on sqlite and
@@ -153,7 +162,7 @@ class HookMorphIdBoundaryTest extends TestCase
 
         $this->actingAs(new UuidKeyedUser);
 
-        $response = $this->postJson('/hooks', [
+        $response = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['ints.happened'],
             'subject_type' => IntKeyedRecord::class,
@@ -185,7 +194,7 @@ class HookMorphIdBoundaryTest extends TestCase
 
         $this->actingAs(new UuidKeyedUser);
 
-        $this->postJson('/hooks', [
+        $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['ints.happened'],
             'subject_type' => IntKeyedRecord::class,
@@ -205,7 +214,7 @@ class HookMorphIdBoundaryTest extends TestCase
 
         $this->actingAs(new UuidKeyedUser);
 
-        $response = $this->postJson('/hooks', [
+        $response = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['ints.happened'],
             'subject_type' => IntKeyedRecord::class,
@@ -228,12 +237,12 @@ class HookMorphIdBoundaryTest extends TestCase
 
         $subject = UuidKeyedRecord::create(['name' => 'a real record']);
 
-        $id = $this->postJson('/hooks', [
+        $id = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['uuids.happened'],
             'subject_type' => UuidKeyedRecord::class,
             'subject_id' => $subject->getKey(),
-        ])->assertCreated()->json('data.hook.id');
+        ])->assertOk()->json('data.hook.id');
 
         $hook = Hook::findOrFail($id);
 
@@ -250,12 +259,12 @@ class HookMorphIdBoundaryTest extends TestCase
 
         $subject = IntKeyedRecord::create(['name' => 'a real record']);
 
-        $id = $this->postJson('/hooks', [
+        $id = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['ints.happened'],
             'subject_type' => IntKeyedRecord::class,
             'subject_id' => (string) $subject->getKey(),
-        ])->assertCreated()->json('data.hook.id');
+        ])->assertOk()->json('data.hook.id');
 
         $this->assertSame('1', Hook::findOrFail($id)->subject_id);
     }

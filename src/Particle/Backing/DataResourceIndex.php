@@ -13,10 +13,10 @@ use Splicewire\Beam\Schema\SchemaBindingIndex;
  * "first in registration order" for the single-answer read, absent rather than erroring for a class
  * nothing declares. Sharing the shape is the point — a reader who knows one knows this.
  *
- * ## Three slots, one class
+ * ## Declared shapes, one class
  *
- * A resource names Data classes in three places: `data` (the read projection), `input` and `editData`
- * (the write DTOs). Two of them routinely name the SAME class — `PlanEditData` is both `input` and
+ * A resource names Data classes in `data` (the read projection), `createResultData` (the Frame create result),
+ * `input` and `editData` (the write DTOs). Two of them routinely name the SAME class — `PlanEditData` is both `input` and
  * `editData` on `plans` — so a slot is not an occurrence, and a class named twice on one resource
  * lists that resource once.
  *
@@ -82,7 +82,7 @@ class DataResourceIndex
     }
 
     /**
-     * The Data classes a declaration names, deduplicated across its three slots.
+     * The Data classes a declaration names, deduplicated across its shape slots.
      *
      * @return list<class-string>
      */
@@ -90,7 +90,7 @@ class DataResourceIndex
     {
         $classes = [];
 
-        foreach ([$resource->data, $resource->input, $resource->editData] as $class) {
+        foreach ([$resource->data, $resource->input, $resource->editData, $resource->createResultData] as $class) {
             if (is_string($class) && $class !== '' && ! in_array($class, $classes, true)) {
                 $classes[] = $class;
             }

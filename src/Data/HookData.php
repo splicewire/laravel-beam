@@ -6,21 +6,23 @@ use Illuminate\Database\Eloquent\Builder;
 use Schemastud\Frame\Attributes\Column;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
+use Splicewire\Beam\Webhooks\Data\CreatedHookData;
+use Splicewire\Beam\Webhooks\HookFrameResourceHandler;
 use Splicewire\Beam\Webhooks\HookSubscriptionReach;
 
 /**
  * The READ projection for the `hooks` particle resource, and its declaration site
  * (api-surface-coherence ticket 38, decided by ticket 12).
  *
- * `data:` and `input:` are the resource's two shape slots — the read projection (this class) and the
- * write DTO ({@see HookInputData}).
+ * `data:` is the read projection, `input:` the write DTO ({@see HookInputData}), and
+ * `createResultData:` the reveal-once Frame create result ({@see CreatedHookData}).
  *
- * The attribute DECLARES; the host ROUTES. Ticket 12 §1 gives it three exposures, and they are three
- * mounts of this ONE declaration, not three resources:
+ * The attribute DECLARES; the host ROUTES. Read/update exposures may mount this one declaration
+ * in several places; creation uses the canonical Frame resource endpoint:
  *
- *     Particle::mount('hooks');                                 // root
- *     Particle::mount('{resource}/hooks', 'hooks');             // scoped, prefix-filtered
- *     Particle::mount('hooks');                                 // again, inside the operator realm
+ *     Particle::mount('hooks')->except(['store']);              // root
+ *     Particle::mount('{resource}/hooks', 'hooks')->except(['store']); // scoped
+ *     Particle::mount('hooks')->except(['store']);              // operator realm
  *
  * Group is **Platform** (12 §9): a hook is not about any one resource — the scoped exposure is a
  * filter over the same rows — so filing it under the resource it happens to be viewed through would
@@ -28,7 +30,7 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
  *
  * ## `secret` is not on this class, and that is the whole reveal-once design
  *
- * The minted secret is returned exactly once, by the hand-rolled create endpoint, following the
+ * The minted secret is returned exactly once, by the declared Frame create handler, following the
  * `tokens` precedent (`TokenData.php:20-24`). Every subsequent read — index, show, the scoped
  * projection, the operator realm — projects {@see $secret_preview} and nothing more. A `secret`
  * property here would be revealed by every one of them, and no amount of route-level care would fix
@@ -45,6 +47,8 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
     data: HookData::class,
     input: HookInputData::class,
     editData: HookInputData::class,
+    createResultData: CreatedHookData::class,
+    handler: HookFrameResourceHandler::class,
     label: 'Hooks',
     singularLabel: 'Hook',
     group: 'Platform',

@@ -20,7 +20,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * cannot see a PACKAGE's discoverable assets*, and "fails to emit silently" is the most-repeated defect
  * on the particle-contribution-seam map. {@see ContributedTypesGenerator} converts that into a named
  * generation-time failure — but only for the handful of DTOs a contribution SLICE happens to reference.
- * Every other declared shape on the estate (a resource's `data`, its `input`, its `editData`; an
+ * Every other declared shape on the estate (a resource's `data`, `input`, `editData`, `createResultData`; an
  * operation's `input` and `output`) is exposed to the identical failure and nothing looks at it. A
  * `#[ParticleResource]` in a package whose `src/Data` root the host's `#[TypeScript]` scan never reaches
  * ships an endpoint whose response has no frontend type at all, and the first symptom is a hand-written
@@ -101,6 +101,7 @@ class DeclaredParticleTypes
             $note($resource->data, "resource [{$resource->key}] data:");
             $note($resource->input, "resource [{$resource->key}] input:");
             $note($resource->editData, "resource [{$resource->key}] editData:");
+            $note($resource->createResultData, "resource [{$resource->key}] createResultData:");
         }
 
         foreach ($this->operations->all() as $operation) {

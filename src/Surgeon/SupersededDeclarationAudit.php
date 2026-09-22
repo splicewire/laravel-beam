@@ -263,7 +263,7 @@ class SupersededDeclarationAudit implements DoctorAudit
                 // contested key, and a bare field name would send the reader back to the registry to
                 // find out. Everything else is reported by name; the values are frequently closures,
                 // long include lists, or nav integers that would swamp the finding.
-                $fields[in_array($name, ['data', 'backing', 'input', 'editData'], true)
+                $fields[in_array($name, ['data', 'backing', 'input', 'editData', 'createResultData'], true)
                     ? sprintf('%s (%s over %s)', $name, ...$this->contrast($winning, $losing))
                     : $name] = true;
             }

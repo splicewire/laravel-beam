@@ -2,14 +2,15 @@
 
 namespace Splicewire\Beam\Tests\Particle;
 
+use Illuminate\Database\Eloquent\Model;
 use Splicewire\Beam\Particle\Backing\DataResourceIndex;
+use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
-use Illuminate\Database\Eloquent\Model;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * The Data-class half of the reverse index {@see \Splicewire\Beam\Particle\Backing\ModelResourceIndex}
+ * The Data-class half of the reverse index {@see ModelResourceIndex}
  * already does for models — same shape, same one-to-MANY cardinality, same "first, in registration
  * order" rule for the single-answer read.
  *
@@ -35,6 +36,16 @@ class DataResourceIndexTest extends TestCase
         $index = $this->indexFor(new ParticleResource(key: 'plans', backing: FakeFixturePlan::class, data: 'App\Data\PlanData'));
 
         $this->assertSame(['plans'], $index->keysFor('App\Data\PlanData'));
+    }
+
+    public function test_it_indexes_a_distinct_frame_create_result(): void
+    {
+        $index = $this->indexFor(new ParticleResource(
+            key: 'plans', backing: FakeFixturePlan::class, data: 'App\\Data\\PlanData',
+            createResultData: 'App\\Data\\CreatedPlanData',
+        ));
+        $this->assertSame(['plans'], $index->keysFor('App\\Data\\CreatedPlanData'));
+        $this->assertSame(['plans'], $index->keysFor('App\\Data\\PlanData'));
     }
 
     public function test_it_indexes_the_write_slots_too(): void

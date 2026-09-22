@@ -12,15 +12,17 @@ use ReflectionClass;
 use ReflectionMethod;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Schemastud\DataSchemas\Generators\Generator;
+use Schemastud\Frame\Contracts\ResourceRegistry;
+use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Events\EventType;
 use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Tests\TestCase;
+use Splicewire\Beam\Webhooks\Data\CreatedHookData;
 use Splicewire\Beam\Webhooks\Http\HookDeliveriesController;
 use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
-use Splicewire\Beam\Webhooks\Http\HookSubscriptionController;
 
-uses(TestCase::class);
+uses(HookResponseTestCase::class);
 
 beforeEach(function () {
     (require __DIR__.'/../../database/migrations/shared/create_beam_hooks_table.php.stub')->up();
@@ -30,7 +32,6 @@ beforeEach(function () {
     Http::preventStrayRequests();
     app(EventTypeRegistry::class)->register(new EventType(name: 'declarations.ready', subjectless: true));
     Route::get('declaration-hooks/events', [HookEventCatalogController::class, 'index']);
-    Route::post('declaration-hooks', [HookSubscriptionController::class, 'store']);
     Route::get('declaration-hooks/{hook}/deliveries', [HookDeliveriesController::class, 'index']);
 });
 
@@ -79,13 +80,30 @@ it('declares empty and populated delivery lists with their response metadata', f
         ->and($schema['properties']['data']['items'])->toHaveKey('$ref');
 })->with([false, true]);
 
-it('declares the 201 reveal-once subscription response without changing its body', function () {
-    $response = $this->postJson('/declaration-hooks', [
+it('declares the canonical reveal-once create result and validates its actual body', function () {
+    $response = $this->postJson('/frame/resources/hooks', [
         'endpoint' => 'https://receiver.test/inbox', 'events' => ['declarations.ready'],
-    ])->assertCreated();
-    declaredHookBody($response, HookSubscriptionController::class, 'store');
-
-    expect($response->json('data.secret'))->not->toBeEmpty()
+    ])->assertOk();
+    $definition = app(ResourceRegistry::class)->get('hooks');
+    expect($definition->resolvedCreateResultData())->toBe(CreatedHookData::class)
+        ->and(CreatedHookData::from($response->json('data'))->toArray())->toEqual($response->json('data'))
+        ->and($response->json('data.secret'))->not->toBeEmpty()
         ->and($response->json('data.hook.id'))->not->toBeEmpty()
         ->and($response->json('data.pinged'))->toBeBool();
+    $schema = app(Generator::class)->forResponse()->generate(new ReflectionClass($definition->resolvedCreateResultData()));
+    expect($schema['properties'])->toHaveKeys(['hook', 'secret', 'pinged']);
 });
+
+class HookResponseTestCase extends TestCase
+{
+    protected function getEnvironmentSetUp($app): void
+    {
+        parent::getEnvironmentSetUp($app);
+        $app['config']->set('app.key', str_repeat('h', 32));
+    }
+
+    protected function getPackageProviders($app): array
+    {
+        return [FrameServiceProvider::class, ...parent::getPackageProviders($app)];
+    }
+}

@@ -117,6 +117,15 @@ class SupersededDeclarationAuditTest extends TestCase
         }
     }
 
+    public function test_distinct_create_results_with_identical_short_names_keep_their_identity(): void
+    {
+        $resources = new ParticleResourceRegistry;
+        $resources->register($this->resource('receipts', ['createResultData' => 'Package\\CreatedData']));
+        $resources->register($this->resource('receipts', ['createResultData' => 'Host\\CreatedData']));
+        $detail = $this->detailFor($this->findings($resources), 'resource.superseded.divergent');
+        $this->assertStringContainsString('createResultData (Host\\CreatedData over Package\\CreatedData)', $detail);
+    }
+
     public function test_a_different_data_class_is_divergent_and_names_both_sides(): void
     {
         $resources = new ParticleResourceRegistry;

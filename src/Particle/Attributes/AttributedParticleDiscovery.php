@@ -171,6 +171,7 @@ class AttributedParticleDiscovery
             label: $attribute->label,
             form: $attribute->form,
             editData: $attribute->editData,
+            createResultData: $attribute->createResultData,
             policy: $attribute->policy,
             query: $attribute->query,
             group: $attribute->group,
