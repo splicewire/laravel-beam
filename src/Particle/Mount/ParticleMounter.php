@@ -166,8 +166,7 @@ class ParticleMounter
         }
 
         if (in_array('update', $only, true)) {
-            $verbs = ($options['legacyPostUpdate'] ?? false) ? ['put', 'patch', 'post'] : ['put', 'patch'];
-            $stamp($withId($router->match($verbs, "{$uri}/{id}", [$controller, 'update'])), 'update');
+            $stamp($withId($router->match(['put', 'patch'], "{$uri}/{id}", [$controller, 'update'])), 'update');
         }
 
         if (in_array('destroy', $only, true)) {

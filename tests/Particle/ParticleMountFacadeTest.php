@@ -129,13 +129,12 @@ class ParticleMountFacadeTest extends TestCase
         Particle::mount('gadgets')
             ->names('gizmos')
             ->idConstraint('uuid')
-            ->legacyPostUpdate()
             ->controller(ParticleController::class);
 
         $update = $this->named('gizmos.update');
 
         $this->assertNotNull($update);
-        $this->assertEqualsCanonicalizing(['PUT', 'PATCH', 'POST'], $update->methods());
+        $this->assertEqualsCanonicalizing(['PUT', 'PATCH'], $update->methods());
         $this->assertArrayHasKey('id', $update->wheres);
 
         // Particle mounts do not publish filter metadata or saved-view endpoints.

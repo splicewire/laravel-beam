@@ -2212,13 +2212,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      *      → GET       {uri}      → index    ({names}.index)
      *        GET    {uri}/{id}    → show     ({names}.show)
      *        POST      {uri}      → store    ({names}.store)
-     *        PUT|PATCH {uri}/{id} → update   ({names}.update)   (+ POST when 'legacyPostUpdate' => true)
+     *        PUT|PATCH {uri}/{id} → update   ({names}.update)
      *        DELETE {uri}/{id}    → destroy  ({names}.destroy)
      *      each stamped with `->defaults(ParticleController::RESOURCE, $resourceKey)`. Options:
      *        - 'only'             verb subset (default all five; read-only is `['index','show']`, etc.)
      *        - 'names'            route-name prefix (default: the resource key with '-' → '_')
-     *        - 'legacyPostUpdate' also accept POST {uri}/{id} for update, so a hand-rolled CRUD controller
-     *                             can be dissolved WITHOUT changing its public URLs
      *        - 'idConstraint'     'uuid' to constrain {id} with whereUuid (default: unconstrained)
      *        - 'controller'       route through a dedicated ParticleController subclass instead of the
      *                             generic {@see ParticleController} (still stamped with the `_particle`

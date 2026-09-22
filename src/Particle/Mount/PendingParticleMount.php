@@ -98,14 +98,6 @@ class PendingParticleMount
         return $this;
     }
 
-    /** Accept `POST {uri}/{id}` as an update alongside PUT/PATCH. */
-    public function legacyPostUpdate(bool $legacy = true): static
-    {
-        $this->options['legacyPostUpdate'] = $legacy;
-
-        return $this;
-    }
-
     /** Constrain `{id}` — `'uuid'` is the only understood value; `null` leaves it unconstrained. */
     public function idConstraint(?string $constraint): static
     {
