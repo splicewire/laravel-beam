@@ -43,14 +43,15 @@ class HookDeliveriesController extends Controller
     /**
      * Delivery attempts
      *
-     * Every attempt this hook made, newest first, projected from the outbound request log. Carries
-     * the delivery uuid the receiver saw, the status it answered with, and the timings — but no
-     * body: see {@see HookDeliveryData} for why that half of 12 §6 is a recorded contradiction rather
-     * than an omission.
+     * List delivery attempts for this hook, newest first. Each attempt includes its delivery
+     * UUID, response status and timings. Request and response bodies are not included.
      */
     #[ResponseFromData(HookDeliveriesResponseData::class, description: 'The attempts, newest first.')]
     public function index(Request $request, Hook $hook)
     {
+        // HookDeliveryData projects the available outbound request log metadata. The body
+        // limitation is documented on that Data class; do not imply that this projection includes it.
+
         Gate::authorize('view', $hook);
 
         $limit = min(max((int) $request->integer('limit', 50), 1), 200);
