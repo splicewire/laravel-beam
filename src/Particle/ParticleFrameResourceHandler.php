@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use RuntimeException;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
+use Schemastud\Frame\Data\ResourcePageData;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
@@ -64,8 +65,8 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         // A service-backed (union) resource has no single model to query: its list is a MERGE of N
         // sub-sources fused behind a backing that only STREAMS (ADR-0156 §57-58, §83 — widen the
         // Particle to serve one, never keep a bespoke handler). Resolve the backing off the
-        // definition and flatten its paginated page to the flat row array this handler returns (the
-        // Frame socket wraps it into the `{data,…}` envelope). Model-backed resources are unaffected.
+        // definition and preserve its cursor page in Frame's declared envelope. The backing owns
+        // pagination; the resource socket must not slice that page again.
         if ($this->streamsOnly($definition)) {
             return $this->streamedIndex($definition);
         }
@@ -80,7 +81,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     /**
      * The list for a resource whose backing only {@see StreamsRecords}: take the request's opaque
-     * `filter[…]` bag + cursor/perPage, hand them to the backing, and project
+     * `filter[…]` bag + cursor/per_page, hand them to the backing, and project
      * each merged item through {@see ScopedIndexQuery::projectListRow()} — the declaration's `project`
      * closure when it declares one, else the resource's read Data class (its spatie magic named
      * constructor, e.g. `ReviewItemResourceData::fromReviewItem`, resolves off the item type). The source
@@ -91,10 +92,10 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      * showing "the rows this index would list" has to apply the SAME ladder, and re-spelling it there is
      * how the two drift (realm-dashboards 06a review).
      *
-     * A flat row list, which frame's controller pages — or, for an {@see Unpaged} backing, the controller's
-     * own `{data,total,page,perPage}` envelope holding every row.
+     * A cursor page without an invented total, or an offset page containing the whole population
+     * for an {@see Unpaged} backing. Frame passes either declared envelope through unchanged.
      *
-     * @return array<int, array<string, mixed>>|array{data: array<int, array<string, mixed>>, total: int, page: int, perPage: int}
+     * @return array<string, mixed>
      */
     protected function streamedIndex(ResourceDefinition $definition): array
     {
@@ -108,28 +109,22 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         // forwarding the full bag is additive. perPage floored at 1 to guard a paginator underflow.
         $filters = (array) $request->input('filter', []);
         $cursor = $request->query('cursor');
-        $perPage = max(1, (int) $request->integer('perPage', 25));
+        $perPage = max(1, min(100, $request->integer('per_page', 25)));
 
         $backing = $this->backing($definition, StreamsRecords::class);
 
-        $rows = collect($backing->records($filters, $cursor, $perPage)->items())
+        $page = $backing->records($filters, $cursor, $perPage);
+        // Capture the backing's coordinate before projection drops any cursor-only fields.
+        $nextCursor = $backing instanceof Unpaged ? null : $page->nextCursor()?->encode();
+        $rows = collect($page->items())
             ->map(fn (mixed $item) => $this->listQuery->projectListRow($definition, $item)->toArray())
             ->all();
 
-        // An {@see Unpaged} backing's whole population is one page. Frame's controller re-slices a flat
-        // list by `per_page` (default 25, max 100) but returns a pre-enveloped result untouched, so the
-        // envelope is built HERE, in the controller's own shape (`{data,total,page,perPage}`), and no
-        // row can land on a second page whatever the request asked for.
         if ($backing instanceof Unpaged) {
-            return [
-                'data' => array_values($rows),
-                'total' => count($rows),
-                'page' => 1,
-                'perPage' => max(1, count($rows)),
-            ];
+            return ResourcePageData::offset($rows, count($rows), 1, max(1, count($rows)))->toArray();
         }
 
-        return $rows;
+        return ResourcePageData::cursor($rows, $perPage, $nextCursor)->toArray();
     }
 
     /**
