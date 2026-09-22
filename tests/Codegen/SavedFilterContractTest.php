@@ -9,12 +9,11 @@ use Splicewire\Beam\Codegen\DeclaredParticleTypes;
 use Splicewire\Beam\Filters\Data\SavedFilterData;
 use Splicewire\Beam\Filters\Data\SavedFilterEditData;
 use Splicewire\Beam\Filters\Data\SavedFilterInputData;
-use Splicewire\Beam\Filters\Data\SavedFilterListResponseData;
 use Splicewire\Beam\Tests\TestCase;
 
 class SavedFilterContractTest extends TestCase
 {
-    public function test_saved_filter_contracts_generate_objects_and_typed_list_members(): void
+    public function test_saved_filter_contracts_generate_objects_and_declared_resource_types(): void
     {
         $generator = app(Generator::class)->forResponse();
         $read = $generator->generate(new ReflectionClass(SavedFilterData::class));
@@ -23,7 +22,6 @@ class SavedFilterContractTest extends TestCase
         $this->assertContains('resource', $input['required']);
         $this->assertNotContains('resource', $edit['required']);
         $this->assertArrayHasKey(SavedFilterEditData::class, app(DeclaredParticleTypes::class)->declared());
-        $list = $generator->forResponse()->generate(new ReflectionClass(SavedFilterListResponseData::class));
         $this->assertSame('object', $read['properties']['query_parameters']['type']);
         $this->assertSame('object', $input['properties']['query_parameters']['type']);
         $this->assertSame('string', $read['properties']['id']['type']);
@@ -32,8 +30,6 @@ class SavedFilterContractTest extends TestCase
         foreach (['create', 'update', 'delete'] as $action) {
             $this->assertSame('boolean', $read['$defs']['ResourceCapabilitiesData']['properties'][$action]['type']);
         }
-        $this->assertSame('array', $list['properties']['data']['type']);
-        $this->assertSame('#/$defs/SavedFilterData', $list['properties']['data']['items']['$ref']);
         $this->assertArrayHasKey(SavedFilterData::class, app(DeclaredParticleTypes::class)->declared());
         $this->assertArrayHasKey(SavedFilterInputData::class, app(DeclaredParticleTypes::class)->declared());
         $empty = new SavedFilterData('id', 'Empty', 'papers', [], 'private', false, new ResourceCapabilitiesData(true, true, true));

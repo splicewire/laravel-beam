@@ -35,7 +35,8 @@ emit the attribute with every SHAPE slot filled (`input:`, `output:`, `ability:`
 ## Where an operation mounts
 
 The `Particle` facade owns mounting: `Particle::mount()`, `::ops()`, `::relative()`,
-`::relatives()` and `::filters()`. The former `Route::particle*` macros are deleted.
+`::relatives()`. Filter metadata uses Frame `ResourceRoutes::filters()`; saved views use the declared
+`saved-filters` resource. The former `Route::particle*` macros are deleted.
 
 An operation mounts once at `{uri}[/{coordinate}…]/{op}`, named `{resourceKey}.{op}`.
 Coordinates come from the declared subject's `pathParameters()` and default to `{id}`.
@@ -110,13 +111,10 @@ backing implements the ones it genuinely has:
   `#[Filterable]` Data class, so `@schemastud/facets` is one client over one schema. It declares the
   vocabulary only — `records()` still applies it — and it belongs to a backing WITHOUT `QueriesRecords`:
   a queryable backing's vocabulary is its filter Data class, and one carrying both is reported by
-  `particle.capability-disagreement` as two vocabularies. `GET …/filters/schema` consults this capability
-  FIRST, before any data-filters registration under the key, so the host-side "stub `Query` that throws"
-  workaround (the flagship's `review-queue` registration in `config/data-filters.php`) is outranked
-  rather than raced. ⚠️ That stub is **still present** — composite-backing 03 landed the composite
-  without removing it, because saved filters and variants still validate against a Data class and this
-  capability deliberately declares none — so its Data class must keep declaring every facet the backing
-  declares (beam ADR-0219; tower's `ReviewQueueDeclaredVocabularyTest` pins the two together).
+  `particle.capability-disagreement` as two vocabularies. Frame's filter provider serves this declaration
+  and rejects a competing data-filters query under the same key. Saved-view validation uses the same
+  declared vocabulary without executing the backing. A non-Frame particle list can compose its query
+  and authorization without exposing Frame metadata or saved-view CRUD.
   `…/filters/options/{ref}` answers only the handles the declaration names. Model
   reading: `splicewire/tower` `src/Frame/Sources/ReviewQueueUnionSource.php`, whose tower test pins the
   declared names against `ReviewInbox::applyFacets()`.

@@ -3,8 +3,8 @@
 namespace Splicewire\Beam\Discovery;
 
 use Illuminate\Routing\Route;
+use Schemastud\Frame\Http\Controllers\FrameResourceFiltersController;
 use Splicewire\Beam\Discovery\Http\ResourceDiscoveryController;
-use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Routing\BeamRouteAction;
@@ -52,7 +52,7 @@ class SubSurface
         return match (true) {
             isset($defaults[ResourceDiscoveryController::CONFIG]) => self::DISCOVERY,
             isset($defaults[ParticleOperationController::NAME]) => self::OPERATIONS,
-            isset($defaults[ResourceFiltersController::CONFIG]) => self::FILTERS,
+            self::servedBy($route, FrameResourceFiltersController::class) => self::FILTERS,
             self::servedBy($route, HookEventCatalogController::class) => self::EVENTS,
             default => self::CRUD,
         };

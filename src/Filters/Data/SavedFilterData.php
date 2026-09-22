@@ -9,7 +9,6 @@ use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Data\ResourceCapabilitiesData;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\WithTransformer;
-use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Filters\SavedFilterResourceHandler;
 use Splicewire\Beam\Filters\SavedFilterService;
@@ -39,28 +38,11 @@ class SavedFilterData extends BeamData
         #[MapName('is_default')]
         public bool $isDefault,
         public ResourceCapabilitiesData $can,
-        #[MapName('owner_type')]
-        public string|Optional|null $ownerType = new Optional,
-        #[MapName('owner_id')]
-        public string|int|Optional|null $ownerId = new Optional,
-        #[MapName('context_type')]
-        public string|Optional|null $contextType = new Optional,
-        #[MapName('context_id')]
-        public string|int|Optional|null $contextId = new Optional,
-        #[MapName('created_at')]
-        public string|Optional|null $createdAt = new Optional,
-        #[MapName('updated_at')]
-        public string|Optional|null $updatedAt = new Optional,
     ) {}
 
     public static function fromSavedFilter(SavedFilter $saved): self
     {
         return new self($saved->id, $saved->name, $saved->resource, $saved->query_parameters ?? [], $saved->visibility->value, $saved->is_default, self::capabilities($saved));
-    }
-
-    public static function withLegacyMetadata(SavedFilter $saved): self
-    {
-        return self::from([...$saved->toArray(), 'query_parameters' => $saved->query_parameters ?? [], 'can' => self::capabilities($saved)]);
     }
 
     private static function capabilities(SavedFilter $saved): ResourceCapabilitiesData

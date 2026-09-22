@@ -37,12 +37,10 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *
  * ## Why Warn and not Fail
  *
- * `inResource($key, filters: true)` is a *legitimate* declaration whose argument is a **data-filters**
- * resource key; nothing requires that key to also carry a `#[ParticleResource]`, and at the flagship
- * neither `guest-links` nor `releases` does. Such a route still documents its full filter/sort/include
- * contract off the data-filters registry — it just loses the particle-derived response envelope and
- * pagination. That is worth a line in a work-list, not a red gate. A stamp registered in **neither**
- * registry is the sharper case and is called out separately in the same finding.
+ * A resource stamp without a particle declaration is a reportable host composition problem.
+ * A data-filters registration can explain its query vocabulary but does not supply a particle
+ * declaration or expose filter metadata. The finding distinguishes that case from a key absent
+ * from both registries.
  *
  * ## What it cannot see
  *

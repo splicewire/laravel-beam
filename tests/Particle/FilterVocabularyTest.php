@@ -85,7 +85,7 @@ class FilterVocabularyTest extends TestCase
     /**
      * `(object) []` and never `[]` — the wire contract's `properties` is an object (`FilterSchema` in
      * `@schemastud/facets`), and an empty PHP array would encode as a JSON ARRAY. The same trap
-     * `ResourceFiltersController::declaredEmptyVocabulary()` documents, guarded at the source.
+     * the Frame filter capability serves, guarded at the source.
      */
     public function test_an_empty_vocabulary_still_encodes_properties_as_an_object(): void
     {

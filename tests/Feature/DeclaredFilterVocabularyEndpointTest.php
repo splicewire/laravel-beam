@@ -9,7 +9,7 @@ use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Keywords;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
 use Rushing\DataFilters\Registry\ResourceRegistry as FilterResourceRegistry;
-use Splicewire\Beam\Facades\Particle;
+use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Filters\DeclaredResourceQuery;
 use Splicewire\Beam\Particle\Backing\DeclaredFacet;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
@@ -20,19 +20,20 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
 use Splicewire\Beam\Tests\TestCase;
 
-/**
- * The filter sub-surface's THIRD answer (composite-backing ticket 02): a streams-only backing that
- * declares its vocabulary is served from that declaration, beside the two answers the endpoint already
- * gave — the data-filters schema for a registered filter resource, and the authorized empty vocabulary
- * for a declaration that opted out.
- *
- * Both branches the ticket names are asserted here against the BOOTED registry singletons and a real
- * `Particle::filters()` mount, because the controller's branch order is the whole decision: a
- * declaration outranks a data-filters registration under the same key (beam ADR-0219), and that is
- * only observable at the endpoint.
- */
+/** Frame metadata serves declared backing vocabularies and rejects competing query declarations. */
 class DeclaredFilterVocabularyEndpointTest extends TestCase
 {
+    protected function getPackageProviders($app): array
+    {
+        return [FrameServiceProvider::class, ...parent::getPackageProviders($app)];
+    }
+
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+        $app['config']->set('frame.middleware', []);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -43,6 +44,7 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
             key: 'feed',
             backing: DeclaringFeedBacking::class,
             data: WidgetGateData::class,
+            frame: true,
             readOnly: true,
             showable: false,
         ));
@@ -50,17 +52,16 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
             key: 'ticker',
             backing: SilentFeedBacking::class,
             data: WidgetGateData::class,
+            frame: true,
             readOnly: true,
             showable: false,
         ));
 
-        Particle::filters('feed', at: 'feed');
-        Particle::filters('ticker', at: 'ticker');
     }
 
     public function test_a_declaring_backing_is_served_its_declared_vocabulary(): void
     {
-        $properties = $this->getJson('feed/filters/schema')
+        $properties = $this->getJson('frame/resources/feed/filters/schema')
             ->assertOk()
             ->json('data.properties');
 
@@ -72,7 +73,7 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
 
     public function test_a_backing_that_declares_nothing_still_gets_the_authorized_empty_vocabulary(): void
     {
-        $response = $this->getJson('ticker/filters/schema')->assertOk();
+        $response = $this->getJson('frame/resources/ticker/filters/schema')->assertOk();
 
         // `{}` and not `[]` — the declared-empty branch is untouched, object encoding included. Read
         // off the raw body: `->json()` decodes to a PHP array and would erase the very distinction.
@@ -82,9 +83,8 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
 
     public function test_an_unknown_key_still_answers_404(): void
     {
-        Particle::filters('nothing-here', at: 'nothing-here');
 
-        $this->getJson('nothing-here/filters/schema')->assertNotFound();
+        $this->getJson('frame/resources/nothing-here/filters/schema')->assertNotFound();
     }
 
     public function test_competing_backing_and_query_declarations_fail_visibly(): void
@@ -96,7 +96,7 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
         $this->withoutExceptionHandling();
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('declares both backing-owned filters and a data-filters query');
-        $this->getJson('feed/filters/schema');
+        $this->getJson('frame/resources/feed/filters/schema');
     }
 
     public function test_options_are_served_for_a_ref_the_declaration_names(): void
@@ -106,7 +106,7 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
             ['value' => 'composition', 'label' => 'Composition'],
         ]);
 
-        $this->getJson('feed/filters/options/feed_sources')
+        $this->getJson('frame/resources/feed/filters/options/feed_sources')
             ->assertOk()
             ->assertJsonCount(2, 'data');
     }
@@ -120,7 +120,7 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
     {
         DataFilter::options('silos', fn (?string $search = null) => [['value' => 's', 'label' => 'S']]);
 
-        $this->getJson('feed/filters/options/silos')->assertNotFound();
+        $this->getJson('frame/resources/feed/filters/options/silos')->assertNotFound();
     }
 
     /**
@@ -131,19 +131,18 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
      */
     public function test_options_are_served_at_the_frame_resource_root_where_the_route_carries_two_parameters(): void
     {
-        Particle::filters(resource: null, at: 'resources/{resource}', names: 'resources');
         DataFilter::options('feed_sources', fn (?string $search = null) => [['value' => 'circuit', 'label' => 'Circuit']]);
 
-        $this->getJson('resources/feed/filters/schema')->assertOk()->assertJsonPath('data.properties.keywords.x-filter.control', 'search');
-        $this->getJson('resources/feed/filters/options/feed_sources')->assertOk()->assertJsonCount(1, 'data');
-        $this->getJson('resources/feed/filters/options/silos')->assertNotFound();
+        $this->getJson('frame/resources/feed/filters/schema')->assertOk()->assertJsonPath('data.properties.keywords.x-filter.control', 'search');
+        $this->getJson('frame/resources/feed/filters/options/feed_sources')->assertOk()->assertJsonCount(1, 'data');
+        $this->getJson('frame/resources/feed/filters/options/silos')->assertNotFound();
     }
 
     public function test_options_404_for_a_backing_that_declares_nothing(): void
     {
         DataFilter::options('feed_sources', fn (?string $search = null) => []);
 
-        $this->getJson('ticker/filters/options/feed_sources')->assertNotFound();
+        $this->getJson('frame/resources/ticker/filters/options/feed_sources')->assertNotFound();
     }
 }
 

@@ -57,7 +57,6 @@ class FilterVariantExecutionTest extends TestCase
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'variant-records', backing: VariantRecord::class, data: VariantRowData::class,
             frame: true, readOnly: true, ));
-        Particle::filters('variant-records', at: 'variant-records');
         DataFilter::registry()->registerDefinition(new ResourceDefinition('variant-records', CanonicalVariantFilters::class, OwnerVariantQuery::class, VariantRecord::class));
         DataFilter::registry()->registerDefinition(new ResourceDefinition('active-records', SelectedVariantFilters::class, EnabledVariantQuery::class, VariantRecord::class, 'variant-records'));
         DataFilter::registry()->registerDefinition(new ResourceDefinition('other-records', SelectedVariantFilters::class, EnabledVariantQuery::class, VariantRecord::class, 'another-target'));
@@ -80,6 +79,28 @@ class FilterVariantExecutionTest extends TestCase
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Owned closed');
         $this->getJson('frame/resources/variant-records?filter[title]=Owned%20open')
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Owned open');
+    }
+
+    public function test_nonframe_consumer_lists_keep_declared_variant_scopes_and_authorization(): void
+    {
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'variant-records', backing: VariantRecord::class, data: VariantRowData::class,
+            frame: false, readOnly: true,
+        ));
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'active-records', backing: VariantPolicyBacking::class, data: SelectedVariantFilters::class,
+            policy: 'consumer.variant', frame: false, readOnly: true,
+        ));
+        Gate::define('consumer.variant', fn () => true);
+        Particle::mount('consumer-records', 'variant-records')->only(['index'])->hookEvents(false);
+        $this->getJson('consumer-records?filterVariant=active-records&filter[status]=open')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Owned open');
+        $this->getJson('consumer-records?filterVariant=active-records&filter[unknown]=x')->assertStatus(400);
+        $this->getJson('frame/resources/variant-records/filters/schema')->assertNotFound();
+        $this->getJson('consumer-records/filters/schema')->assertNotFound();
+        Gate::define('consumer.variant', fn () => false);
+        $this->getJson('consumer-records?filterVariant=active-records&filter[status]=open')->assertForbidden();
+        $this->getJson('consumer-records?filter[title]=Owned%20open')->assertOk()->assertJsonCount(1, 'data');
     }
 
     public function test_scope_composition_preserves_the_request_and_does_not_limit_target_ids(): void
@@ -110,7 +131,7 @@ class FilterVariantExecutionTest extends TestCase
         $this->assertSame($params, $stored);
         $this->getJson('frame/resources/variant-records?'.http_build_query($stored))
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Owned open');
-        $this->postJson('variant-records/filters', ['name' => 'Invalid', 'query_parameters' => [
+        $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Invalid', 'query_parameters' => [
             'filterVariant' => 'active-records', 'filter' => ['title' => 'Owned open'],
         ]])->assertUnprocessable();
     }
@@ -143,7 +164,6 @@ class FilterVariantExecutionTest extends TestCase
         $this->assertFalse($byId[$variant]['can']['update']);
         $this->assertTrue($byId[$canonical]['can']['delete']);
         $this->deleteJson('frame/resources/saved-filters/records/'.$variant)->assertForbidden();
-        $this->deleteJson('variant-records/filters/'.$variant)->assertForbidden();
         $this->deleteJson('frame/resources/saved-filters/records/'.$canonical)->assertNoContent();
     }
 
@@ -160,7 +180,6 @@ class FilterVariantExecutionTest extends TestCase
         $this->assertFalse($rows[$variant]['can']['update']);
         $this->assertTrue($rows[$canonical]['can']['delete']);
         $this->deleteJson('frame/resources/saved-filters/records/'.$variant)->assertNotFound();
-        $this->deleteJson('variant-records/filters/'.$variant)->assertNotFound();
         $this->actingAs((new User)->forceFill(['id' => 2]));
         $this->getJson('frame/resources/saved-filters?filter[resource]=variant-records')->assertOk()
             ->assertJsonPath('data.0.id', $canonical)->assertJsonPath('data.0.can.delete', false);
@@ -218,7 +237,6 @@ class FilterVariantExecutionTest extends TestCase
         Gate::define('variant.read', fn (User $user): bool => false);
         DataFilter::options('variant-statuses', fn () => throw new \RuntimeException('Denied variant options must not execute'));
         $this->getJson('frame/resources/variant-records/filters/options/variant-statuses')->assertNotFound();
-        $this->getJson('variant-records/filters/options/variant-statuses')->assertNotFound();
         $this->getJson('frame/resources/variant-records/filters/variants')->assertOk()
             ->assertJsonCount(1, 'data.variants')->assertJsonPath('data.variants.0.key', 'variant-records');
         $this->getJson('frame/resources/variant-records?filterVariant=active-records')->assertForbidden();

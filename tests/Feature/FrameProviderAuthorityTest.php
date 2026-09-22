@@ -25,7 +25,6 @@ use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Schemastud\Frame\Routing\ResourceRoutes;
 use Spatie\LaravelData\Data;
-use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
@@ -62,17 +61,14 @@ class FrameProviderAuthorityTest extends TestCase
             frame: true, readOnly: true, handler: ProviderRecordHandler::class,
             filterProvider: AuthoritativeProvider::class,
         ));
-        Particle::filters('provider-records', at: 'provider-records');
         AuthoritativeProvider::$calls = [];
         AuthoritativeProvider::$savesOnlyForVariant = false;
     }
 
-    public function test_all_filter_reads_use_the_declared_provider_on_both_mounts(): void
+    public function test_all_filter_reads_use_the_declared_provider(): void
     {
         foreach (['schema', 'focused/schema', 'variants', 'options/custom-titles?search=Ada%20Lovelace'] as $suffix) {
-            $canonical = $this->getJson('frame/resources/provider-records/filters/'.$suffix)->assertOk();
-            $retained = $this->getJson('provider-records/filters/'.$suffix)->assertOk();
-            $this->assertSame($canonical->json(), $retained->json());
+            $this->getJson('frame/resources/provider-records/filters/'.$suffix)->assertOk();
         }
         $this->assertContains(['schema', 'provider-records', 'focused'], AuthoritativeProvider::$calls);
         $this->assertContains(['options', 'provider-records', 'custom-titles', 'Ada Lovelace'], AuthoritativeProvider::$calls);
@@ -84,7 +80,7 @@ class FrameProviderAuthorityTest extends TestCase
             ->assertJsonPath('data.0.value', ProviderRecord::firstOrFail()->title);
     }
 
-    public function test_denial_precedes_every_custom_provider_call_on_both_mounts(): void
+    public function test_denial_precedes_every_custom_provider_call(): void
     {
         $this->app->bind(ResourceAccessGate::class, fn () => new class implements ResourceAccessGate
         {
@@ -95,7 +91,6 @@ class FrameProviderAuthorityTest extends TestCase
         });
         foreach (['schema', 'focused/schema', 'variants', 'options/custom-titles?search[]=bad'] as $suffix) {
             $this->getJson('frame/resources/provider-records/filters/'.$suffix)->assertForbidden();
-            $this->getJson('provider-records/filters/'.$suffix)->assertForbidden();
         }
         $this->assertSame([], AuthoritativeProvider::$calls);
     }
@@ -104,17 +99,15 @@ class FrameProviderAuthorityTest extends TestCase
     {
         $this->assertNull(DataFilter::tryResource('provider-records'));
         $params = ['filter' => ['customTitle' => 'Matched', 'customMode' => 'exact']];
-        foreach (['frame/resources/saved-filters', 'provider-records/filters'] as $url) {
-            $id = $this->postJson($url, ['resource' => 'provider-records', 'name' => 'Named', 'query_parameters' => $params])
-                ->assertSuccessful()->json('data.id');
-            $stored = $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()->json('data.query_parameters');
-            $this->assertSame($params, $stored);
-            $this->getJson('frame/resources/provider-records?'.http_build_query($stored))
-                ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Matched');
-            $this->postJson($url, ['resource' => 'provider-records', 'name' => 'Invalid', 'query_parameters' => ['filter' => ['count' => 4]]])
-                ->assertUnprocessable();
-        }
-        $this->assertSame(2, SavedFilter::count());
+        $id = $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Named', 'query_parameters' => $params])
+            ->assertSuccessful()->json('data.id');
+        $stored = $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()->json('data.query_parameters');
+        $this->assertSame($params, $stored);
+        $this->getJson('frame/resources/provider-records?'.http_build_query($stored))
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Matched');
+        $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Invalid', 'query_parameters' => ['filter' => ['count' => 4]]])
+            ->assertUnprocessable();
+        $this->assertSame(1, SavedFilter::count());
         $this->assertContains(['validate', 'provider-records', $params], AuthoritativeProvider::$calls);
     }
 
@@ -122,19 +115,18 @@ class FrameProviderAuthorityTest extends TestCase
     {
         AuthoritativeProvider::$savesOnlyForVariant = true;
         $this->getJson('frame/resources/provider-records/filters/schema')->assertOk()->assertJsonPath('savedViewsResource', null);
-        $this->getJson('provider-records/filters/focused/schema')->assertOk()->assertJsonPath('savedViewsResource', 'saved-filters');
+        $this->getJson('frame/resources/provider-records/filters/focused/schema')->assertOk()->assertJsonPath('savedViewsResource', 'saved-filters');
         $params = ['filter' => ['customTitle' => 'Matched', 'customMode' => 'exact'], 'filterVariant' => 'focused'];
         $id = $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Focused', 'query_parameters' => $params])
             ->assertSuccessful()->json('data.id');
-        $this->getJson('provider-records/filters/'.$id)->assertOk()->assertJsonPath('data.query_parameters', $params);
+        $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()->assertJsonPath('data.query_parameters', $params);
         $this->putJson('frame/resources/saved-filters/records/'.$id, ['name' => 'Renamed'])->assertOk()
             ->assertJsonPath('data.query_parameters', $params);
         $this->getJson('frame/resources/saved-filters?filter[resource]=provider-records&filterVariant=focused')->assertOk()->assertJsonCount(1, 'data');
-        $this->getJson('provider-records/filters?filterVariant=focused')->assertOk()->assertJsonCount(1, 'data');
         $this->getJson('frame/resources/provider-records?'.http_build_query($params))->assertOk()->assertJsonCount(1, 'data');
         unset($params['filterVariant']);
-        $this->postJson('provider-records/filters', ['name' => 'Unavailable', 'query_parameters' => $params])->assertNotFound();
-        $this->deleteJson('provider-records/filters/'.$id)->assertNoContent();
+        $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Unavailable', 'query_parameters' => $params])->assertNotFound();
+        $this->deleteJson('frame/resources/saved-filters/records/'.$id)->assertNoContent();
     }
 
     public function test_saved_view_discovery_respects_the_saved_resource_reach_and_realm(): void
@@ -147,7 +139,6 @@ class FrameProviderAuthorityTest extends TestCase
             }
         });
         $this->getJson('frame/resources/provider-records/filters/schema')->assertOk()->assertJsonPath('savedViewsResource', null);
-        $this->getJson('provider-records/filters/schema')->assertOk()->assertJsonPath('savedViewsResource', null);
         $this->getJson('frame/resources/saved-filters?filter[resource]=provider-records')->assertForbidden();
     }
 
@@ -171,9 +162,9 @@ class FrameProviderAuthorityTest extends TestCase
         $this->actingAs((new User)->forceFill(['id' => 2]));
         $this->getJson('frame/resources/saved-filters?filter[resource]=provider-records')->assertOk()->assertJsonCount(2, 'data')
             ->assertJsonPath('data.0.can.delete', false)->assertJsonPath('data.1.can.update', false);
-        $this->getJson('provider-records/filters/'.$ids[1])->assertOk()->assertJsonPath('data.can.delete', false);
+        $this->getJson('frame/resources/saved-filters/records/'.$ids[1])->assertOk()->assertJsonPath('data.can.delete', false);
         $this->deleteJson('frame/resources/saved-filters/records/'.$ids[1])->assertNotFound();
-        $this->deleteJson('provider-records/filters/'.$ids[2])->assertNotFound();
+        $this->deleteJson('frame/resources/saved-filters/records/'.$ids[2])->assertNotFound();
         Gate::policy(SavedFilter::class, ProviderSavedCreateDeniedPolicy::class);
         $this->getJson('frame/resources/provider-records/filters/schema')->assertOk()
             ->assertJsonPath('savedViewsResource', 'saved-filters')->assertJsonPath('savedViewsCan.create', false);

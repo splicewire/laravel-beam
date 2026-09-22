@@ -7,9 +7,9 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Illuminate\Support\Facades\Gate;
 use Rushing\DataFilters\Facades\DataFilter;
+use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Authorization\ModelLessReadPosture;
 use Splicewire\Beam\Authorization\ResourceVisibility;
-use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Particle\Backing\DeclaredFacet;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
@@ -39,6 +39,17 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class ModelLessReadGateTest extends TestCase
 {
+    protected function getPackageProviders($app): array
+    {
+        return [FrameServiceProvider::class, ...parent::getPackageProviders($app)];
+    }
+
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+        $app['config']->set('frame.middleware', []);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -56,6 +67,7 @@ class ModelLessReadGateTest extends TestCase
                 backing: $backing,
                 data: WidgetGateData::class,
                 policy: $policy,
+                frame: true,
                 readOnly: true,
                 showable: false,
             ));
@@ -181,27 +193,25 @@ class ModelLessReadGateTest extends TestCase
             backing: DeclaringGatedFeedBacking::class,
             data: WidgetGateData::class,
             policy: 'feed.read',
+            frame: true,
             readOnly: true,
             showable: false,
         ));
         DataFilter::options('gated_feed_sources', fn (?string $search = null) => [['value' => 'a', 'label' => 'A']]);
 
-        Particle::filters('gated-declaring-feed', at: 'gated-declaring-feed');
-        Particle::filters('gated-feed', at: 'gated-feed');
-
         // The declaring branch (schema + options) and the declared-empty branch both reach the gate.
-        $this->getJson('gated-declaring-feed/filters/schema')->assertForbidden();
-        $this->getJson('gated-declaring-feed/filters/options/gated_feed_sources')->assertForbidden();
-        $this->getJson('gated-feed/filters/schema')->assertForbidden();
+        $this->getJson('frame/resources/gated-declaring-feed/filters/schema')->assertForbidden();
+        $this->getJson('frame/resources/gated-declaring-feed/filters/options/gated_feed_sources')->assertForbidden();
+        $this->getJson('frame/resources/gated-feed/filters/schema')->assertForbidden();
 
         $this->actingAs($this->denied());
-        $this->getJson('gated-declaring-feed/filters/schema')->assertForbidden();
-        $this->getJson('gated-feed/filters/schema')->assertForbidden();
+        $this->getJson('frame/resources/gated-declaring-feed/filters/schema')->assertForbidden();
+        $this->getJson('frame/resources/gated-feed/filters/schema')->assertForbidden();
 
         $this->actingAs($this->allowed());
-        $this->getJson('gated-declaring-feed/filters/schema')->assertOk();
-        $this->getJson('gated-declaring-feed/filters/options/gated_feed_sources')->assertOk()->assertJsonCount(1, 'data');
-        $this->getJson('gated-feed/filters/schema')->assertOk();
+        $this->getJson('frame/resources/gated-declaring-feed/filters/schema')->assertOk();
+        $this->getJson('frame/resources/gated-declaring-feed/filters/options/gated_feed_sources')->assertOk()->assertJsonCount(1, 'data');
+        $this->getJson('frame/resources/gated-feed/filters/schema')->assertOk();
     }
 
     // ---- the listing answer the nav asks ---------------------------------------------------------

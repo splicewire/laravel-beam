@@ -420,7 +420,7 @@ class ParticleControllerRedundancyAuditTest extends TestCase
 
         Particle::mount('plans');
         Particle::mount('extensions', 'market-extensions')->only(['index', 'show']);
-        Particle::mount('/fragments/')->ops(true)->filters(true);
+        Particle::mount('/fragments/')->ops(true)->hookEvents(true);
         Particle::mount(uri: 'silos', resourceKey: 'silo-buckets');
         Route::get('leads', [LeadController::class, 'index']);
         PHP;

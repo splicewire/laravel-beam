@@ -6,7 +6,6 @@ use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
-use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -43,18 +42,13 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *
  * ## The resource axis counts REACHABLE write mounts, derived per run
  *
- * ⚠️ This is the whole reason the audit is route-side rather than a registry scan, and it is the defect
- * this map keeps finding stated once more: **an audit that reads the attribute rather than the route it
- * serves is measuring the declaration, not the surface.** Measured at the flagship 2026-08-28: 23 write
- * mounts sit on an `input: null` resource, and **22 of them are the saved-filters sub-surface** —
- * {@see ResourceFiltersController}, which extends plain `Controller`,
- * declares its own `SavedFilterStoreInputData`/`SavedFilterUpdateInputData`, and never calls
- * `parseInput()`. A declaration count reports 23 and cries wolf; this reports the ONE that reaches
- * `parseInput()` — which 69 then fixed, so it reports zero.
+ * The resource axis targets routes whose ParticleController consumes the declaration through
+ * `parseInput()`. Frame controllers delegate to resource handlers with their own declared inputs;
+ * those routes do not belong to this audit's particle-parser population.
  *
  * Reachability is therefore: a route stamped {@see ParticleController::RESOURCE}, answering a
  * body-bearing verb (POST/PUT/PATCH — `destroy` is DELETE and parses no input), whose controller is-a
- * {@see ParticleController}. That last clause is what excludes the filter sub-surface, and it is
+ * {@see ParticleController}. That clause excludes Frame resource handlers, and it is
  * derived from the router on every run rather than listed — a read-only resource that later gains a
  * write mount re-enters the count by itself.
  *

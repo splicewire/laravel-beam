@@ -17,10 +17,8 @@ use Splicewire\Beam\Tests\TestCase;
 /**
  * The reportable absence that replaced a per-route throw (api-surface-coherence 102).
  *
- * The load-bearing assertion is {@see test_an_unregistered_stamp_warns_and_never_fails}: `Warn`, not
- * `Fail`. `inResource($key, filters: true)` legitimately names a data-filters key with no
- * `#[ParticleResource]` — the flagship's `guest-links` and `releases` both — so failing here would only
- * move the outage from the spec build to the doctor's exit code.
+ * Missing declarations are reported as warnings, with data-filters-only registration distinguished
+ * from a key that neither registry carries.
  */
 class ParticleRouteResourceAuditTest extends TestCase
 {

@@ -2,8 +2,8 @@
 
 namespace Splicewire\Beam\Authorization;
 
-use Illuminate\Contracts\Auth\Access\Gate;
 use ArgumentCountError;
+use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Doctor\ModelLessReadGateAudit;
@@ -55,7 +55,7 @@ use TypeError;
  * Read: both nav collectors (`Splicewire\Beam\Ux\Frame\FrameResourcesInvocable` and the flagship's live
  * `App\Navigation\FrameResourcesInvocable`), beam's {@see RealmEntitlementResourceGate} on frame's package
  * socket, the flagship's own `App\Http\Controllers\Api\Frame\FrameResourceController` socket, and beam's
- * `ResourceFiltersController`.
+ * `Filters\ResourceFilters` runtime.
  *
  * NOT read, and so NOT gated by a declared ability: hand-written routes that merely stamp
  * `->inResource(key)` (tower's `ReviewQueueController`, `ReviewInboxController`, the discovery and hook

@@ -10,46 +10,19 @@ use PhpParser\NodeFinder;
 use PhpParser\ParserFactory;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
-use Splicewire\Beam\Particle\Mount\ParticleMounter;
 
 /**
  * The BARE MOUNT audit (api-surface-coherence ticket 93): a `Route::particle*()` call site is the
  * SECOND spelling of a mount that `Particle::` is now the sanctioned front door for, and this audit
  * turns each one into a deterministic review finding.
  *
- * ## Why an audit and not a delete
- * Ticket 49 shipped `Particle::mount()` and then declined its own instruction to delete the six route
- * macros. Ticket 93 re-measured why, and the reason is not the call-site count — it is that
- * beam-facade ticket 26 ruled the estate resolves family packages **from git by default**, with 16
- * family packages carrying no local source on this machine at all. A hard delete in beam core is
- * therefore a breaking change against a consumer set that cannot be enumerated from any one machine,
- * so enforcement-by-absence cannot be safely bought.
- *
- * An audit can. It reaches the packages you cannot see — they get the finding the moment they next
- * `composer update` — it costs no release coupling, and it is reversible. What it deliberately does
- * NOT do is remove the second spelling; that is the visible-estate sweep (`surgeon:rewrite`), which
- * closes these findings repo by repo at each one's own pace.
- *
- * ## The five macros and what each becomes
- * All of those macro bodies moved verbatim into {@see ParticleMounter}, so
- * both spellings already share ONE implementation — this is a coherence finding, never a correctness
- * one, and every mapping below is argument-for-argument identical:
- *
- *   Route::particleResource(…)     →  Particle::mount(…)
- *   Route::particleOp(…)           →  Particle::ops(…)      (`$ops` takes a bare name)
- *   Route::particleOps(…)          →  Particle::ops(…)
- *   Route::particleRelative(…)     →  Particle::relative(…)
- *   Route::resourceFilters(…)      →  Particle::filters(…)
+ * The retired route macros are detected before they fail in a consumer. Each remaining mapping
+ * names a supported Particle front door. Filter metadata uses Frame and has no particle mount.
  *
  * Note `particleOp` (singular) is the macro hosts actually still call, and its front door is the
  * PLURAL `Particle::ops()` — there is no `Particle::op()`.
  *
- * The builder is the WRONG target for these sites, though not an impossible one:
- * `mount(…)->only([])->ops(…)` still publishes the automatic filter sub-surface (nine routes at a URI
- * the host only wanted an operation on), because `only` gates the CRUD verbs and `filters` is a
- * separate opt-out. `mount(…)->only([])->filters(false)->ops(…)` DOES emit the same table as
- * `Particle::ops(…)` — it is a footgun, not an impossibility, and naming the op-only shape is cheaper
- * than remembering the second opt-out at every call site. Rewrite to the verb.
+ * Use the standalone operation verb for operation-only exposures.
  *
  * ## Detection is AST, not grep
  * Findings key on real {@see StaticCall} nodes against a `Route` class name, so the macro
@@ -93,7 +66,6 @@ class BareParticleMountAudit implements DoctorAudit
         'particleOp' => 'ops',
         'particleOps' => 'ops',
         'particleRelative' => 'relative',
-        'resourceFilters' => 'filters',
     ];
 
     /** Class names a static call must be against for its method to count as a route macro. */

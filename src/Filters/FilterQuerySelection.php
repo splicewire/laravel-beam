@@ -80,9 +80,9 @@ class FilterQuerySelection
     }
 
     /** @param array<string, mixed> $parameters */
-    public function validate(string $target, array $parameters, bool $legacy = false): array
+    public function validate(string $target, array $parameters): array
     {
-        app(ResourceFilters::class)->authorize($target, $legacy);
+        app(ResourceFilters::class)->authorize($target);
         Validator::make(['query_parameters' => $parameters], [
             'query_parameters' => ['array:filter,sort,include,limit,filterVariant'],
             'query_parameters.filter' => ['sometimes', 'array'],
@@ -121,7 +121,7 @@ class FilterQuerySelection
         $particle = $this->particles->find($key);
         if ($particle !== null) {
             // Non-Frame particle variants still carry their own realm and policy declarations.
-            app(ResourceFilters::class)->authorize($key, legacy: true);
+            app(ResourceFilters::class)->authorizeParticle($particle);
         }
         $frame = app()->bound(ResourceRegistry::class) ? app(ResourceRegistry::class)->find($key) : null;
         if ($frame !== null) {

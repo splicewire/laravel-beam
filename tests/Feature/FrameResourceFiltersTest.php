@@ -20,15 +20,14 @@ use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Schemastud\Frame\Routing\ResourceRoutes;
 use Spatie\LaravelData\Data;
-use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Filters\BeamResourceFilterProvider;
 use Splicewire\Beam\Filters\Data\SavedFilterData;
 use Splicewire\Beam\Filters\SavedFilterResourceHandler;
 use Splicewire\Beam\Particle\Backing\DeclaredFacet;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\FilterVocabulary;
-use Splicewire\Beam\Particle\Backing\ResourceBacking;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -56,7 +55,6 @@ class FrameResourceFiltersTest extends TestCase
         (require dirname(__DIR__, 2).'/database/migrations/shared/create_saved_filters_table.php.stub')->up();
         foreach (['papers', 'books'] as $key) {
             $this->registerTarget($key);
-            Particle::filters($key, at: $key);
         }
         $this->actingAs($this->actor(1));
     }
@@ -102,52 +100,46 @@ class FrameResourceFiltersTest extends TestCase
         $this->getJson('frame/resources/papers/filters/schema')->assertOk()->assertJsonPath('savedViewsResource', 'saved-filters');
     }
 
-    public function test_canonical_and_legacy_routes_create_read_update_delete_the_same_record(): void
+    public function test_canonical_saved_resource_creates_reads_updates_and_deletes(): void
     {
         $id = $this->create();
-        $this->getJson('papers/filters')->assertOk()->assertJsonPath('data.0.id', $id)->assertJsonPath('data.0.query_parameters.filter.count', 12);
-        $this->putJson("papers/filters/{$id}", ['name' => 'Updated', 'query_parameters' => ['filter' => ['count' => '7']]])->assertOk();
+        $this->getJson('frame/resources/saved-filters?filter[resource]=papers')->assertOk()->assertJsonPath('data.0.id', $id)->assertJsonPath('data.0.query_parameters.filter.count', 12);
+        $this->putJson("frame/resources/saved-filters/records/{$id}", ['name' => 'Updated', 'query_parameters' => ['filter' => ['count' => '7']]])->assertOk();
         $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.name', 'Updated')->assertJsonPath('data.query_parameters.filter.count', 7);
         $this->deleteJson("frame/resources/saved-filters/records/{$id}")->assertNoContent();
-        $this->getJson("papers/filters/{$id}")->assertNotFound();
-        $legacy = $this->postJson('papers/filters', ['name' => 'Legacy', 'query_parameters' => []])->assertCreated()->json('data.id');
-        $this->putJson("frame/resources/saved-filters/records/{$legacy}", ['name' => 'Canonical'])->assertOk();
-        $this->getJson("papers/filters/{$legacy}")->assertOk()->assertJsonPath('data.name', 'Canonical');
-        $this->deleteJson("papers/filters/{$legacy}")->assertNoContent();
+        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertNotFound();
     }
 
-    public function test_legacy_create_ignores_a_body_target_and_uses_the_mounted_resource(): void
+    public function test_parallel_metadata_and_saved_routes_are_absent(): void
     {
-        $id = $this->postJson('papers/filters', $this->payload('books'))->assertCreated()->assertJsonPath('data.resource', 'papers')->json('data.id');
-        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.resource', 'papers');
-        $this->getJson('books/filters')->assertOk()->assertJsonCount(0, 'data');
+        $id = $this->create();
+        foreach (['papers/filters', 'papers/filters/schema', 'papers/filters/variants', 'papers/filters/options/paper-counts', "papers/filters/{$id}"] as $url) {
+            $this->getJson($url)->assertNotFound();
+        }
+        $this->postJson('papers/filters', $this->payload())->assertNotFound();
+        $this->putJson("papers/filters/{$id}", ['name' => 'Forbidden path'])->assertNotFound();
+        $this->deleteJson("papers/filters/{$id}")->assertNotFound();
+        $this->assertSame('View', SavedFilter::findOrFail($id)->name);
     }
 
-    public function test_empty_queries_serialize_as_objects_on_both_paths_and_keep_legacy_metadata(): void
+    public function test_empty_queries_serialize_as_objects_without_storage_metadata(): void
     {
-        foreach (['frame/resources/saved-filters', 'papers/filters'] as $path) {
-            $created = $this->postJson($path, ['name' => 'Empty', 'resource' => 'papers'])->assertSuccessful();
-            $id = $created->json('data.id');
-            $this->assertInstanceOf(\stdClass::class, json_decode($created->getContent())->data->query_parameters);
-            $this->assertSame([], SavedFilter::findOrFail($id)->query_parameters);
-            foreach (["frame/resources/saved-filters/records/{$id}", "papers/filters/{$id}"] as $recordPath) {
-                $read = $this->getJson($recordPath)->assertOk();
-                $this->assertInstanceOf(\stdClass::class, json_decode($read->getContent())->data->query_parameters);
-                $updated = $this->putJson($recordPath, ['name' => 'Still empty'])->assertOk();
-                $this->assertInstanceOf(\stdClass::class, json_decode($updated->getContent())->data->query_parameters);
-            }
-            $legacy = $this->getJson("papers/filters/{$id}")->assertOk();
+        $created = $this->postJson('frame/resources/saved-filters', ['name' => 'Empty', 'resource' => 'papers'])->assertSuccessful();
+        $id = $created->json('data.id');
+        $this->assertInstanceOf(\stdClass::class, json_decode($created->getContent())->data->query_parameters);
+        $this->assertSame([], SavedFilter::findOrFail($id)->query_parameters);
+        $read = $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk();
+        $updated = $this->putJson("frame/resources/saved-filters/records/{$id}", ['name' => 'Still empty'])->assertOk();
+        foreach ([$read, $updated] as $response) {
+            $this->assertInstanceOf(\stdClass::class, json_decode($response->getContent())->data->query_parameters);
             foreach (['owner_type', 'owner_id', 'context_type', 'context_id', 'created_at', 'updated_at'] as $field) {
-                $this->assertSame(SavedFilter::findOrFail($id)->toArray()[$field], $legacy->json('data.'.$field));
+                $this->assertArrayNotHasKey($field, $response->json('data'));
             }
         }
-        foreach (['frame/resources/saved-filters?filter[resource]=papers', 'papers/filters'] as $path) {
-            $list = $this->getJson($path)->assertOk();
-            $this->assertInstanceOf(\stdClass::class, json_decode($list->getContent())->data[0]->query_parameters);
-        }
+        $list = $this->getJson('frame/resources/saved-filters?filter[resource]=papers')->assertOk();
+        $this->assertInstanceOf(\stdClass::class, json_decode($list->getContent())->data[0]->query_parameters);
         SavedFilter::findOrFail($id)->update(['owner_type' => null, 'owner_id' => null, 'visibility' => 'public']);
-        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.visibility', 'public');
-        $this->getJson("papers/filters/{$id}")->assertOk()->assertJsonPath('data.owner_type', null)->assertJsonPath('data.owner_id', null);
+        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.visibility', 'public')->assertJsonPath('data.can.delete', false);
     }
 
     public function test_index_requires_a_target_and_paginates_without_cross_target_rows(): void
@@ -163,7 +155,7 @@ class FrameResourceFiltersTest extends TestCase
         $this->postJson('frame/resources/saved-filters', ['name' => 'No target'])->assertUnprocessable();
     }
 
-    public function test_visibility_and_mutation_ownership_survive_both_entry_points(): void
+    public function test_visibility_and_mutation_require_ownership(): void
     {
         $private = $this->create();
         $shared = $this->create(extra: ['visibility' => 'shared']);
@@ -171,17 +163,15 @@ class FrameResourceFiltersTest extends TestCase
         $this->actingAs($this->actor(2));
         $this->getJson('frame/resources/saved-filters?filter[resource]=papers')->assertOk()->assertJsonCount(2, 'data');
         $this->getJson("frame/resources/saved-filters/records/{$private}")->assertNotFound();
-        $this->getJson("papers/filters/{$shared}")->assertOk();
-        $this->getJson("papers/filters/{$public}")->assertOk();
+        $this->getJson("frame/resources/saved-filters/records/{$shared}")->assertOk();
+        $this->getJson("frame/resources/saved-filters/records/{$public}")->assertOk();
         foreach ([$private, $shared, $public] as $id) {
             $this->putJson("frame/resources/saved-filters/records/{$id}", [])->assertNotFound();
             $this->deleteJson("frame/resources/saved-filters/records/{$id}")->assertNotFound();
-            $this->putJson("papers/filters/{$id}", [])->assertNotFound();
-            $this->deleteJson("papers/filters/{$id}")->assertNotFound();
         }
     }
 
-    public function test_target_access_precedes_validation_for_canonical_and_legacy_reads_and_writes(): void
+    public function test_target_access_precedes_validation_for_reads_and_writes(): void
     {
         $id = $this->create();
         $this->app->bind(ResourceAccessGate::class, fn () => new class implements ResourceAccessGate
@@ -191,15 +181,12 @@ class FrameResourceFiltersTest extends TestCase
                 return $definition->key !== 'papers';
             }
         });
-        foreach (['frame/resources/papers/filters/schema', 'papers/filters/schema', 'frame/resources/saved-filters?filter[resource]=papers', "frame/resources/saved-filters/records/{$id}", 'papers/filters'] as $path) {
+        foreach (['frame/resources/papers/filters/schema', 'frame/resources/saved-filters?filter[resource]=papers', "frame/resources/saved-filters/records/{$id}"] as $path) {
             $this->getJson($path)->assertForbidden();
         }
         $this->postJson('frame/resources/saved-filters', ['resource' => 'papers'])->assertForbidden();
-        $this->postJson('papers/filters', [])->assertForbidden();
         $this->putJson("frame/resources/saved-filters/records/{$id}", [])->assertForbidden();
-        $this->putJson("papers/filters/{$id}", [])->assertForbidden();
         $this->deleteJson("frame/resources/saved-filters/records/{$id}")->assertForbidden();
-        $this->deleteJson("papers/filters/{$id}")->assertForbidden();
         $this->create('books');
     }
 
@@ -208,24 +195,21 @@ class FrameResourceFiltersTest extends TestCase
         $id = $this->create();
         Gate::policy(FilterRecord::class, DeniedFilterPolicy::class);
         $this->postJson('frame/resources/saved-filters', ['resource' => 'papers'])->assertForbidden();
-        $this->postJson('papers/filters', [])->assertForbidden();
         $this->getJson('frame/resources/papers/filters/schema')->assertForbidden();
-        $this->getJson('papers/filters/schema')->assertForbidden();
-        foreach (["frame/resources/saved-filters/records/{$id}", "papers/filters/{$id}"] as $path) {
-            $this->getJson($path)->assertForbidden();
-            $this->putJson($path, [])->assertForbidden();
-            $this->deleteJson($path)->assertForbidden();
-        }
+
+        $path = "frame/resources/saved-filters/records/{$id}";
+        $this->getJson($path)->assertForbidden();
+        $this->putJson($path, [])->assertForbidden();
+        $this->deleteJson($path)->assertForbidden();
     }
 
     public function test_target_is_immutable_and_invalid_queries_and_values_do_not_persist(): void
     {
         $id = $this->create();
         $this->putJson("frame/resources/saved-filters/records/{$id}", $this->payload('books'))->assertUnprocessable();
-        $this->putJson("papers/filters/{$id}", $this->payload('books'))->assertOk()->assertJsonPath('data.resource', 'papers');
+
         foreach ([['filter' => ['unknown' => 1]], ['filter' => ['count' => 'no-number']], ['filter' => 'bad'], ['sort' => ['nested' => []]], ['include' => 'unknown'], ['limit' => 'bad'], ['unrecognized' => true]] as $query) {
             $this->postJson('frame/resources/saved-filters', $this->payload(extra: ['query_parameters' => $query]))->assertUnprocessable();
-            $this->postJson('papers/filters', ['name' => 'Bad', 'query_parameters' => $query])->assertUnprocessable();
         }
         $this->assertSame(1, SavedFilter::count());
         $this->assertSame('papers', SavedFilter::first()->resource);
@@ -238,7 +222,7 @@ class FrameResourceFiltersTest extends TestCase
         $this->actingAs($this->actor(2));
         $other = $this->create(extra: ['is_default' => true]);
         $this->actingAs($this->actor(1));
-        $last = $this->postJson('papers/filters', ['name' => 'New default', 'is_default' => true])->assertCreated()->json('data.id');
+        $last = $this->create(extra: ['name' => 'New default', 'is_default' => true]);
         $this->assertFalse(SavedFilter::findOrFail($first)->is_default);
         foreach ([$book, $other, $last] as $id) {
             $this->assertTrue(SavedFilter::findOrFail($id)->is_default);
@@ -250,9 +234,7 @@ class FrameResourceFiltersTest extends TestCase
         DataFilter::options('paper-counts', fn (?string $search) => [['value' => '1', 'label' => $search ?? 'All']]);
         DataFilter::options('other-secrets', fn () => throw new \RuntimeException('Unreferenced source must not execute'));
         $this->getJson('frame/resources/papers/filters/options/paper-counts?search=needle')->assertOk()->assertJsonPath('data.0.label', 'needle');
-        $this->getJson('papers/filters/options/paper-counts?search=legacy')->assertOk()->assertJsonPath('data.0.label', 'legacy');
         $this->getJson('frame/resources/papers/filters/options/other-secrets')->assertNotFound();
-        $this->getJson('papers/filters/options/other-secrets')->assertNotFound();
         $this->getJson('frame/resources/papers/filters/options/paper-counts?search[]=bad')->assertUnprocessable();
     }
 
@@ -265,7 +247,6 @@ class FrameResourceFiltersTest extends TestCase
         DataFilter::options('paper-statuses', fn () => [['value' => 'recent', 'label' => 'Recent']]);
         $this->getJson('frame/resources/papers/filters/variants')->assertOk()->assertJsonCount(2, 'data.variants');
         $this->getJson('frame/resources/papers/filters/recent-papers/schema')->assertOk()->assertJsonPath('data.properties.status.x-filter.optionsRef', 'paper-statuses');
-        $this->getJson('papers/filters/recent-papers/schema')->assertOk();
         $this->getJson('frame/resources/papers/filters/options/paper-statuses')->assertOk();
         $this->getJson('frame/resources/books/filters/options/paper-statuses')->assertNotFound();
         $this->getJson('frame/resources/books/filters/recent-papers/schema')->assertNotFound();
@@ -346,49 +327,41 @@ class FrameResourceFiltersTest extends TestCase
     {
         app(ParticleResourceRegistry::class)->loadRealmMap(['tenant' => ['papers', 'saved-filters'], 'operator' => ['books', 'saved-filters']]);
         Route::prefix('{realm}')->group(function (): void {
-            Particle::filters('books', at: 'books', names: 'realmed-books');
+            ResourceRoutes::filters(at: 'books', names: 'realmed-books', defaults: ['resource' => 'books']);
+
             Route::post('saved', function (Request $request) {
                 return app(SavedFilterResourceHandler::class)->store(app(ResourceRegistry::class)->get('saved-filters'), $request->all());
             });
         });
         $this->postJson('tenant/saved', $this->payload('books'))->assertNotFound();
         $this->postJson('tenant/books/filters', [])->assertNotFound();
-        $this->getJson('tenant/books/filters/schema')->assertNotFound();
+        $this->getJson('tenant/books/filters/schema')->assertForbidden();
         $this->postJson('operator/saved', $this->payload('books'))->assertForbidden();
         Gate::define('entitlement:os.operate', fn () => true);
         $this->postJson('operator/saved', $this->payload('books'))->assertOk();
+        $this->getJson('operator/books/filters/schema')->assertOk();
     }
 
-    public function test_legacy_only_saved_variant_permissions_follow_current_variant_access(): void
+    public function test_data_filter_only_targets_cannot_gain_saved_metadata_or_mutations(): void
     {
-        DataFilter::registry()->registerDefinition(new FilterDefinition('legacy-only', ResourceFilterData::class, ResourceFilterQuery::class, FilterRecord::class));
-        DataFilter::registry()->registerDefinition(new FilterDefinition('legacy-variant', ResourceFilterData::class, ResourceFilterQuery::class, FilterRecord::class, 'legacy-only'));
-        app(ParticleResourceRegistry::class)->register(new ParticleResource(
-            key: 'legacy-variant', backing: LegacyVariantPolicyBacking::class, data: ResourceFilterData::class,
-            frame: false, readOnly: true, policy: 'legacy.variant',
-        ));
-        Particle::filters('legacy-only', at: 'legacy-only');
-        Gate::define('legacy.variant', fn () => true);
-        $canonical = $this->postJson('legacy-only/filters', ['name' => 'Canonical'])->assertCreated()->json('data.id');
-        $variant = $this->postJson('legacy-only/filters', ['name' => 'Selected', 'query_parameters' => ['filterVariant' => 'legacy-variant']])
-            ->assertCreated()->assertJsonPath('data.can.delete', true)->json('data.id');
-        Gate::define('legacy.variant', fn () => false);
-        $rows = array_column($this->getJson('legacy-only/filters')->assertOk()->json('data'), null, 'id');
-        $this->assertFalse($rows[$variant]['can']['delete']);
-        $this->assertTrue($rows[$canonical]['can']['delete']);
-        $this->getJson('legacy-only/filters/'.$variant)->assertForbidden();
-        $this->deleteJson('legacy-only/filters/'.$variant)->assertForbidden();
-        $this->deleteJson('legacy-only/filters/'.$canonical)->assertNoContent();
+        DataFilter::registry()->registerDefinition(new FilterDefinition('query-only', ResourceFilterData::class, ResourceFilterQuery::class, FilterRecord::class));
+        $this->getJson('frame/resources/query-only/filters/schema')->assertNotFound();
+        $this->getJson('frame/resources/query-only/filters/variants')->assertNotFound();
+        $this->postJson('frame/resources/saved-filters', $this->payload('query-only'))->assertNotFound();
+        $saved = SavedFilter::create(['name' => 'Unexposed', 'resource' => 'query-only', 'query_parameters' => [], 'owner_type' => $this->actor(1)->getMorphClass(), 'owner_id' => 1]);
+        $this->getJson('frame/resources/saved-filters/records/'.$saved->id)->assertNotFound();
+        $this->putJson('frame/resources/saved-filters/records/'.$saved->id, ['name' => 'Changed'])->assertNotFound();
+        $this->deleteJson('frame/resources/saved-filters/records/'.$saved->id)->assertNotFound();
+        $this->assertSame('Unexposed', $saved->fresh()->name);
     }
 
-    public function test_canonical_saved_targets_require_frame_membership_while_legacy_only_targets_keep_working(): void
+    public function test_declared_nonframe_targets_cannot_gain_saved_metadata(): void
     {
-        DataFilter::registry()->registerDefinition(new FilterDefinition('legacy-only', ResourceFilterData::class, ResourceFilterQuery::class, FilterRecord::class));
-        Particle::filters('legacy-only', at: 'legacy-only');
-        $this->postJson('frame/resources/saved-filters', $this->payload('legacy-only'))->assertNotFound();
-        $id = $this->postJson('legacy-only/filters', ['name' => 'Existing API'])->assertCreated()->json('data.id');
-        $this->putJson('legacy-only/filters/'.$id, ['name' => 'Renamed'])->assertOk()->assertJsonPath('data.can.delete', true);
-        $this->deleteJson('legacy-only/filters/'.$id)->assertNoContent();
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(key: 'consumer', backing: FilterRecord::class, data: ResourceFilterData::class, frame: false));
+        DataFilter::registry()->registerDefinition(new FilterDefinition('consumer', ResourceFilterData::class, ResourceFilterQuery::class, FilterRecord::class));
+        $this->getJson('frame/resources/consumer/filters/schema')->assertNotFound();
+        $this->postJson('frame/resources/saved-filters', $this->payload('consumer'))->assertNotFound();
+        $this->getJson('frame/resources/papers/filters/schema')->assertOk();
     }
 }
 
@@ -443,5 +416,3 @@ class DeniedSavedFilterPolicy
         return false;
     }
 }
-
-class LegacyVariantPolicyBacking implements ResourceBacking {}

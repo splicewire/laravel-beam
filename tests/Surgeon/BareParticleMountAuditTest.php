@@ -43,7 +43,7 @@ class BareParticleMountAuditTest extends TestCase
         $this->assertSame(4, $sites[0]['line']);
     }
 
-    public function test_all_five_macros_are_detected(): void
+    public function test_all_supported_macro_replacements_are_detected(): void
     {
         $source = <<<'PHP'
         <?php
@@ -51,11 +51,10 @@ class BareParticleMountAuditTest extends TestCase
         Route::particleOp('fragments', 'fragment', 'reorder');
         Route::particleOps('fragments', 'fragment', ['reorder']);
         Route::particleRelative('fragments', Fragment::class, 'media', fn () => null);
-        Route::resourceFilters('fragments');
         PHP;
 
         $this->assertSame(
-            ['particleResource', 'particleOp', 'particleOps', 'particleRelative', 'resourceFilters'],
+            ['particleResource', 'particleOp', 'particleOps', 'particleRelative'],
             array_column($this->audit()->sitesIn($source), 'macro'),
         );
     }
@@ -108,13 +107,13 @@ class BareParticleMountAuditTest extends TestCase
         <?php
         use Illuminate\Support\Facades\Route as RouteFacade;
 
-        RouteFacade::resourceFilters(resource: $resourceKey, at: 'widgets', names: 'widgets');
+        RouteFacade::particleOps('widgets', 'widgets', ['refresh']);
         PHP;
 
         $sites = $this->audit()->sitesIn($source);
 
         $this->assertCount(1, $sites);
-        $this->assertSame('resourceFilters', $sites[0]['macro']);
+        $this->assertSame('particleOps', $sites[0]['macro']);
     }
 
     public function test_an_unrelated_alias_is_not_a_site(): void
@@ -124,7 +123,7 @@ class BareParticleMountAuditTest extends TestCase
         <?php
         use App\Support\NotTheRouter as RouteFacade;
 
-        RouteFacade::resourceFilters(resource: 'widgets');
+        RouteFacade::particleOps('widgets', 'widgets', ['refresh']);
         PHP;
 
         $this->assertSame([], $this->audit()->sitesIn($source));
@@ -170,10 +169,7 @@ class BareParticleMountAuditTest extends TestCase
     }
 
     /**
-     * The singular macro's front door is the PLURAL verb — there is no `Particle::op()`. Nor is the
-     * target `mount(…)->only([])->ops(…)`, which still publishes the filter sub-surface: `only` gates
-     * the CRUD verbs, `filters` is a separate opt-out, and only `->only([])->filters(false)->ops(…)`
-     * emits the same table as the verb. A footgun, not an impossibility.
+     * The singular macro's front door is the plural standalone operation verb.
      */
     public function test_the_singular_op_macro_maps_to_the_plural_verb(): void
     {
@@ -188,7 +184,6 @@ class BareParticleMountAuditTest extends TestCase
             'particleOp' => 'ops',
             'particleOps' => 'ops',
             'particleRelative' => 'relative',
-            'resourceFilters' => 'filters',
         ], BareParticleMountAudit::MACRO_FRONT_DOORS);
     }
 

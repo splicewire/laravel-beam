@@ -4,7 +4,6 @@ namespace Splicewire\Beam\Discovery;
 
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
-use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Routing\RouteMetadataReader;
 
@@ -126,7 +125,7 @@ class ResourceMountMap
             $segments = $this->sliceBeforeLast($segments, $name);
         } elseif (SubSurface::of($route) === SubSurface::EVENTS) {
             $segments = $this->sliceBeforeLast($segments, 'hooks');
-        } elseif (isset($defaults[ResourceFiltersController::CONFIG])) {
+        } elseif (SubSurface::of($route) === SubSurface::FILTERS) {
             $segments = $this->sliceBeforeLast($segments, 'filters');
         }
 

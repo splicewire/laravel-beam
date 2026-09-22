@@ -24,10 +24,7 @@ use Splicewire\Beam\Particle\ParticleRelative;
  *
  * `ops()` and `relatives()` mount **nothing** unless asked. A package that adds a `#[ParticleOp]` or
  * `#[ParticleRelative]` declaration can therefore never silently add routes to a host that did not
- * ask for them. The one exception predates this class and is argued in
- * {@see ParticleMounter::resource()}: the per-resource **filter** sub-surface mounts automatically,
- * because a filter vocabulary is a fact about the resource rather than an offer the host makes.
- * `->filters(false)` opts out of that.
+ * ask for them. Filter metadata and saved views are exposed through Frame resource routes.
  *
  * ## Registration is deferred to destruction, deliberately
  *
@@ -126,21 +123,10 @@ class PendingParticleMount
     }
 
     /**
-     * Opt OUT of the automatic per-resource filter sub-surface — for an exposure whose route group is
-     * narrower than the resource, where the saved-filter half has no owner to scope to.
-     */
-    public function filters(bool $filters = true): static
-    {
-        $this->options['filters'] = $filters;
-
-        return $this;
-    }
-
-    /**
      * Opt OUT of the automatic per-resource hook-event catalog (api-surface-coherence 106).
      *
      * Mounted by default and UNGATED — see {@see ParticleMounter::resource()} for why this one does not
-     * consult its registry the way `filters()` does. Opt out where the exposure genuinely has no
+     * consult a registry. Opt out where the exposure genuinely has no
      * subscription story: a public or unauthenticated mount, say, where advertising an event vocabulary
      * to an anonymous caller is not wanted.
      */

@@ -4,9 +4,6 @@ namespace Splicewire\Beam\Routing;
 
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as RouteFacade;
-use Rushing\DataFilters\Facades\DataFilter;
-use Splicewire\Beam\Discovery\SubSurface;
-use Splicewire\Beam\Doctor\FilterStampReadPathAudit;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Http\Particle\ParticleController;
 
@@ -41,26 +38,6 @@ class BeamRouteProxy
      * host action key ever again.
      */
     public const ACTION = 'beam';
-
-    /**
-     * The route DEFAULT recording that this route asked for a filter sub-surface — the ask itself, not
-     * its outcome (api-surface-coherence 101).
-     *
-     * `filters: true` used to leave no trace: an argument that ran one method and was forgotten. So
-     * nothing could ask the only question that matters afterwards — *does the index under those routes
-     * read the vocabulary they publish?* — and three flagship routes published one they did not serve.
-     * Worse, {@see mountFilterSubSurface()} returns early on an unregistered key, so a stamp naming a
-     * key no registry carries mounts nothing **silently**; a population derived from the mounted
-     * sub-surface can only see the promises that were kept. Recording the ask is what makes both
-     * failures visible to {@see FilterStampReadPathAudit}.
-     *
-     * A DEFAULT rather than an action key, matching {@see ParticleController::RESOURCE} for the reason
-     * {@see SubSurface} gives: sub-surface classification reads defaults, so this sits where every other
-     * mount-time stamp already is. The leading underscore is the framework's
-     * "not a URI parameter" convention. It holds the resource key rather than `true` so a reader of
-     * `$route->defaults` sees WHICH vocabulary was promised without a second lookup.
-     */
-    public const FILTERS_PROMISE = '_particle_filters';
 
     protected Route $route;
 
@@ -146,57 +123,15 @@ class BeamRouteProxy
      * `set()`. Defaults are visible to route-parameter binding; the leading underscore is the framework's
      * convention for "not a parameter" and is why the particle stamp was spelled that way to begin with.
      */
-    public function inResource(string $resourceKey, bool $filters = false, bool $hookEvents = false): static
+    public function inResource(string $resourceKey, bool $hookEvents = false): static
     {
         $this->route->defaults(ParticleController::RESOURCE, $resourceKey);
-
-        if ($filters) {
-            $this->route->defaults(self::FILTERS_PROMISE, $resourceKey);
-            $this->mountFilterSubSurface($resourceKey);
-        }
 
         if ($hookEvents) {
             $this->mountHookEventCatalog($resourceKey);
         }
 
         return $this;
-    }
-
-    /**
-     * `filters: true` says this route is the resource's INDEX at this exposure, and mounts the
-     * per-resource filter sub-surface beside it (api-surface-coherence 35).
-     *
-     * A route the particle macro mounted needs no such flag — `Route::particleResource()` calls
-     * `Route::resourceFilters()` itself, so the sub-surface follows the resource to every particle
-     * exposure with nothing declared. A HAND-ROLLED exposure has no equivalent hook, because there is no
-     * single moment a hand-rolled resource "is mounted"; `inResource()` is the one line ticket 01 already
-     * put at that moment, so the declaration rides it rather than inventing a second one.
-     *
-     * It is a flag and not an inference on purpose. `inResource()` is stamped on sub-operations too
-     * (`fragments/{fragment}/concept-anchors/reject-all` declares `inResource('fragments')`), and every
-     * rule for telling an index from a sub-operation by inspecting its URI — no `{id}`, GET, one
-     * segment — is guessable-from-the-URI reasoning, which is the exact thing ticket 01 abolished.
-     *
-     * The remaining gap is on the record rather than papered over: this still asks the exposure to say
-     * one word. Making a hand-rolled exposure fully self-declaring is the map's own open fog —
-     * *declared exposures, and the tree mount* (ticket 18 §D4, ticket 49's `Particle::mount`) — and the
-     * filter sub-surface should ride that when it lands, not grow a second mechanism ahead of it.
-     */
-    private function mountFilterSubSurface(string $resourceKey): void
-    {
-        if (! DataFilter::registry()->has($resourceKey)) {
-            return;
-        }
-
-        // The route's own URI, minus any group prefix the router will re-apply — `uri()` is already
-        // prefix-resolved, so mounting from inside the same group would double it. Registering through
-        // the Router with the group stack intact and handing it the ORIGINAL uri keeps one source of
-        // truth for the mount point.
-        Particle::filters(
-            resource: $resourceKey,
-            at: $this->uriWithinCurrentGroup(),
-            names: $this->nameWithinCurrentGroup($resourceKey),
-        );
     }
 
     /**

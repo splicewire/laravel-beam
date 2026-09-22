@@ -16,51 +16,50 @@ use Schemastud\Frame\Data\FilterSchemaResponseData;
 use Schemastud\Frame\Data\FilterVariantData;
 use Schemastud\Frame\Data\FilterVariantsData;
 use Schemastud\Frame\Data\FilterVariantsResponseData;
-use Schemastud\Frame\Registry\NavMetadata;
-use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ResourceVisibility;
-use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
+use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
-/** The filter runtime shared by Frame's capability port and retained particle mounts. */
+/** The declared filter runtime used by Frame's capability provider and particle query selection. */
 class ResourceFilters
 {
     public function __construct(private ParticleResourceRegistry $particles) {}
 
-    public function authorize(string $key, bool $legacy = false): void
+    public function authorize(string $key): void
     {
-        $particle = $this->particles->find($key);
         $realm = request()->route('realm');
         if (is_string($realm) && $realm !== '') {
             abort_unless(in_array($realm, $this->particles->realmsFor($key), true), 404);
         }
-
         $definition = app()->bound(ResourceRegistry::class) ? app(ResourceRegistry::class)->find($key) : null;
-        if ($definition === null && $legacy) {
-            $filter = DataFilter::registry()->find($key);
-            abort_if($particle === null && $filter === null, 404);
-            $definition = new ResourceDefinition(
-                key: $key, model: $particle?->modelClass() ?? $filter?->model,
-                data: $particle?->data ?? $filter?->data ?? BeamData::class,
-                creatable: false, query: null, editData: null, policy: $particle?->policy,
-                form: 'bare', nav: new NavMetadata(label: ''),
-            );
-        }
         abort_if($definition === null, 404);
         abort_unless(app(ResourceAccessGate::class)->allowsResource($definition), 403);
+        $particle = $this->particles->find($key);
         if ($particle !== null) {
             abort_unless(app(ResourceVisibility::class)->readable($particle, request()->user()), 403);
+            $this->authorizeModel($particle->modelClass());
         }
-        $this->authorizeModel($particle?->modelClass());
         $this->authorizeModel(DataFilter::registry()->find($key)?->model);
     }
 
-    public function definition(string $key, bool $legacy = false): FilterDefinition
+    /** A declared particle's list variants retain their access checks without exposing Frame metadata. */
+    public function authorizeParticle(ParticleResource $particle): void
     {
-        $this->authorize($key, $legacy);
+        $realm = request()->route('realm');
+        if (is_string($realm) && $realm !== '') {
+            abort_unless(in_array($realm, $this->particles->realmsFor($particle->key), true), 404);
+        }
+        abort_unless(app(ResourceAccessGate::class)->allowsResource($particle->toResourceDefinition()), 403);
+        abort_unless(app(ResourceVisibility::class)->readable($particle, request()->user()), 403);
+        $this->authorizeModel($particle->modelClass());
+    }
+
+    public function definition(string $key): FilterDefinition
+    {
+        $this->authorize($key);
         $definition = app(ResourceFilterDefinition::class)->definition($key);
         abort_if($definition === null, 404, "No filter resource registered for [{$key}].");
 
@@ -69,11 +68,11 @@ class ResourceFilters
         return $definition;
     }
 
-    public function schema(string $key, ?string $variant = null, bool $legacy = false): FilterSchemaResponseData
+    public function schema(string $key, ?string $variant = null): FilterSchemaResponseData
     {
-        $this->authorize($key, $legacy);
+        $this->authorize($key);
         if ($variant !== null) {
-            $this->definition($key, $legacy);
+            $this->definition($key);
             $selected = app(FilterQuerySelection::class)->definition($key, $variant);
 
             return new FilterSchemaResponseData($this->schemaFor($selected), $this->savedResource($key));
@@ -92,9 +91,9 @@ class ResourceFilters
         return new FilterSchemaResponseData(['type' => 'object', 'properties' => (object) []]);
     }
 
-    public function options(string $key, string $ref, ?string $search = null, bool $legacy = false): FilterOptionsResponseData
+    public function options(string $key, string $ref, ?string $search = null): FilterOptionsResponseData
     {
-        $schema = $this->schema($key, legacy: $legacy)->data;
+        $schema = $this->schema($key)->data;
         $schemas = [$schema];
         $particle = $this->particles->find($key);
         $declares = $particle !== null && (new BackingResolver)->hasCapability($particle->backing, DeclaresFilterVocabulary::class);
@@ -120,9 +119,9 @@ class ResourceFilters
         ));
     }
 
-    public function variants(string $key, bool $legacy = false): FilterVariantsResponseData
+    public function variants(string $key): FilterVariantsResponseData
     {
-        $this->authorize($key, $legacy);
+        $this->authorize($key);
         $definition = app(ResourceFilterDefinition::class)->definition($key);
         if ($definition === null) {
             return new FilterVariantsResponseData(new FilterVariantsData($key, []));

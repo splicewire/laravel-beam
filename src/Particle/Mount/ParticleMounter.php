@@ -9,15 +9,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use ReflectionClass;
-use Rushing\DataFilters\Facades\DataFilter;
 use Splicewire\Beam\Discovery\Data\ResourceDiscoveryData;
 use Splicewire\Beam\Discovery\Http\ResourceDiscoveryController;
 use Splicewire\Beam\Discovery\ResourceDiscoveryAutoMounter;
 use Splicewire\Beam\Discovery\ResourceMount;
 use Splicewire\Beam\Doctor\ParticleSlotCollisionAudit;
 use Splicewire\Beam\Facades\Particle;
-use Splicewire\Beam\Filters\Data\ResourceFilterVariantsData;
-use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
@@ -42,12 +39,7 @@ use Splicewire\Beam\Webhooks\Http\HookEventCatalogController;
  * nothing else changed, which is what makes the route table byte-identical across the refactor by
  * construction rather than by diffing.
  *
- * Two callers, one body:
- *
- * - {@see Particle}`::mount()` — the sanctioned front door, a fluent builder
- *   ({@see PendingParticleMount}) whose widening calls are opt-in.
- * - The `Route::particle*()` / `Route::resourceFilters()` macros, which
- *   are now one-line delegations here.
+ * The Particle facade and its pending builder delegate route registration here.
  *
  * ⚠️ **This class is not the enforcement seam and cannot be one.** See {@see PendingParticleMount}'s
  * docblock for the measured reason: a facade closes the *derived-name* half of the route-name collision
@@ -135,42 +127,8 @@ class ParticleMounter
                 ->name("{$name}.{$verb}");
         };
 
-        // The per-resource filter sub-surface, mounted AUTOMATICALLY at this exposure
-        // (api-surface-coherence ticket 10 §3, build 35). Not opt-in the way
-        // `Particle::renderings()` is: a rendering is something a host chooses to offer, while
-        // a filter vocabulary is a fact about the resource — it either has a data-filters
-        // registration or it does not. Mounting it here is what makes ticket 10's *registration is
-        // one, exposure is many* true for filters: a resource exposed twice
-        // (`/guest-tokens` and `/circuits/{circuit}/guest-tokens`) gets the sub-surface at both, and
-        // a nested exposure gets it under its parent's binding, with no second declaration.
-        //
-        // ⚠️ FIRST, above the CRUD block, and that is load-bearing rather than tidy. Laravel matches
-        // in REGISTRATION order, and `{uri}/{id}` with no `idConstraint` swallows the literal
-        // `{uri}/filters`. Mounted after `show`, three of the estate's particle resources answered
-        // their filter index with `silos.show` / `agents.show` / `market_extensions.show` — measured,
-        // not theorised. This is the same rule the host route files already state by hand ("`order`
-        // precedes `{id}` so the literal wins"); here it is paid once, in the mounter.
-        //
-        // Gated on the registry rather than mounted blind, so a particle resource with no filter
-        // declaration does not publish nine routes that all 404. `has()` is a read of an already-
-        // seeded registry, and the (now dissolved) rendering mount set the precedent for reading one
-        // at mount time.
-        //
-        // `filters: false` opts out — for the one shape this cannot serve: an exposure whose route
-        // group is narrower than the resource (a public/unauthenticated mount, say), where the
-        // saved-filter half has no owner to scope to.
-        if (($options['filters'] ?? true) && DataFilter::registry()->has($resourceKey)) {
-            $this->resourceFilters(
-                router: $router,
-                resource: $resourceKey,
-                at: $uri,
-                names: $name,
-                idConstraint: $idConstraint ?? 'uuid',
-            );
-        }
-
         // The per-resource hook-event catalog, mounted AUTOMATICALLY at this exposure
-        // (api-surface-coherence 106, decided by 41 D7). Same driver as the filter sub-surface above,
+        // (api-surface-coherence 106, decided by 41 D7). Concrete mounts carry their resource stamp,
         // and that is the whole point of the ticket: `GET /{resource}/hooks/events` used to be ONE
         // wildcard route whose resource arrived as a request-time path parameter, so
         // `BeamRouteAction::resourceKey()` — a route-LEVEL reader consumed by grouping and doc
@@ -660,7 +618,7 @@ class ParticleMounter
         $prefix = $at === '' ? 'hooks/events' : rtrim($at, '/').'/hooks/events';
 
         // An EMPTY `$names` says the enclosing route group already names this surface; `null` (nothing
-        // passed) falls back to the resource key. Same rule as `resourceFilters()`, stated the same way.
+        // passed) falls back to the resource key.
         $stem = $names ?? $resource;
         $name = $stem === '' ? 'hooks.events' : $stem.'.hooks.events';
 
@@ -673,95 +631,5 @@ class ParticleMounter
         }
 
         $route->beam()->returns(EventCatalogData::class);
-    }
-
-    /**
-     * The per-resource filter sub-surface (api-surface-coherence ticket 10, build 35).
-     *
-     * The body behind `Particle::filters(…)`. Was `Route::macro('resourceFilters', …)` until 93 deleted the macro.
-     */
-    public function resourceFilters(
-        Router $router,
-        ?string $resource,
-        string $at = '',
-        ?string $names = null,
-        array $middleware = [],
-        string $idConstraint = 'uuid',
-    ): void {
-        // A NULL resource is the Frame-resource-root case and only that: `{resource}` there is the
-        // registration key by construction, so the controller reads it off the route parameter. For
-        // every other mount the key is frozen here and the URI segment is never consulted — half
-        // the estate's filter keys diverge from their URL word (ticket 10 §1) and that divergence
-        // is legitimate.
-        $config = ['resource' => $resource];
-
-        $prefix = $at === '' ? 'filters' : rtrim($at, '/').'/filters';
-
-        // An EMPTY `$names` is meaningful, not missing: it says the enclosing route group already
-        // names this surface, so the sub-surface's names are a bare `filters.<verb>` the group
-        // prefixes. `null` (nothing passed) falls back to the resource key.
-        $stem = $names ?? ($resource ?? 'frame.resources');
-        $name = $stem === '' ? 'filters' : $stem.'.filters';
-
-        $mount = function (RouteInstance $route) use ($config, $middleware, $resource): RouteInstance {
-            $route->defaults(ResourceFiltersController::CONFIG, $config);
-
-            // ALSO stamp the ordinary particle resource default (ticket 01), so the group-resolution
-            // chain sees a filter route exactly as it sees any other sub-operation of the resource
-            // and the sub-surface inherits its resource's documentation group with nothing declared.
-            // This is the same trick the dissolved rendering mount leaned on — the export routes' glob
-            // was retired from the host's backlog because the route gained this stamp.
-            //
-            // Skipped for the frame-root mount, where the resource is a path parameter: there is no
-            // one resource to stamp, and a stamp naming `{resource}` would be a lie the chain would
-            // then try to resolve.
-            if ($resource !== null) {
-                $route->defaults(ParticleController::RESOURCE, $resource);
-            }
-
-            if ($middleware !== []) {
-                $route->middleware($middleware);
-            }
-
-            return $route;
-        };
-
-        // ORDER IS LOAD-BEARING. `schema`, `variants` and `options/{ref}` are literal segments that
-        // would otherwise be swallowed by `{id}`. The uuid constraint below makes that impossible
-        // as well, but relying on a constraint alone would break the moment a host mounts with
-        // `idConstraint: null` — so the literals are declared first AND constrained.
-        $mount($router->get($prefix.'/schema', [ResourceFiltersController::class, 'schema']))
-            ->name($name.'.schema');
-
-        $mount($router->get($prefix.'/variants', [ResourceFiltersController::class, 'variants']))
-            ->name($name.'.variants')
-            ->beam()->returns(ResourceFilterVariantsData::class);
-
-        $mount($router->get($prefix.'/options/{ref}', [ResourceFiltersController::class, 'options']))
-            ->name($name.'.options');
-
-        $mount($router->get($prefix.'/{variant}/schema', [ResourceFiltersController::class, 'variantSchema']))
-            ->name($name.'.variant-schema');
-
-        $mount($router->get($prefix, [ResourceFiltersController::class, 'index']))
-            ->name($name.'.index');
-
-        $mount($router->post($prefix, [ResourceFiltersController::class, 'store']))
-            ->name($name.'.store');
-
-        $withId = function (RouteInstance $route) use ($mount, $idConstraint): RouteInstance {
-            $route = $mount($route);
-
-            return $idConstraint === 'uuid' ? $route->whereUuid('id') : $route;
-        };
-
-        $withId($router->get($prefix.'/{id}', [ResourceFiltersController::class, 'show']))
-            ->name($name.'.show');
-
-        $withId($router->match(['put', 'patch'], $prefix.'/{id}', [ResourceFiltersController::class, 'update']))
-            ->name($name.'.update');
-
-        $withId($router->delete($prefix.'/{id}', [ResourceFiltersController::class, 'destroy']))
-            ->name($name.'.destroy');
     }
 }

@@ -4,8 +4,8 @@ namespace Splicewire\Beam\Tests\Doctor;
 
 use Illuminate\Routing\Router;
 use Rushing\Doctor\DoctorStatus;
+use Schemastud\Frame\Http\Controllers\FrameResourceController;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
-use Splicewire\Beam\Filters\Http\ResourceFiltersController;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Particle\OperationKind;
@@ -130,16 +130,16 @@ class UndeclaredInputAuditTest extends TestCase
     }
 
     /**
-     * The reason this audit is route-side. `ResourceFiltersController` extends plain `Controller`,
-     * declares its own input DTOs and never calls `parseInput()` — so its 22 flagship mounts must not
+     * The reason this audit is route-side. `FrameResourceController` extends plain `Controller`,
+     * uses the declared resource handler and never calls particle `parseInput()` — so its mounts must not
      * appear here even though they carry the `_particle` stamp of an `input: null` resource.
      */
     public function test_the_saved_filters_sub_surface_does_not_inflate_the_count(): void
     {
         $this->resource('widgets', null);
-        app(Router::class)->post('widgets/filters', [ResourceFiltersController::class, 'store'])
+        app(Router::class)->post('frame/resources/saved-filters', [FrameResourceController::class, 'store'])
             ->defaults(ParticleController::RESOURCE, 'widgets');
-        app(Router::class)->put('widgets/filters/{id}', [ResourceFiltersController::class, 'update'])
+        app(Router::class)->put('frame/resources/saved-filters/records/{id}', [FrameResourceController::class, 'update'])
             ->defaults(ParticleController::RESOURCE, 'widgets');
 
         $finding = $this->finding($this->audit()->run(), UndeclaredInputAudit::CHECK_RESOURCES);

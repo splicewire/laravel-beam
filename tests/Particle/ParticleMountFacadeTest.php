@@ -3,6 +3,9 @@
 namespace Splicewire\Beam\Tests\Particle;
 
 use Illuminate\Support\Facades\Route;
+use Rushing\DataFilters\Facades\DataFilter;
+use Rushing\DataFilters\Registry\ResourceDefinition;
+use Spatie\LaravelData\Data;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
@@ -83,17 +86,30 @@ class ParticleMountFacadeTest extends TestCase
     {
         Particle::mount('widgets')->only(['index', 'show', 'store']);
 
-        // The hook-event catalog leads the table for the same reason the filter sub-surface would:
-        // literal segments are mounted before `{id}` so registration order settles the overlap
-        // (api-surface-coherence 106). It is UNGATED where filters are registry-gated — an eventless
-        // resource answers with an empty catalog, which is a legal read, where an unfiltered one would
-        // publish nine routes that 404.
+        // Literal hook-event routes precede the record wildcard. Filters have their own Frame mount.
         $this->assertSame([
             ['GET|HEAD', 'widgets/hooks/events', 'widgets.hooks.events'],
             ['GET|HEAD', 'widgets', 'widgets.index'],
             ['GET|HEAD', 'widgets/{id}', 'widgets.show'],
             ['POST', 'widgets', 'widgets.store'],
         ], $this->tableAt('widgets'));
+    }
+
+    public function test_filter_registration_does_not_mount_a_parallel_http_surface(): void
+    {
+        DataFilter::registry()->registerDefinition(
+            new ResourceDefinition('filtered-widgets', Data::class, \stdClass::class),
+        );
+        Particle::mount('filtered-widgets')->only(['index']);
+
+        $this->assertSame([
+            ['GET|HEAD', 'filtered-widgets/hooks/events', 'filtered-widgets.hooks.events'],
+            ['GET|HEAD', 'filtered-widgets', 'filtered-widgets.index'],
+        ], $this->tableAt('filtered-widgets'));
+        foreach (['filters', 'filters/schema', 'filters/variants', 'filters/options/status', 'filters/alternate/schema'] as $path) {
+            $this->getJson('filtered-widgets/'.$path)->assertNotFound();
+        }
+        $this->postJson('filtered-widgets/filters', [])->assertNotFound();
     }
 
     public function test_a_diverging_resource_key_is_carried_through_to_the_route_defaults(): void
@@ -114,8 +130,7 @@ class ParticleMountFacadeTest extends TestCase
             ->names('gizmos')
             ->idConstraint('uuid')
             ->legacyPostUpdate()
-            ->controller(ParticleController::class)
-            ->filters(false);
+            ->controller(ParticleController::class);
 
         $update = $this->named('gizmos.update');
 
@@ -123,7 +138,7 @@ class ParticleMountFacadeTest extends TestCase
         $this->assertEqualsCanonicalizing(['PUT', 'PATCH', 'POST'], $update->methods());
         $this->assertArrayHasKey('id', $update->wheres);
 
-        // `filters(false)` is a real opt-out, not a no-op: no filter sub-surface route exists.
+        // Particle mounts do not publish filter metadata or saved-view endpoints.
         $this->assertNull($this->named('gizmos.filters.index'));
     }
 
@@ -237,21 +252,11 @@ class ParticleMountFacadeTest extends TestCase
         $this->assertCount(1, $matching);
     }
 
-    /**
-     * Was a parity test against `Route::resourceFilters()`, retired with the macro (93). The standalone
-     * filter door is the one whose only remaining src-side caller was `BeamRouteProxy`'s ALIASED
-     * `RouteFacade::resourceFilters()` — the call every `Route::`-keyed search in that ticket missed.
-     */
-    public function test_the_standalone_filter_door_mounts_the_filter_sub_surface(): void
+    public function test_a_bespoke_resource_stamp_does_not_mount_filter_routes(): void
     {
-        Particle::filters(resource: null, at: 'resources/{resource}', names: 'resources');
-
-        $mounted = $this->tableAt('resources/{resource}');
-
-        $this->assertNotSame([], $mounted);
-        foreach ($mounted as [$methods, $uri, $name]) {
-            $this->assertStringStartsWith('resources/{resource}', $uri);
-            $this->assertStringStartsWith('resources.', (string) $name);
-        }
+        $route = Route::get('bespoke', fn () => [])->name('bespoke.index');
+        $route->beam()->inResource('widgets');
+        $this->assertSame('widgets', $route->defaults[ParticleController::RESOURCE]);
+        $this->assertSame([['GET|HEAD', 'bespoke', 'bespoke.index']], $this->tableAt('bespoke'));
     }
 }

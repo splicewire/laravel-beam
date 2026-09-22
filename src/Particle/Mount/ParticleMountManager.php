@@ -95,11 +95,7 @@ class ParticleMountManager
      * Particle operations mounted on their own, against a resource whose CRUD is mounted elsewhere (or
      * not at all).
      *
-     * This exists because `mount(…)->only([])->ops(…)` is **not** the same thing, and the difference is
-     * a live route-table change rather than a style preference: an empty `only` still runs the automatic
-     * filter sub-surface, so the tidy-looking spelling silently publishes nine filter routes at a URI the
-     * host only wanted an operation on. Naming the op-only shape is cheaper than remembering to write
-     * `->filters(false)` next to every `->only([])`.
+     * Use this when only operations should be exposed, without CRUD or the automatic hook-event catalog.
      *
      * `$ops` takes a single name or the three-form list {@see ParticleMounter::ops()} documents.
      */
@@ -111,21 +107,11 @@ class ParticleMountManager
     /**
      * The per-resource hook-event catalog, mounted on its own (api-surface-coherence 106).
      *
-     * Almost every caller gets this for free from {@see PendingParticleMount} — it rides the resource
-     * mount, exactly as the filter sub-surface does. The standalone spelling is for a hand-rolled
-     * exposure whose CRUD is not a particle mount, and it is what
-     * `->beam()->inResource($key, hookEvents: true)` calls.
+     * The resource builder mounts it automatically. A bespoke exposure can request it through
+     * `->beam()->inResource($key, hookEvents: true)`.
      *
-     * Unlike {@see filters()} there is no null-resource spelling: the whole ticket was the removal of
-     * the one route whose resource was a path parameter, and re-introducing that shape here would put
-     * it straight back.
-     *
-     * ⚠️ `$at` is REQUIRED here where {@see filters()} defaults it to `''`, and that asymmetry was paid
-     * for. This surface's mount point is `{$at}/hooks/events`, so an empty `$at` outside an enclosing
-     * prefix resolves to the bare `hooks/events` — the UNSCOPED root catalog — and Laravel's last-wins
-     * name table then hands the root's URL a resource stamp with no error anywhere. Caught by this
-     * package's own suite while writing 106; a default that silently shadows another endpoint is not a
-     * convenience. Pass `''` deliberately when the enclosing group already names the resource.
+     * `$at` is required: an accidental empty root would shadow the unscoped hook catalog. Pass an
+     * empty string deliberately only when the enclosing group already names the resource.
      */
     public function hookEvents(
         string $resource,
@@ -134,22 +120,5 @@ class ParticleMountManager
         array $middleware = [],
     ): void {
         $this->mounter->resourceHookEvents($this->router, $resource, $at, $names, $middleware);
-    }
-
-    /**
-     * The per-resource filter sub-surface, mounted on its own.
-     *
-     * Almost every caller gets this for free from {@see PendingParticleMount} — it rides the resource
-     * mount. The standalone spelling exists for the one shape that has no resource mount to ride: the
-     * Frame resource root, where `$resource` is `null` because `{resource}` is a path parameter.
-     */
-    public function filters(
-        ?string $resource,
-        string $at = '',
-        ?string $names = null,
-        array $middleware = [],
-        string $idConstraint = 'uuid',
-    ): void {
-        $this->mounter->resourceFilters($this->router, $resource, $at, $names, $middleware, $idConstraint);
     }
 }

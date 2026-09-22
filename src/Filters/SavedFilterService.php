@@ -10,26 +10,23 @@ use Illuminate\Validation\Rule;
 use Rushing\DataFilters\SavedFilters\SavedFilter;
 use Rushing\DataFilters\SavedFilters\Visibility;
 use Schemastud\Frame\Contracts\ResourceFilterValidator;
-use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Data\ResourceQueryData;
 use Schemastud\Frame\Filters\ResourceFilters as FrameResourceFilters;
 use Splicewire\Beam\Filters\Data\SavedFilterEditData;
 use Splicewire\Beam\Filters\Data\SavedFilterInputData;
-use Splicewire\Beam\Filters\Data\SavedFilterStoreInputData;
-use Splicewire\Beam\Filters\Data\SavedFilterUpdateInputData;
 use Splicewire\Beam\Write\ModelAttributeMapper;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
-/** One persistence and authorization path for both resource CRUD and legacy filter mounts. */
+/** Persistence and authorization for the contextual saved-filters resource. */
 class SavedFilterService
 {
     public function __construct(private ResourceFilters $filters) {}
 
-    public function visible(string $target, bool $legacy = false): Builder
+    public function visible(string $target): Builder
     {
-        $this->filters->authorize($target, $legacy);
+        $this->filters->authorize($target);
         $query = ResourceQueryData::validateAndCreate(request()->query());
-        $this->authorizeTarget($target, $legacy, is_string($query->filterVariant) ? $query->filterVariant : null);
+        $this->authorizeTarget($target, is_string($query->filterVariant) ? $query->filterVariant : null);
 
         return $this->visibleQuery($target);
     }
@@ -44,13 +41,10 @@ class SavedFilterService
             ->orWhereIn('visibility', [Visibility::Shared->value, Visibility::Public->value]));
     }
 
-    public function find(string $id, ?string $target = null, bool $owned = false, bool $legacy = false): SavedFilter
+    public function find(string $id, bool $owned = false): SavedFilter
     {
-        if ($target !== null) {
-            $this->filters->authorize($target, $legacy);
-        }
-        $saved = SavedFilter::query()->when($target !== null, fn ($q) => $q->where('resource', $target))->findOrFail($id);
-        $this->authorizeStoredTarget($saved, $legacy);
+        $saved = SavedFilter::query()->findOrFail($id);
+        $this->authorizeStoredTarget($saved);
         $query = $this->visibleQuery($saved->resource);
         if ($owned) {
             $user = request()->user();
@@ -60,18 +54,16 @@ class SavedFilterService
         return $query->findOrFail($id);
     }
 
-    public function store(string $target, array $payload, bool $legacy = false): SavedFilter
+    public function store(string $target, array $payload): SavedFilter
     {
-        $this->filters->authorize($target, $legacy);
+        $this->filters->authorize($target);
         Gate::authorize('create', SavedFilter::class);
-        if (! $legacy) {
-            $this->validateTarget($payload, $target);
-        }
-        $input = ($legacy ? SavedFilterStoreInputData::class : SavedFilterInputData::class)::validateAndCreate($payload);
+        $this->validateTarget($payload, $target);
+        $input = SavedFilterInputData::validateAndCreate($payload);
         $saved = new SavedFilter([
             ...ModelAttributeMapper::map($input),
             'resource' => $target,
-            'query_parameters' => $this->queryParameters($target, $input->queryParameters, $legacy),
+            'query_parameters' => $this->queryParameters($target, $input->queryParameters),
             'visibility' => is_string($input->visibility) ? $input->visibility : Visibility::Private->value,
             'is_default' => is_bool($input->isDefault) ? $input->isDefault : false,
         ]);
@@ -81,17 +73,15 @@ class SavedFilterService
         return $saved;
     }
 
-    public function update(string $id, array $payload, ?string $target = null, bool $legacy = false): SavedFilter
+    public function update(string $id, array $payload): SavedFilter
     {
-        $saved = $this->find($id, $target, owned: true, legacy: $legacy);
+        $saved = $this->find($id, owned: true);
         Gate::authorize('update', $saved);
-        if (! $legacy) {
-            $this->validateTarget($payload, $saved->resource);
-        }
-        $input = ($legacy ? SavedFilterUpdateInputData::class : SavedFilterEditData::class)::validateAndCreate($payload);
+        $this->validateTarget($payload, $saved->resource);
+        $input = SavedFilterEditData::validateAndCreate($payload);
         $saved->fill([
             ...ModelAttributeMapper::map($input),
-            'query_parameters' => $this->queryParameters($saved->resource, is_array($input->queryParameters) ? $input->queryParameters : $saved->query_parameters, $legacy),
+            'query_parameters' => $this->queryParameters($saved->resource, is_array($input->queryParameters) ? $input->queryParameters : $saved->query_parameters),
             'visibility' => is_string($input->visibility) ? $input->visibility : $saved->visibility->value,
             'is_default' => is_bool($input->isDefault) ? $input->isDefault : $saved->is_default,
         ]);
@@ -100,9 +90,9 @@ class SavedFilterService
         return $saved;
     }
 
-    public function destroy(string $id, ?string $target = null, bool $legacy = false): void
+    public function destroy(string $id): void
     {
-        $saved = $this->find($id, $target, owned: true, legacy: $legacy);
+        $saved = $this->find($id, owned: true);
         Gate::authorize('delete', $saved);
         $saved->delete();
     }
@@ -116,9 +106,7 @@ class SavedFilterService
             return false;
         }
         try {
-            // Metadata is emitted only after the serving entry point has authorized its exposure.
-            // Retained non-Frame targets therefore keep the same explicit default-provider fallback.
-            $this->authorizeStoredTarget($saved, legacy: true);
+            $this->authorizeStoredTarget($saved);
 
             return true;
         } catch (AuthorizationException $e) {
@@ -135,26 +123,17 @@ class SavedFilterService
     }
 
     /** Check a loaded record's target/variant without looking the record up again. */
-    public function authorizeStoredTarget(SavedFilter $saved, bool $legacy = false): void
+    public function authorizeStoredTarget(SavedFilter $saved): void
     {
-        $this->authorizeTarget($saved->resource, $legacy, $saved->query_parameters['filterVariant'] ?? null);
+        $this->authorizeTarget($saved->resource, $saved->query_parameters['filterVariant'] ?? null);
     }
 
-    private function authorizeTarget(string $target, bool $legacy, ?string $variant = null): void
+    private function authorizeTarget(string $target, ?string $variant = null): void
     {
-        if ($this->isFramed($target)) {
-            $this->filters->authorize($target);
-            $frame = app(FrameResourceFilters::class);
-            abort_unless($frame->provider($target) instanceof ResourceFilterValidator
-                && $frame->schema($target, $variant)->savedViewsResource === 'saved-filters', 404);
-
-            return;
-        }
-        $this->filters->definition($target, $legacy);
-        abort_unless($this->filters->supportsSavedFilters($target), 404);
-        if ($variant !== null) {
-            app(FilterQuerySelection::class)->definition($target, $variant);
-        }
+        $this->filters->authorize($target);
+        $frame = app(FrameResourceFilters::class);
+        abort_unless($frame->provider($target) instanceof ResourceFilterValidator
+            && $frame->schema($target, $variant)->savedViewsResource === 'saved-filters', 404);
     }
 
     private function validateTarget(array $payload, string $target): void
@@ -162,25 +141,16 @@ class SavedFilterService
         Validator::make($payload, ['resource' => ['sometimes', 'string', Rule::in([$target])]])->validate();
     }
 
-    private function queryParameters(string $target, mixed $parameters, bool $legacy): array
+    private function queryParameters(string $target, mixed $parameters): array
     {
         $parameters = is_array($parameters) ? $parameters : [];
         $selection = ResourceQueryData::validateAndCreate($parameters);
-        $this->authorizeTarget($target, $legacy, is_string($selection->filterVariant) ? $selection->filterVariant : null);
-        if ($this->isFramed($target)) {
-            $frame = app(FrameResourceFilters::class);
-            $provider = $frame->provider($target);
-            abort_unless($provider instanceof ResourceFilterValidator, 404);
+        $this->authorizeTarget($target, is_string($selection->filterVariant) ? $selection->filterVariant : null);
+        $frame = app(FrameResourceFilters::class);
+        $provider = $frame->provider($target);
+        abort_unless($provider instanceof ResourceFilterValidator, 404);
 
-            return $provider->validate($frame->definition($target), $parameters);
-        }
-
-        return app(FilterQuerySelection::class)->validate($target, $parameters, legacy: $legacy);
-    }
-
-    private function isFramed(string $target): bool
-    {
-        return app()->bound(ResourceRegistry::class) && app(ResourceRegistry::class)->find($target) !== null;
+        return $provider->validate($frame->definition($target), $parameters);
     }
 
     private function persist(SavedFilter $saved): void
