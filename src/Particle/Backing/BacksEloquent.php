@@ -26,6 +26,7 @@ trait BacksEloquent
      */
     public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
     {
-        return $this->query($filters)->cursorPaginate($perPage, ['*'], 'cursor', $cursor);
+        // Null means this backing starts at its first page, even inside a request with an outer cursor.
+        return $this->query($filters)->cursorPaginate($perPage, ['*'], 'cursor', $cursor ?? '');
     }
 }
