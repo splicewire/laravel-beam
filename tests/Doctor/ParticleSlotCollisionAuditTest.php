@@ -137,15 +137,28 @@ class ParticleSlotCollisionAuditTest extends TestCase
 
     public function test_two_non_operation_routes_sharing_a_slot_are_not_this_audits_business(): void
     {
-        // `prognosix-api`'s OPTIONS catch-all and `prognosix-web-app`'s `settings` redirect are both
-        // legitimate pre-existing pairs outside this audit's operation scope.
+        // Different method sets keep both registrations in Laravel's route table while sharing GET.
         $this->operation('widgets/{id}/publish', 'widgets', 'publish');
-        app(Router::class)->get('settings', fn () => null)->name('settings');
-        app(Router::class)->get('settings', fn () => null);
+        $plainRoute = app(Router::class)->match(['GET', 'POST'], 'settings', fn () => null)->name('settings.multi');
+        app(Router::class)->get('settings', fn () => null)->name('settings.single');
+
+        $this->assertCount(2, array_filter(
+            app(Router::class)->getRoutes()->getRoutes(),
+            fn ($route) => $route->uri() === 'settings',
+        ));
 
         $findings = $this->audit()->run();
 
         $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
+
+        // The same real collision becomes this audit's concern when one claimant is an operation.
+        $plainRoute->defaults(ParticleOperationController::RESOURCE, 'settings')
+            ->defaults(ParticleOperationController::NAME, 'preview');
+
+        $findings = $this->audit()->run();
+
+        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
+        $this->assertStringContainsString('URI [|GET /settings]', $findings[0]->detail);
     }
 
     public function test_a_crud_verb_claimant_is_named_as_such(): void
