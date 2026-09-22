@@ -43,11 +43,11 @@ use Splicewire\Beam\Particle\Backing\Merge\OrderedMergeStrategy;
  *
  * ## Ordering is this class's job, not the implementor's
  *
- * `records()` sorts descending by `sortKey()` before it pages, because the merge's correctness rests on
+ * `records()` sorts descending by `(sortKey(), idKey())` before it pages, because the merge's correctness rests on
  * every arm's batch being descending (the prefix property `OrderedMergeStrategy` documents). Leaving
  * that to each `rows()` implementation would make a silent mis-ordering in one arm corrupt the cursor of
- * a merge in another package. PHP's sort is stable, so rows with equal sort values keep the order
- * `rows()` produced them in.
+ * a merge in another package. The identity tiebreak is also used when the cursor's row disappears,
+ * so producer order cannot make surviving tied rows disappear from the next page.
  *
  * ## It declines every other capability
  *
@@ -64,7 +64,10 @@ abstract class CollectionBacking implements StreamsRecords
         $idKey = $this->idKey();
 
         $rows = Collection::make($this->rows($filters))
-            ->sortByDesc(fn (mixed $row) => data_get($row, $sortKey))
+            ->sort(fn (mixed $left, mixed $right): int => $this->compare(
+                data_get($left, $sortKey), (string) data_get($left, $idKey),
+                data_get($right, $sortKey), (string) data_get($right, $idKey),
+            ))
             ->values();
 
         // perPage + 1 so the paginator can tell the merge there is another page behind this batch.
@@ -124,7 +127,7 @@ abstract class CollectionBacking implements StreamsRecords
         // The cursor's row is gone. Resume at the first row that ranks strictly BELOW it in the
         // descending (sort, id) order, so the page after it is still the page after it.
         foreach ($rows as $index => $row) {
-            if ($this->ranksBelow(data_get($row, $sortKey), (string) data_get($row, $idKey), $lastSort, (string) $lastId)) {
+            if ($this->compare(data_get($row, $sortKey), (string) data_get($row, $idKey), $lastSort, (string) $lastId) > 0) {
                 return $index;
             }
         }
@@ -133,24 +136,23 @@ abstract class CollectionBacking implements StreamsRecords
     }
 
     /**
-     * Descending order over `(sort, id)`: `null` sorts lowest, matching both `sortByDesc()` above and
-     * the composite merge's own comparator, so an arm with missing sort values pages in the same order
-     * it merges in.
+     * Descending order over `(sort, id)`, shared by sorting and deleted-row resumption.
+     * `null` sorts lowest, matching the composite merge's own comparator.
      */
-    private function ranksBelow(mixed $sort, string $id, mixed $lastSort, string $lastId): bool
+    private function compare(mixed $sort, string $id, mixed $otherSort, string $otherId): int
     {
-        if ($sort === $lastSort) {
-            return $id < $lastId;
+        if ($sort === $otherSort) {
+            return strcmp($otherId, $id);
         }
 
         if ($sort === null) {
-            return true;
+            return 1;
         }
 
-        if ($lastSort === null) {
-            return false;
+        if ($otherSort === null) {
+            return -1;
         }
 
-        return $sort < $lastSort;
+        return ($otherSort <=> $sort) ?: strcmp($otherId, $id);
     }
 }

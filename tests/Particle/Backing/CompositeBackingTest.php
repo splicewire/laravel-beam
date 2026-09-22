@@ -170,6 +170,34 @@ class CompositeBackingTest extends TestCase
         $this->assertSame(['a7', 'b6', 'a5'], $this->ids($narrowed->records([], $cursor, 3)));
     }
 
+    public function test_deleted_tied_cursor_rows_preserve_survivors_and_cross_arm_declaration_order(): void
+    {
+        $alpha = array_map(
+            fn (string $id): ArmRow => new ArmRow($id, 'alpha', $id, 'T01'),
+            ['a', 'b', 'c'],
+        );
+        $beta = new InMemoryArm(new ArmRow('z', 'beta', 'Z', 'T01'));
+        $first = (new CompositeBacking([
+            'alpha' => new InMemoryArm(...$alpha),
+            'beta' => $beta,
+        ], 'at'))->records([], null, 1);
+        $cursor = $first->nextCursor()?->encode();
+        $this->assertNotNull($cursor);
+        $seenId = $first->items()[0]->id;
+        $remaining = array_values(array_filter($alpha, fn (ArmRow $row): bool => $row->id !== $seenId));
+
+        $next = (new CompositeBacking([
+            'alpha' => new InMemoryArm(...$remaining),
+            'beta' => $beta,
+        ], 'at'))->records([], $cursor, 10);
+
+        $expected = array_column($remaining, 'id');
+        rsort($expected);
+        $expected[] = 'z'; // The later arm stays later even when its identity sorts higher.
+        $this->assertSame($expected, $this->ids($next));
+        $this->assertNull($next->nextCursor());
+    }
+
     // ── The `source` discriminator ────────────────────────────────────────────────────────────────
 
     public function test_the_source_filter_narrows_the_arm_set_rather_than_filtering_rows_after_the_merge(): void
