@@ -3,8 +3,10 @@
 namespace Splicewire\Beam\Data;
 
 use InvalidArgumentException;
+use Schemastud\DataSchemas\Attributes\MapValues;
 use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
 use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
+use Schemastud\Frame\Attributes\Widget;
 use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
@@ -39,8 +41,16 @@ class BeamSchemaInputData extends BeamData implements MapsToModelAttributes
      * @param  array<string, mixed>  $artifact  The complete authored schema document, `$id` included.
      */
     public function __construct(
-        public array $artifact = [],
+        #[MapValues, Widget('json')]
+        public array $artifact,
     ) {}
+
+    public static function rules(): array
+    {
+        return [
+            'artifact.$id' => ['required', 'string'],
+        ];
+    }
 
     /**
      * The write map: DTO field ⇒ model column.

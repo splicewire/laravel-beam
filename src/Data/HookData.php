@@ -44,6 +44,7 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
     backing: Hook::class,
     data: HookData::class,
     input: HookInputData::class,
+    editData: HookInputData::class,
     label: 'Hooks',
     singularLabel: 'Hook',
     group: 'Platform',

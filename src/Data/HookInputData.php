@@ -112,6 +112,18 @@ class HookInputData extends BeamData implements MapsToModelAttributes
         public ?bool $paused = null,
     ) {}
 
+    /** Edit reads never return the bearer token or HMAC secret. An omitted token stays unchanged. */
+    public static function fromModel(Hook $hook): self
+    {
+        return new self(
+            endpoint: $hook->endpoint,
+            events: $hook->events,
+            subject_type: $hook->subject_type,
+            subject_id: $hook->subject_id,
+            paused: $hook->paused_at !== null,
+        );
+    }
+
     /**
      * The write map: DTO field ⇒ model column. Only keys the caller actually sent are returned, so a
      * PATCH that names one field does not null the other five.

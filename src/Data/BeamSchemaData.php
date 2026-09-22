@@ -60,10 +60,12 @@ use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
     backing: BeamSchema::class,
     data: BeamSchemaData::class,
     input: BeamSchemaInputData::class,
+    editData: BeamSchemaInputData::class,
     label: 'Schemas',
     group: 'Content',
     icon: 'file-json',
     section: 'authoring',
+    editable: false,
 )]
 #[TypeScript]
 class BeamSchemaData extends BeamData
