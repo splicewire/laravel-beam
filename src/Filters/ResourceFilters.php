@@ -61,7 +61,7 @@ class ResourceFilters
     public function definition(string $key, bool $legacy = false): FilterDefinition
     {
         $this->authorize($key, $legacy);
-        $definition = DataFilter::tryResource($key);
+        $definition = app(ResourceFilterDefinition::class)->definition($key);
         abort_if($definition === null, 404, "No filter resource registered for [{$key}].");
 
         $this->authorizeModel($definition->model);
@@ -78,17 +78,16 @@ class ResourceFilters
 
             return new FilterSchemaResponseData($this->schemaFor($selected), $this->savedResource($key));
         }
+        $definition = app(ResourceFilterDefinition::class)->definition($key);
         $particle = $this->particles->find($key);
         if ($particle !== null && (new BackingResolver)->hasCapability($particle->backing, DeclaresFilterVocabulary::class)) {
             return new FilterSchemaResponseData($particle->backing()->filterVocabulary()->toSchema(), $this->savedResource($key));
         }
-        $definition = DataFilter::tryResource($key);
         if ($definition !== null) {
             $this->authorizeModel($definition->model);
 
             return new FilterSchemaResponseData($this->schemaFor($definition), $this->savedResource($key));
         }
-        abort_if($particle === null || $particle->filterable, 404, "No filter resource registered for [{$key}].");
 
         return new FilterSchemaResponseData(['type' => 'object', 'properties' => (object) []]);
     }
@@ -124,13 +123,8 @@ class ResourceFilters
     public function variants(string $key, bool $legacy = false): FilterVariantsResponseData
     {
         $this->authorize($key, $legacy);
-        $definition = DataFilter::tryResource($key);
+        $definition = app(ResourceFilterDefinition::class)->definition($key);
         if ($definition === null) {
-            // Mirrors schema(): a declared `filterable: false` resource is not an absence. Its list
-            // page asks for variants on every mount, and the honest answer is "none", not 404.
-            $particle = $this->particles->find($key);
-            abort_if($particle === null || $particle->filterable, 404, "No filter resource registered for [{$key}].");
-
             return new FilterVariantsResponseData(new FilterVariantsData($key, []));
         }
         $this->authorizeModel($definition->model);
@@ -166,7 +160,12 @@ class ResourceFilters
 
     public function supportsSavedFilters(string $key): bool
     {
-        $definition = DataFilter::registry()->find($key);
+        $definition = app(ResourceFilterDefinition::class)->definition($key);
+
+        $particle = $this->particles->find($key);
+        if ($particle !== null && (new BackingResolver)->hasCapability($particle->backing, DeclaresFilterVocabulary::class)) {
+            return ! $particle->backing()->filterVocabulary()->isEmpty();
+        }
 
         return $definition !== null && is_a($definition->query, ResourceQuery::class, true);
     }

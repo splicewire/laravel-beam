@@ -14,8 +14,7 @@ use Splicewire\Beam\Source\ParticleSource;
 /**
  * The hydrator router (ADR-0161 ticket 02): proven framework-free that it delegates by RESOLVED source
  * kind — never by prefix-sniffing. A local ref (or a loaded model/payload) hits the local arm; a foreign
- * ref (conduit/federated) hits the federated arm (the socket the degenerate local reader throws on). List
- * queries + projection are local by construction.
+ * ref (conduit/federated) hits the federated arm (the socket the degenerate local reader throws on). Projection is local by construction.
  */
 class SourcedParticleHydratorTest extends TestCase
 {
@@ -74,25 +73,12 @@ class SourcedParticleHydratorTest extends TestCase
         $this->assertSame('local', $data->arm);
         $this->assertFalse($federated->hydrateCalled);
     }
-
-    public function test_list_query_delegates_to_the_local_arm(): void
-    {
-        $local = new ProbeArm('local');
-        $federated = new ProbeArm('federated');
-
-        $this->router(ParticleSource::local('x'), $local, $federated)->query('content/article', new ReadContext);
-
-        $this->assertTrue($local->queryCalled);
-        $this->assertFalse($federated->queryCalled);
-    }
 }
 
 /** A ParticleHydrator arm that records which methods were called and stamps the Data with its label. */
 class ProbeArm implements ParticleHydrator
 {
     public bool $hydrateCalled = false;
-
-    public bool $queryCalled = false;
 
     public bool $projectCalled = false;
 
@@ -103,13 +89,6 @@ class ProbeArm implements ParticleHydrator
         $this->hydrateCalled = true;
 
         return new ProbeData($this->label);
-    }
-
-    public function query(string $recordType, ReadContext $ctx): object
-    {
-        $this->queryCalled = true;
-
-        return (object) ['arm' => $this->label];
     }
 
     public function project(Model $record, ReadContext $ctx): Data

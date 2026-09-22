@@ -13,10 +13,9 @@ use Rushing\PermissionCascade\Policies\BaseModelPolicy;
  * The sibling of {@see AbilityResolver}, which owns the per-action plane ("may this actor invoke
  * this?"). The two are not interchangeable and the difference is the whole reason this class exists: a
  * policy verb answers a question about ONE record you already hold, and a list has no record to hold.
- * `ParticleController::show()` can call `authorize('view', $model)`; `index()` cannot, and says so —
- * *"a `filterable:false` resource has no data-filters query to gate its index, so its owner/inverse
- * `scope` closure is the ONLY read guard — without it the list would return every row across all
- * callers."*
+ * `ParticleController::show()` can call `authorize('view', $model)`; `index()` cannot. A resource's
+ * owner/inverse `scope` closure may be its only row-level read guard; omitting that scope would expose
+ * rows across callers.
  *
  * ## Why a named idiom rather than four more lines at each call site
  *
@@ -58,8 +57,8 @@ use Rushing\PermissionCascade\Policies\BaseModelPolicy;
  * ## What this does NOT do
  *
  * It does not decide whether a resource NEEDS a row guard. That question has three inputs this class
- * cannot see — whether the resource is `filterable`, whether it is mounted standalone or through a
- * relative (a relative lists through an already-authorized parent and is safe), and whether its rows
+ * cannot see — which row scopes the resource declares, whether it is mounted standalone or through a
+ * relative (a relative restricts rows to its bound parent), and whether its rows
  * have an owner at all (`beam_steering_profiles` has no owner column; a site-global catalog needs no
  * filter and adding one would be cargo-cult). Those live on the resource and on the mount, and the
  * audit that would report them is deliberately not built yet: `particle-operation-surface` 15 already

@@ -13,6 +13,7 @@ use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\ResolvesRecord;
@@ -97,13 +98,15 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      */
     protected function streamedIndex(ResourceDefinition $definition): array
     {
+        app(ResourceFilterDefinition::class)->definition($definition->key);
         $request = app(Request::class);
+        abort_if($request->query('filterVariant') !== null, 404);
 
         // The WHOLE `filter[...]` bag, passed through opaquely — the backing owns its own query
         // semantics and beam does not interpret it. Every backing reads only the keys it knows
         // (review-queue: `source`/`parent_id`/`keywords`; tenants: `period`) and ignores the rest, so
         // forwarding the full bag is additive. perPage floored at 1 to guard a paginator underflow.
-        $filters = array_filter((array) $request->input('filter', []));
+        $filters = (array) $request->input('filter', []);
         $cursor = $request->query('cursor');
         $perPage = max(1, (int) $request->integer('perPage', 25));
 
@@ -187,7 +190,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         // The union-arm discriminator now rides the same opaque bag every other capability takes,
         // rather than a positional argument only unions ever used. `source` stays a detail-route query
         // param, so a caller's URL is unchanged; it is merged into the filters the backing already reads.
-        $filters = array_filter((array) $request->input('filter', []));
+        $filters = (array) $request->input('filter', []);
         $filters['source'] = (string) $request->query('source', '');
 
         $resolved = $this->backing($definition, ResolvesRecord::class)->resolve($id, $filters);
@@ -477,7 +480,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         );
 
         $resource = $this->registry->has($key) ? $this->registry->get($key) : null;
-        $filters = array_filter((array) app(Request::class)->input('filter', []));
+        $filters = (array) app(Request::class)->input('filter', []);
 
         return $projector->apply(
             $key,

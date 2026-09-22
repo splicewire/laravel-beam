@@ -72,7 +72,7 @@ use Symfony\Component\Finder\Finder;
  *
  * A host that wants coverage to block registers this class in its OWN manifest with `gate: true` and runs
  * `--floor=warn`. That is the estate's standard escape hatch and is documented the same way on six sibling
- * audits ({@see FilterablePromiseAudit}, {@see ListedResourceDisplacementAudit}, {@see SupersededDeclarationAudit}).
+ * audits ({@see ListedResourceDisplacementAudit}, {@see SupersededDeclarationAudit}).
  *
  * ## Honesty about reach — the same caveat {@see AuditScanPaths} carries
  * Discovery walks `vendor/composer/installed.json` for family packages, so this audits WHAT THE HOST

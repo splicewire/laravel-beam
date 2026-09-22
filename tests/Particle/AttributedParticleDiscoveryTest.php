@@ -41,7 +41,6 @@ class AttributedParticleDiscoveryTest extends TestCase
         $this->assertSame(FixtureModel::class, $resource->modelClass());
         $this->assertSame(FixtureInput::class, $resource->input);
         $this->assertSame(['tags'], $resource->includes);
-        $this->assertFalse($resource->filterable);
         $this->assertSame(50, $resource->perPage);
     }
 
@@ -238,7 +237,6 @@ class FixtureInput {}
     backing: FixtureModel::class,
     input: FixtureInput::class,
     includes: ['tags'],
-    filterable: false,
     perPage: 50,
 )]
 class FixtureLyricResource

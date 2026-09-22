@@ -69,7 +69,7 @@ it('preserves the declared response projection through the model into hooks and 
 
     if (str_starts_with($kind, 'particle')) {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
-            key: 'client-body-examples', backing: Model::class, data: ClientBodyPayload::class, filterable: false,
+            key: 'client-body-examples', backing: Model::class, data: ClientBodyPayload::class,
         ));
         $route->setAction(['uses' => ParticleController::class.'@index', 'controller' => ParticleController::class.'@index']);
         $route->defaults(ParticleController::RESOURCE, 'client-body-examples');

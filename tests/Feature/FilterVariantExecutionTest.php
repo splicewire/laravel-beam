@@ -21,8 +21,8 @@ use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Http\Controllers\FrameResourceController;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Facades\Particle;
-use Splicewire\Beam\Filters\FilterQuerySelection;
 use Splicewire\Beam\Particle\Backing\ResourceBacking;
+use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
@@ -56,8 +56,7 @@ class FilterVariantExecutionTest extends TestCase
         $this->actingAs((new User)->forceFill(['id' => 1]));
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'variant-records', backing: VariantRecord::class, data: VariantRowData::class,
-            frame: true, readOnly: true, filterable: true,
-        ));
+            frame: true, readOnly: true, ));
         Particle::filters('variant-records', at: 'variant-records');
         DataFilter::registry()->registerDefinition(new ResourceDefinition('variant-records', CanonicalVariantFilters::class, OwnerVariantQuery::class, VariantRecord::class));
         DataFilter::registry()->registerDefinition(new ResourceDefinition('active-records', SelectedVariantFilters::class, EnabledVariantQuery::class, VariantRecord::class, 'variant-records'));
@@ -89,7 +88,7 @@ class FilterVariantExecutionTest extends TestCase
             'sort' => '-status', 'limit' => 1, 'perPage' => 1, 'page' => 2, 'savedFilter' => 'stale', 'saved_filter' => 'stale']);
         $request->setUserResolver(fn () => auth()->user());
         $before = $request->query();
-        $query = app(FilterQuerySelection::class)->query('variant-records', $request);
+        $query = app(ParticleListQuery::class)->forList(app(ParticleResourceRegistry::class)->get('variant-records'), (array) $request->input('filter', []), $request);
         $this->assertSame(['Owned closed'], $query->pluck('title')->all());
         $this->assertSame($before, $request->query());
     }

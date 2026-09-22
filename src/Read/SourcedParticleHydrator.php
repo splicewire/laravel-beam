@@ -14,11 +14,11 @@ use Splicewire\Beam\Source\Contracts\ParticleSourceResolver;
  * FOREIGN ref (conduit/federated) routes to the federated arm — which fills the `hydrate(string)` socket
  * the degenerate local reader ({@see PayloadParticleReader}) throws on.
  *
- * List queries and single-record projection are inherently LOCAL operations, so they delegate straight
+ * Single-record projection is inherently a LOCAL operation, so it delegates straight
  * to the local arm (a foreign source's list results arrive through the RetrievalChannel, not this
  * hydrator — the particle-hydration path is the detail read, ADR-0161 §Retrieval).
  *
- * Port-composition only: the concrete arms are injected (the host binds its query-composing local
+ * Port-composition only: the concrete arms are injected (the host binds its local
  * hydrator and its dereferencer-backed federated hydrator), so this router carries no host dependency and
  * no circular self-reference — it is constructed with explicit arms, never by resolving the port it binds.
  */
@@ -41,12 +41,6 @@ class SourcedParticleHydrator implements ParticleHydrator
         return $this->resolver->resolve($source)->isForeign()
             ? $this->federated->hydrate($source, $ctx)
             : $this->local->hydrate($source, $ctx);
-    }
-
-    public function query(string $recordType, ReadContext $ctx): object
-    {
-        // A list read composes a local query; foreign list results arrive via the RetrievalChannel.
-        return $this->local->query($recordType, $ctx);
     }
 
     public function project(Model $record, ReadContext $ctx): Data

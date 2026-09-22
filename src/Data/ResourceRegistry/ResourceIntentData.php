@@ -20,7 +20,6 @@ class ResourceIntentData extends BeamData
         public bool $editable,
         public bool $deletable,
         public bool $showable,
-        public bool $filterable,
         /** The declared `policy:` — a Gate ability, a policy class-string, or null when undeclared. */
         public ?string $policy,
     ) {}

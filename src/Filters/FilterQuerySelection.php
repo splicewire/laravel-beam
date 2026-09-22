@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Filters;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
@@ -13,7 +14,8 @@ use Rushing\DataFilters\SavedFilters\SavedFilterValidator;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Data\ResourceQueryData;
-use Spatie\QueryBuilder\QueryBuilder;
+use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
+use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /** Select one resource vocabulary for schema, saved validation and actual record reads. */
@@ -23,7 +25,7 @@ class FilterQuerySelection
 
     public function definition(string $target, ?string $variant = null): ResourceDefinition
     {
-        $canonical = DataFilter::tryResource($target);
+        $canonical = app(ResourceFilterDefinition::class)->definition($target);
         abort_if($canonical === null, 404);
         if ($variant === null || $variant === $target) {
             return $canonical;
@@ -43,29 +45,38 @@ class FilterQuerySelection
         return $selected;
     }
 
-    public function query(string $target, Request $request): QueryBuilder
+    /** Apply the selected declaration without replacing the backing or parent row boundary. */
+    public function applyTo(string $target, Builder $base, Request $request): Builder
     {
         $input = ResourceQueryData::validateAndCreate($request->query());
         $variant = is_string($input->filterVariant) ? $input->filterVariant : null;
-        if ($variant === null || $variant === $target) {
-            return DataFilter::query($target)->apply($request);
+        $resolver = app(ResourceFilterDefinition::class);
+        $canonical = $resolver->definition($target);
+        if ($canonical === null) {
+            abort_if($variant !== null, 404);
+
+            return $base;
+        }
+        $selected = $this->definition($target, $variant);
+        $scopeRequest = self::scopeRequest($request);
+        $composer = app(ParticleListQuery::class);
+        $composer->intersect($base, $resolver->query($canonical)->authorizationQuery($scopeRequest));
+        if ($selected->key !== $canonical->key) {
+            $composer->intersect($base, $resolver->query($selected)->authorizationQuery($scopeRequest));
         }
 
-        $selected = $this->definition($target, $variant);
-        $builder = DataFilter::query($selected->key)->apply($request);
+        return $resolver->query($selected)->applyTo($base, $request)->getEloquentBuilder();
+    }
 
-        // A variant can carry its own scope, but it cannot replace the target owner's scope.
-        // Build the target scope with the same actor/route and no caller-selected query controls.
+    public static function scopeRequest(Request $request): Request
+    {
         $scopeRequest = clone $request;
         $scopeRequest->query->replace($request->query->all());
         foreach (['filter', 'sort', 'include', 'filterVariant', 'page', 'perPage', 'per_page', 'limit', 'cursor', 'savedFilter', 'saved_filter'] as $key) {
             $scopeRequest->query->remove($key);
         }
-        $scope = DataFilter::query($target)->apply($scopeRequest);
-        $key = $builder->getModel()->getQualifiedKeyName();
-        $scopeIds = $scope->select($key)->reorder()->toBase()->cloneWithout(['limit', 'offset', 'unionLimit', 'unionOffset']);
 
-        return $builder->whereIn($key, $scopeIds);
+        return $scopeRequest;
     }
 
     /** @param array<string, mixed> $parameters */
@@ -89,6 +100,17 @@ class FilterQuerySelection
             'query_parameters.sort.*' => ['string'],
             'query_parameters.include.*' => ['string'],
         ])->validate();
+        $definition = app(ResourceFilterDefinition::class)->definition($target);
+        if ($definition === null) {
+            $backing = $this->particles->find($target)?->backing();
+            abort_unless($backing instanceof DeclaresFilterVocabulary, 404);
+            $vocabulary = $backing->filterVocabulary();
+            abort_if($vocabulary->isEmpty() || ($parameters['filterVariant'] ?? null) !== null, 404);
+
+            return app(SavedFilterValidator::class)->validateVocabulary(
+                $target, $parameters, $vocabulary->filterNames(), $vocabulary->sortNames(),
+            );
+        }
         $selected = $this->definition($target, $parameters['filterVariant'] ?? null);
 
         return app(SavedFilterValidator::class)->validate($selected->key, $parameters);

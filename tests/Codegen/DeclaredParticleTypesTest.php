@@ -65,7 +65,6 @@ class DeclaredParticleTypesTest extends TestCase
             data: DeclaredCrateData::class,
             input: DeclaredCrateInputData::class,
             editData: DeclaredCrateEditData::class,
-            filterable: false,
         ));
 
         $declared = $this->enumerator()->declared();
@@ -91,7 +90,6 @@ class DeclaredParticleTypesTest extends TestCase
             backing: DeclaredCrate::class,
             data: null,
             input: false,
-            filterable: false,
         ));
 
         $this->assertSame([], $this->fixtures($this->enumerator()->declared()));
@@ -158,7 +156,6 @@ class DeclaredParticleTypesTest extends TestCase
             key: 'declared-crates',
             backing: DeclaredCrate::class,
             data: DeclaredCrateData::class,
-            filterable: false,
         ));
 
         $this->operations()->register(new ParticleOperation(
@@ -221,7 +218,6 @@ class DeclaredParticleTypesTest extends TestCase
             key: 'declared-crates',
             backing: DeclaredCrate::class,
             data: DeclaredCrateData::class,
-            filterable: false,
         ));
 
         $partition = $this->enumerator()->partition(

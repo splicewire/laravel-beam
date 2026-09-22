@@ -109,9 +109,6 @@ class ParticleResource implements HasRegistryKey
      *                                          the router on every run
      * @param  list<string>  $includes  default includes — compiled to BOTH the eager-load and the
      *                                  serialization axis by the hydrator (one list, no double-declaration)
-     * @param  bool  $filterable  index rides the data-filters builder (`DataFilter::query($key)`) when
-     *                            true; a plain `latest()` query otherwise (for resources with no declared
-     *                            filter surface)
      * @param  int  $perPage  default page size
      * @param  (Closure(mixed $model, mixed $input, mixed $actor): void)|null  $prepare  before-write hook
      * @param  (Closure(mixed $model, mixed $input): void)|null  $afterWrite  after-write relation-sync hook
@@ -125,8 +122,7 @@ class ParticleResource implements HasRegistryKey
      *                                                                   reaching a row the caller may not touch — required for a resource whose model table is shared across
      *                                                                   callers/tenants (e.g. the central Sanctum token table: scope to the acting user's own tokens so a
      *                                                                   revoke-by-id can never delete another user's token). null (default) ⇒ the unscoped `model::query()`,
-     *                                                                   so every existing resource is unchanged. Independent of {@see $filterable} (which scopes only the
-     *                                                                   list index): a resource may scope both, either, or neither. The optional second `$realm` param
+     *                                                                   and the same scope also narrows every list query. The optional second `$realm` param
      *                                                                   carries the resolved editor realm (e.g. `'admin'` vs `'tenant'`) so a shared resource can vary its
      *                                                                   row-level scope by realm (e.g. "My Teams" vs "Members" reading the same table under different
      *                                                                   realms); a closure that only declares one param is still called correctly — PHP ignores the
@@ -258,7 +254,6 @@ class ParticleResource implements HasRegistryKey
         public ?string $data = null,
         public string|false|null $input = null,
         public array $includes = [],
-        public bool $filterable = true,
         public int $perPage = 20,
         public ?Closure $prepare = null,
         public ?Closure $afterWrite = null,

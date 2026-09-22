@@ -27,7 +27,6 @@ use Splicewire\Beam\Storage\GitRepoRegistrar;
     icon: 'git-branch',
     section: 'ops',
     readOnly: true,
-    filterable: false,
 )]
 class GitRepoData extends BeamData
 {

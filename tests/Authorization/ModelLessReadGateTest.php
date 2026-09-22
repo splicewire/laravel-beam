@@ -10,6 +10,7 @@ use Rushing\DataFilters\Facades\DataFilter;
 use Splicewire\Beam\Authorization\ModelLessReadPosture;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Particle\Backing\DeclaredFacet;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\FilterVocabulary;
@@ -17,6 +18,7 @@ use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
+use Splicewire\Beam\Tests\Fixtures\ReadGuard\GadgetPolicy;
 use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -46,14 +48,13 @@ class ModelLessReadGateTest extends TestCase
         foreach ([
             ['gated-feed', GatedFeedBacking::class, 'feed.read'],
             ['open-feed', GatedFeedBacking::class, null],
-            ['class-feed', GatedFeedBacking::class, \Splicewire\Beam\Tests\Fixtures\ReadGuard\GadgetPolicy::class],
+            ['class-feed', GatedFeedBacking::class, GadgetPolicy::class],
             ['subject-feed', GatedFeedBacking::class, 'feed.write'],
         ] as [$key, $backing, $policy]) {
             $registry->register(new ParticleResource(
                 key: $key,
                 backing: $backing,
                 data: WidgetGateData::class,
-                filterable: false,
                 policy: $policy,
                 readOnly: true,
                 showable: false,
@@ -83,7 +84,7 @@ class ModelLessReadGateTest extends TestCase
     {
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'modelled',
-            backing: \Splicewire\Beam\Models\BeamSchema::class,
+            backing: BeamSchema::class,
             data: WidgetGateData::class,
             policy: 'feed.read',
         ));
@@ -179,7 +180,6 @@ class ModelLessReadGateTest extends TestCase
             key: 'gated-declaring-feed',
             backing: DeclaringGatedFeedBacking::class,
             data: WidgetGateData::class,
-            filterable: false,
             policy: 'feed.read',
             readOnly: true,
             showable: false,

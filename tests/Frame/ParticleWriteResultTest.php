@@ -57,7 +57,6 @@ class ParticleWriteResultTest extends TestCase
             backing: FrameWriteRecord::class,
             data: FrameWriteData::class,
             input: FrameWriteInput::class,
-            filterable: false,
             label: 'Frame write records',
             policy: 'frame-write',
         );

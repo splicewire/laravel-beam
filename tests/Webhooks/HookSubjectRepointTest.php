@@ -71,7 +71,6 @@ class HookSubjectRepointTest extends TestCase
             key: 'reaches',
             backing: ReachRecord::class,
             data: ReachRecordData::class,
-            filterable: false,
         ));
 
         Particle::mount('hooks')->only(['update']);

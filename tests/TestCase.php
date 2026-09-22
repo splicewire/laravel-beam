@@ -73,7 +73,7 @@ abstract class TestCase extends Orchestra
             // the only thing not booting it.
             PopcornServiceProvider::class,
             // ⚠️ The SEVENTH recorded instance of the testbench trap, and the one that makes beam's own
-            // `filterable: true` promise testable. `Rushing\DataFilters\Registry\ResourceRegistry` is
+            // filter declaration registry testable. `Rushing\DataFilters\Registry\ResourceRegistry` is
             // auto-resolvable, so without this provider `app()` mints a FRESH registry per call: beam's
             // boot-time `declareFilterResources()` writes into a throwaway and every read sees an empty
             // registry — green suite, no registrations, no error. It also binds `DataFilterManager`

@@ -211,8 +211,8 @@ cross-arm ties break on **declaration order**, which is a fact rather than a coi
 
 ### Capability is the CEILING; the affordance flags may only narrow
 
-`instanceof WritesRecords` is what the backing **can** do; `creatable`/`editable`/`deletable`/`showable`/
-`filterable` are what the resource **may** do. Opening a write affordance against a non-writing backing
+`instanceof WritesRecords` is what the backing **can** do; `creatable`/`editable`/`deletable`/`showable`
+are what the resource **may** do. Filtering is derived from filter definitions or backing vocabulary. Opening a write affordance against a non-writing backing
 is a declaration error the author could have gotten right, so `ParticleResourceRegistry::register()`
 throws at registration — measured verbatim:
 
@@ -223,8 +223,8 @@ what a backing can do, never widen it.
 ```
 
 The reverse — a writing backing declared `readOnly` — is the mechanism working, not a finding. The
-**read** axis is unvalidated at registration (`filterable` and `showable` both default to true, so a
-custom backing acquires those claims by saying nothing), which is why the live population is reported,
+**read** axis is unvalidated at registration (`showable` defaults to true, so a custom backing
+acquires the detail claim by saying nothing), which is why the live population is reported,
 advisory, by `surgeon:audit`'s `particle.capability-disagreement`. The whole picture per host:
 
 ```
@@ -255,7 +255,7 @@ docblock is the reason this section exists: it justifies registering `members` a
 imperatively with *"the unified `#[ParticleResource]` attribute is model-required (`public string
 $model`, no `$source`)"*. That sentence describes an attribute that no longer exists. Probed at the
 flagship on 2026-08-29 — a throwaway class carrying
-`#[ParticleResource(key: 'probe-members', backing: MembershipSource::class, data: MembershipResourceData::class, filterable: false, readOnly: true, …)]`
+`#[ParticleResource(key: 'probe-members', backing: MembershipSource::class, data: MembershipResourceData::class, readOnly: true, …)]`
 reflected, registered and read back clean, `modelClass()` null, `isFramed()` true. **Both registrations
 are declarable by attribute today.** Tower was deliberately left unchanged; this is a recorded finding,
 not a landed migration.
@@ -269,8 +269,7 @@ backing streams and does not query, and answers through `ResponseEnvelope::strea
 What still demands `QueriesRecords` is **subject resolution and the relative-mount base**: `show`,
 `update`, `destroy` and `/{parent}/{children}` all go on composing a builder, so a streams-only backing is
 list-only over REST and `queryableBacking()` still refuses it by name for the rest. A resource served that
-way declares `filterable: false` (there is no builder for data-filters to ride) and gets its panel from
-`DeclaresFilterVocabulary` instead. Model reading: `splicewire/tower`
+way gets its filter panel from `DeclaresFilterVocabulary`. Model reading: `splicewire/tower`
 `src/Particle/Backing/ActivityBacking.php` — a REST-mounted composite — and beam ADR-0221.
 
 ## What a declaration buys — the generation chain
@@ -425,50 +424,22 @@ controller FQCN, so the population of exemptions stays countable.
 
 ## Four one-line rules
 
-- **List facets are declared on the Data class.** A resource's LIST surface is not a hand-rolled
-  query: the read Data class carries `rushing/laravel-data-filters` attributes —
-  `#[Filterable(operator: …)]` per facet, `#[Sortable(default: true)]` for the default order,
-  `#[Includable]` for relations — and `filterable: true` on the `#[ParticleResource]` makes
-  data-filters generate the index query from them. **Generate is literal**: `ResourceQuery::apply()`
-  builds `allowedFilters`/`allowedSorts`/`allowedIncludes` off those attributes through
-  `FilterReflector`, so a `ResourceQuery` subclass with an EMPTY BODY is fully functional. The only
-  hand-written part is `baseQuery()` — the owner row-gate annotations can't express — which the host
-  overrides (`*Query` suffix, per resource). That generated query is then the index's own read gate,
-  which is why `ParticleController` and `ParticleFrameResourceHandler` both skip `scope()` on the
-  filterable path. A `filterable: false` resource still reads the SAME `#[Sortable(default: true)]`
-  for its default order, so sort is single-sourced either way. Model reading:
-  `splicewire/laravel-beam-rank` `src/Data/RankData.php`.
+- **List facets derive from the resource declaration.** Read Data properties carry
+  `#[Filterable(operator: …)]`, `#[Sortable(default: true)]` and `#[Includable]`. Beam resolves those
+  attributes to a ResourceQuery without a resource-level filtering flag or a separate opt-in.
+  An explicit data-filters registration takes precedence and can supply a custom query; invalid
+  declared wiring remains an error. No filter/sort/include declaration means an empty capability,
+  not a missing resource. The frontend reads this through Frame resources.
 
-  **`filterable: true` requires a data-filters REGISTRATION, and the attribute is not the only way to
-  get one.** Three tiers, strongest first: `config/data-filters.php` seeds and wins ·
-  `#[ResourceFilter]` discovery fills gaps · `DataFilter::resource()` overwrites either. So a
-  correctly-wired resource may carry NO `query:` on its `#[ParticleResource]` at all — the estate's
-  own `tokens` is registered purely in the platform's config, pointing at a `TokensQuery` whose
-  `baseQuery()` is the row-scope. **Do not read a missing `query:` slot as "unscoped"; check the
-  host's config before concluding anything about a resource's gate.** A key registered in no tier
-  is caught at beam's own hydrator — `PayloadParticleReader::query()` asks `DataFilter::tryResource()`
-  and raises `BadMethodCallException` naming the key — so the REST index breaks on first request,
-  loudly, with nothing exposed, because no `ResourceQuery` is ever constructed; the Frame index
-  (`ParticleFrameResourceHandler::indexQuery()`) catches exactly that exception and degrades to the
-  plain includes-and-default-sort list. ⚠️ **Corrected 2026-09-01:** this sentence used to say the
-  miss surfaced as `ResourceRegistry::get()` throwing `InvalidArgumentException`. It no longer does —
-  data-filters' registry is a popcorn registry and a miss there is a `RegistryMiss`
-  (`RuntimeException`, registry-kernel 38), which is why the check moved to the hydrator
-  (registry-kernel 61). And you need not wait for the request: `particle.filterable-promise`
-  (`FilterablePromiseAudit`, advisory — the answer is a fact about the host) lists every filterable
-  key with no data-filters resource behind it, split LIVE/LATENT off the route table
-  (`particle-doctrine-followups` 15). `filterable: true` needs one more thing nobody checks at
-  registration: a backing implementing `QueriesRecords` — see the backing section above, and
-  `particle.capability-disagreement` for the standing reading.
+  REST, Frame and summary reads use the shared list composer. It retains the backing's predicates,
+  relative-parent restriction and resource scope, intersects canonical and selected variant query
+  scopes, then applies declared filters, sorts and includes. Hydrators project records; they do not
+  select a list-query strategy. Caller filter parameters never establish authorization.
 
-  **A streams-only backing declares its facets on the BACKING, not on a Data class.** There is no
-  `Builder` to reflect off and no Data class data-filters hydrates, so a backing that implements only
-  `StreamsRecords` says what it filters and sorts on through `DeclaresFilterVocabulary` (backing section
-  above), keeps `filterable: false` (the flag means "the index rides the data-filters builder", which it
-  does not), and gets the same panel a `#[Filterable]` Data class buys — from `…/filters/schema`, which
-  consults the declaration first. Do NOT register a data-filters resource with a throwing `Query` to get
-  a panel; that was the pre-02 workaround, and `particle.filterable-promise` now names the declaring keys
-  separately so the repair it suggests is the flag, not a stub.
+  A backing that owns filtering declares `DeclaresFilterVocabulary`, including streams without an
+  Eloquent builder. Its vocabulary supplies the same Frame filter panel. Do not register a throwing
+  query to obtain that panel: competing backing vocabulary and registered query declarations are
+  invalid. Empty resources require no backend opt-out or frontend suppression slot.
 - **Derived vs. published.** A rendering stays derived unless it becomes independently addressable
   *and* independently editable — at which point it is not a rendering, it is a publish, and
   `PublishPayload` is the seam. Fidelity (and therefore whether a write verb exists at all) is read

@@ -55,7 +55,6 @@ class ParticleRouteKeyTest extends TestCase
             key: 'rk-items',
             backing: Listing::class,
             data: ListingData::class,
-            filterable: false,
             routeKey: 'slug',
         ));
 
@@ -64,7 +63,6 @@ class ParticleRouteKeyTest extends TestCase
             key: 'rk-items-pk',
             backing: Listing::class,
             data: ListingData::class,
-            filterable: false,
         ));
 
         $acme = Vendor::create(['slug' => 'acme']);

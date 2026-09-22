@@ -20,24 +20,11 @@ use Schemastud\Frame\Routing\ResourceRoutes;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
-use Splicewire\Beam\Summary\BeamResourceSummaryProvider;
 use Splicewire\Beam\Tests\Entitlements\FakeEntitlementResolver;
 use Splicewire\Beam\Tests\Fixtures\Backing\ArmRowData;
 use Splicewire\Beam\Tests\Fixtures\Backing\ProbeComposite;
 use Splicewire\Beam\Tests\TestCase;
 
-/**
- * `GET frame/resources/{key}/summary` served by beam's default {@see BeamResourceSummaryProvider}
- * (realm-dashboards ticket 02).
- *
- * The property under test is the SCOPE-LEAK one: the `total` figure must equal the same actor's index
- * total on both list paths — the non-filterable path (the declaration's `scope` closure) and the
- * filterable path (the data-filters builder, owner-scoped and `filter[...]`-aware). A count taken off the
- * bare backing would pass a test that only seeded one owner; every fixture here seeds two.
- *
- * Frame's provider is booted for THIS class only, as `FrameResourcesIndexMembershipTest` explains: beam
- * boots without the frame rung (ADR-0082), but the summary route is frame's and the suite has to mount it.
- */
 class ResourceSummaryTest extends TestCase
 {
     protected function getPackageProviders($app): array
@@ -81,14 +68,14 @@ class ResourceSummaryTest extends TestCase
 
         $registry = $this->app->make(ParticleResourceRegistry::class);
 
-        // Non-filterable: the declaration's `scope` closure is the only row-level gate.
+        // The declaration's scope closure supplies this resource's row boundary.
         $registry->register(new ParticleResource(
             key: 'scoped-widgets', backing: SummaryWidget::class, data: SummaryWidgetData::class,
-            filterable: false, frame: true, readOnly: true, label: 'Scoped widgets', icon: 'box',
+            frame: true, readOnly: true, label: 'Scoped widgets', icon: 'box',
             scope: fn (Builder $q) => $q->where('owner_id', auth()->id()),
         ));
 
-        // Filterable: the data-filters builder is the gate (owner-scoped in its base query).
+        // The query declaration supplies this resource's owner boundary.
         $registry->register(new ParticleResource(
             key: 'filtered-widgets', backing: SummaryWidget::class, data: SummaryWidgetData::class,
             frame: true, readOnly: true, label: 'Filtered widgets',
@@ -100,7 +87,7 @@ class ResourceSummaryTest extends TestCase
         // Streams-only: a composite has no builder to count through.
         $registry->register(new ParticleResource(
             key: 'streamed', backing: ProbeComposite::class, data: ArmRowData::class,
-            filterable: false, frame: true, readOnly: true, label: 'Streamed',
+            frame: true, readOnly: true, label: 'Streamed',
         ));
 
         // Realm-VARYING: the scope closure READS its second argument, so the same declaration answers a
@@ -108,14 +95,14 @@ class ResourceSummaryTest extends TestCase
         // the only shape in which "the realm reached the closure" is observable from outside.
         $registry->register(new ParticleResource(
             key: 'realm-widgets', backing: SummaryWidget::class, data: SummaryWidgetData::class,
-            filterable: false, frame: true, readOnly: true, label: 'Realm widgets',
+            frame: true, readOnly: true, label: 'Realm widgets',
             scope: fn (Builder $q, ?string $realm) => $q->where('owner_id', $realm === 'alpha' ? 1 : 2),
         ), ['alpha', 'beta']);
 
         // Realm-gated: operator membership, refused to a principal without the entitlement.
         $registry->register(new ParticleResource(
             key: 'gated-widgets', backing: SummaryWidget::class, data: SummaryWidgetData::class,
-            filterable: false, frame: true, readOnly: true, label: 'Gated widgets',
+            frame: true, readOnly: true, label: 'Gated widgets',
         ), ['operator']);
     }
 
@@ -150,7 +137,7 @@ class ResourceSummaryTest extends TestCase
     }
 
     /** The scope-leak test: the declared `scope()` hook narrows the count exactly as it narrows the index. */
-    public function test_a_non_filterable_count_respects_the_declared_scope_and_equals_that_actors_index_total(): void
+    public function test_a_declared_scope_count_respects_the_declared_scope_and_equals_that_actors_index_total(): void
     {
         $this->assertSame(3, SummaryWidget::count(), 'The unscoped table must differ from every actor\'s reach, or this test cannot fail.');
 
@@ -166,7 +153,7 @@ class ResourceSummaryTest extends TestCase
     }
 
     /** The other list path: the data-filters builder's owner scope AND the request's `filter[...]` both hold. */
-    public function test_a_filterable_count_rides_the_same_data_filters_builder_as_the_index(): void
+    public function test_a_declared_query_count_rides_the_same_data_filters_builder_as_the_index(): void
     {
         $this->actingAs($this->actor(1));
         [$figure, $total] = $this->figureAndIndexTotal('filtered-widgets');

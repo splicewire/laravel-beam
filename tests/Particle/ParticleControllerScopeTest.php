@@ -53,7 +53,6 @@ class ParticleControllerScopeTest extends TestCase
             key: 'scope-widget',
             backing: ScopeWidget::class,
             data: ScopeWidgetData::class,
-            filterable: false,
             scope: fn (Builder $q) => $q->where('owner_id', 1),
         ));
     }
@@ -85,7 +84,6 @@ class ParticleControllerScopeTest extends TestCase
             key: 'sorted-widget',
             backing: SortedWidget::class,
             data: SortedWidgetData::class,
-            filterable: false,
         ));
 
         $request = Request::create('/sorted-widgets');
@@ -120,7 +118,6 @@ class ParticleControllerScopeTest extends TestCase
             key: 'weighted-widget',
             backing: WeightedWidget::class,
             data: WeightedWidgetData::class,
-            filterable: false,
         ));
 
         $request = Request::create('/weighted-widgets');

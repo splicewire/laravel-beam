@@ -23,6 +23,7 @@ use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\RowAuthorization;
 use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
+use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
@@ -42,7 +43,7 @@ use Splicewire\Beam\Write\ParticleWriter;
 /**
  * The generic REST controller every model-backed resource can ride instead of hand-rolling
  * index/show/store/update/destroy. It wires the two beam seams — the {@see ParticleWriter} write pipeline
- * (validate→authorize→persist→emit) and the {@see ParticleHydrator} read seam (query→project) — against a
+ * (validate→authorize→persist→emit) and the {@see ParticleHydrator} read seam (hydrate→project) — against a
  * declarative {@see ParticleResource}, so a plain CRUD resource needs zero controller code and a nearly-
  * plain one needs only its bespoke deltas.
  *
@@ -120,7 +121,7 @@ class ParticleController extends Controller
 
         // Relative mount (HTTP-02): when the route bound a relative, the index is a listing THROUGH it
         // (`$relative->{via}()` / the scope closure) instead of `model::query()` — the child rows a caller
-        // sees are exactly the ones hanging off the (already-authorized) parent. Absent a relative, this is
+        // sees are exactly the ones hanging off the bound parent. Absent a relative, this is
         // null and the standalone path below is byte-for-byte today's code.
         $relativeQuery = $this->relativeBaseQuery($request);
 
@@ -133,25 +134,13 @@ class ParticleController extends Controller
             // below to paginate, and until now that meant the whole resource was unservable over REST
             // — `queryableBacking()` threw by name. It is served here instead, because a LIST does not
             // actually need a builder; only subject resolution and a relative mount do, and both still
-            // demand `QueriesRecords`. Checked before `filterable`, since a streams-only backing has no
-            // data-filters builder to ride either — its declaration says `filterable: false` and its
-            // FACETS come from the vocabulary it declares (ticket 02).
+            // demand `QueriesRecords`. Its declared vocabulary describes the controls interpreted by the backing.
             if ($this->streamsOnly($resource)) {
                 return $this->streamedIndex($request, $resource, $ctx, $facets);
             }
         }
 
-        $query = $resource->filterable
-            ? $this->hydrator->query($resource->key, $ctx)
-            : ($relativeQuery ?? $this->defaultSortedQuery($resource, $facets));
-
-        // Row-level authorization for the non-filterable list (ADR-0156 §83): a `filterable:false` resource
-        // has no data-filters query to gate its index, so its owner/inverse `scope` closure is the ONLY read
-        // guard — without it the list would return every row across all callers. Applied here (not for the
-        // filterable path, whose data-filters query is its own gate). Mirrors ParticleFrameResourceHandler.
-        if (! $resource->filterable && $resource->scope !== null) {
-            $query = ($resource->scope)($query) ?? $query;
-        }
+        $query = app(ParticleListQuery::class)->forList($resource, $facets, $request, $relativeQuery);
 
         $page = $query->paginate($request->integer(self::PER_PAGE, $resource->perPage), ['*'], self::PAGE);
         $page->through(fn (Model $record) => $this->projectRecord($resource, $record, $ctx, $facets));
@@ -210,27 +199,6 @@ class ParticleController extends Controller
     }
 
     /**
-     * The base query for a NON-filterable index: the declaration's `includes` eager-loaded, ordered by
-     * its declared default sort.
-     *
-     * Both axes live in {@see ParticleListQuery}, which the Frame transport calls too. Until ticket 05
-     * this method built its own query and applied ONLY the sort — so a non-filterable REST list lazy-
-     * loaded every declared include per row, while the Frame transport eager-loaded them and hardcoded
-     * `created_at desc` instead. Two transports, one declaration, each missing the half the other had.
-     *
-     * The facet bag is forwarded because a CONTRIBUTED include may be request-parameterized (a
-     * constrained eager-load — `with(['bills' => fn ($q) => $q->forPeriod($period)])`). A non-filterable
-     * resource has no data-filters query interpreting `filter[...]`, but that never made the bag absent —
-     * only uninterpreted, which is exactly the passthrough a streaming backing already gets.
-     *
-     * @param  array<string, mixed>  $filters  the opaque facet bag
-     */
-    protected function defaultSortedQuery(ParticleResource $resource, array $filters = []): Builder
-    {
-        return (new ParticleListQuery)->forList($resource, $filters);
-    }
-
-    /**
      * Does this resource's list have to be STREAMED rather than queried — i.e. does its backing yield
      * records without composing an Eloquent `Builder`?
      *
@@ -270,6 +238,8 @@ class ParticleController extends Controller
      */
     protected function streamedIndex(Request $request, ParticleResource $resource, ReadContext $ctx, array $facets): Responsable
     {
+        app(ResourceFilterDefinition::class)->definition($resource->key);
+        abort_if($request->query('filterVariant') !== null, 404);
         /** @var StreamsRecords $backing */
         $backing = $resource->backing();
 
@@ -655,7 +625,7 @@ class ParticleController extends Controller
     protected function findParticle(ParticleResource $resource, string $id, ?Request $request = null): Model
     {
         // Relative mount (HTTP-02): resolve the `{id}` THROUGH the bound relative when present, so a
-        // show/update/destroy can only reach a child hanging off the (authorized) parent — a cross-parent id
+        // show/update/destroy can only reach a child hanging off the bound parent — a cross-parent id
         // 404s (never resolves). Absent a relative, `$query` is the unscoped base — today's exact code path.
         $query = ($request !== null ? $this->relativeBaseQuery($request) : null)
             ?? $this->queryableBacking($resource)->query([]);
@@ -855,6 +825,6 @@ class ParticleController extends Controller
      */
     protected function facets(Request $request): array
     {
-        return array_filter((array) $request->input('filter', []));
+        return (array) $request->input('filter', []);
     }
 }

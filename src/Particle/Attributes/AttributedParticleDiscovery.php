@@ -161,7 +161,6 @@ class AttributedParticleDiscovery
             data: $attribute->data ?? $class,
             input: $attribute->input,
             includes: $attribute->includes,
-            filterable: $attribute->filterable,
             perPage: $attribute->perPage,
             prepare: self::conventionOn($class, 'prepare'),
             afterWrite: self::conventionOn($class, 'afterWrite'),

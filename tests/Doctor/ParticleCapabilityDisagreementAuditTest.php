@@ -52,14 +52,14 @@ class ParticleCapabilityDisagreementAuditTest extends TestCase
             key: 'feed',
             backing: ReportStreamOnlyBacking::class,
             readOnly: true,
-            showable: false,
+            showable: true,
         ));
 
         $findings = $this->audit($registry)->run();
 
         $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
         $this->assertStringContainsString('1 of 2 registered particle resources', $findings[0]->detail);
-        $this->assertStringContainsString('[feed] filterable but backing has no QueriesRecords', $findings[0]->detail);
+        $this->assertStringContainsString('[feed] showable but backing can neither ResolveRecord nor query', $findings[0]->detail);
         $this->assertStringNotContainsString('widgets', $findings[0]->detail);
     }
 
@@ -68,7 +68,7 @@ class ParticleCapabilityDisagreementAuditTest extends TestCase
      * composable query and a declared vocabulary is two vocabularies for one resource, and the standing
      * check names it the same way it names every other intent/capability disagreement.
      */
-    public function test_a_declared_vocabulary_beside_a_query_is_reported_as_two_vocabularies(): void
+    public function test_a_backing_owned_vocabulary_needs_no_filter_flag(): void
     {
         $registry = new ParticleResourceRegistry;
         $registry->register(new ParticleResource(
@@ -80,8 +80,7 @@ class ParticleCapabilityDisagreementAuditTest extends TestCase
 
         $findings = $this->audit($registry)->run();
 
-        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
-        $this->assertStringContainsString('[feed] declares a filter vocabulary but also QueriesRecords', $findings[0]->detail);
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
     }
 
     public function test_it_is_registered_into_the_doctor_manifest_so_the_surgeon_sweep_discovers_it(): void

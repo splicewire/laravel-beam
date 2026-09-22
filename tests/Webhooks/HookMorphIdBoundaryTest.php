@@ -84,10 +84,10 @@ class HookMorphIdBoundaryTest extends TestCase
         $registry = $this->app->make(ParticleResourceRegistry::class);
         $registry->registerClass(HookData::class);
         $registry->register(new ParticleResource(
-            key: 'ints', backing: IntKeyedRecord::class, data: MorphProbeData::class, filterable: false,
+            key: 'ints', backing: IntKeyedRecord::class, data: MorphProbeData::class,
         ));
         $registry->register(new ParticleResource(
-            key: 'uuids', backing: UuidKeyedRecord::class, data: MorphProbeData::class, filterable: false,
+            key: 'uuids', backing: UuidKeyedRecord::class, data: MorphProbeData::class,
         ));
 
         Route::post('hooks', [HookSubscriptionController::class, 'store'])->name('hooks.subscribe');

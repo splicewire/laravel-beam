@@ -41,11 +41,11 @@ class UnpagedBackingTest extends TestCase
 
         // More rows than frame's DEFAULT page (25), so the default request would page the twin.
         $registry->register(new ParticleResource(
-            key: 'whole', backing: WholeFeed::class, data: WidgetGateData::class, filterable: false,
+            key: 'whole', backing: WholeFeed::class, data: WidgetGateData::class,
             label: 'Whole', readOnly: true, showable: false,
         ));
         $registry->register(new ParticleResource(
-            key: 'paged', backing: PagedFeed::class, data: WidgetGateData::class, filterable: false,
+            key: 'paged', backing: PagedFeed::class, data: WidgetGateData::class,
             label: 'Paged', readOnly: true,
         ));
 

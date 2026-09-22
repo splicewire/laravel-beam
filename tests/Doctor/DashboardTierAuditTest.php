@@ -20,7 +20,6 @@ use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\ScopedIndexQuery;
-use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
 use Splicewire\Beam\Tests\TestCase;
@@ -57,7 +56,6 @@ class DashboardTierAuditTest extends TestCase
             key: $key,
             backing: $backing,
             data: $data,
-            filterable: false,
             label: ucfirst($key),
             section: $section,
             readOnly: true,
@@ -71,7 +69,7 @@ class DashboardTierAuditTest extends TestCase
             $this->resources,
             $this->app->make(RealmRegistry::class),
             $this->sections,
-            new ScopedIndexQuery($this->app->make(ParticleHydrator::class), $this->resources),
+            new ScopedIndexQuery($this->resources),
             $this->app,
         );
     }

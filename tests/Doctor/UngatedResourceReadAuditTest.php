@@ -17,20 +17,8 @@ use Splicewire\Beam\Tests\Fixtures\ReadGuard\BareGadgetQuery;
 use Splicewire\Beam\Tests\Fixtures\ReadGuard\Gadget;
 use Splicewire\Beam\Tests\Fixtures\ReadGuard\GadgetData;
 use Splicewire\Beam\Tests\Fixtures\ReadGuard\GadgetPolicy;
-use Splicewire\Beam\Tests\Particle\UngatedIndexMountTest;
 use Splicewire\Beam\Tests\TestCase;
 
-/**
- * {@see UngatedResourceReadAudit} — beam-docs-satellite 65's advisory half.
- *
- * The mount rule ({@see UngatedIndexMountTest}) refuses what it can see at
- * mount time. This audit walks the BOOTED registry and the finished route table, so it reaches what the
- * mount could not: a resource registered after its route was mounted, a hand-written index outside the
- * mounter, and — the reason it walks the registry rather than the source — every `filterable` resource
- * that never spells `filterable: true` because the attribute defaults to it.
- *
- * Warn, never Fail: whether a mount carries tenancy or a policy is bound is a fact about the host.
- */
 class UngatedResourceReadAuditTest extends TestCase
 {
     private ParticleResourceRegistry $resources;
@@ -42,13 +30,12 @@ class UngatedResourceReadAuditTest extends TestCase
         $this->resources = new ParticleResourceRegistry;
     }
 
-    private function declare(string $key, bool $filterable = false, ?\Closure $scope = null): void
+    private function declare(string $key, ?\Closure $scope = null): void
     {
         $this->resources->register(new ParticleResource(
             key: $key,
             backing: Gadget::class,
             data: GadgetData::class,
-            filterable: $filterable,
             scope: $scope,
             frame: false,
         ));
@@ -94,9 +81,9 @@ class UngatedResourceReadAuditTest extends TestCase
         $this->assertStringContainsString('tenancy', $findings[0]->detail);
     }
 
-    public function test_a_filterable_resource_whose_base_only_orders_is_unscoped(): void
+    public function test_a_declared_query_resource_whose_base_only_orders_is_unscoped(): void
     {
-        $this->declare('gadgets', filterable: true);
+        $this->declare('gadgets');
         DataFilter::registry()->registerDefinition(new FilterResourceDefinition(
             key: 'gadgets',
             data: GadgetData::class,
@@ -163,9 +150,9 @@ class UngatedResourceReadAuditTest extends TestCase
 
     public function test_a_resource_the_guard_cannot_read_is_counted_not_passed(): void
     {
-        // filterable, but no data-filters registration: the base query cannot be built, so the
+        // A request-dependent scope cannot be built in this audit context, so the
         // audit did not look — and says so, rather than reading the absence as clean.
-        $this->declare('gadgets', filterable: true);
+        $this->declare('gadgets', scope: fn () => throw new \RuntimeException('No request context'));
         $this->mountBare('gadgets', 'api/gadgets');
 
         $findings = $this->audit()->run();

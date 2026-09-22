@@ -47,7 +47,7 @@ class ParticleResourcesCommandTest extends TestCase
             key: 'feed',
             backing: ReportStreamOnlyBacking::class,
             readOnly: true,
-            showable: false,
+            showable: true,
         ), ['tenant']);
     }
 
@@ -91,7 +91,7 @@ class ParticleResourcesCommandTest extends TestCase
         $rows = $this->rowsFor(['--disagreements' => true]);
 
         $this->assertSame(['feed'], array_column($rows, 'key'));
-        $this->assertSame(['filterable but backing has no QueriesRecords'], $rows[0]['disagreements']);
+        $this->assertSame(['showable but backing can neither ResolveRecord nor query'], $rows[0]['disagreements']);
     }
 
     /**

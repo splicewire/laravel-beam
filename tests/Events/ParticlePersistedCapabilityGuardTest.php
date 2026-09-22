@@ -61,7 +61,6 @@ class ParticlePersistedCapabilityGuardTest extends TestCase
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: $key,
             backing: $backing,
-            filterable: false,
             readOnly: ! $writable,
             deletable: $writable,
             editable: $writable,

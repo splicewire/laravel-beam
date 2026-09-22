@@ -18,7 +18,7 @@ use Splicewire\Beam\Tests\TestCase;
  * The detector for the promise a hand-rolled exposure makes by SAYING so (api-surface-coherence 101).
  *
  * Every fixture route is built on a CONSTRUCTED `Router`, never the app's, for the reason
- * {@see FilterablePromiseAuditTest} records: an audit pointed at the harness's own route table measures
+ * the resource audit tests record: an audit pointed at the harness's own route table measures
  * the harness. The filter registry is seeded explicitly with `[]` — the null default means *read config
  * later*, which is a different starting state.
  *
@@ -76,7 +76,7 @@ class FilterStampReadPathAuditTest extends TestCase
         );
     }
 
-    public function test_inResource_records_the_stamp_on_the_route_it_decorates(): void
+    public function test_in_resource_records_the_stamp_on_the_route_it_decorates(): void
     {
         // The construction test for the recording half. Without this default the audit's population is
         // empty and it passes by not running — this estate's recurring defect class.
@@ -87,7 +87,7 @@ class FilterStampReadPathAuditTest extends TestCase
         $this->assertSame('widgets', $route->defaults[BeamRouteProxy::FILTERS_PROMISE] ?? null);
     }
 
-    public function test_inResource_without_the_flag_records_nothing(): void
+    public function test_in_resource_without_the_flag_records_nothing(): void
     {
         // The negative case for the same line. `inResource()` is stamped on sub-operations too, and a
         // sub-operation is not an index — recording every `inResource()` would make the whole audit noise.

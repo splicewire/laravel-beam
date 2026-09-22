@@ -59,11 +59,10 @@ class ParticleResource
      *                                          class-string ⇒ validated; `false` ⇒ accepts NOTHING, enforced with a 422;
      *                                          `null` ⇒ UNDECLARED, which still means snake-map-anything and is the residue
      * @param  list<string>  $includes  default includes (eager-load + serialization axis)
-     * @param  bool  $filterable  index rides the data-filters builder when true; plain `latest()` otherwise
      * @param  int  $perPage  default page size
      *
      * The default sort is declared ON the read Data class via `#[Sortable(default: true)]` (one source of
-     * truth for both the filterable and non-filterable index paths); there is no attribute-level knob.
+     * truth for every list transport); there is no attribute-level knob.
      *
      * The remaining params are the optional editor/**manifest** concerns (RDU-02), mirroring the runtime
      * {@see \Splicewire\Beam\Particle\ParticleResource} one-for-one — so a resource can be fully described
@@ -100,7 +99,6 @@ class ParticleResource
         public ?string $data = null,
         public string|false|null $input = null,
         public array $includes = [],
-        public bool $filterable = true,
         public int $perPage = 20,
         public string $label = '',
         public string $form = 'bare',

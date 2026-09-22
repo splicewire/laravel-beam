@@ -194,12 +194,7 @@ class BeamDoctorCommand extends Command
                 false,
                 fn (ParticleSlotCollisionAudit $audit) => $audit->run(),
             ),
-            // A declared relative edge whose child is `filterable: true` silently lists the whole table
-            // at the nested URL — `ParticleController::index()` discards the bound-parent query for a
-            // filterable resource. `filterable` DEFAULTS to true, so this is the opt-out, not the opt-in.
-            // Advisory for the fourth time and for the same reason: the edge and the child resource can
-            // be declared by two packages that never name each other, so neither author could have
-            // gotten it right without knowing which host would load both.
+            // Verify relative edges against the resources mounted at this host.
             $this->guarded(
                 RelativeEdgeIntegrityAudit::class,
                 false,

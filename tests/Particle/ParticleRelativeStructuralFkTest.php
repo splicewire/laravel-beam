@@ -56,7 +56,6 @@ class ParticleRelativeStructuralFkTest extends TestCase
             key: 'memos',
             backing: Memo::class,
             data: MemoData::class,
-            filterable: false,
         ));
     }
 

@@ -53,6 +53,18 @@ final class FilterVocabulary
         return array_keys($this->facets);
     }
 
+    /** @return list<string> */
+    public function filterNames(): array
+    {
+        return array_keys(array_filter($this->facets, fn (DeclaredFacet $facet) => $facet->operator !== null));
+    }
+
+    /** @return list<string> */
+    public function sortNames(): array
+    {
+        return array_keys(array_filter($this->facets, fn (DeclaredFacet $facet) => $facet->sortable));
+    }
+
     /**
      * Every Options Source handle a facet references, deduplicated, in declaration order.
      *

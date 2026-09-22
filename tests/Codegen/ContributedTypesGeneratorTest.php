@@ -45,7 +45,6 @@ class ContributedTypesGeneratorTest extends TestCase
             key: $key,
             backing: TypeGenCrate::class,
             data: $data,
-            filterable: false,
         ));
     }
 

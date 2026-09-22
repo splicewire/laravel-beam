@@ -50,7 +50,6 @@ class ParticleResourceInputRejectionTest extends TestCase
             backing: Entry::class,
             data: EntryData::class,
             input: false,
-            filterable: false,
             prepare: function (Model $model): void {
                 $model->forceFill(['state' => 'pending']);
             },

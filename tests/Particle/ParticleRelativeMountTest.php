@@ -11,6 +11,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Rushing\DataFilters\Attributes\Filterable;
+use Rushing\DataFilters\Facades\DataFilter;
+use Rushing\DataFilters\Operators\Exact;
+use Rushing\DataFilters\Query\ResourceQuery;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
@@ -56,7 +60,6 @@ class ParticleRelativeMountTest extends TestCase
             backing: Photo::class,
             data: PhotoData::class,
             input: PhotoInput::class,
-            filterable: false,
         ));
 
         $album = Album::create(['title' => 'Vacation']);
@@ -96,6 +99,20 @@ class ParticleRelativeMountTest extends TestCase
         $data = $this->getJson("/albums/{$album->id}/photos")->assertOk()->json('data');
         $this->assertCount(2, $data);
         $this->assertEqualsCanonicalizing(['beach', 'sunset'], array_column($data, 'caption'));
+    }
+
+    public function test_declared_filters_do_not_replace_the_relative_parent_boundary(): void
+    {
+        DataFilter::resource('photos', [
+            'data' => RelativePhotoFilters::class, 'query' => RelativePhotoQuery::class, 'model' => Photo::class,
+        ]);
+        Particle::relative('albums', Album::class, via: 'photos', routes: function () {
+            Particle::mount('photos', 'photos')->only(['index']);
+        });
+
+        $this->getJson('/albums/1/photos?filter[caption]=meeting')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/albums/1/photos?filter[caption]=beach')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.caption', 'beach');
     }
 
     public function test_a_relative_relation_via_auto_associates_the_fk_on_create(): void
@@ -273,3 +290,13 @@ class CaptionOp
         return ['data' => ['captioned' => $photo->getKey()]];
     }
 }
+
+class RelativePhotoFilters extends Data
+{
+    public function __construct(
+        #[Filterable(Exact::class)]
+        public ?string $caption = null,
+    ) {}
+}
+
+class RelativePhotoQuery extends ResourceQuery {}

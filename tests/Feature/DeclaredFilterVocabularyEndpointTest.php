@@ -3,12 +3,14 @@
 namespace Splicewire\Beam\Tests\Feature;
 
 use Illuminate\Contracts\Pagination\CursorPaginator;
+use Illuminate\Foundation\Auth\User;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Keywords;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
 use Rushing\DataFilters\Registry\ResourceRegistry as FilterResourceRegistry;
 use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Filters\DeclaredResourceQuery;
 use Splicewire\Beam\Particle\Backing\DeclaredFacet;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\FilterVocabulary;
@@ -41,7 +43,6 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
             key: 'feed',
             backing: DeclaringFeedBacking::class,
             data: WidgetGateData::class,
-            filterable: false,
             readOnly: true,
             showable: false,
         ));
@@ -49,7 +50,6 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
             key: 'ticker',
             backing: SilentFeedBacking::class,
             data: WidgetGateData::class,
-            filterable: false,
             readOnly: true,
             showable: false,
         ));
@@ -87,22 +87,16 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
         $this->getJson('nothing-here/filters/schema')->assertNotFound();
     }
 
-    /**
-     * The precedence decision. A host that papered over the empty panel with a data-filters
-     * registration whose `Query` throws (the flagship's `review-queue` stub) keeps working, but the
-     * DECLARATION is what answers — provable because the stub's Data class does not know `keywords`.
-     */
-    public function test_a_declaration_outranks_a_data_filters_registration_under_the_same_key(): void
+    public function test_competing_backing_and_query_declarations_fail_visibly(): void
     {
         $this->app->make(FilterResourceRegistry::class)->registerDefinition(new FilterResourceDefinition(
-            key: 'feed',
-            data: WidgetGateData::class,
-            query: WidgetGateData::class,
+            key: 'feed', data: WidgetGateData::class, query: DeclaredResourceQuery::class, model: User::class,
         ));
 
-        $properties = $this->getJson('feed/filters/schema')->assertOk()->json('data.properties');
-
-        $this->assertArrayHasKey('keywords', $properties);
+        $this->withoutExceptionHandling();
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('declares both backing-owned filters and a data-filters query');
+        $this->getJson('feed/filters/schema');
     }
 
     public function test_options_are_served_for_a_ref_the_declaration_names(): void

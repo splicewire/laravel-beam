@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Particle;
 
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
+use Splicewire\Beam\Authorization\ResourceVisibility;
+use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\BacksModel;
@@ -24,7 +26,7 @@ use Throwable;
  * who is asking. Two readers sit on it. `splicewire:beam:particle:resources` reads it whole, for an
  * operator who already holds a shell on the host. The operator Resources area reads it through
  * {@see Registry\ResourceRegistryBacking}, which drops every row
- * {@see \Splicewire\Beam\Authorization\ResourceVisibility::listable()} refuses the viewer before anything
+ * {@see ResourceVisibility::listable()} refuses the viewer before anything
  * crosses the wire — the same answer the nav collectors give, so the screen cannot disclose the schema
  * surface of a resource the rail hides. A new in-product reader must go through that filter, never
  * around it: rows straight from here are the whole registry.
@@ -151,6 +153,14 @@ class ResourceRegistryReport
         $editable = $resource->editable ?? $creatable;
         $deletable = $resource->deletable ?? $creatable;
 
+        $disagreements = $this->disagreements($resource, $streams, $queries, $resolves, $writes, $vocabulary, $creatable, $editable, $deletable);
+        try {
+            $filters = (new ResourceFilterDefinition($this->registry))->hasVocabulary($resource);
+        } catch (Throwable $error) {
+            $filters = false;
+            $disagreements[] = 'filter definition could not be resolved: '.$error->getMessage();
+        }
+
         return new ResourceRegistryRow(
             key: $resource->key,
             label: $resource->label,
@@ -170,9 +180,9 @@ class ResourceRegistryReport
             editable: $editable,
             deletable: $deletable,
             showable: $resource->showable,
-            filterable: $resource->filterable,
+            filters: $filters,
             policy: $resource->policy,
-            disagreements: $this->disagreements($resource, $streams, $queries, $resolves, $writes, $vocabulary, $creatable, $editable, $deletable),
+            disagreements: $disagreements,
         );
     }
 
@@ -198,26 +208,6 @@ class ResourceRegistryReport
         // serve the one read every transport makes.
         if (! $streams) {
             $found[] = 'listed but backing has no StreamsRecords';
-        }
-
-        // `filterable` DEFAULTS to true, so this is the read-side disagreement that actually occurs:
-        // the declaration says the index rides the data-filters builder, and the backing yields no
-        // composable Builder for it to ride. A backing that DECLARES its vocabulary is in the same
-        // position for the index, but its repair differs — closing the flag costs it no panel, because
-        // the filter sub-surface serves the declaration (composite-backing ticket 02) — so the phrase
-        // names that repair rather than sending the reader to register a query stub.
-        if ($resource->filterable && ! $queries) {
-            $found[] = $vocabulary
-                ? 'filterable but backing has no QueriesRecords; it declares a filter vocabulary, so `filterable: false` keeps the panel and drops the promise'
-                : 'filterable but backing has no QueriesRecords';
-        }
-
-        // Two vocabularies for one resource. A queryable backing's vocabulary is its filter Data class —
-        // that is what data-filters composes, validates saved filters and sorts against — and the schema
-        // endpoint consults a declaration FIRST, so a backing carrying both would shadow the path that
-        // actually runs its query. Reported, never refused: the backing may be mid-migration.
-        if ($queries && $vocabulary) {
-            $found[] = 'declares a filter vocabulary but also QueriesRecords; a queryable backing\'s vocabulary is its filter Data class';
         }
 
         // A detail read needs something to resolve one record against. An Eloquent-backed resource

@@ -86,7 +86,6 @@ class ResourceRegistryReportTest extends TestCase
             key: 'feed',
             backing: ReportStreamOnlyBacking::class,
             readOnly: true,
-            filterable: false,
             showable: false,
         ));
 
@@ -105,12 +104,7 @@ class ResourceRegistryReportTest extends TestCase
         $this->assertSame('list', $rows['feed']->capabilities());
     }
 
-    /**
-     * The column that earns the command. `filterable` defaults to TRUE, so a custom backing acquires the
-     * claim by saying nothing — and nothing at registration checks it, which is exactly why this is the
-     * disagreement that occurs in practice while the write ones cannot.
-     */
-    public function test_filterable_against_a_backing_with_no_query_is_a_disagreement(): void
+    public function test_a_stream_backing_without_vocabulary_has_no_filter_affordance(): void
     {
         $registry = new ParticleResourceRegistry;
         $registry->register(new ParticleResource(
@@ -122,21 +116,16 @@ class ResourceRegistryReportTest extends TestCase
 
         $row = $this->only($registry);
 
-        $this->assertSame(['filterable but backing has no QueriesRecords'], $row->disagreements);
+        $this->assertSame([], $row->disagreements);
+        $this->assertFalse($row->affordances()['filter']);
     }
 
-    /**
-     * The sixth capability (composite-backing ticket 02) is a column like the other four: read by
-     * `instanceof` off the backing, never inferred from `filterable`, and spelled into the capability
-     * set so a streams-only resource with a panel reads differently from one without.
-     */
     public function test_a_declared_vocabulary_is_a_capability_column_read_from_the_backing(): void
     {
         $registry = new ParticleResourceRegistry;
         $registry->register(new ParticleResource(
             key: 'feed',
             backing: ReportDeclaringBacking::class,
-            filterable: false,
             readOnly: true,
             showable: false,
         ));
@@ -149,12 +138,7 @@ class ResourceRegistryReportTest extends TestCase
         $this->assertSame([], $row->disagreements);
     }
 
-    /**
-     * `filterable: true` still promises a data-filters QUERY, which a declaring backing cannot honour
-     * any more than a silent one can — but the repair differs, and the finding says so: closing the
-     * flag keeps the panel, because the declaration serves it.
-     */
-    public function test_filterable_against_a_declaring_backing_names_the_repair_that_keeps_the_panel(): void
+    public function test_a_declared_backing_vocabulary_needs_no_opt_out(): void
     {
         $registry = new ParticleResourceRegistry;
         $registry->register(new ParticleResource(
@@ -166,18 +150,11 @@ class ResourceRegistryReportTest extends TestCase
 
         $row = $this->only($registry);
 
-        $this->assertCount(1, $row->disagreements);
-        $this->assertStringStartsWith('filterable but backing has no QueriesRecords', $row->disagreements[0]);
-        $this->assertStringContainsString('declares a filter vocabulary', $row->disagreements[0]);
-        $this->assertStringContainsString('filterable: false', $row->disagreements[0]);
+        $this->assertSame([], $row->disagreements);
+        $this->assertTrue($row->affordances()['filter']);
     }
 
-    /**
-     * A backing that can compose a `Builder` already HAS a vocabulary — its filter Data class — and the
-     * schema endpoint would serve the declaration over it. Two vocabularies for one resource is intent
-     * exceeding what the two paths can jointly honour, so it is reported rather than silently shadowed.
-     */
-    public function test_a_querying_backing_that_also_declares_a_vocabulary_is_a_disagreement(): void
+    public function test_a_querying_backing_can_own_its_filter_vocabulary(): void
     {
         $registry = new ParticleResourceRegistry;
         $registry->register(new ParticleResource(
@@ -189,10 +166,8 @@ class ResourceRegistryReportTest extends TestCase
 
         $row = $this->only($registry);
 
-        $this->assertSame(
-            ['declares a filter vocabulary but also QueriesRecords; a queryable backing\'s vocabulary is its filter Data class'],
-            $row->disagreements,
-        );
+        $this->assertSame([], $row->disagreements);
+        $this->assertTrue($row->affordances()['filter']);
     }
 
     public function test_showable_against_a_backing_that_cannot_resolve_a_record_is_a_disagreement(): void
@@ -202,7 +177,6 @@ class ResourceRegistryReportTest extends TestCase
             key: 'feed',
             backing: ReportStreamOnlyBacking::class,
             readOnly: true,
-            filterable: false,
         ));
 
         $row = $this->only($registry);
@@ -221,7 +195,6 @@ class ResourceRegistryReportTest extends TestCase
             key: 'union',
             backing: ReportResolvingBacking::class,
             readOnly: true,
-            filterable: false,
         ));
         $registry->register(new ParticleResource(key: 'widgets', backing: 'App\\Models\\Widget'));
 
@@ -262,7 +235,7 @@ class ResourceRegistryReportTest extends TestCase
 
         $this->assertTrue($row->editable);
         $this->assertTrue($row->deletable);
-        $this->assertSame('create edit delete show filter', $row->intent());
+        $this->assertSame('create edit delete show', $row->intent());
     }
 
     public function test_the_handler_column_reads_the_hosts_bound_resolver(): void
@@ -315,7 +288,7 @@ class ResourceRegistryReportTest extends TestCase
             key: 'feed',
             backing: ReportStreamOnlyBacking::class,
             readOnly: true,
-            showable: false,
+            showable: true,
         ));
 
         $report = new ResourceRegistryReport($registry);

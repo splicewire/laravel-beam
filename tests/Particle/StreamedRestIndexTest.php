@@ -36,7 +36,6 @@ class StreamedRestIndexTest extends TestCase
             key: 'streamed-probe',
             backing: ProbeComposite::class,
             data: ArmRowData::class,
-            filterable: false,
             perPage: 3,
             // A composite declines `WritesRecords`, and capability is the ceiling — so the declaration
             // has to close the write affordances it would otherwise open by default. That refusal is

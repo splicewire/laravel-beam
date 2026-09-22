@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Particle;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Schema\Blueprint;
@@ -10,9 +11,14 @@ use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
+use Rushing\DataFilters\Attributes\Filterable;
 use Rushing\DataFilters\Attributes\Sortable;
+use Rushing\DataFilters\Facades\DataFilter;
+use Rushing\DataFilters\Operators\Exact;
+use Rushing\DataFilters\Query\ResourceQuery;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\Backing\EloquentBacking;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -20,19 +26,6 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\Fixtures\ReadGuard\OpenReadPolicy;
 use Splicewire\Beam\Tests\TestCase;
 
-/**
- * ONE declaration, TWO transports, ONE base query (particle-contribution-seam ticket 05).
- *
- * Both transports serve a non-filterable list off the same `ParticleResource`, and each used to
- * implement exactly the half the other was missing:
- *
- *   - REST (`ParticleController::defaultSortedQuery`) honoured the declared `#[Sortable(default: true)]`
- *     order and NEVER eager-loaded `includes` — the include list was dropped on every list read.
- *   - Frame (`ParticleFrameResourceHandler::indexQuery`) eager-loaded the includes and then hardcoded
- *     `orderByDesc('created_at')`, ignoring the sortable attribute entirely.
- *
- * One test per cell of that table, plus the unit assertions on the shared builder itself.
- */
 class ParticleListQueryTest extends TestCase
 {
     protected function setUp(): void
@@ -71,7 +64,6 @@ class ParticleListQueryTest extends TestCase
             backing: ListCrate::class,
             data: ListCrateData::class,
             includes: ['labels'],
-            filterable: false,
             label: 'List Crates',
         ));
     }
@@ -99,11 +91,54 @@ class ParticleListQueryTest extends TestCase
 
     public function test_the_list_base_falls_back_to_the_framework_default_without_a_data_class(): void
     {
-        $resource = new ParticleResource(key: 'bare-crate', backing: ListCrate::class, filterable: false);
+        $resource = new ParticleResource(key: 'bare-crate', backing: ListCrate::class);
 
         // No `data:` ⇒ nothing to reflect a `#[Sortable]` off, so newest-`created_at`-first. 'light' is
         // the newest, so it leads — the exact inverse of the declared weight order above.
         $this->assertSame('light', (new ParticleListQuery)->forList($resource)->first()->name);
+    }
+
+    public function test_declared_filters_compose_with_resource_scope_and_relative_restriction(): void
+    {
+        DataFilter::resource('list-crate', [
+            'data' => ListCrateFilters::class, 'query' => ListCrateQuery::class, 'model' => ListCrate::class,
+        ]);
+        $resource = $this->resource();
+        $resource->scope = fn ($query) => $query->where('weight', '>', 1);
+        $request = Request::create('/', 'GET', ['filter' => ['weight' => 9]]);
+        $relative = ListCrate::query()->where('weight', '<', 9);
+
+        $query = (new ParticleListQuery)->forList($resource, ['weight' => 9], $request, $relative);
+
+        $this->assertSame([], $query->pluck('name')->all(), 'Each restriction excludes a different otherwise valid row.');
+        $this->assertSame(['heavy'], (new ParticleListQuery)->forList($resource, ['weight' => 9], $request)->pluck('name')->all());
+        $lightRequest = Request::create('/', 'GET', ['filter' => ['weight' => 1]]);
+        $this->assertSame([], (new ParticleListQuery)->forList($resource, ['weight' => 1], $lightRequest)->pluck('name')->all(), 'The resource scope must still exclude a matching filtered row.');
+    }
+
+    public function test_custom_backing_and_query_boundaries_both_survive_composition(): void
+    {
+        $backing = new class(ListCrate::class) extends EloquentBacking
+        {
+            public array $received = [];
+
+            public function query(array $filters): Builder
+            {
+                $this->received = $filters;
+
+                return parent::query($filters)->where('weight', '<', 9)->withCount('labels');
+            }
+        };
+        $resource = new ParticleResource(key: 'custom-crate', backing: $backing, data: ListCrateData::class);
+        app(ParticleResourceRegistry::class)->register($resource);
+        DataFilter::resource('custom-crate', [
+            'data' => ListCrateFilters::class, 'query' => RestrictedListCrateQuery::class, 'model' => ListCrate::class,
+        ]);
+        $query = (new ParticleListQuery)->forList($resource, ['period' => 0, 'enabled' => false]);
+
+        $this->assertSame(['middling'], $query->pluck('name')->all());
+        $this->assertSame(1, $query->first()->labels_count);
+        $this->assertSame(['period' => 0, 'enabled' => false], $backing->received);
     }
 
     // ── The REST cell: includes were never applied ──────────────────────────────────────────────────
@@ -189,4 +224,22 @@ class ListCrateData extends Data
         #[Sortable(default: true, direction: 'desc')]
         public ?int $weight = null,
     ) {}
+}
+
+class ListCrateFilters extends Data
+{
+    public function __construct(
+        #[Filterable(Exact::class)]
+        public ?int $weight = null,
+    ) {}
+}
+
+class ListCrateQuery extends ResourceQuery {}
+
+class RestrictedListCrateQuery extends ResourceQuery
+{
+    protected function baseQuery(Request $request): \Illuminate\Contracts\Database\Eloquent\Builder
+    {
+        return ListCrate::query()->where('weight', '>', 1);
+    }
 }

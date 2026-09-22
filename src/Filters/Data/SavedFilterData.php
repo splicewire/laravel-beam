@@ -22,7 +22,6 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
     data: SavedFilterData::class,
     input: SavedFilterInputData::class,
     editData: SavedFilterEditData::class,
-    filterable: false,
     frame: true,
     handler: SavedFilterResourceHandler::class,
 )]

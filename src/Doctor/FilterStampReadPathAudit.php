@@ -81,10 +81,6 @@ use Splicewire\Beam\Routing\BeamRouteProxy;
  * know any of them — `rushing/laravel-doctor/docs/agents/gate-or-advisory.convention.md`'s named
  * advisory case, and AGENTS.md's standing rule that a check whose answer depends on the host must not
  * throw. A host that wants this to block registers the class in its own manifest with `gate: true`.
- *
- * @see FilterablePromiseAudit the sibling for the promise made by NOT opting out — that one reads the
- *                             particle registry against the filter registry; this one reads the ROUTE
- *                             stamp against the handler that serves it
  */
 class FilterStampReadPathAudit implements DoctorAudit
 {

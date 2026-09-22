@@ -7,10 +7,11 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Illuminate\Support\Facades\Gate;
 use InvalidArgumentException;
+use Rushing\DataFilters\Facades\DataFilter;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Data\ResourceRegistry\ResourceRegistryEntryData;
-use Splicewire\Beam\Data\ResourceRegistry\ResourceSurfaceData;
+use Splicewire\Beam\Particle\Backing\BacksModel;
 use Splicewire\Beam\Particle\Backing\ResolvedRecord;
 use Splicewire\Beam\Particle\Backing\ResolvesRecord;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
@@ -64,17 +65,15 @@ class ResourceRegistryBackingTest extends TestCase
             backing: RegistryFeedBacking::class,
             data: WidgetGateData::class,
             label: 'Gated feed',
-            filterable: false,
             policy: 'feed.read',
             readOnly: true,
         ), ['tenant']);
 
         // Model-less, undeclared: ADR-0119 §2's posture — any authenticated actor, never a guest.
-        // `filterable` left at its default: it promises a query the backing does not have — the read-side
-        // disagreement the report names.
+        // This stream cannot resolve a detail, so its default showable claim is a disagreement.
         $this->registry->register(new ParticleResource(
             key: 'open-feed',
-            backing: RegistryFeedBacking::class,
+            backing: RegistryStreamBacking::class,
             data: WidgetGateData::class,
             readOnly: true,
         ));
@@ -86,7 +85,6 @@ class ResourceRegistryBackingTest extends TestCase
             data: WidgetGateData::class,
             label: 'Class feed',
             section: 'ops',
-            filterable: false,
             policy: StrangerRefusingGadgetPolicy::class,
             readOnly: true,
         ));
@@ -162,7 +160,6 @@ class ResourceRegistryBackingTest extends TestCase
             key: 'unresolvable',
             backing: UnresolvableModelBacking::class,
             data: WidgetGateData::class,
-            filterable: false,
             readOnly: true,
         ));
 
@@ -265,21 +262,21 @@ class ResourceRegistryBackingTest extends TestCase
     public function test_effective_affordances_are_capability_intersected_with_intent(): void
     {
         // A declaration saying `editable` over a backing that cannot write: the edit affordance is closed.
-        $overclaiming = $this->row(writes: false, creatable: false, editable: true, deletable: true, showable: true, filterable: true);
+        $overclaiming = $this->row(writes: false, creatable: false, editable: true, deletable: true, showable: true);
         $this->assertSame(
             ['list' => true, 'show' => false, 'create' => false, 'edit' => false, 'delete' => false, 'filter' => false],
             $overclaiming->affordances(),
         );
 
         // A writing backing declared read-only: narrowing is the mechanism working, not a gap.
-        $narrowed = $this->row(writes: true, queries: true, creatable: false, editable: false, deletable: false, showable: true, filterable: true);
+        $narrowed = $this->row(writes: true, queries: true, creatable: false, editable: false, deletable: false, showable: true);
         $this->assertSame(
-            ['list' => true, 'show' => true, 'create' => false, 'edit' => false, 'delete' => false, 'filter' => true],
+            ['list' => true, 'show' => true, 'create' => false, 'edit' => false, 'delete' => false, 'filter' => false],
             $narrowed->affordances(),
         );
 
         // Both halves open ⇒ open. A declared vocabulary is a panel with no `filterable` flag.
-        $open = $this->row(writes: true, resolves: true, vocabulary: true, creatable: true, editable: true, deletable: true, showable: true, filterable: false);
+        $open = $this->row(writes: true, resolves: true, vocabulary: true, filters: true, creatable: true, editable: true, deletable: true, showable: true);
         $this->assertSame(
             ['list' => true, 'show' => true, 'create' => true, 'edit' => true, 'delete' => true, 'filter' => true],
             $open->affordances(),
@@ -328,7 +325,7 @@ class ResourceRegistryBackingTest extends TestCase
         $this->assertSame(['gated-feed'], $this->keys(['realm' => 'tenant']));
         $this->assertSame(['class-feed', 'open-feed'], $this->keys(['realm' => 'none']));
         // ALL-of: resolves AND streams narrows to the model-less backings; adding writes empties it.
-        $this->assertSame(['class-feed', 'gated-feed', 'open-feed'], $this->keys(['capability' => 'streams,resolves']));
+        $this->assertSame(['class-feed', 'gated-feed'], $this->keys(['capability' => 'streams,resolves']));
         $this->assertSame([], $this->keys(['capability' => 'resolves,writes']));
         $this->assertSame([], $this->keys(['capability' => 'not-a-capability']));
         $this->assertSame(['open-feed'], $this->keys(['posture' => 'undeclared']));
@@ -347,7 +344,7 @@ class ResourceRegistryBackingTest extends TestCase
         Gate::before(fn (User $user): ?bool => true);
         $this->actor = $this->member();
 
-        // Only `open-feed` leaves `filterable` at its default over a backing with no query.
+        // Only open-feed promises details without a backing capable of resolving them.
         $this->assertSame(['open-feed'], $this->keys(['disagreement' => 'some']));
         $this->assertSame(['class-feed', 'gadgets', 'gated-feed'], $this->keys(['disagreement' => 'none']));
         $this->assertNotSame([], $this->byKey()['open-feed']->disagreements);
@@ -380,14 +377,14 @@ class ResourceRegistryBackingTest extends TestCase
         $this->app->bind(ResourceRegistryBacking::class, fn () => $this->backing());
 
         $this->actor = $this->stranger();
-        $this->assertSame([], \Rushing\DataFilters\Facades\DataFilter::resolveOptions(ResourceRegistryBacking::OPTIONS['capability']));
-        $this->assertSame([], \Rushing\DataFilters\Facades\DataFilter::resolveOptions(ResourceRegistryBacking::OPTIONS['realm']));
+        $this->assertSame([], DataFilter::resolveOptions(ResourceRegistryBacking::OPTIONS['capability']));
+        $this->assertSame([], DataFilter::resolveOptions(ResourceRegistryBacking::OPTIONS['realm']));
 
         $this->actor = $this->member();
-        $this->assertCount(5, \Rushing\DataFilters\Facades\DataFilter::resolveOptions(ResourceRegistryBacking::OPTIONS['capability']));
-        $this->assertSame(['operator', 'tenant', 'none'], array_column(\Rushing\DataFilters\Facades\DataFilter::resolveOptions(ResourceRegistryBacking::OPTIONS['realm']), 'value'));
+        $this->assertCount(5, DataFilter::resolveOptions(ResourceRegistryBacking::OPTIONS['capability']));
+        $this->assertSame(['operator', 'tenant', 'none'], array_column(DataFilter::resolveOptions(ResourceRegistryBacking::OPTIONS['realm']), 'value'));
         // And the handle resolves the facet it is named for, not a neighbour's.
-        $this->assertSame(['seated', 'unseated'], array_column(\Rushing\DataFilters\Facades\DataFilter::resolveOptions(ResourceRegistryBacking::OPTIONS['nav']), 'value'));
+        $this->assertSame(['seated', 'unseated'], array_column(DataFilter::resolveOptions(ResourceRegistryBacking::OPTIONS['nav']), 'value'));
     }
 
     /**
@@ -401,7 +398,7 @@ class ResourceRegistryBackingTest extends TestCase
 
         foreach (ResourceRegistryBacking::OPTIONS as $facet => $handle) {
             $this->assertTrue($vocabulary->references($handle), $facet);
-            $this->assertTrue(\Rushing\DataFilters\Facades\DataFilter::hasOptions($handle), $handle);
+            $this->assertTrue(DataFilter::hasOptions($handle), $handle);
         }
     }
 
@@ -433,7 +430,6 @@ class ResourceRegistryBackingTest extends TestCase
             backing: ResourceRegistryBacking::class,
             data: ResourceRegistryEntryData::class,
             input: false,
-            filterable: false,
             label: 'Resources',
             policy: $policy,
             readOnly: true,
@@ -492,7 +488,7 @@ class ResourceRegistryBackingTest extends TestCase
         bool $editable = false,
         bool $deletable = false,
         bool $showable = true,
-        bool $filterable = true,
+        bool $filters = false,
     ): ResourceRegistryRow {
         return new ResourceRegistryRow(
             key: 'probe',
@@ -513,7 +509,7 @@ class ResourceRegistryBackingTest extends TestCase
             editable: $editable,
             deletable: $deletable,
             showable: $showable,
-            filterable: $filterable,
+            filters: $filters,
             policy: null,
             disagreements: [],
         );
@@ -551,7 +547,7 @@ class RegistryFeedBacking implements ResolvesRecord, StreamsRecords
     }
 }
 
-class UnresolvableModelBacking implements \Splicewire\Beam\Particle\Backing\BacksModel, StreamsRecords
+class UnresolvableModelBacking implements BacksModel, StreamsRecords
 {
     public function __construct()
     {
@@ -563,6 +559,14 @@ class UnresolvableModelBacking implements \Splicewire\Beam\Particle\Backing\Back
         return Gadget::class;
     }
 
+    public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
+    {
+        return new Paginator([], $perPage);
+    }
+}
+
+class RegistryStreamBacking implements StreamsRecords
+{
     public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
     {
         return new Paginator([], $perPage);

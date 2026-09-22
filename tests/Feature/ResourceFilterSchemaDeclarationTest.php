@@ -4,43 +4,30 @@ namespace Splicewire\Beam\Tests\Feature;
 
 use Illuminate\Foundation\Auth\User as AuthUser;
 use Illuminate\Support\Facades\Gate;
+use Rushing\DataFilters\Attributes\Filterable;
+use Rushing\DataFilters\Operators\Exact;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
 use Rushing\DataFilters\Registry\ResourceRegistry as FilterResourceRegistry;
+use Schemastud\Frame\Contracts\ResourceRegistry;
+use Schemastud\Frame\Registry\InMemoryResourceRegistry;
+use Schemastud\Frame\Registry\NavMetadata;
+use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
-use Splicewire\Beam\Doctor\FilterablePromiseAudit;
 use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Filters\DeclaredResourceQuery;
+use Splicewire\Beam\Filters\ResourceFilterConstraints;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
 
-/**
- * `GET /<resource>/filters/schema` for a resource that DECLARES no filter surface
- * (api-surface-coherence ticket 125).
- *
- * The sub-surface used to answer 404 for every `DataFilter::tryResource()` miss, which conflated two
- * structurally different facts: *"no such resource"* and *"this resource declared `filterable: false`"*.
- * The second is not an absence — `tenants` and `scaffold-packs` are registered particle resources the
- * same page already read out of the frame manifest — and the 404 was a permanent, expected error on
- * every mount of their list pages.
- *
- * ⚠️ Every case here asserts what STAYS 404 as well as what stops being one. The narrowing is the whole
- * decision: an unknown key and a `filterable: true` resource with no data-filters registration (the
- * promise made by not opting out — {@see FilterablePromiseAudit}) both keep
- * their 404. A test suite that only asserted the 200 would pass against a controller that had simply
- * stopped 404-ing, which is the version of this change that hides a live defect and re-opens the
- * enumeration leak the class docblock exists to describe.
- *
- * Routes are mounted through `Particle::filters()` — never by hand — because the resource is read off
- * the route's frozen config and a hand-mounted route has none (the controller says so, loudly).
- */
+/** Resource discovery distinguishes an empty vocabulary from an unknown or denied resource. */
 class ResourceFilterSchemaDeclarationTest extends TestCase
 {
-    private function declareResource(string $key, bool $filterable): void
+    private function declareResource(string $key): void
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: $key,
             backing: SchemaDeclarationSubject::class,
-            filterable: $filterable,
         ));
     }
 
@@ -49,8 +36,60 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
         app(FilterResourceRegistry::class)->registerDefinition(new FilterResourceDefinition(
             key: $key,
             data: SchemaDeclarationFilterData::class,
-            query: SchemaDeclarationSubject::class,
+            query: DeclaredResourceQuery::class,
         ));
+    }
+
+    public function test_read_data_attributes_supply_schema_and_a_canonical_variant_without_separate_registration(): void
+    {
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'attributed-papers', backing: SchemaDeclarationSubject::class,
+            data: AttributedPaperFilters::class,
+        ));
+        Particle::filters('attributed-papers', at: 'attributed-papers');
+
+        $this->getJson('attributed-papers/filters/schema')->assertOk()
+            ->assertJsonPath('data.properties.name.x-filter.operator', 'exact');
+        $this->getJson('attributed-papers/filters/variants')->assertOk()
+            ->assertJsonPath('data.variants.0.key', 'attributed-papers');
+    }
+
+    public function test_discovery_choices_include_empty_particle_and_frame_resources(): void
+    {
+        $this->declareResource('empty-particle-choice');
+        $frames = new InMemoryResourceRegistry;
+        $frames->register(new ResourceDefinition(
+            key: 'empty-frame-choice', model: SchemaDeclarationSubject::class, data: EmptySchemaDeclarationData::class,
+            creatable: false, query: null, editData: null, policy: null, form: 'bare', nav: new NavMetadata('Empty frame'),
+        ));
+        $this->app->instance(ResourceRegistry::class, $frames);
+
+        foreach (['schema', 'variants'] as $action) {
+            $choices = ResourceFilterConstraints::resourceValues($action);
+            $this->assertContains('empty-particle-choice', $choices);
+            $this->assertContains('empty-frame-choice', $choices);
+        }
+        $this->assertNotContains('empty-particle-choice', ResourceFilterConstraints::resourceValues('options'));
+        $this->assertNotContains('empty-frame-choice', ResourceFilterConstraints::resourceValues('options'));
+    }
+
+    public function test_an_explicit_invalid_query_is_not_an_empty_capability(): void
+    {
+        $this->declareResource('broken-query');
+        app(FilterResourceRegistry::class)->registerDefinition(new FilterResourceDefinition(
+            key: 'broken-query', data: SchemaDeclarationFilterData::class,
+            query: SchemaDeclarationSubject::class, model: SchemaDeclarationSubject::class,
+        ));
+        Particle::filters('broken-query', at: 'broken-query');
+        $this->getJson('broken-query/filters/schema')->assertStatus(500);
+    }
+
+    public function test_an_empty_resource_rejects_an_explicit_variant_and_undeclared_options(): void
+    {
+        $this->declareResource('empty-controls');
+        Particle::filters('empty-controls', at: 'empty-controls');
+        $this->getJson('empty-controls/filters/absent/schema')->assertNotFound();
+        $this->getJson('empty-controls/filters/options/absent')->assertNotFound();
     }
 
     public function test_the_data_filters_registry_is_a_singleton_in_this_harness(): void
@@ -66,7 +105,7 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
 
     public function test_a_resource_that_declares_no_filter_surface_answers_an_empty_vocabulary(): void
     {
-        $this->declareResource('opted-out-papers', filterable: false);
+        $this->declareResource('opted-out-papers');
         Particle::filters('opted-out-papers', at: 'opted-out-papers');
 
         $response = $this->withoutExceptionHandling()->getJson('opted-out-papers/filters/schema');
@@ -82,7 +121,7 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
         // both to an empty array — and a client reading `Object.values(schema.properties)` survives
         // either, which is exactly how the wrong one ships unnoticed. The wire contract
         // (`FilterSchema` in `@schemastud/facets`) says `properties` is an object, so assert the bytes.
-        $this->declareResource('opted-out-bytes', filterable: false);
+        $this->declareResource('opted-out-bytes');
         Particle::filters('opted-out-bytes', at: 'opted-out-bytes');
 
         $content = $this->withoutExceptionHandling()
@@ -94,25 +133,17 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
         $this->assertStringNotContainsString('"properties":[]', $content);
     }
 
-    public function test_a_filterable_resource_with_no_registration_still_404s(): void
+    public function test_a_resource_with_no_filter_registration_has_empty_metadata(): void
     {
-        // THE PROMISE BREACH. `filterable` defaults to true, so this declaration says "I ride a
-        // data-filters query" by not opting out — and there is none. Its index raises; its filter
-        // sub-surface must keep saying 404, or the wire quietly hides a live defect the doctor audit
-        // exists to report.
-        $this->declareResource('promised-papers', filterable: true);
+        $this->declareResource('promised-papers');
         Particle::filters('promised-papers', at: 'promised-papers');
 
-        $this->getJson('promised-papers/filters/schema')->assertNotFound();
+        $this->getJson('promised-papers/filters/schema')->assertOk()->assertJsonPath('data.properties', []);
     }
 
     public function test_a_resource_that_declares_no_filter_surface_answers_an_empty_variant_list(): void
     {
-        // The sibling sub-surface. `variants()` used to route through `definition()`, so every frame
-        // list of a `filterable: false` resource (the `{realm}-dashboard` resources) logged a
-        // `filters/variants` 404 on load while `filters/schema` had already stopped. Same narrowing,
-        // same three answers: empty for the opt-out, 404 for the unknown key, untouched when registered.
-        $this->declareResource('opted-out-variants', filterable: false);
+        $this->declareResource('opted-out-variants');
         Particle::filters('opted-out-variants', at: 'opted-out-variants');
 
         $response = $this->withoutExceptionHandling()->getJson('opted-out-variants/filters/variants');
@@ -122,12 +153,12 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
         $this->assertSame([], $response->json('data.variants'));
     }
 
-    public function test_a_filterable_resource_with_no_registration_still_404s_its_variants(): void
+    public function test_a_resource_with_no_filter_registration_has_empty_metadata_its_variants(): void
     {
-        $this->declareResource('promised-variants', filterable: true);
+        $this->declareResource('promised-variants');
         Particle::filters('promised-variants', at: 'promised-variants');
 
-        $this->getJson('promised-variants/filters/variants')->assertNotFound();
+        $this->getJson('promised-variants/filters/variants')->assertOk()->assertJsonPath('data.variants', []);
     }
 
     public function test_a_key_no_registry_carries_still_404s_its_variants(): void
@@ -139,7 +170,7 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
 
     public function test_a_registered_filter_resource_still_serves_its_canonical_variant(): void
     {
-        $this->declareResource('kept-variants', filterable: false);
+        $this->declareResource('kept-variants');
         $this->registerFilterResource('kept-variants');
         Particle::filters('kept-variants', at: 'kept-variants');
 
@@ -162,11 +193,7 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
 
     public function test_a_registered_filter_resource_still_serves_its_generated_vocabulary(): void
     {
-        // The negative case for the branch: a resource that HAS a data-filters registration must never
-        // reach the empty vocabulary, whatever its `filterable` flag says. `review-queue` at the
-        // flagship is exactly this shape — `filterable: false` AND registered — and gating on the flag
-        // alone would have deleted its real schema (and with it its sortable fields).
-        $this->declareResource('kept-papers', filterable: false);
+        $this->declareResource('kept-papers');
         $this->registerFilterResource('kept-papers');
         Particle::filters('kept-papers', at: 'kept-papers');
 
@@ -185,7 +212,7 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
         // `ResourceDefinition` to gate on and had to reach the model a different way.
         Gate::policy(SchemaDeclarationSubject::class, DenyingSchemaDeclarationPolicy::class);
 
-        $this->declareResource('opted-out-gated', filterable: false);
+        $this->declareResource('opted-out-gated');
         Particle::filters('opted-out-gated', at: 'opted-out-gated');
 
         $this->actingAs(new SchemaDeclarationUser)
@@ -198,7 +225,7 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
         // The wildcard mount — one route for every resource, the key IS the segment — is how the
         // flagship's operator realm reaches `tenants`, and it is the mount the browser measurement in
         // ticket 125 was taken against. The empty vocabulary has to reach it too.
-        $this->declareResource('opted-out-wildcard', filterable: false);
+        $this->declareResource('opted-out-wildcard');
         Particle::filters(null, at: 'resources/{resource}', names: 'resources');
 
         $this->withoutExceptionHandling()
@@ -233,6 +260,16 @@ class SchemaDeclarationUser extends AuthUser {}
 class SchemaDeclarationFilterData extends Data
 {
     public function __construct(
+        public ?string $name = null,
+    ) {}
+}
+
+class EmptySchemaDeclarationData extends Data {}
+
+class AttributedPaperFilters extends Data
+{
+    public function __construct(
+        #[Filterable(operator: Exact::class)]
         public ?string $name = null,
     ) {}
 }

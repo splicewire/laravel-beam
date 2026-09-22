@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Doctor;
 
+use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Rushing\Doctor\DoctorStatus;
@@ -38,7 +39,6 @@ class ModelLessReadGateAuditTest extends TestCase
             key: $key,
             backing: $backing,
             data: WidgetGateData::class,
-            filterable: false,
             label: $section === null ? '' : ucfirst($key),
             policy: $policy,
             section: $section,
@@ -49,7 +49,7 @@ class ModelLessReadGateAuditTest extends TestCase
 
     private function audit(): ModelLessReadGateAudit
     {
-        return new ModelLessReadGateAudit($this->resources, new ResourceVisibility($this->resources, app(\Illuminate\Contracts\Auth\Access\Gate::class)));
+        return new ModelLessReadGateAudit($this->resources, new ResourceVisibility($this->resources, app(Gate::class)));
     }
 
     public function test_an_empty_registry_is_inconclusive_rather_than_clean(): void
@@ -139,7 +139,6 @@ class ModelLessReadGateAuditTest extends TestCase
             key: 'doctor-probe-feed',
             backing: AuditOpenFeed::class,
             data: WidgetGateData::class,
-            filterable: false,
             readOnly: true,
             showable: false,
         ));

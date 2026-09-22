@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Feature;
 
 use Illuminate\Contracts\Database\Eloquent\Builder;
+use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
@@ -28,6 +29,7 @@ use Splicewire\Beam\Particle\Backing\DeclaredFacet;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\FilterVocabulary;
 use Splicewire\Beam\Particle\Backing\ResourceBacking;
+use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
@@ -313,15 +315,29 @@ class FrameResourceFiltersTest extends TestCase
         $this->deleteJson("operator/host/saved/{$id}")->assertForbidden();
     }
 
-    public function test_declared_stream_schema_and_options_preserve_registered_saved_view_support(): void
+    public function test_declared_stream_vocabulary_supports_saved_views_without_a_filter_query(): void
     {
-        $this->registerTarget('stream', DeclaredStreamFilters::class);
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(key: 'stream', backing: DeclaredStreamFilters::class, data: ResourceFilterData::class, frame: true, readOnly: true));
+        $this->assertFalse(DataFilter::registry()->has('stream'));
         DataFilter::options('stream-counts', fn (?string $search) => [['value' => '1', 'label' => $search ?? 'Stream']]);
         $this->getJson('frame/resources/stream/filters/schema')->assertOk()->assertJsonPath('savedViewsResource', 'saved-filters')->assertJsonPath('data.properties.count.x-filter.optionsRef', 'stream-counts');
         $this->getJson('frame/resources/stream/filters/options/stream-counts?search=streamed')->assertOk()->assertJsonPath('data.0.label', 'streamed');
         $id = $this->create('stream');
-        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.resource', 'stream');
-        app(ParticleResourceRegistry::class)->register(new ParticleResource(key: 'unsupported', backing: DeclaredStreamFilters::class, data: ResourceFilterData::class, frame: true, filterable: false, readOnly: true));
+        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.resource', 'stream')
+            ->assertJsonPath('data.query_parameters.filter.count', '12');
+        $this->putJson("frame/resources/saved-filters/records/{$id}", ['name' => 'Updated stream view', 'query_parameters' => ['filter' => ['count' => 0], 'sort' => '-count']])
+            ->assertOk()->assertJsonPath('data.query_parameters.filter.count', 0);
+        $this->getJson('frame/resources/saved-filters?filter[resource]=stream')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.query_parameters.sort', '-count');
+        foreach ([['filter' => ['unknown' => 1]], ['filter' => ['createdAt' => 1]], ['sort' => 'unknown'], ['include' => 'unknown'], ['limit' => 'unbounded']] as $invalid) {
+            $this->postJson('frame/resources/saved-filters', $this->payload('stream', ['query_parameters' => $invalid]))->assertUnprocessable();
+        }
+        $this->postJson('frame/resources/saved-filters', $this->payload('stream', ['query_parameters' => ['filterVariant' => 'unknown']]))->assertNotFound();
+        $this->getJson('frame/resources/stream/filters/options/paper-counts')->assertNotFound();
+        $this->deleteJson("frame/resources/saved-filters/records/{$id}")->assertNoContent();
+        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertNotFound();
+        $this->assertFalse(DataFilter::registry()->has('stream'));
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(key: 'unsupported', backing: EmptyStreamFilters::class, data: ResourceFilterData::class, frame: true, readOnly: true));
         $this->getJson('frame/resources/unsupported/filters/schema')->assertOk()->assertJsonPath('savedViewsResource', null);
         $this->postJson('frame/resources/saved-filters', $this->payload('unsupported'))->assertNotFound();
     }
@@ -395,11 +411,24 @@ class DeniedFilterPolicy
         return false;
     }
 }
-class DeclaredStreamFilters implements DeclaresFilterVocabulary
+class DeclaredStreamFilters implements DeclaresFilterVocabulary, StreamsRecords
+{
+    public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
+    {
+        throw new \RuntimeException('Saving a view must never execute its target backing.');
+    }
+
+    public function filterVocabulary(): FilterVocabulary
+    {
+        return FilterVocabulary::of(DeclaredFacet::exact('count', options: 'stream-counts')->sortable(), DeclaredFacet::sort('createdAt'));
+    }
+}
+
+class EmptyStreamFilters extends DeclaredStreamFilters
 {
     public function filterVocabulary(): FilterVocabulary
     {
-        return FilterVocabulary::of(DeclaredFacet::exact('count', options: 'stream-counts'));
+        return FilterVocabulary::of();
     }
 }
 

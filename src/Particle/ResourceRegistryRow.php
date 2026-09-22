@@ -2,7 +2,9 @@
 
 namespace Splicewire\Beam\Particle;
 
+use Splicewire\Beam\Data\ResourceRegistry\ResourceRegistryEntryData;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
+use Splicewire\Beam\Particle\Registry\ResourceRegistryBacking;
 
 /**
  * One registered particle resource, as {@see ResourceRegistryReport} sees it: its declared INTENT, its
@@ -10,8 +12,8 @@ use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
  *
  * A plain immutable value rather than a Data class on purpose — the row itself never crosses a wire. A
  * console command and an advisory doctor audit read it inside the host; the operator Resources area
- * reads it too, but what that area SERVES is {@see \Splicewire\Beam\Data\ResourceRegistry\ResourceRegistryEntryData},
- * the declared projection {@see \Splicewire\Beam\Particle\Registry\ResourceRegistryBacking} builds from
+ * reads it too, but what that area SERVES is {@see ResourceRegistryEntryData},
+ * the declared projection {@see ResourceRegistryBacking} builds from
  * this row after the viewer's visibility filter has run. So the boundary shape is declared where it
  * crosses (AGENTS.md, particle doctrine), and this value stays free to carry host-only facts.
  */
@@ -47,7 +49,7 @@ class ResourceRegistryRow
         public bool $editable,
         public bool $deletable,
         public bool $showable,
-        public bool $filterable,
+        public bool $filters,
         public ?string $policy,
         public array $disagreements,
     ) {}
@@ -82,7 +84,6 @@ class ResourceRegistryRow
             'edit' => $this->editable,
             'delete' => $this->deletable,
             'show' => $this->showable,
-            'filter' => $this->filterable,
         ]));
 
         return $names === [] ? 'read-only' : implode(' ', $names);
@@ -104,8 +105,7 @@ class ResourceRegistryRow
      *               the declaration's read projection runs over (`QueriesRecords`), the same two routes
      *               {@see ResourceRegistryReport}'s disagreement column accepts.
      *  - `create` / `edit` / `delete` — the resolved flag AND `WritesRecords`.
-     *  - `filter` — a panel exists: `filterable` over a composable query, or a vocabulary the backing
-     *               declares itself (which needs no flag — `filterable: false` is its correct spelling).
+     *  - `filter` — a panel exists: the resolved filter definition or backing vocabulary contains controls.
      *
      * ⚠️ These are the declaration's answer, not the viewer's. Who may do each is still asked server-side,
      * per request, by the transport's own authorizers; a surface that reads this to HIDE a button has
@@ -121,7 +121,7 @@ class ResourceRegistryRow
             'create' => $this->creatable && $this->writes,
             'edit' => $this->editable && $this->writes,
             'delete' => $this->deletable && $this->writes,
-            'filter' => ($this->filterable && $this->queries) || $this->vocabulary,
+            'filter' => $this->filters,
         ];
     }
 
@@ -150,7 +150,6 @@ class ResourceRegistryRow
                 'editable' => $this->editable,
                 'deletable' => $this->deletable,
                 'showable' => $this->showable,
-                'filterable' => $this->filterable,
                 'policy' => $this->policy,
             ],
             'affordances' => $this->affordances(),

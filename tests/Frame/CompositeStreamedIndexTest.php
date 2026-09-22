@@ -107,7 +107,6 @@ class CompositeStreamedIndexTest extends TestCase
     key: 'composite-probe',
     backing: ProbeComposite::class,
     data: ArmRowData::class,
-    filterable: false,
     label: 'Composite probe',
     readOnly: true,
 )]

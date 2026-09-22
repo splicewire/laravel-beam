@@ -74,7 +74,6 @@ class ResourceContributionTest extends TestCase
             key: 'contrib-crate',
             backing: ContribCrate::class,
             data: ContribCrateData::class,
-            filterable: false,
             label: 'Crates',
         ));
     }

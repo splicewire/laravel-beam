@@ -5,8 +5,6 @@ namespace Splicewire\Beam\Doctor;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
-use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
-use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\WritesRecords;
 use Splicewire\Beam\Particle\ResourceRegistryReport;
 use Splicewire\Beam\Particle\ResourceRegistryRow;
@@ -22,18 +20,9 @@ use Splicewire\Beam\Particle\ResourceRegistryRow;
  * is already refused at registration by
  * {@see BackingResolver::assertAffordancesWithinCapability()}, so its
  * normal reading here is zero and a non-zero one means the keyspace was populated around this
- * registry's own `register()`. The READ axis is the live population: nothing validates `filterable`
- * against {@see QueriesRecords}, or `showable` against a backing that
- * can resolve one record, and both default to true — so a custom `ResourceBacking` acquires those two
- * claims by saying nothing.
- *
- * The filter axis has two capabilities behind it since composite-backing ticket 02, and the rows read
- * both: `QueriesRecords` is what `filterable: true` promises (a composable query), while
- * {@see DeclaresFilterVocabulary} is how a streams-only backing gets a PANEL without one. A
- * `filterable` resource on a declaring backing is still a disagreement — the index would still raise —
- * but its row names the repair that keeps the panel (`filterable: false`), and a backing carrying BOTH
- * capabilities is reported as two vocabularies for one resource, because the schema endpoint would
- * serve the declaration over the Data class the query actually composes against.
+ * registry's own `register()`. Detail affordances are checked against backing capabilities.
+ * Filter controls are derived from actual definitions or backing vocabulary; resolution failures
+ * are reported explicitly rather than turning into an absent capability or aborting the census.
  *
  * ## Advisory, permanently
  *

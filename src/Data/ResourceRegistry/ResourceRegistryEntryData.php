@@ -116,7 +116,6 @@ class ResourceRegistryEntryData extends BeamData
                 editable: $row->editable,
                 deletable: $row->deletable,
                 showable: $row->showable,
-                filterable: $row->filterable,
                 policy: $row->policy,
             ),
             affordances: new ResourceAffordancesData(...$affordances),

@@ -18,9 +18,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * {@see ParticleController::denyUngatedRead()} fails that read closed at
  * REQUEST time — a caller gets 403, not every row. This audit is the advisory that tells a host which
  * mounts would answer 403 before a caller finds out: it walks the BOOTED registry and the FINISHED route
- * table, so it reaches every `filterable` resource that never spells `filterable: true` (the attribute
- * defaults to it — which is why 65's source grep undercounted, and why this reads the registry rather than
- * the code), and a hand-written index outside `Particle::mount()` alike.
+ * table, so declaration defaults and routes are read from their runtime owners.
  *
  * ## Why an advisory
  *
@@ -38,7 +36,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *   on this host. "0 rows today" is why a finding is latent, never why it is absent — a bare mount of any
  *   of them answers 403 the day someone adds it, and a host should know that before that day.
  * - **Did not look**, one inconclusive row with the count: resources the guard could not read — a
- *   backing with no model, a filterable key with no data-filters registration, a base that cannot be
+ *   backing with no model or a base that cannot be
  *   built at audit time. Counted and named, so a clean pass over an unreadable population cannot pass
  *   as a measurement.
  */
@@ -116,8 +114,7 @@ class UngatedResourceReadAudit implements DoctorAudit
                     '%s (resource [%s]) is gated by nothing at GET %s: its list base carries no predicate, no policy '
                     .'is bound for [%s], and the route\'s middleware initializes no tenancy — so the index answers '
                     .'403 to every caller a `Gate::before` does not wave through (beam-docs-satellite 65). Scope the '
-                    .'read (a predicate in its data-filters base query, or a `scope` closure on a non-filterable '
-                    .'resource), bind a policy for the model, or mount it inside a tenancy group.',
+                    .'read (a predicate in its backing/query base or a declared `scope` closure), bind a policy for the model, or mount it inside a tenancy group.',
                     $resource->data ?? '(no Data class)',
                     $resource->key,
                     $route->uri(),
@@ -225,12 +222,6 @@ class UngatedResourceReadAudit implements DoctorAudit
             return 'its backing names no Eloquent model, so neither a policy nor a row predicate applies';
         }
 
-        if (! $resource->filterable) {
-            return 'its scope could not be read';
-        }
-
-        return $this->guard->filterRegistered($resource)
-            ? 'filterable, and its data-filters base query could not be built here (the base needs a request or a tenant connection)'
-            : 'filterable with no data-filters registration under the key — its index throws before any gate is reached';
+        return 'its declared backing or query scope could not be built here (the base may need a request or tenant connection)';
     }
 }

@@ -73,7 +73,6 @@ use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
-use Splicewire\Beam\Doctor\FilterablePromiseAudit;
 use Splicewire\Beam\Doctor\FilterStampReadPathAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
@@ -832,7 +831,6 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->registerSurgeonAudits();
         $this->registerFacadeConformanceAudits();
         $this->registerRegistryConformanceAudits();
-        $this->registerFilterablePromiseAudit();
         $this->registerFilterStampReadPathAudit();
         $this->registerConformanceManifest();
     }
@@ -1554,40 +1552,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
     }
 
     /**
-     * The detector for the promise `#[ParticleResource]` makes by NOT opting out.
-     *
-     * `filterable` defaults to **true**, and a filterable resource's index rides
-     * `hydrator->query($key)`, which raises on a key with no `rushing/laravel-data-filters` resource
-     * behind it. Four live 500s were repaired by hand on 2026-08-29 (b1a9cd9 for beam-calendars' three,
-     * 9717817 for beam's own `hooks`) and not one of the four declarations spelled the flag out. See
-     * {@see FilterablePromiseAudit} for the full argument.
-     *
-     * Registered UNCONDITIONALLY rather than from {@see registerSurgeonAudits()}: the audit reads two
-     * booted registries and the route table and parses nothing, so it needs neither `nikic/php-parser`
-     * nor surgeon. Putting it behind that guard would make the check a function of whether the host
-     * installed dev dependencies — ticket 04 D1's defect, which {@see registerRegistryConformanceAudits()}
-     * already exists to avoid.
-     *
-     * Advisory, permanently, and the audit's own docblock argues it at length: BOTH halves of the
-     * population — which particle resources this composition registers, and what its
-     * `config/data-filters.php` plus every installed provider declare — are facts about the HOST, which
-     * `rushing/laravel-doctor`'s gate-or-advisory convention names as its textbook advisory case. A host
-     * that wants it to block registers the class in its own manifest with `gate: true`.
-     */
-    protected function registerFilterablePromiseAudit(): void
-    {
-        $this->app->make(BeamDoctorManifest::class)
-            ->register('splicewire/laravel-beam', FilterablePromiseAudit::class);
-    }
-
-    /**
      * The detector for the promise a hand-rolled exposure makes by SAYING so.
      *
      * `->beam()->inResource($key, filters: true)` mounts the resource's whole filter sub-surface beside a
      * hand-written index, and nothing checked that the index reads the vocabulary those routes publish.
      * Three at the flagship did not (api-surface-coherence 101). See {@see FilterStampReadPathAudit}.
      *
-     * Registered UNCONDITIONALLY, beside {@see registerFilterablePromiseAudit()} and for the same
+     * Registered UNCONDITIONALLY, alongside the other resource audits for the same
      * reason: it reads the route table and one booted registry and parses no PHP, so it depends on
      * neither surgeon nor `nikic/php-parser`, and gating it on a dev dependency would make the check a
      * function of how the host installed.
@@ -1880,7 +1851,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // beam-docs-satellite 65: a resource whose LIST read is gated by nothing — no predicate in its
         // base query, no policy on its model, no tenancy on its mount. `ParticleController::index()`
         // fails that read closed at REQUEST time (403); this audit tells a host which mounts would answer
-        // so before a caller finds out, walking the BOOTED registry because `filterable` defaults to true
+        // so before a caller finds out, walking the booted resource registry
         // and a source grep cannot see it. Advisory, and never a boot-time refusal: tenancy on a mount and
         // a policy on a model are facts about the HOST. Reads the finished route table, so it is bound
         // lazily off the container.
@@ -2180,45 +2151,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
     }
 
     /**
-     * Ship the `data-filters` resources beam's own filterable `#[ParticleResource]` declarations
-     * promise.
-     *
-     * ⚠️ **`filterable` is a PROMISE, and beam is the tier that defined it.** `ParticleResource`
-     * defaults `filterable` to **true** — `hooks` never spells it out, it simply doesn't opt out — and
-     * {@see ParticleController::index()} sends a filterable resource through
-     * `hydrator->query($key)`, which raises `BadMethodCallException` on a key with no data-filters
-     * registration. Measured over authenticated HTTP at `~/Herd/splicewire-app` on 2026-08-29,
-     * `GET /api/v1/hooks` was a live **500**: "No data-filters resource is registered under [hooks]".
-     * The exact defect `splicewire/laravel-beam-calendars` (b1a9cd9) had just been repaired for its
-     * three, and beam was carrying one of its own the whole time.
-     *
-     * `filterable: false` is not the escape here: that path is `defaultSortedQuery()`, which cannot see
-     * the request, and it would demote a resource that has two REST mounts and an operator realm.
-     *
-     * Registered IMPERATIVELY rather than through data-filters' `#[ResourceFilter]` discovery, for the
-     * same reason `laravel-beam-lineage` and `-calendars` do it this way:
-     * `config('data-filters.discover')` is HOST-owned and empty by default — a closed door to a
-     * package, exactly as `discover_paths` is for particles. A package cannot add itself to a host's
-     * config array, so discovery here would register nothing at a host and leave the 500 in place.
-     *
-     * No `model:` — {@see ParticleResourceModelResolver} (bound onto data-filters'
-     * `ResourceModelResolver` port above) fills the backing off the `#[ParticleResource]` registered
-     * under the *same key*, lazily. So the model lives in one place and the two read paths cannot
-     * drift.
-     *
-     * The `has()` guard is **the caller's job, not the registry's**: `registerDefinition()` overwrites
-     * plainly, so an unguarded package registration would silently stomp a host that seeded its own
-     * `hooks` key from `config('data-filters.resources')`. Guarded, this is strictly additive.
-     *
-     * `hooks` declares a filter vocabulary and registers it here. `git-repo`
-     * ({@see Data\GitRepoData}) declares no filter/sort vocabulary and explicitly opts out;
-     * its authorized filter-schema read is the declared empty vocabulary. `schemas`
-     * ({@see Data\BeamSchemaData}) remains outside this registration.
+     * Register the hooks query extension without replacing host-provided wiring.
+     * The model is resolved from the particle resource; filtering is derived from its Data attributes.
      */
     protected function declareFilterResources(): void
     {
         if (! $this->app->bound(FilterResourceRegistry::class)) {
-            return; // data-filters genuinely absent — `hooks` is declared, just not filterable here.
+            return;
         }
 
         $registry = $this->app->make(FilterResourceRegistry::class);

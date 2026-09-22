@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Filters;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\Popcorn\Laravel\Rules\ExistsInRegistry;
 use Rushing\Popcorn\Registries\Key;
+use Schemastud\Frame\Contracts\ResourceRegistry;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\FilterVocabulary;
@@ -23,12 +24,18 @@ class ResourceFilterConstraints
     {
         $keys = self::resources()->values();
 
-        if (in_array($action, ['schema', 'options'], true)) {
+        if (in_array($action, ['schema', 'options', 'variants'], true)) {
             foreach (app(ParticleResourceRegistry::class)->all() as $resource) {
                 if ((new BackingResolver)->hasCapability($resource->backing, DeclaresFilterVocabulary::class)
-                    || ($action === 'schema' && ! $resource->filterable)) {
+                    || in_array($action, ['schema', 'variants'], true)) {
                     $keys[] = $resource->key;
                 }
+            }
+        }
+
+        if (in_array($action, ['schema', 'variants'], true) && app()->bound(ResourceRegistry::class)) {
+            foreach (app(ResourceRegistry::class)->all() as $resource) {
+                $keys[] = $resource->key;
             }
         }
 
