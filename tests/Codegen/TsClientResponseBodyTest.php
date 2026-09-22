@@ -71,7 +71,8 @@ it('preserves the declared response projection through the model into hooks and 
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'client-body-examples', backing: Model::class, data: ClientBodyPayload::class,
         ));
-        $route->setAction(['uses' => ParticleController::class.'@index', 'controller' => ParticleController::class.'@index']);
+        $action = ParticleController::class.'@'.($many ? 'index' : 'show');
+        $route->setAction(['uses' => $action, 'controller' => $action]);
         $route->defaults(ParticleController::RESOURCE, 'client-body-examples');
     } elseif ($kind === 'operation') {
         app(ParticleOperationRegistry::class)->register(new ParticleOperation(

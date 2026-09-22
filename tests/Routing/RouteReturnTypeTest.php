@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Tests\Routing;
 
+use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use InvalidArgumentException;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
@@ -47,6 +49,16 @@ class ReturnTypeStreamStartedData extends Data
 class ReturnTypeStreamFinishedData extends Data
 {
     public function __construct(public string $id) {}
+}
+
+class InheritedParticleReturnController extends ParticleController {}
+
+class CustomParticleReturnController extends ParticleController
+{
+    public function index(Request $request): Responsable
+    {
+        throw new \LogicException('Reflection fixture only.');
+    }
 }
 
 class ReturnTypeFixtureController
@@ -119,9 +131,9 @@ class RouteReturnTypeTest extends TestCase
      * @param  array<string, mixed>  $beam
      * @param  array<string, mixed>  $defaults
      */
-    private function route(string $method = 'bare', array $beam = [], array $defaults = [], string $name = 'fixtures.show'): Route
+    private function route(string $method = 'bare', array $beam = [], array $defaults = [], string $name = 'fixtures.show', string $controller = ReturnTypeFixtureController::class): Route
     {
-        $uses = ReturnTypeFixtureController::class.'@'.$method;
+        $uses = $controller.'@'.$method;
 
         $route = new Route(['GET'], 'fixtures', array_filter([
             'uses' => $uses,
@@ -191,7 +203,7 @@ class RouteReturnTypeTest extends TestCase
     public function test_the_explicit_macro_carries_its_own_cardinality(): void
     {
         // Only source (1) declares cardinality; every other source is single by construction except a
-        // particle index route, which derives it from the route NAME.
+        // particle index route, which derives it from the controller action.
         $resolved = $this->resolver()->for($this->route(beam: [
             'returns' => ReturnTypeFixtureData::class,
             'returnsMany' => true,
@@ -235,22 +247,67 @@ class RouteReturnTypeTest extends TestCase
     {
         $this->registerResource();
 
-        $resolved = $this->resolver()->for($this->route(defaults: [ParticleController::RESOURCE => 'fixtures']));
+        $resolved = $this->resolver()->for($this->route('show', defaults: [ParticleController::RESOURCE => 'fixtures'], controller: ParticleController::class));
 
         $this->assertSame(ClientTypeName::for(ReturnTypeResourceData::class), $resolved['type']);
         $this->assertFalse($resolved['many']);
     }
 
-    public function test_a_particle_index_route_derives_its_cardinality_from_the_route_name(): void
+    public function test_a_particle_index_route_derives_its_cardinality_from_the_action(): void
     {
         $this->registerResource();
 
         $resolved = $this->resolver()->for($this->route(
+            'index',
             defaults: [ParticleController::RESOURCE => 'fixtures'],
-            name: 'fixtures.index',
+            name: 'renamed.collection',
+            controller: ParticleController::class,
         ));
 
         $this->assertTrue($resolved['many']);
+    }
+
+    public function test_only_row_returning_generic_actions_infer_resource_output(): void
+    {
+        $this->registerResource();
+        foreach (['show', 'store', 'update'] as $action) {
+            $resolved = $this->resolver()->for($this->route(
+                $action, defaults: [ParticleController::RESOURCE => 'fixtures'],
+                name: 'misleading.index', controller: ParticleController::class,
+            ));
+            $this->assertSame(ClientTypeName::for(ReturnTypeResourceData::class), $resolved['type']);
+            $this->assertFalse($resolved['many']);
+        }
+        $this->assertNull($this->resolver()->for($this->route(
+            'destroy', defaults: [ParticleController::RESOURCE => 'fixtures'], controller: ParticleController::class,
+        )));
+    }
+
+    public function test_a_resource_stamp_does_not_invent_a_custom_controller_response(): void
+    {
+        $this->registerResource();
+        $defaults = [ParticleController::RESOURCE => 'fixtures'];
+        $this->assertNull($this->resolver()->for($this->route(defaults: $defaults, name: 'fixtures.index')));
+        $this->assertSame(ClientTypeName::for(ReturnTypeAttributeData::class), $this->resolver()->for(
+            $this->route('declared', defaults: $defaults),
+        )['type']);
+        $this->assertSame(ClientTypeName::for(ReturnTypeFixtureData::class), $this->resolver()->for(
+            $this->route(beam: ['returns' => ReturnTypeFixtureData::class], defaults: $defaults),
+        )['type']);
+    }
+
+    public function test_only_inherited_generic_implementations_keep_inferred_output(): void
+    {
+        $this->registerResource();
+        $defaults = [ParticleController::RESOURCE => 'fixtures'];
+        $inherited = $this->resolver()->for($this->route(
+            'index', defaults: $defaults, controller: InheritedParticleReturnController::class,
+        ));
+        $this->assertSame(ClientTypeName::for(ReturnTypeResourceData::class), $inherited['type']);
+        $this->assertTrue($inherited['many']);
+        $this->assertNull($this->resolver()->for($this->route(
+            'index', defaults: $defaults, controller: CustomParticleReturnController::class,
+        )));
     }
 
     public function test_a_resource_with_no_data_dto_derives_nothing(): void
@@ -260,7 +317,7 @@ class RouteReturnTypeTest extends TestCase
         $this->particles->register(new ParticleResource(key: 'projected', backing: 'projected'));
 
         $this->assertNull($this->resolver()->for(
-            $this->route(defaults: [ParticleController::RESOURCE => 'projected']),
+            $this->route('show', defaults: [ParticleController::RESOURCE => 'projected'], controller: ParticleController::class),
         ));
     }
 

@@ -309,6 +309,16 @@ class RouteReturnType
      */
     private function fromResource(Route $route): ?array
     {
+        [$controller, $method] = array_pad(explode('@', $route->getActionName(), 2), 2, null);
+
+        // A resource stamp identifies the subject, not a custom controller's response.
+        // Only the generic row-returning implementation guarantees the resource projection.
+        if (! is_a($controller, ParticleController::class, true)
+            || ! in_array($method, ['index', 'show', 'store', 'update'], true)
+            || (new ReflectionMethod($controller, $method))->getDeclaringClass()->getName() !== ParticleController::class) {
+            return null;
+        }
+
         $key = $route->defaults[ParticleController::RESOURCE] ?? null;
 
         if (! is_string($key) || ! $this->particles->has($key)) {
@@ -324,7 +334,7 @@ class RouteReturnType
         // A particle `index` route returns a paginated list of the DTO; `show`/`store`/`update` return one.
         return [
             'type' => ClientTypeName::for($class),
-            'many' => str_ends_with((string) $route->getName(), '.index'),
+            'many' => $method === 'index',
         ];
     }
 }
