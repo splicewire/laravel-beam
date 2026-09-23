@@ -13,7 +13,6 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Routing\Route;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -468,31 +467,7 @@ class ParticleController extends Controller
      */
     protected function denyUngatedRead(Request $request, ParticleResource $resource): void
     {
-        $guard = ResourceReadGuard::forApp();
-
-        if ($guard->policyBound($resource) !== false) {
-            return;
-        }
-
-        $route = $request->route();
-
-        if ($route instanceof Route) {
-            $middleware = [];
-
-            foreach ([...$route->middleware(), ...app('router')->gatherRouteMiddleware($route)] as $entry) {
-                $middleware[] = is_string($entry) ? $entry : (is_object($entry) ? $entry::class : (string) json_encode($entry));
-            }
-
-            if (ResourceReadGuard::suppliesScope($middleware)) {
-                return;
-            }
-        }
-
-        if ($guard->scoped($resource, $request) !== false) {
-            return;
-        }
-
-        $this->authorize('viewAny', $resource->modelClass());
+        ResourceReadGuard::forApp()->inspectRead($resource, $request)->authorize();
     }
 
     protected function relativeBaseQuery(Request $request): mixed

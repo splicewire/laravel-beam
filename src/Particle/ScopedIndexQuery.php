@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Summary\BeamResourceSummaryProvider;
 
@@ -33,10 +34,14 @@ class ScopedIndexQuery
     /** Build the resource's scoped and filtered list. */
     public function forDefinition(ResourceDefinition $definition): object
     {
-        $resource = $this->resource($definition) ?? new ParticleResource(
+        $resource = $this->resource($definition);
+        $request = app(Request::class);
+        if ($resource !== null) {
+            ResourceReadGuard::forApp()->inspectRead($resource, $request)->authorize();
+        }
+        $resource ??= new ParticleResource(
             key: $definition->key, backing: $definition->model, data: $definition->data, query: $definition->query,
         );
-        $request = app(Request::class);
 
         return app(ParticleListQuery::class)->forList($resource, (array) $request->input('filter', []), $request);
     }

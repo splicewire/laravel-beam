@@ -2,8 +2,10 @@
 
 namespace Splicewire\Beam\Authorization;
 
+use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Gate;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\ParticleListQuery;
@@ -17,6 +19,31 @@ class ResourceReadGuard
     public static function forApp(): self
     {
         return new self;
+    }
+
+    /** Inspect the declared read boundary before caller filters or record selection can narrow it. */
+    public function inspectRead(ParticleResource $resource, Request $request): Response
+    {
+        if ($this->policyBound($resource) !== false) {
+            return Response::allow();
+        }
+
+        $route = $request->route();
+        if ($route instanceof Route) {
+            $middleware = [];
+            foreach ([...$route->middleware(), ...app('router')->gatherRouteMiddleware($route)] as $entry) {
+                $middleware[] = is_string($entry) ? $entry : (is_object($entry) ? $entry::class : (string) json_encode($entry));
+            }
+            if (self::suppliesScope($middleware)) {
+                return Response::allow();
+            }
+        }
+
+        if ($this->scoped($resource, $request) !== false) {
+            return Response::allow();
+        }
+
+        return Gate::inspect('viewAny', $resource->modelClass());
     }
 
     /** Null means this environment could not build the declared authorization bases. */

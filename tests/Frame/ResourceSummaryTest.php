@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Rushing\DataFilters\Attributes\Filterable;
@@ -202,6 +203,7 @@ class ResourceSummaryTest extends TestCase
     /** The summary opens no new door: it is refused across resource reach exactly as `filters/schema` is. */
     public function test_the_summary_is_refused_to_a_principal_outside_the_resources_realm_gate(): void
     {
+        Gate::define('viewAny', fn (User $actor, string $model): bool => $model === SummaryWidget::class && Gate::allows('entitlement:os.operate'));
         $this->actingAs($this->actor(1));
 
         $this->holding([]);

@@ -14,6 +14,7 @@ use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Data\ResourcePageData;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
@@ -159,6 +160,11 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         // (readable ⇒ showable), so only a producer that explicitly closes it 405s here. The gate fires
         // BEFORE the id lookup, so a syntactically invalid id can't leak a 500 through the read path.
         $this->assertWritable($definition, 'show');
+
+        $resource = $this->resource($definition);
+        if ($resource !== null) {
+            ResourceReadGuard::forApp()->inspectRead($resource, app(Request::class))->authorize();
+        }
 
         // A read-only resource has no separate edit shape — project detail through the SAME read projection
         // as its list rows (the resource's `project` closure, e.g. CustomerData::fromModel), so a detail row
