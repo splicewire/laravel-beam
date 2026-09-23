@@ -16,6 +16,7 @@ use Schemastud\Frame\Data\FilterSchemaResponseData;
 use Schemastud\Frame\Data\FilterVariantData;
 use Schemastud\Frame\Data\FilterVariantsData;
 use Schemastud\Frame\Data\FilterVariantsResponseData;
+use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
@@ -40,9 +41,9 @@ class ResourceFilters
         $particle = $this->particles->find($key);
         if ($particle !== null) {
             abort_unless(app(ResourceVisibility::class)->readable($particle, request()->user()), 403);
-            $this->authorizeModel($particle->modelClass());
+            $this->authorizeModel($particle->modelClass(), $particle);
         }
-        $this->authorizeModel(DataFilter::registry()->find($key)?->model);
+        $this->authorizeModel(DataFilter::registry()->find($key)?->model, $particle);
     }
 
     /** A declared particle's list variants retain their access checks without exposing Frame metadata. */
@@ -54,7 +55,7 @@ class ResourceFilters
         }
         abort_unless(app(ResourceAccessGate::class)->allowsResource($particle->toResourceDefinition()), 403);
         abort_unless(app(ResourceVisibility::class)->readable($particle, request()->user()), 403);
-        $this->authorizeModel($particle->modelClass());
+        $this->authorizeModel($particle->modelClass(), $particle);
     }
 
     public function definition(string $key): FilterDefinition
@@ -63,7 +64,7 @@ class ResourceFilters
         $definition = app(ResourceFilterDefinition::class)->definition($key);
         abort_if($definition === null, 404, "No filter resource registered for [{$key}].");
 
-        $this->authorizeModel($definition->model);
+        $this->authorizeModel($definition->model, $this->particles->find($key));
 
         return $definition;
     }
@@ -83,7 +84,7 @@ class ResourceFilters
             return new FilterSchemaResponseData($particle->backing()->filterVocabulary()->toSchema(), $this->savedResource($key));
         }
         if ($definition !== null) {
-            $this->authorizeModel($definition->model);
+            $this->authorizeModel($definition->model, $this->particles->find($key));
 
             return new FilterSchemaResponseData($this->schemaFor($definition), $this->savedResource($key));
         }
@@ -126,7 +127,7 @@ class ResourceFilters
         if ($definition === null) {
             return new FilterVariantsResponseData(new FilterVariantsData($key, []));
         }
-        $this->authorizeModel($definition->model);
+        $this->authorizeModel($definition->model, $this->particles->find($key));
         $variants = [];
         foreach ($this->availableVariants($key, $definition) as $candidate) {
             $variant = $candidate->key;
@@ -179,10 +180,19 @@ class ResourceFilters
         return (new JsonSchemaGenerator(['strategies' => config('data-schemas.strategies')]))->generate(new \ReflectionClass($definition->data));
     }
 
-    private function authorizeModel(?string $model): void
+    /** Metadata uses the same declared row boundary as reads, without requiring class-wide access. */
+    public function authorizeModel(?string $model, ?ParticleResource $resource): void
     {
-        if ($model !== null && ($policy = Gate::getPolicyFor($model)) !== null && method_exists($policy, 'viewAny')) {
-            Gate::authorize('viewAny', $model);
+        if ($model === null || ($policy = Gate::getPolicyFor($model)) === null || ! method_exists($policy, 'viewAny')) {
+            return;
         }
+
+        $permission = Gate::inspect('viewAny', $model);
+        if ($permission->allowed() || ($resource !== null && $resource->modelClass() === $model
+            && app(ResourceReadGuard::class)->scoped($resource, request()) === true)) {
+            return;
+        }
+
+        $permission->authorize();
     }
 }

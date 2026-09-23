@@ -4,7 +4,6 @@ namespace Splicewire\Beam\Filters;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Query\ResourceQuery;
@@ -16,6 +15,7 @@ use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Data\ResourceQueryData;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\ParticleListQuery;
+use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
 /** Select one resource vocabulary for schema, saved validation and actual record reads. */
@@ -39,8 +39,9 @@ class FilterQuerySelection
         abort_unless($selected !== null && is_a($selected->query, ResourceQuery::class, true)
             && $selected->resource === $canonical->resource
             && $selected->model !== null && $selected->model === $canonical->model, 404);
-        $this->authorizeCandidate($target, $canonical);
-        $this->authorizeCandidate($variant, $selected);
+        $targetParticle = $this->particles->find($target);
+        $this->authorizeCandidate($target, $canonical, $targetParticle);
+        $this->authorizeCandidate($variant, $selected, $targetParticle);
 
         return $selected;
     }
@@ -116,7 +117,7 @@ class FilterQuerySelection
         return app(SavedFilterValidator::class)->validate($selected->key, $parameters);
     }
 
-    private function authorizeCandidate(string $key, ResourceDefinition $filter): void
+    private function authorizeCandidate(string $key, ResourceDefinition $filter, ?ParticleResource $target): void
     {
         $particle = $this->particles->find($key);
         if ($particle !== null) {
@@ -127,9 +128,10 @@ class FilterQuerySelection
         if ($frame !== null) {
             abort_unless(app(ResourceAccessGate::class)->allowsResource($frame), 403);
         }
-        $model = $filter->requireModel();
-        if (($policy = Gate::getPolicyFor($model)) !== null && method_exists($policy, 'viewAny')) {
-            Gate::authorize('viewAny', $model);
-        }
+        // A declared model-backed candidate owns its boundary. A vocabulary-only candidate
+        // uses the already matched canonical target, after its independent access checks.
+        app(ResourceFilters::class)->authorizeModel(
+            $filter->requireModel(), $particle?->modelClass() !== null ? $particle : $target,
+        );
     }
 }

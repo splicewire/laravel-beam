@@ -71,6 +71,79 @@ class FilterVariantExecutionTest extends TestCase
         }
     }
 
+    public function test_owner_scope_serves_metadata_and_saved_views_without_class_wide_read_permission(): void
+    {
+        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
+        $this->assertFalse(Gate::allows('viewAny', VariantRecord::class));
+        $this->assertSame('sqlite', VariantRecord::resolveConnection()->getDriverName());
+        $this->assertSame(':memory:', VariantRecord::resolveConnection()->getDatabaseName());
+        $this->getJson('frame/resources/variant-records')->assertOk()->assertJsonCount(3, 'data');
+        $this->getJson('frame/resources/variant-records/filters/schema')->assertOk()
+            ->assertJsonPath('data.properties.title.x-filter.operator', 'exact');
+        $this->getJson('frame/resources/variant-records/filters/variants')->assertOk()->assertJsonCount(2, 'data.variants');
+        $this->getJson('frame/resources/variant-records/filters/active-records/schema')->assertOk()
+            ->assertJsonPath('data.properties.status.x-filter.optionsRef', 'variant-statuses');
+        $params = ['filterVariant' => 'active-records', 'filter' => ['status' => 'open']];
+        $id = $this->postJson('frame/resources/saved-filters', [
+            'resource' => 'variant-records', 'name' => 'Owned open', 'query_parameters' => $params,
+        ])->assertOk()->json('data.id');
+        $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()
+            ->assertJsonPath('data.query_parameters', $params);
+        $this->putJson('frame/resources/saved-filters/records/'.$id, ['name' => 'Renamed'])->assertOk();
+        $this->getJson('frame/resources/variant-records?'.http_build_query($params))->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Owned open');
+        $this->deleteJson('frame/resources/saved-filters/records/'.$id)->assertNoContent();
+        $this->getJson('frame/resources/saved-filters/records/'.$id)->assertNotFound();
+        $this->actingAs((new User)->forceFill(['id' => 2]));
+        $this->getJson('frame/resources/variant-records?'.http_build_query($params))->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Foreign open');
+        foreach (['other-records', 'wrong-model'] as $variant) {
+            $this->getJson('frame/resources/variant-records/filters/'.$variant.'/schema')->assertNotFound();
+        }
+    }
+
+    public function test_scoped_metadata_keeps_option_provider_ownership_and_search(): void
+    {
+        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
+        DataFilter::options('variant-statuses', fn (?string $search) => VariantRecord::query()
+            ->where('owner_id', auth()->id())->where('title', 'like', '%'.$search.'%')->orderBy('id')->get()
+            ->map(fn (VariantRecord $row) => ['value' => $row->getKey(), 'label' => $row->title])->all());
+        DataFilter::options('unreferenced', fn () => throw new \RuntimeException('Unreferenced source executed'));
+        $this->getJson('frame/resources/variant-records/filters/options/variant-statuses?search=closed')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.label', 'Owned closed');
+        $this->getJson('frame/resources/variant-records/filters/options/unreferenced')->assertNotFound();
+        $this->actingAs((new User)->forceFill(['id' => 2]));
+        $this->getJson('frame/resources/variant-records/filters/options/variant-statuses?search=open')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.label', 'Foreign open');
+        $this->getJson('frame/resources/variant-records/filters/options/variant-statuses?search=closed')->assertOk()
+            ->assertJsonPath('data', []);
+    }
+
+    public function test_model_backed_candidate_cannot_borrow_its_targets_owner_scope(): void
+    {
+        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'active-records', backing: VariantRecord::class, data: SelectedVariantFilters::class,
+            frame: false, readOnly: true,
+        ));
+        DataFilter::registry()->registerDefinition(new ResourceDefinition('active-records', SelectedVariantFilters::class,
+            UnscopedVariantQuery::class, VariantRecord::class, 'variant-records'));
+        DataFilter::options('variant-statuses', fn () => throw new \RuntimeException('Denied candidate options executed'));
+        $this->getJson('frame/resources/variant-records/filters/schema')->assertOk();
+        $this->getJson('frame/resources/variant-records/filters/variants')->assertOk()->assertJsonCount(1, 'data.variants');
+        $this->getJson('frame/resources/variant-records/filters/active-records/schema')->assertForbidden();
+        $this->getJson('frame/resources/variant-records?filterVariant=active-records')->assertForbidden();
+        $this->getJson('frame/resources/variant-records/filters/options/variant-statuses')->assertNotFound();
+    }
+
+    public function test_scope_permission_does_not_transfer_to_another_filter_model(): void
+    {
+        Gate::policy(User::class, DeniedVariantModelPolicy::class);
+        DataFilter::registry()->registerDefinition(new ResourceDefinition('variant-records', CanonicalVariantFilters::class,
+            OwnerVariantQuery::class, User::class));
+        $this->getJson('frame/resources/variant-records/filters/schema')->assertForbidden();
+    }
+
     public function test_selected_variant_executes_its_facet_and_keeps_both_query_scopes(): void
     {
         $this->getJson('frame/resources/variant-records?filterVariant=active-records&filter[status]=open')
@@ -83,6 +156,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_nonframe_consumer_lists_keep_declared_variant_scopes_and_authorization(): void
     {
+        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'variant-records', backing: VariantRecord::class, data: VariantRowData::class,
             frame: false, readOnly: true,
@@ -230,6 +304,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_a_selected_variant_cannot_bypass_its_declared_read_policy(): void
     {
+        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'active-records', backing: VariantPolicyBacking::class, data: SelectedVariantFilters::class,
             policy: 'variant.read', frame: false, readOnly: true,
@@ -296,5 +371,21 @@ class LimitedOwnerVariantQuery extends OwnerVariantQuery
     protected function baseQuery(Request $request): Builder
     {
         return parent::baseQuery($request)->limit(1)->offset(1);
+    }
+}
+
+class DeniedVariantModelPolicy
+{
+    public function viewAny(User $user): bool
+    {
+        return false;
+    }
+}
+
+class UnscopedVariantQuery extends ResourceQuery
+{
+    protected function baseQuery(Request $request): Builder
+    {
+        return VariantRecord::query();
     }
 }

@@ -203,6 +203,17 @@ class FrameResourceFiltersTest extends TestCase
         $this->deleteJson($path)->assertForbidden();
     }
 
+    public function test_caller_filters_cannot_confer_scope_authority_on_unscoped_metadata(): void
+    {
+        Gate::policy(FilterRecord::class, DeniedFilterPolicy::class);
+        DataFilter::registry()->registerDefinition(new FilterDefinition('papers', ResourceFilterData::class,
+            UnscopedResourceFilterQuery::class, FilterRecord::class));
+        $this->getJson('frame/resources/papers/filters/schema?filter[count]=12')->assertForbidden();
+        $this->getJson('frame/resources/papers/filters/variants?filter[count]=12')->assertForbidden();
+        $this->postJson('frame/resources/saved-filters', $this->payload())->assertForbidden();
+        $this->assertSame(0, SavedFilter::count());
+    }
+
     public function test_target_is_immutable_and_invalid_queries_and_values_do_not_persist(): void
     {
         $id = $this->create();
@@ -414,5 +425,13 @@ class DeniedSavedFilterPolicy
     public function create(User $user): bool
     {
         return false;
+    }
+}
+
+class UnscopedResourceFilterQuery extends ResourceQuery
+{
+    protected function baseQuery(Request $request): Builder
+    {
+        return FilterRecord::query()->when($request->input('filter.count'), fn ($query, $count) => $query->where('count', $count));
     }
 }
