@@ -36,6 +36,7 @@ use Schemastud\Frame\Authorization\OpenResourceAccessGate;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
+use Schemastud\Frame\Contracts\WriteSubjectResolver;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Spatie\LaravelPackageTools\Package;
@@ -141,6 +142,7 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleRelativeRegistry;
 use Splicewire\Beam\Particle\ParticleResourceModelResolver;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Particle\ParticleWriteSubjectResolver;
 use Splicewire\Beam\Particle\Registry\RealmResourceSurfaceLocator;
 use Splicewire\Beam\Particle\Registry\ResourceRegistryBacking;
 use Splicewire\Beam\Particle\Registry\ResourceSurfaceLocator;
@@ -561,6 +563,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 $this->app->bind(ResourceAccessGate::class, RealmEntitlementResourceGate::class);
             }
         });
+
+        // Frame's write gate asks a policy about the record a request names; frame alone can only look it
+        // up unscoped, which found rows outside the caller's reach and answered 403 where the handler's
+        // scoped lookup answers 404. Beam owns the declared row scope, so beam answers the lookup.
+        $this->app->bind(WriteSubjectResolver::class, ParticleWriteSubjectResolver::class);
 
         // Tenant resolvability (realm-architecture ticket 08): the re-home of the retired
         // RealmDefinition::$tenancy flag. Default resolves the `tenant` realm when config('frame.tenancy')
