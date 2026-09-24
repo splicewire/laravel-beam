@@ -229,6 +229,53 @@ class SdkEndpointDriftAuditTest extends TestCase
         $this->assertTrue($findings[0]->finding->conclusive);
     }
 
+    /**
+     * A host serving a SLICE of the SDK's prefixes is measured only on that slice.
+     *
+     * Measured 2026-09-24 (ux-demo-convergence G1-TOWER-INSTALLER-RERUN): the tower starter mounts
+     * `api/device/{code,token}` (two SDK endpoints) plus `api/v1/capabilities` (no SDK endpoint), and has a
+     * web `login` page that is a suffix candidate for the SDK's `/api/v1/login`. The prefix-only gate read
+     * that as "serves the SDK surface" and failed all 55 flagship-only literals.
+     */
+    public function test_a_host_serving_a_slice_is_measured_only_on_the_prefixes_it_serves(): void
+    {
+        $literals = [
+            ['file' => '/pkg/RequestDeviceCode.php', 'literal' => '/api/device/code'],
+            ['file' => '/pkg/RequestDeviceToken.php', 'literal' => '/api/device/token'],
+            ['file' => '/pkg/CreateLogin.php', 'literal' => '/api/v1/login'],
+            ['file' => '/pkg/CreateIdea.php', 'literal' => '/api/v1/studio/ideas'],
+            ['file' => '/pkg/ReportHeartbeat.php', 'literal' => '/api/beam-market/reporting/heartbeat'],
+        ];
+        $routes = ['api/device/code', 'api/device/token', 'api/v1/capabilities', 'login', 'passkeys/login', 'api/user'];
+
+        $findings = $this->audit()->suggestFor($literals, $routes);
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('pass', $findings[0]->finding->status->value);
+        $this->assertFalse($findings[0]->finding->conclusive);
+        $this->assertStringContainsString('api/v1, api/beam-market', $findings[0]->finding->detail);
+        $this->assertStringContainsString('3 endpoint literal(s)', $findings[0]->finding->detail);
+    }
+
+    /** The discrimination half of the slice gate: a drift inside a served prefix still Fails. */
+    public function test_a_drift_inside_a_served_prefix_still_fails_beside_the_unserved_slice(): void
+    {
+        $literals = [
+            ['file' => '/pkg/RequestDeviceCode.php', 'literal' => '/api/device/code'],
+            ['file' => '/pkg/RequestDeviceToken.php', 'literal' => '/api/device/token'],
+            ['file' => '/pkg/CreateIdea.php', 'literal' => '/api/v1/studio/ideas'],
+        ];
+        $routes = ['api/device/code', 'api/device/tokens'];
+
+        $findings = $this->audit()->suggestFor($literals, $routes);
+
+        $this->assertCount(2, $findings);
+        $this->assertFalse($findings[0]->finding->conclusive);
+        $this->assertSame('fail', $findings[1]->finding->status->value);
+        $this->assertTrue($findings[1]->finding->conclusive);
+        $this->assertStringContainsString('/api/device/token ', $findings[1]->finding->detail);
+    }
+
     public function test_it_extracts_concatenation_style_endpoint_literals_from_source(): void
     {
         $mid = <<<'PHP'

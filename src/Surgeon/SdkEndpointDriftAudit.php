@@ -96,7 +96,9 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
         $normalizedRoutes = array_map(fn ($p) => $this->normalize($p), $routePaths);
         $routeSet = array_flip($normalizedRoutes);
 
-        if (! $this->hostServesSdkSurface($sdkLiterals, $normalizedRoutes)) {
+        $served = $this->servedSdkPrefixes($sdkLiterals, $normalizedRoutes);
+
+        if ($served === []) {
             return [new FixableFinding(
                 Finding::inconclusive(self::CHECK, sprintf(
                     'This host serves no route under any prefix the SDK addresses (%s), so it CONSUMES that '.
@@ -109,8 +111,32 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
             )];
         }
 
-        $findings = [];
+        $unserved = [];
+        $measured = [];
         foreach ($sdkLiterals as $row) {
+            if (in_array($this->prefixOf($row['literal']), $served, true)) {
+                $measured[] = $row;
+            } else {
+                $unserved[] = $row;
+            }
+        }
+
+        $findings = [];
+        if ($unserved !== []) {
+            $findings[] = new FixableFinding(
+                Finding::inconclusive(self::CHECK, sprintf(
+                    'This host serves SDK endpoints under %s only; it serves none of the SDK\'s endpoints under %s, '.
+                    'so those %d endpoint literal(s) belong to an API this host consumes rather than serves. '.
+                    'Not measured here.',
+                    implode(', ', $served),
+                    implode(', ', array_values(array_diff($this->sdkPrefixes($sdkLiterals), $served))),
+                    count($unserved),
+                )),
+                null,
+            );
+        }
+
+        foreach ($measured as $row) {
             $literal = $row['literal'];
             $normalized = $this->normalize($this->routeShape($literal));
 
@@ -160,8 +186,8 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
     }
 
     /**
-     * Whether this host SERVES the surface the SDK addresses, i.e. whether the comparison this audit
-     * makes has a true answer here at all.
+     * The SDK prefixes this host SERVES, i.e. the prefixes under which the comparison this audit makes
+     * has a true answer here at all.
      *
      * ⚠️ **Measured 2026-09-03 (map-drain unit 218): without this gate the audit fabricates one ERROR
      * per SDK request class at every host that is a CLIENT of the API rather than its server.**
@@ -185,24 +211,69 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
      * that is empty or unreachable (`api-surface-coherence` 124), which reports `Pass` and gates nothing.
      *
      * The test is deliberately the SDK's own PREFIXES rather than "did everything drift": a host that
-     * genuinely serves this API and renamed a path still has routes under `api/v1`, so a real drift — the
-     * ADR-0124 marquee case this audit exists for — stays a Fail. Only a host holding NONE of the SDK's
-     * surface is excused, and it says so in prose rather than passing silently.
+     * genuinely serves this API and renamed a path still serves its other endpoints under `api/v1`, so a
+     * real drift — the ADR-0124 marquee case this audit exists for — stays a Fail. Only the prefixes under
+     * which a host serves NONE of the SDK's endpoints are excused, and it says so in prose rather than
+     * passing silently.
+     *
+     * ⚠️ **Measured 2026-09-24 (ux-demo-convergence, G1-TOWER-INSTALLER-RERUN): "any route under the
+     * prefix" was too coarse, and re-armed the whole population at hosts that serve a SLICE.** The tower
+     * starter mounts `api/device/{code,token}` (splicewire/tower's device authorization, which the
+     * connector's two `api/device` requests address) and `api/v1/capabilities` (not an SDK endpoint); a
+     * fresh satellite mounts beam-market's `api/beam-market/reporting/*`. Each of those opened the gate for
+     * every prefix, and the 55 flagship-only literals (`api/v1/studio/*`, `api/v1/threads`, ...) read as 55
+     * ERRORs at a host that was never meant to serve them. So a prefix now counts as served only when the
+     * host serves at least one SDK endpoint under it — exactly, or through an `api/`-rooted suffix
+     * candidate (so a real rename at the flagship still opens its prefix and still Fails). A host route
+     * under the prefix that is no SDK endpoint at all (`api/v1/capabilities`) is not evidence the host
+     * serves the SDK's surface. The cost, accepted: a prefix whose EVERY endpoint drifted beyond suffix
+     * recognition reads inconclusive rather than failed.
      *
      * @param  list<array{file: string, literal: string}>  $sdkLiterals
      * @param  list<string>  $normalizedRoutes
+     * @return list<string>
      */
-    protected function hostServesSdkSurface(array $sdkLiterals, array $normalizedRoutes): bool
+    protected function servedSdkPrefixes(array $sdkLiterals, array $normalizedRoutes): array
     {
-        foreach ($this->sdkPrefixes($sdkLiterals) as $prefix) {
-            foreach ($normalizedRoutes as $route) {
-                if ($route === $prefix || str_starts_with($route, $prefix.'/')) {
-                    return true;
-                }
+        $routeSet = array_flip($normalizedRoutes);
+        $served = [];
+        foreach ($sdkLiterals as $row) {
+            $prefix = $this->prefixOf($row['literal']);
+            if (isset($served[$prefix])) {
+                continue;
+            }
+            $normalized = $this->normalize($this->routeShape($row['literal']));
+            if (isset($routeSet[$normalized]) || $this->sameRootCandidates($normalized, $normalizedRoutes) !== []) {
+                $served[$prefix] = true;
             }
         }
 
-        return false;
+        return array_values(array_intersect($this->sdkPrefixes($sdkLiterals), array_keys($served)));
+    }
+
+    /**
+     * Suffix candidates that stay under the literal's own first segment (`api/...`). The drift matcher's
+     * suffix test is deliberately loose, but as APPLICABILITY evidence it must not count a web route:
+     * the SDK's `/api/v1/login` has the suffix candidates `login` and `passkeys/login` at every host with
+     * a login page, and that alone would re-open `api/v1` at a host that serves none of it.
+     *
+     * @param  list<string>  $normalizedRoutes
+     * @return list<string>
+     */
+    protected function sameRootCandidates(string $normalizedLiteral, array $normalizedRoutes): array
+    {
+        $root = explode('/', $normalizedLiteral)[0].'/';
+
+        return array_values(array_filter(
+            $this->uniqueSuffixMatches($normalizedLiteral, $normalizedRoutes),
+            fn ($route) => str_starts_with($route, $root),
+        ));
+    }
+
+    /** The two-segment root one SDK literal addresses (`api/v1`, `api/device`, ...). */
+    protected function prefixOf(string $literal): string
+    {
+        return implode('/', array_slice(explode('/', $this->normalize($this->routeShape($literal))), 0, 2));
     }
 
     /**
@@ -218,8 +289,7 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
     {
         $prefixes = [];
         foreach ($sdkLiterals as $row) {
-            $segments = explode('/', $this->normalize($this->routeShape($row['literal'])));
-            $prefixes[implode('/', array_slice($segments, 0, 2))] = true;
+            $prefixes[$this->prefixOf($row['literal'])] = true;
         }
 
         return array_keys($prefixes);
