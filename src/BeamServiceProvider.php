@@ -122,6 +122,7 @@ use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Models\BeamSubmission;
 use Splicewire\Beam\Models\CentralActivityLog;
+use Splicewire\Beam\Models\GitRepo;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Ownership\Contracts\OwnershipEdgeStore;
@@ -392,10 +393,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // `Splicewire\Beam\Models\Hook` — the package's internal namespace, on the wire, in a column,
         // and in a permission-token prefix (ADR-0118), which makes the class un-renameable by anything
         // short of a data migration. `splicewire:beam:doctor` reported exactly this.
+        // `git_repo` joins for the same permission-token reason: `GitRepo` is cascade-policed (see
+        // `packageBooted()`), and an unaliased model's token prefix is its slugged FQCN (ADR-0118).
         Relation::morphMap([
             'beam_particle' => BeamParticle::class,
             'beam_schema' => BeamSchema::class,
             'beam_submission' => BeamSubmission::class,
+            'git_repo' => GitRepo::class,
             'hook' => Hook::class,
         ]);
 
@@ -1606,6 +1610,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // seed; the host's own `schemas.manage` verb (freeze/migrate) is a `Gate::define` the policy
         // leaves alone.
         CascadePolicyRegistrar::register(BeamSchema::class);
+
+        // `GitRepo` — the last beam-owned model a starter's tenant realm lists with no read boundary at
+        // all: no policy, no row predicate, no tenancy, and the tenant realm is ungated. Once 473fbfd
+        // made `ResourceReadGuard` refuse such a read and 88f872fd3 made `ResourceVisibility::listable()`
+        // ask that guard, the `git-repo` seat (a host's repo roots and dirty paths) vanished for every
+        // member while it had been the ONLY seat an unprovisioned user was ever shown. It is declared
+        // here, the same shape as the two above, so a team role's `git-repo.view` token (granted by
+        // beam-accounts' `RolePermissions` from the Gate's policy map) is what reads it.
+        CascadePolicyRegistrar::register(GitRepo::class);
 
         // Every route macro this package ships, contributed by the trait that OWNS it rather than
         // hand-listed here: the particle resource/op mounts, the `->beam()` route-metadata namespace,

@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Rushing\PermissionCascade\Attributes\UseCascadePolicy;
 use Splicewire\Beam\Data\GitRepoData;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Storage\GitRepoRegistrar;
@@ -21,7 +22,13 @@ use Splicewire\Beam\Storage\GitRepoRegistrar;
  *
  * The table name is resolved through the single beam table-prefix seam ({@see Beam::table()}) — same
  * pattern {@see BeamParticle} uses — so a retrofit host's one prefix override follows here too.
+ *
+ * Read boundary: `#[UseCascadePolicy]`, bound in `BeamServiceProvider::packageBooted()` beside `Hook`
+ * and `BeamSchema`, under the `git_repo` alias — so reads take the `git-repo.view` token a team role
+ * holds. Without it the `git-repo` resource had no authorizer (no policy, no row predicate, no tenancy)
+ * and `ResourceReadGuard` refused every read of it to everyone.
  */
+#[UseCascadePolicy]
 class GitRepo extends Model
 {
     use HasUuids;
