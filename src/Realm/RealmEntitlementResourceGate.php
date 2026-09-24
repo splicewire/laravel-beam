@@ -159,6 +159,51 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
     }
 
     /**
+     * Has the caller been authorized for this resource's population BY a realm gate? True only when every
+     * realm the resource belongs to is gated and the caller passes one of those gates (or, for an
+     * explicitly mounted realm, that realm's gate). An ungated membership lets anyone through the socket,
+     * so it cannot vouch for a population, and a resource in no realm has no realm authority at all.
+     *
+     * {@see \Splicewire\Beam\Authorization\ResourceReadGuard::inspectRead()} counts this as a read
+     * authorization beside a policy, tenancy and a query predicate (ux-demo replay 2026-09-23).
+     */
+    public function entitledThroughRealm(string $key): bool
+    {
+        $realms = $this->particles->realmsFor($key);
+
+        if ($realms === []) {
+            return false;
+        }
+
+        $mountedRealm = request()->route('realm');
+        if (is_string($mountedRealm) && $mountedRealm !== '') {
+            if (! in_array($mountedRealm, $realms, true)) {
+                return false;
+            }
+            $ability = $this->abilityFor($mountedRealm);
+
+            return $ability !== null && $this->gate->allows($ability);
+        }
+
+        $abilities = [];
+        foreach ($realms as $realm) {
+            $ability = $this->abilityFor($realm);
+            if ($ability === null) {
+                return false;
+            }
+            $abilities[] = $ability;
+        }
+
+        foreach ($abilities as $ability) {
+            if ($this->gate->allows($ability)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The Gate ability a realm's resources are gated on, or null when the realm gates nothing — the one
      * rule in {@see RealmGateAbility}, which the realm's dashboard declaration reads too.
      */

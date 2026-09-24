@@ -155,6 +155,44 @@ class UngatedResourceReadTest extends TestCase
         $this->getJson('/frame/resources/gadgets/summary')->assertOk()->assertJsonPath('figures.0.value', 2);
     }
 
+    /**
+     * A hard realm entitlement is a read authorization. 473fbfd (2026-09-22) applied the ungated-read
+     * rule to the Frame socket and named three authorizers (a policy, tenancy, a predicate), so every
+     * policy-less resource an operator realm fences refused its own entitled operators: 9 of 27 operator
+     * resources on tower, teams and tenants included (ux-demo replay, 2026-09-23). The realm gate already
+     * refuses everyone else at the socket, so a caller who passes it has been authorized for exactly
+     * this population.
+     */
+    public function test_an_entitled_holder_of_a_gated_realm_reads_its_policy_less_resource(): void
+    {
+        config(['beam.core.realm_gates' => ['staffroom' => ['entitlement' => 'staff.read']]]);
+        app(ParticleResourceRegistry::class)->loadRealmMap(['staffroom' => ['gadgets']]);
+        Gate::define('entitlement:staff.read', fn () => true);
+        $this->declare();
+
+        $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonCount(2, 'data');
+        $this->getJson('/frame/resources/gadgets/records/2')->assertOk()->assertJsonPath('data.id', '2');
+    }
+
+    public function test_a_caller_without_the_realm_entitlement_is_still_refused(): void
+    {
+        config(['beam.core.realm_gates' => ['staffroom' => ['entitlement' => 'staff.read']]]);
+        app(ParticleResourceRegistry::class)->loadRealmMap(['staffroom' => ['gadgets']]);
+        Gate::define('entitlement:staff.read', fn () => false);
+        $this->declare();
+
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+    }
+
+    public function test_membership_of_an_ungated_realm_does_not_authorize_a_bare_read(): void
+    {
+        config(['beam.core.realm_gates' => []]);
+        app(ParticleResourceRegistry::class)->loadRealmMap(['lobby' => ['gadgets']]);
+        $this->declare();
+
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+    }
+
     public function test_a_relative_list_with_a_valid_variant_keeps_its_parent_intersection(): void
     {
         $this->declare();

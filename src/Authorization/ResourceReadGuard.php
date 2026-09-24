@@ -10,10 +10,11 @@ use Illuminate\Support\Facades\Gate;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
 use Splicewire\Beam\Surface\RuntimeCorroborator;
 use Throwable;
 
-/** Reads policy, tenancy and declaration-derived row boundaries without executing the query. */
+/** Reads policy, tenancy, declaration-derived row boundaries and hard realm entitlements without executing the query. */
 class ResourceReadGuard
 {
     public static function forApp(): self
@@ -40,6 +41,12 @@ class ResourceReadGuard
         }
 
         if ($this->scoped($resource, $request) !== false) {
+            return Response::allow();
+        }
+
+        // A hard realm entitlement the caller holds: the realm gate has already refused everyone else at
+        // the socket, so this population is exactly what the caller was authorized for.
+        if (app(RealmEntitlementResourceGate::class)->entitledThroughRealm($resource->key)) {
             return Response::allow();
         }
 

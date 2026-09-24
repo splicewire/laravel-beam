@@ -444,8 +444,11 @@ class ParticleController extends Controller
      * CLOSED), and AGENTS.md's gate-posture rule: a 200 from a resource with no scope and no policy is
      * success by not checking. 65 measured three package queries whose docblocks NAMED their gate — "the
      * schema the connection resolves to, plus the middleware on each host's mount" — and one host mounted
-     * one of them centrally with neither. Prose nominates; only a predicate, a policy, or a tenancy
-     * initializer authorizes, and this is where the three are read.
+     * one of them centrally with neither. Prose nominates; only a predicate, a policy, a tenancy
+     * initializer, or a hard realm entitlement the caller holds authorizes, and this is where the four
+     * are read. The fourth was added 2026-09-23 by owner ruling: a realm gate already refuses everyone
+     * else at the socket, and without it every policy-less operator-realm resource refused its own
+     * operators ({@see \Splicewire\Beam\Realm\RealmEntitlementResourceGate::entitledThroughRealm()}).
      *
      * ## On READ, never at the mount
      *
