@@ -89,6 +89,17 @@ class AttributedParticleDiscoveryTest extends TestCase
         $this->assertTrue($resource->isFramed(), 'a labelled resource is framed');
     }
 
+    public function test_a_legacy_filterable_argument_is_accepted_and_ignored(): void
+    {
+        // aeee2b2 (2026-09-22) removed the `filterable:` switch: filtering derives from declarations.
+        // Extensions released before it (beam-extension-demo v1.0.0/v2.0.0) still pass it, and a host that
+        // upgrades must not fatal at `package:discover` on an already-installed extension (ux-demo replay,
+        // 2026-09-23). The argument is accepted for one release and has no effect.
+        $resource = AttributedParticleDiscovery::resourceFromAttribute(FixtureLegacyFilterableResource::class);
+
+        $this->assertSame('legacy-filterable', $resource->key);
+    }
+
     public function test_a_resource_without_a_scope_method_leaves_the_hook_null(): void
     {
         $this->discovery()->registerClass(FixtureBareResource::class);
@@ -256,6 +267,9 @@ class FixtureLyricResource
 
 #[ParticleResource(key: 'bare', backing: FixtureModel::class)]
 class FixtureBareResource {}
+
+#[ParticleResource(key: 'legacy-filterable', backing: FixtureModel::class, filterable: true)]
+class FixtureLegacyFilterableResource {}
 
 #[ParticleResource(
     key: 'framed-widgets',

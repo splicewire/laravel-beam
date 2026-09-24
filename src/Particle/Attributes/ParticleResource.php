@@ -128,5 +128,11 @@ class ParticleResource
         public ?string $schemaRef = null,
         /** @var class-string|null Frame handler create result; null uses the read Data class. */
         public ?string $createResultData = null,
+        /**
+         * @deprecated Removed by aeee2b2 (2026-09-22): filtering derives from declarations. Accepted and
+         * ignored for one release so an extension built before it (beam-extension-demo v1.0.0/v2.0.0)
+         * does not fatal a host at `package:discover`. Remove once released extensions have moved on.
+         */
+        ?bool $filterable = null,
     ) {}
 }
