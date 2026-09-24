@@ -345,8 +345,10 @@ class ParticleResource implements HasRegistryKey
      * `model:` IS still passed, and deliberately: it is a **server-side input** to frame, not a wire
      * field. Frame's own `ResourceAuthorizer` resolves the write-gate policy subject from it, and frame
      * hides it from both `GET /frame/manifest` and the generated TS type (schemastud/laravel-frame
-     * ADR-0002). `data:` likewise stays the class-string here; frame projects it onto the wire as the
-     * generated type's dot-form name. So the manifest never contradicts ADR-0212 ("backed, not
+     * ADR-0002). `query:` and `policy:` are server-side inputs on the same terms (ADR-0004): the filter
+     * capability and the read/write gates read them off the object; the wire carries neither. `data:`,
+     * `editData:` and `createResultData:` likewise stay class-strings here; frame projects each onto the
+     * wire as the generated type's dot-form name. So the manifest never contradicts ADR-0212 ("backed, not
      * modelled") in the browser, while the declaration's `modelClass()` still reaches the one reader
      * that needs it. `ParticleResourceRegistryTest` pins both halves.
      *

@@ -285,9 +285,18 @@ where the declaration says "backed" (ADR-0212). Measured 2026-09-12: zero manife
 `.model` across every host UI, starter and JS package; the one PHP reader is frame's own
 `ResourceAuthorizer`.
 
+**The manifest row carries no PHP class-string at all** (`schemastud/laravel-frame docs/adr/0004-…`).
+A class-bearing slot is one of two kinds. A Data-class slot (`data`, `editData`, `createResultData`)
+ships its generated type's dot-form name. A server-side input (`model`, `query`, `policy`, the filter
+and summary providers) is hidden from the JSON, the TS type and the response schema. `policy:` is
+hidden whether it holds a Gate ability or a policy class; the client asks the injected `can()`.
+Declare either kind freely. The projection happens in frame's `ResourceDefinition`, not in your
+declaration.
+
 **Two schema-driven UI rungs terminate in `@schemastud/seam`**, and neither wants per-resource UI code:
 `@schemastud/frame` renders admin CRUD straight off a `#[ParticleResource]`'s manifest fields
-(`label`, `form`, `editData`, `layout`, …); BeamUx renders a site's own front-end off a `BeamUxEntry`'s
+(`label`, `form`, `layout`, … — the edit form's schema comes from `…/resources/{key}/schema`, which
+reflects `editData ?? data` server-side); BeamUx renders a site's own front-end off a `BeamUxEntry`'s
 schema. A `.tsx` component's props can be *inferred* into a draft JSON Schema — never with fabricated
 widgets or `$ref`s, and graduating the draft is a separate authoring act.
 

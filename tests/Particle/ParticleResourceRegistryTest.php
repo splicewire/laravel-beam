@@ -59,6 +59,8 @@ class ParticleResourceRegistryTest extends TestCase
      * `toArray()`, which is what `GET /frame/manifest` serializes). `model` is a server-side input —
      * frame's write gate reads it from the object — and never a wire key; `data` names the GENERATED
      * type in dot form, never the PHP class (schemastud/laravel-frame ADR-0002, composite-backing 01).
+     * `editData` takes the same projection; `query` and `policy` are server-side inputs, absent from the
+     * wire like `model` (ADR-0004) — the whole projected entry carries no backslash.
      */
     public function test_the_projection_wire_carries_no_model_and_names_the_generated_type(): void
     {
@@ -68,6 +70,9 @@ class ParticleResourceRegistryTest extends TestCase
             backing: 'App\\Models\\Widget',
             data: WidgetGateData::class,
             label: 'Widgets',
+            editData: 'App\\Data\\WidgetEditData',
+            policy: 'App\\Policies\\WidgetPolicy',
+            query: 'App\\Queries\\WidgetQuery',
         ));
 
         $definition = $registry->definition('widgets');
@@ -77,9 +82,16 @@ class ParticleResourceRegistryTest extends TestCase
         $this->assertSame('App\\Models\\Widget', $definition->model);
         $this->assertSame(WidgetGateData::class, $definition->data);
 
+        $this->assertSame('App\\Data\\WidgetEditData', $definition->editData);
+        $this->assertSame('App\\Policies\\WidgetPolicy', $definition->policy);
+        $this->assertSame('App\\Queries\\WidgetQuery', $definition->query);
+
         $this->assertArrayNotHasKey('model', $wire);
+        $this->assertArrayNotHasKey('query', $wire);
+        $this->assertArrayNotHasKey('policy', $wire);
         $this->assertSame(str_replace('\\', '.', WidgetGateData::class), $wire['data']);
-        $this->assertStringNotContainsString('\\', json_encode($wire['data']));
+        $this->assertSame('App.Data.WidgetEditData', $wire['editData']);
+        $this->assertStringNotContainsString('\\', json_encode($wire));
     }
 
     public function test_it_projects_per_realm_at_build_not_frozen_at_registration(): void
