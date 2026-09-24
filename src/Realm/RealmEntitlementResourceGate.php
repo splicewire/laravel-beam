@@ -6,6 +6,7 @@ use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Support\Facades\Auth;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
@@ -164,11 +165,15 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
      * explicitly mounted realm, that realm's gate). An ungated membership lets anyone through the socket,
      * so it cannot vouch for a population, and a resource in no realm has no realm authority at all.
      *
-     * {@see \Splicewire\Beam\Authorization\ResourceReadGuard::inspectRead()} counts this as a read
+     * {@see ResourceReadGuard::inspectRead()} counts this as a read
      * authorization beside a policy, tenancy and a query predicate (ux-demo replay 2026-09-23).
      */
-    public function entitledThroughRealm(string $key): bool
+    public function entitledThroughRealm(string $key, ?Gate $as = null): bool
     {
+        // `$as` is a Gate already bound to the actor being asked about (ResourceReadGuard::inspectReadFor());
+        // without one, the ambient user is asked.
+        $gate = $as ?? $this->gate;
+
         $realms = $this->particles->realmsFor($key);
 
         if ($realms === []) {
@@ -182,7 +187,7 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
             }
             $ability = $this->abilityFor($mountedRealm);
 
-            return $ability !== null && $this->gate->allows($ability);
+            return $ability !== null && $gate->allows($ability);
         }
 
         $abilities = [];
@@ -195,7 +200,7 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
         }
 
         foreach ($abilities as $ability) {
-            if ($this->gate->allows($ability)) {
+            if ($gate->allows($ability)) {
                 return true;
             }
         }

@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Authorization;
 
 use Illuminate\Auth\Access\Response;
+use Illuminate\Contracts\Auth\Access\Gate as GateContract;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
@@ -25,6 +27,22 @@ class ResourceReadGuard
     /** Inspect the declared read boundary before caller filters or record selection can narrow it. */
     public function inspectRead(ParticleResource $resource, Request $request): Response
     {
+        return $this->inspect($resource, $request, Gate::getFacadeRoot());
+    }
+
+    /**
+     * The same decision as {@see inspectRead()}, asked for a NAMED actor rather than the ambient one — so
+     * a surface that offers a resource ({@see ResourceVisibility::listable()}: the nav, the realm
+     * dashboard's cards, the registry) answers from this boundary instead of a parallel rule. A null
+     * actor is a guest: every Gate arm is asked of nobody.
+     */
+    public function inspectReadFor(ParticleResource $resource, Request $request, ?Authenticatable $actor): Response
+    {
+        return $this->inspect($resource, $request, Gate::forUser($actor));
+    }
+
+    private function inspect(ParticleResource $resource, Request $request, GateContract $gate): Response
+    {
         if ($this->policyBound($resource) !== false) {
             return Response::allow();
         }
@@ -46,11 +64,11 @@ class ResourceReadGuard
 
         // A hard realm entitlement the caller holds: the realm gate has already refused everyone else at
         // the socket, so this population is exactly what the caller was authorized for.
-        if (app(RealmEntitlementResourceGate::class)->entitledThroughRealm($resource->key)) {
+        if (app(RealmEntitlementResourceGate::class)->entitledThroughRealm($resource->key, $gate)) {
             return Response::allow();
         }
 
-        return Gate::inspect('viewAny', $resource->modelClass());
+        return $gate->inspect('viewAny', $resource->modelClass());
     }
 
     /** Null means this environment could not build the declared authorization bases. */

@@ -16,6 +16,7 @@ use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
+use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\Backing\ResourceBacking;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -191,6 +192,27 @@ class UngatedResourceReadTest extends TestCase
         $this->declare();
 
         $this->getJson('/frame/resources/gadgets')->assertForbidden();
+    }
+
+    /**
+     * A surface must not offer what the read boundary refuses: `listable()` asks this guard for a
+     * policy-less model-backed resource, for the NAMED actor — the ambient user here is entitled, and a
+     * guest asked about in the same request is still refused.
+     */
+    public function test_listing_a_policy_less_resource_follows_the_read_boundary_for_the_named_actor(): void
+    {
+        $this->declare();
+        $definition = app(ParticleResourceRegistry::class)->get('gadgets')->toResourceDefinition();
+        $visibility = app(ResourceVisibility::class);
+
+        $this->assertFalse($visibility->listable($definition, auth()->user()));
+
+        config(['beam.core.realm_gates' => ['staffroom' => ['entitlement' => 'staff.read']]]);
+        app(ParticleResourceRegistry::class)->loadRealmMap(['staffroom' => ['gadgets']]);
+        Gate::define('entitlement:staff.read', fn ($user) => $user !== null);
+
+        $this->assertTrue($visibility->listable($definition, auth()->user()));
+        $this->assertFalse($visibility->listable($definition, null));
     }
 
     public function test_a_relative_list_with_a_valid_variant_keeps_its_parent_intersection(): void

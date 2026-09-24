@@ -11,7 +11,9 @@ use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\BacksModel;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Particle\ScopedIndexQuery;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
+use Throwable;
 use TypeError;
 
 /**
@@ -72,7 +74,8 @@ use TypeError;
  *  - {@see listable()} — the nav. {@see readable()}, plus the model-backed `viewAny` reading moved here
  *    verbatim from the package collector, plus one bound: a null actor is never SHOWN a model-less
  *    resource — the 2026-09-05 rule (*anonymous is bounded above by authenticated*) applied to the arm
- *    that used to return before it could run.
+ *    that used to return before it could run. A policy-less model-backed resource is listed only where
+ *    {@see ResourceReadGuard} admits the actor, so no surface offers what the read boundary refuses.
  */
 class ResourceVisibility
 {
@@ -121,6 +124,14 @@ class ResourceVisibility
      * otherwise — a missing policy on a READ falls through to the row scope (api-surface-coherence 135,
      * ADR-0156 §83), and a null actor cannot satisfy a bound `viewAny` (2026-09-05). A model-less resource:
      * never to a null actor, and otherwise {@see readable()}.
+     *
+     * A model-backed resource with NO policy bound is shown only when {@see ResourceReadGuard} would let
+     * this actor read it — tenancy, a declared row predicate, or a hard realm entitlement the actor holds
+     * (laravel-beam 473fbfd, 49a7612). A surface must not offer what the read boundary refuses: before
+     * this, a guest was listed a policy-less, unscoped resource whose every read — the dashboard card's
+     * own summary included — the guard then refused. The guard is asked, never re-spelled here, so the
+     * listing and the read cannot answer two ways. A manifest-only definition (no registered declaration)
+     * has no guard to ask, exactly as {@see ScopedIndexQuery::forDefinition()}.
      */
     public function listable(ResourceDefinition $definition, ?Authenticatable $actor): bool
     {
@@ -130,11 +141,36 @@ class ResourceVisibility
 
         $policy = $this->gate->getPolicyFor($definition->model);
 
-        if ($policy === null || ! method_exists($policy, 'viewAny')) {
+        if ($policy === null) {
+            return $this->readBoundaryAdmits($definition, $actor);
+        }
+
+        if (! method_exists($policy, 'viewAny')) {
             return true;
         }
 
         return $actor !== null && $this->gate->forUser($actor)->allows('viewAny', $definition->model);
+    }
+
+    /**
+     * Does {@see ResourceReadGuard} admit `$actor` to this declaration's reads, on the current request (the
+     * same request the guard reads on the socket and in {@see ScopedIndexQuery})?
+     * A guard that throws — a backing this request cannot build — fails CLOSED: a listing is
+     * secure-by-omission, and a nav build must not crash on one declaration.
+     */
+    private function readBoundaryAdmits(ResourceDefinition $definition, ?Authenticatable $actor): bool
+    {
+        $resource = $this->particles->find($definition->key);
+
+        if ($resource === null) {
+            return true;
+        }
+
+        try {
+            return ResourceReadGuard::forApp()->inspectReadFor($resource, request(), $actor)->allowed();
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**
