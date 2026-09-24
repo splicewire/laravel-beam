@@ -242,6 +242,14 @@ class ResourceMountMap
      * middleware only some of the mount's routes carry gates those routes, and the listing reports them
      * per-route through {@see RouteReachability} instead.
      *
+     * ⚠️ `gatherMiddleware()` asks the controller for its middleware, which INSTANTIATES the controller
+     * and caches it on the route. This runs at boot ({@see ResourceDiscoveryAutoMounter}), so every
+     * mounted `ParticleController` used to be built before the first request, freezing its constructor
+     * graph — the `ParticleWriter`, and through it the event dispatcher and write gate — as it stood at
+     * boot. A request then wrote through that stale writer: `Event::fake()` never saw
+     * `BeamParticlePersisted`, and a worker would reuse one controller across requests. The instance
+     * is dropped again unless the route already held one, so this read leaves the route as it found it.
+     *
      * @param  list<Route>  $routes
      * @return list<string>
      */
@@ -250,7 +258,12 @@ class ResourceMountMap
         $common = null;
 
         foreach ($routes as $route) {
+            $alreadyResolved = $route->controller !== null;
             $middleware = array_values(array_filter($route->gatherMiddleware(), 'is_string'));
+
+            if (! $alreadyResolved) {
+                $route->controller = null;
+            }
 
             $common = $common === null
                 ? $middleware
