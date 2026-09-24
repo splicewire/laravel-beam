@@ -180,7 +180,11 @@ class ResourceFilters
         return (new JsonSchemaGenerator(['strategies' => config('data-schemas.strategies')]))->generate(new \ReflectionClass($definition->data));
     }
 
-    /** Metadata uses the same declared row boundary as reads, without requiring class-wide access. */
+    /**
+     * Metadata uses the same declared row boundary as reads, without requiring class-wide access. A
+     * boundary that admits no row for the caller ({@see ResourceReadGuard::admitsNoRows()}) is a refusal,
+     * not a scope, and grants no metadata.
+     */
     public function authorizeModel(?string $model, ?ParticleResource $resource): void
     {
         if ($model === null || ($policy = Gate::getPolicyFor($model)) === null || ! method_exists($policy, 'viewAny')) {
@@ -188,8 +192,9 @@ class ResourceFilters
         }
 
         $permission = Gate::inspect('viewAny', $model);
+        $guard = app(ResourceReadGuard::class);
         if ($permission->allowed() || ($resource !== null && $resource->modelClass() === $model
-            && app(ResourceReadGuard::class)->scoped($resource, request()) === true)) {
+            && $guard->scoped($resource, request()) === true && ! $guard->admitsNoRows($resource, request()))) {
             return;
         }
 

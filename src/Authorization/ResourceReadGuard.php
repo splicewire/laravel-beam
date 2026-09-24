@@ -93,6 +93,42 @@ class ResourceReadGuard
     }
 
     /**
+     * Does the declared boundary admit NO row for this caller? True when some authorization base is
+     * narrowed, at its top level, by the estate's fail-closed predicate `1 = 0` — what
+     * {@see RowAuthorization::apply()} and the cascade's `scopeForUser()` return for an actor holding no
+     * view token. The bases are intersected, so one empty base empties the whole population.
+     *
+     * {@see scoped()} reads structure and counts that predicate as a scope. A scope that admits nothing
+     * is a refusal, not an ownership boundary, and it cannot vouch for anything read beside the rows —
+     * measured 2026-09-24 at `~/Herd/splicewire-app`: a user holding no permission read `fragments`'
+     * filter schema and its silo option LABELS because `where 1 = 0` answered `scoped() === true`.
+     * False when the bases cannot be built (the {@see scoped()} null case decides that on its own).
+     */
+    public function admitsNoRows(ParticleResource $resource, ?Request $request = null): bool
+    {
+        if (! $resource->backing() instanceof QueriesRecords) {
+            return false;
+        }
+        try {
+            $bases = app(ParticleListQuery::class)->authorizationBases($resource, $request ?? Request::create('/'));
+        } catch (Throwable) {
+            return false;
+        }
+
+        foreach ($bases as $builder) {
+            $base = $builder instanceof EloquentBuilder ? $builder->toBase() : $builder->getQuery();
+            foreach ($base->wheres ?? [] as $where) {
+                if (($where['type'] ?? null) === 'raw' && ($where['boolean'] ?? 'and') === 'and'
+                    && in_array(preg_replace('/\s+/', '', (string) ($where['sql'] ?? '')), ['1=0', '0=1'], true)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Is ANY policy bound for the resource's model? `null` when the backing names no Eloquent model —
      * a backing that streams its own records is outside the row plane this class reads.
      */

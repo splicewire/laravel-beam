@@ -136,6 +136,19 @@ class FilterVariantExecutionTest extends TestCase
         $this->getJson('frame/resources/variant-records/filters/options/variant-statuses')->assertNotFound();
     }
 
+    public function test_a_boundary_that_admits_no_row_grants_no_metadata(): void
+    {
+        // `1 = 0` is the estate's fail-closed row scope for an actor holding no view token. Structurally
+        // it is a predicate; it is a refusal, and must not stand in for the ownership scope above.
+        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
+        DataFilter::registry()->registerDefinition(new ResourceDefinition('variant-records', CanonicalVariantFilters::class,
+            NoRowVariantQuery::class, VariantRecord::class));
+        DataFilter::options('variant-statuses', fn () => throw new \RuntimeException('Refused options executed'));
+        $this->getJson('frame/resources/variant-records/filters/schema')->assertForbidden();
+        $this->getJson('frame/resources/variant-records/filters/variants')->assertForbidden();
+        $this->getJson('frame/resources/variant-records/filters/options/variant-statuses')->assertForbidden();
+    }
+
     public function test_scope_permission_does_not_transfer_to_another_filter_model(): void
     {
         Gate::policy(User::class, DeniedVariantModelPolicy::class);
@@ -387,5 +400,13 @@ class UnscopedVariantQuery extends ResourceQuery
     protected function baseQuery(Request $request): Builder
     {
         return VariantRecord::query();
+    }
+}
+
+class NoRowVariantQuery extends ResourceQuery
+{
+    protected function baseQuery(Request $request): Builder
+    {
+        return VariantRecord::query()->whereRaw('1 = 0');
     }
 }
