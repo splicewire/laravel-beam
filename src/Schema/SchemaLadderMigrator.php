@@ -262,16 +262,13 @@ class SchemaLadderMigrator implements Migrator, RecordReconciler
             }
         }
 
-        $result = $ladder->migrate($payload, $old, $new);
+        $migrated = $this->climb($ladder, $payload, $old, $new);
 
-        if ($result->wasMigrated()) {
-            /** @var array<string, mixed> $migrated */
-            $migrated = $result->migrated;
-
+        if ($migrated !== null) {
             return MigrationOutcome::migrated($migrated, (string) $currentId);
         }
 
-        return MigrationOutcome::failed($result->original, $storedId);
+        return MigrationOutcome::failed($payload, $storedId);
     }
 
     /**
@@ -316,17 +313,101 @@ class SchemaLadderMigrator implements Migrator, RecordReconciler
         // Cheap rungs only: the DEFAULT ladder is structural + declared-mapping (+ a
         // custom rung that abstains with no registry) and explicitly EXCLUDES the
         // LLM-try rung. So resolving it can never reach an LLM.
-        $result = MigrationLadder::default()->migrate($payload, $old, $new);
+        $migrated = $this->climb(MigrationLadder::default(), $payload, $old, $new);
 
-        if ($result->wasMigrated()) {
-            /** @var array<string, mixed> $migrated */
-            $migrated = $result->migrated;
-
+        if ($migrated !== null) {
             return MigrationOutcome::migrated($migrated, (string) $currentId);
         }
 
         // The ladder's null floor: unmigratable by cheap rungs, original preserved.
-        return MigrationOutcome::failed($result->original, $storedId);
+        return MigrationOutcome::failed($payload, $storedId);
+    }
+
+    /**
+     * Run a stored payload up the ladder with its empty objects spelled as `{}`, and hand back the
+     * migrated candidate in the caller's spelling — or null when every rung abstained.
+     *
+     * The forward twin of the {@see readAtVersion()} normalization. A stored payload is
+     * array-decoded, so `{"config": {}}` arrives as `['config' => []]`; every rung carries that `[]`
+     * into its candidate and the acceptance gate refuses it against the target's `type: object`, so a
+     * record whose only defect is PHP's spelling fell to the quarantine floor. The payload is restored
+     * against the OLD schema — the one it was written under, and so the one that knows which of its
+     * empty values are objects — using the intake door's walk ({@see JsonDocumentShape}).
+     *
+     * The re-spelling is for the ladder only. Every `{}` this call introduced is turned back into `[]`
+     * in the migrated candidate, so the outcome's readers (`Data::from()`, snapshot restore) see the
+     * same PHP shape the stored record had. An empty object a RUNG supplied for an added field
+     * (`MigrationRung::emptyForType()`) is the ladder's own spelling and is left as it was. The failed
+     * arm never sees the restored document: callers report the original payload.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $old
+     * @param  array<string, mixed>  $new
+     * @return array<string, mixed>|null
+     */
+    protected function climb(MigrationLadder $ladder, array $payload, array $old, array $new): ?array
+    {
+        $document = (new JsonDocumentShape)->restore($payload, $old);
+        $document = is_array($document) ? $document : $payload;
+
+        $introduced = $this->objectsIn($document);
+        foreach ($this->objectsIn($payload) as $existing) {
+            $introduced->detach($existing);
+        }
+
+        $result = $ladder->migrate($document, $old, $new);
+
+        if (! $result->wasMigrated()) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $migrated */
+        $migrated = $this->respell($result->migrated, $introduced);
+
+        return $migrated;
+    }
+
+    /**
+     * Every `stdClass` reachable through the arrays of a value.
+     *
+     * @return \SplObjectStorage<\stdClass, null>
+     */
+    private function objectsIn(mixed $value, ?\SplObjectStorage $found = null): \SplObjectStorage
+    {
+        $found ??= new \SplObjectStorage;
+
+        if ($value instanceof \stdClass) {
+            $found->attach($value);
+            $value = get_object_vars($value);
+        }
+
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                $this->objectsIn($item, $found);
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Turn each object {@see climb()} introduced back into the empty PHP array it was restored from.
+     *
+     * @param  \SplObjectStorage<\stdClass, null>  $introduced
+     */
+    private function respell(mixed $value, \SplObjectStorage $introduced): mixed
+    {
+        if ($value instanceof \stdClass && $introduced->contains($value)) {
+            return [];
+        }
+
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                $value[$key] = $this->respell($item, $introduced);
+            }
+        }
+
+        return $value;
     }
 
     /**
