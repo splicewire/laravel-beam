@@ -192,7 +192,16 @@ class SchemaLadderMigrator implements Migrator, RecordReconciler
             return MigrationOutcome::failedReadOnly($payload, null);
         }
 
-        if ((new AcceptanceGate)->accepts($payload, $target)) {
+        // A stored payload arrives array-decoded, so an empty JSON object (`{}`) reads back as `[]` and
+        // opis would refuse it against its own `type: object` — a thread whose `config` is empty failed
+        // its pinned read for no reason but PHP's spelling. Restore `{}` where the PINNED schema says
+        // object and not array, exactly as the intake door does (JsonDocumentShape, beam `3375c92`),
+        // before the check. The spelling is for the gate only: the outcome never carries it, and the
+        // gate's own strictness (`[]` is not an object — data-schemas `DeclaredDefaultKeywordTest`)
+        // is unchanged.
+        $document = (new JsonDocumentShape)->restore($payload, $target);
+
+        if ((new AcceptanceGate)->accepts(is_array($document) ? $document : $payload, $target)) {
             // Conforms under the pinned version — a pure view, never written back.
             return MigrationOutcome::current($targetId);
         }
