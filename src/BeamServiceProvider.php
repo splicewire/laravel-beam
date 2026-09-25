@@ -32,9 +32,11 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\Generator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Schemastud\Frame\Authorization\DenyingResourceActionAuthorizer;
 use Schemastud\Frame\Authorization\OpenResourceAccessGate;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
+use Schemastud\Frame\Contracts\ResourceActionAuthorizer;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
 use Schemastud\Frame\Contracts\WriteSubjectResolver;
 use Schemastud\Frame\Realm\RealmDefinition;
@@ -89,6 +91,7 @@ use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Doctor\Support\FamilyTailwindScan;
 use Splicewire\Beam\Doctor\Support\TrackerTicketStatus;
 use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
+use Splicewire\Beam\Doctor\UndeclaredAffordanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UndeclaredOutputAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
@@ -109,6 +112,8 @@ use Splicewire\Beam\Filters\Data\SavedFilterData;
 use Splicewire\Beam\Filters\SavedFilterPolicy;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Frame\FrameResourceManifest;
+use Splicewire\Beam\Frame\ParticleActionAuthorizer;
+use Splicewire\Beam\Frame\ParticleResourceActions;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\ConfiguredResponseEnvelope;
@@ -568,6 +573,21 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // up unscoped, which found rows outside the caller's reach and answered 403 where the handler's
         // scoped lookup answers 404. Beam owns the declared row scope, so beam answers the lookup.
         $this->app->bind(WriteSubjectResolver::class, ParticleWriteSubjectResolver::class);
+
+        // Frame's ACTION port (particle-operation-surface 21, ADR-0223): may this actor press a projected
+        // `#[ParticleOp]`'s button? Beam answers with the rule the op's mount enforces. Frame binds a
+        // deny-everything default in its own register(), so — exactly as for the access gate above —
+        // discovery order would decide the winner; once every provider has registered, frame's default is
+        // re-bound to beam's answer, and a host's own binding is left standing.
+        $this->app->bind(ResourceActionAuthorizer::class, ParticleActionAuthorizer::class);
+        $this->app->booted(function (): void {
+            if ($this->app->make(ResourceActionAuthorizer::class) instanceof DenyingResourceActionAuthorizer) {
+                $this->app->bind(ResourceActionAuthorizer::class, ParticleActionAuthorizer::class);
+            }
+        });
+
+        // The projection of opted-in ops onto frame's `actions:` reads the router once per request.
+        $this->app->scoped(ParticleResourceActions::class);
 
         // Tenant resolvability (realm-architecture ticket 08): the re-home of the retired
         // RealmDefinition::$tenancy flag. Default resolves the `tenant` realm when config('frame.tenancy')
@@ -1073,6 +1093,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // provider CLOSURES a static scan structurally cannot see, and all five respond-bearing attributed
         // op classes estate-wide already declare, so the static twin has no population to read.
         $manifest->register('splicewire/laravel-beam', UndeclaredOutputAudit::class);
+        // The `affordance:` twin (particle-operation-surface 21, ADR-0223): Write ops that never said whether
+        // frame draws them, counted warn-level on the same schedule, plus declared affordances frame cannot
+        // place (a `ParentSubject` op). Registry-side, like the two above.
+        $manifest->register('splicewire/laravel-beam', UndeclaredAffordanceAudit::class);
         // A declared `IdConstraint` measured against the model's REAL key type
         // (particle-operation-surface 14 gate 1). Advisory, because a key type is a fact about the
         // HOST and not grammar a package's declaration could have gotten right blind — and registry-

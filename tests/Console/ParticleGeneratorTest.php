@@ -241,12 +241,34 @@ class ParticleGeneratorTest extends TestCase
         // The ability slot gets a kind-derived default rather than a null — an emitted `ability: null` teaches
         // the opposite of what a deny-default slot is for.
         $this->assertStringContainsString("ability: 'update',", $op);
+        // `affordance:` is emitted explicitly (particle-operation-surface 21): leaving it off is the
+        // undeclared state `particle.operation-affordance` counts, so the default is a written `false`.
+        $this->assertStringContainsString('affordance: false,', $op);
 
         // Discovery THROWS on an op class with no `handle()`, so the generator emitting one is not cosmetic.
         $this->assertStringContainsString('public static function handle(', $op);
 
         $this->assertFileExists($this->host.'/app/Data/RegenerateInputData.php');
         $this->assertFileExists($this->host.'/app/Data/RegenerateOutputData.php');
+    }
+
+    public function test_the_op_generator_draws_a_frame_action_on_request_and_refuses_an_unknown_affordance(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-op', [
+            'name' => 'ReloadOp',
+            '--resource' => 'lyrics',
+            '--model' => 'Lyric',
+            '--affordance' => 'action',
+        ])->assertSuccessful();
+
+        $this->assertStringContainsString("affordance: 'action',", $this->read('app/Particle/Operations/ReloadOp.php'));
+
+        $this->artisan('splicewire:beam:make:particle-op', [
+            'name' => 'ButtonOp',
+            '--resource' => 'lyrics',
+            '--model' => 'Lyric',
+            '--affordance' => 'button',
+        ])->assertFailed();
     }
 
     // ── kind-correctness: a wrong output shape FATALS at registration ───────────────────────────────

@@ -36,6 +36,7 @@ use Splicewire\Beam\Particle\OperationKind;
     name: '{{ opName }}',
     kind: OperationKind::Stream,
     ability: '{{ ability }}',
+    affordance: {{ affordance }},
     input: {{ inputClass }}::class,
     output: ['{{ event }}' => [{{ outputClass }}::class]],
 )]

@@ -29,8 +29,17 @@ Three legal declaration sites — no fourth:
    attrition, not by a rename.
 
 Don't hand-roll: `splicewire:beam:make:particle-resource` and `splicewire:beam:make:particle-op`
-emit the attribute with every SHAPE slot filled (`input:`, `output:`, `ability:` — a default-valued slot such as `method:` or `signed:` is deliberately omitted, because an omission and a decision must not be spelled the same), the classes those slots name, and the
+emit the attribute with every SHAPE slot filled (`input:`, `output:`, `ability:`, and on an op `affordance:` — a default-valued slot such as `method:` or `signed:` is deliberately omitted, because an omission and a decision must not be spelled the same), the classes those slots name, and the
 `Particle::mount()` / `Particle::ops()` mount line to paste into the host's route file.
+
+## Where an operation renders
+
+An op that declares `affordance: 'action'` (or `new ActionAffordance(label: …)`) is drawn by frame on its
+resource's framed screen: beside the list's "New" when its subject has no coordinates, on each row and the
+detail page when it addresses `{id}`. Its form is its `input:` (`input: false` is a confirm-only button), its
+URL is its own mount, and its visibility is its own `ability:` on the plane the mount checks. `false` keeps it
+API-only; omitted is undeclared and `particle.operation-affordance` counts it on a Write. A `ParentSubject` op
+has no placement. Decision: ADR-0223 (and schemastud/laravel-frame ADR-0005 for the generic action).
 
 ## Where an operation mounts
 

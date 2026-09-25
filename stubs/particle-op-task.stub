@@ -35,6 +35,7 @@ use Splicewire\Beam\Particle\OperationKind;
     name: '{{ opName }}',
     kind: OperationKind::Task,
     ability: '{{ ability }}',
+    affordance: {{ affordance }},
     input: {{ inputClass }}::class,
     output: {{ outputClass }}::class,
 )]

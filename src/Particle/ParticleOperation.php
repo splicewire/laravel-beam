@@ -9,6 +9,7 @@ use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Authorization\AbilityResolver;
+use Splicewire\Beam\Doctor\UndeclaredAffordanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
@@ -496,8 +497,56 @@ class ParticleOperation implements HasRegistryKey
         public ?IdConstraint $idConstraint = null,
         public DeclaresDelivery|string|null $delivery = null,
         public ?string $model = null,
+        public ActionAffordance|string|false|null $affordance = null,
     ) {
         $this->assertOutputMatchesKind();
+        $this->assertAffordanceSpelling();
+    }
+
+    /**
+     * `affordance:` is THREE-state, like `input:` and `ability:` (particle-operation-surface 21, ADR-0223):
+     *
+     *   - an {@see ActionAffordance} (or the shorthand `'action'`) — frame draws this op as an action on its
+     *     resource's framed screen;
+     *   - **`false`** — declared NOT to be drawn. A decision: the op is API-only, or its screen is the host's;
+     *   - **`null`** — undeclared. Nothing is drawn, exactly as before the slot existed, and
+     *     {@see UndeclaredAffordanceAudit} counts it on a Write so the omission stays
+     *     visible until someone decides.
+     *
+     * The only string the slot accepts is the shorthand; anything else is a declaration the author could have
+     * spelled right, so it fails at registration rather than rendering nothing.
+     */
+    private function assertAffordanceSpelling(): void
+    {
+        if (is_string($this->affordance) && $this->affordance !== ActionAffordance::Shorthand) {
+            throw new InvalidArgumentException(sprintf(
+                "Particle operation [%s] declares `affordance: '%s'`. The slot takes `'%s'`, a `new %s(...)`, "
+                .'`false` (declared not drawn) or nothing (undeclared).',
+                $this->key(),
+                $this->affordance,
+                ActionAffordance::Shorthand,
+                ActionAffordance::class,
+            ));
+        }
+    }
+
+    /**
+     * The declared action affordance, with the shorthand expanded — null for both `false` and undeclared,
+     * which the caller distinguishes through `$affordance` itself when it needs to (the audit does).
+     */
+    public function actionAffordance(): ?ActionAffordance
+    {
+        return match (true) {
+            $this->affordance instanceof ActionAffordance => $this->affordance,
+            $this->affordance === ActionAffordance::Shorthand => new ActionAffordance,
+            default => null,
+        };
+    }
+
+    /** Whether `affordance:` was left undeclared — the residue state, not the declared `false`. */
+    public function affordanceUndeclared(): bool
+    {
+        return $this->affordance === null;
     }
 
     /**

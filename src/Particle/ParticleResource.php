@@ -13,10 +13,12 @@ use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\ResourceFilterProvider;
 use Schemastud\Frame\Contracts\ResourceSummaryProvider;
 use Schemastud\Frame\Registry\NavMetadata;
+use Schemastud\Frame\Registry\ResourceActionDefinition;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Filters\BeamResourceFilterProvider;
+use Splicewire\Beam\Frame\ParticleResourceActions;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\EloquentBacking;
 use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
@@ -394,6 +396,21 @@ class ParticleResource implements HasRegistryKey
             // reason) and reached only the docs generator; frame's list toolbar was rendering the
             // raw KEY — "New scaffold-packs" — for a word the declaration already carried.
             singularLabel: $this->singularLabel,
+            // The resource's opted-in operations, as frame ACTIONS (particle-operation-surface 21,
+            // ADR-0223): an op declaring `affordance:` whose subject frame can place and which this host
+            // mounted. Read off the operation registry and the router rather than declared here, because the
+            // op is the declaration — a second list on the resource would be a second place to say it.
+            actions: $this->frameActions(),
         );
+    }
+
+    /** @return list<ResourceActionDefinition> */
+    protected function frameActions(): array
+    {
+        if (! function_exists('app') || ! app()->bound(ParticleOperationRegistry::class)) {
+            return [];
+        }
+
+        return app(ParticleResourceActions::class)->for($this->key);
     }
 }

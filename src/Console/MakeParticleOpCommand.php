@@ -31,6 +31,11 @@ use Symfony\Component\Console\Input\InputOption;
  * what the slot is for. A read defaults to `view`, a mutation to `update` — both wrong often enough to be
  * noticed and edited, which is the point; silence would not be.
  *
+ * ## `affordance:` is emitted explicitly, `false` unless `--affordance=action`
+ * Leaving the slot off is the UNDECLARED state `particle.operation-affordance` counts on a Write, so the stub
+ * always writes one. `false` (API-only) is the default because a button is a decision about a screen this
+ * command cannot see; the explicit `false` is one word to flip.
+ *
  * ## What it deliberately does NOT do
  * It does not mount a route and does not create the resource. An op hangs off an existing particle resource
  * key; if that key is not registered, the op's route resolves to nothing and that is a wiring error a
@@ -69,6 +74,8 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
     protected string $resolvedAbility = '';
 
     protected string $resolvedEvent = '';
+
+    protected string $resolvedAffordance = 'false';
 
     protected string $inputClass = '';
 
@@ -133,6 +140,20 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             ? $ability
             : self::DEFAULT_ABILITY[$kind->value];
 
+        // `affordance:` is emitted EXPLICITLY on every kind (particle-operation-surface 21): an omitted slot
+        // is the undeclared state `particle.operation-affordance` counts, so the generator never writes one.
+        // `false` (API-only) is the default because drawing a button is a presentation decision about a
+        // screen this command cannot see; `--affordance=action` draws it.
+        $affordance = strtolower((string) $this->option('affordance'));
+
+        if (! in_array($affordance, ['action', 'false'], true)) {
+            $this->components->error("Unknown --affordance [{$affordance}]. One of: action, false.");
+
+            return self::FAILURE;
+        }
+
+        $this->resolvedAffordance = $affordance === 'action' ? "'action'" : 'false';
+
         $event = $this->option('event');
         $this->resolvedEvent = is_string($event) && $event !== ''
             ? $event
@@ -196,6 +217,7 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             'kind' => Str::studly($this->resolvedKind->value),
             'kindLabel' => $this->resolvedKind->value,
             'ability' => $this->resolvedAbility,
+            'affordance' => $this->resolvedAffordance,
             'event' => $this->resolvedEvent,
             'model' => class_basename($this->resolvedModel),
             'namespacedModel' => $this->resolvedModel,
@@ -217,6 +239,7 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             ['op', 'o', InputOption::VALUE_REQUIRED, 'The operation slug in the URL, …/{id}/{name} (default: the kebab-cased <Name>)'],
             ['model', 'm', InputOption::VALUE_REQUIRED, 'The Eloquent model to TYPE-HINT `handle()` with (default: derived from the resource key). It no longer emits a `model:` slot — particle-operation-surface 18 retired that, and the subject is resolved from the resource'],
             ['ability', 'a', InputOption::VALUE_REQUIRED, 'The ability checked before the op runs (default: view for read/stream, update for write/task)'],
+            ['affordance', null, InputOption::VALUE_REQUIRED, "action | false — whether frame draws the op as an action on its resource's framed screen (a form from `input:`), or keeps it API-only. Emitted explicitly either way", 'false'],
             ['event', 'e', InputOption::VALUE_REQUIRED, 'Stream only: the wire event name the output map is keyed by (default: <name>_status)'],
             ['data-namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the emitted input/output Data classes (default: App\Data)'],
             ['force', 'f', InputOption::VALUE_NONE, 'Overwrite the operation class if it already exists'],

@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Particle\Attributes;
 
 use Attribute;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
+use Splicewire\Beam\Particle\ActionAffordance;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\Subject\RecordSubject;
@@ -112,6 +113,13 @@ class ParticleOp
      *                                                                          `MyDelivery::class` or `new MyDelivery` — a static
      *                                                                          factory call is not a constant expression and fatals at
      *                                                                          parse, the same trap `subject:` carries
+     * @param  ActionAffordance|'action'|false|null  $affordance  whether frame draws this op as an ACTION on its
+     *                                                            resource's framed screen (ADR-0223): an
+     *                                                            {@see ActionAffordance} or `'action'` draws it,
+     *                                                            `false` declares it API-only, `null` is
+     *                                                            undeclared and counted on a Write by
+     *                                                            `particle.operation-affordance`. The generator
+     *                                                            emits it explicitly
      */
     public function __construct(
         public string $resource,
@@ -127,5 +135,6 @@ class ParticleOp
         public ?HttpMethod $method = null,
         public ?IdConstraint $idConstraint = null,
         public DeclaresDelivery|string|null $delivery = null,
+        public ActionAffordance|string|false|null $affordance = null,
     ) {}
 }

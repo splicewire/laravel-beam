@@ -23,6 +23,10 @@ use Splicewire\Beam\Particle\OperationKind;
  *   - `ability:` deny-default authorization, checked against the resolved model. Name a different model with
  *                `abilityModel:` when the op authorizes across models.
  *
+ * `affordance:` says whether frame draws this op as an ACTION on its resource's framed screen — `'action'`
+ * (or `new ActionAffordance(label: …)`) draws it, with a form from `input:`; `false` keeps it API-only.
+ * It is emitted explicitly because leaving it off is a different statement: undeclared, and counted.
+ *
  * The attribute DECLARES; the host ROUTES. Mount it from a route file:
  *
  *     Particle::ops('{{ uri }}', '{{ resource }}', [{{ class }}::class]);
@@ -35,6 +39,7 @@ use Splicewire\Beam\Particle\OperationKind;
     name: '{{ opName }}',
     kind: OperationKind::{{ kind }},
     ability: '{{ ability }}',
+    affordance: {{ affordance }},
     input: {{ inputClass }}::class,
     output: {{ outputClass }}::class,
 )]
