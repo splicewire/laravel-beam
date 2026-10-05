@@ -78,6 +78,7 @@ use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
+use Splicewire\Beam\Doctor\IdentifierLabelAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\MarketingSampleAudit;
@@ -1076,6 +1077,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $manifest->register('splicewire/laravel-beam', UngatedOperationAudit::class);
         // app-walkthrough APP-08 (APP-11): the hand-written trio write routes nothing gates. Advisory, per host.
         $manifest->register('splicewire/laravel-beam', UngatedWriteAudit::class);
+        $manifest->register('splicewire/laravel-beam', IdentifierLabelAudit::class);
         // The `kind: Write` half of the audit above, split out and GATING (particle-write-surface 02).
         // A write operation naming no `ability:` is the one member of that residue with no legitimate
         // reading — a Read's gate is its query scope, a Write's is nothing — and "did this declaration
