@@ -17,7 +17,7 @@ use Throwable;
  * {@see AssertsHostIaSeam}.
  *
  * A host's `tests/Architecture/CommercialSeamTest.php` uses this trait and calls {@see assertCommercialSeamRatchet()}.
- * The trait computes every violation of S1–S5 and R1–R5 at that host and compares the set with the host's RATCHET, the
+ * The trait computes every violation of S1–S5, R1–R5 and I3 at that host and compares the set with the host's RATCHET, the
  * list of known violations, each owned by the BUY ticket that removes it:
  *
  * - a violation that is not listed fails (a regression);
@@ -95,6 +95,16 @@ trait AssertsCommercialSeams
         return ['app', 'database', 'vendor/splicewire/*/src', 'vendor/rushing/*/src'];
     }
 
+    /**
+     * Roots I3's seed sweep reads: where seeded data lives, never code that only READS a price id.
+     *
+     * @return list<string>
+     */
+    protected function commercialSeedRoots(): array
+    {
+        return ['database', 'vendor/splicewire/*/database', 'vendor/rushing/*/database'];
+    }
+
     /** The Stripe adapter itself, where the rail is allowed to talk to Stripe (BUY-1). */
     protected function commercialAdapterPattern(): string
     {
@@ -140,6 +150,7 @@ trait AssertsCommercialSeams
             ...$this->commercialR3(),
             ...$this->commercialR4(),
             ...$this->commercialR5(),
+            ...$this->commercialI3(),
         ];
         ksort($violations);
 
@@ -154,6 +165,28 @@ trait AssertsCommercialSeams
             if (! preg_match($this->commercialAdapterPattern(), $rel)) {
                 $out["S1 {$rel} {$pattern}"] = "line {$line}";
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * I3, one engine per fee (BUY-04): BillGenerator bills a plan's SubscriptionFee, so Stripe Billing running a recurring
+     * subscription is a second engine. It is flagged wherever it starts, the adapter included (`newSubscription(` is
+     * S1's), when a SubscriptionBinder is bound (laravel-commerce's StripeDriver starts recurring Orders through it), and
+     * when seeded data carries a Stripe price id (C-4: none until BQ-2).
+     */
+    protected function commercialI3(): array
+    {
+        $out = [];
+        foreach ($this->commercialSweep(["'mode' => 'subscription'", '"mode" => "subscription"', '->subscriptions->create(']) as [$rel, $line, $pattern]) {
+            $out["I3 recurring {$rel} {$pattern}"] = "line {$line}";
+        }
+        if (app()->bound('Rushing\\Commerce\\Contracts\\SubscriptionBinder')) {
+            $out['I3 subscription-binder-bound'] = 'recurring Orders would start a Stripe subscription';
+        }
+        foreach ($this->commercialSweep(["'price_id'", '"price_id"'], $this->commercialSeedRoots()) as [$rel, $line]) {
+            $out["I3 seeded-price-id {$rel}"] = "line {$line}";
         }
 
         return $out;
@@ -479,12 +512,13 @@ trait AssertsCommercialSeams
      * matched, the line's code]. A comment line is not a hit. A failed sweep (exit 2) fails the test.
      *
      * @param  list<string>  $patterns
+     * @param  list<string>|null  $roots  the roots to read; the sweep roots when null
      * @return list<array{0: string, 1: int, 2: string, 3: string}>
      */
-    protected function commercialSweep(array $patterns): array
+    protected function commercialSweep(array $patterns, ?array $roots = null): array
     {
         $hits = [];
-        foreach ($this->commercialResolvedRoots() as $display => $real) {
+        foreach ($this->commercialResolvedRoots($roots ?? $this->commercialSweepRoots()) as $display => $real) {
             $args = ['grep', '-rIFn', '--include=*.php'];
             foreach ($patterns as $pattern) {
                 $args[] = '-e';
@@ -520,10 +554,10 @@ trait AssertsCommercialSeams
     }
 
     /** @return array<string, string> display root (relative to the base path) => the real directory grep reads */
-    private function commercialResolvedRoots(): array
+    private function commercialResolvedRoots(array $declared): array
     {
         $roots = [];
-        foreach ($this->commercialSweepRoots() as $root) {
+        foreach ($declared as $root) {
             $absolute = str_starts_with($root, '/') ? $root : base_path($root);
             foreach (glob($absolute, GLOB_ONLYDIR) ?: [] as $dir) {
                 $real = realpath($dir);
@@ -551,7 +585,7 @@ trait AssertsCommercialSeams
         if (str_starts_with($path, $base)) {
             return substr($path, strlen($base));
         }
-        foreach ($this->commercialResolvedRoots() as $display => $real) {
+        foreach ($this->commercialResolvedRoots($this->commercialSweepRoots()) as $display => $real) {
             if (str_starts_with($path, $real.'/')) {
                 return $display.substr($path, strlen($real));
             }

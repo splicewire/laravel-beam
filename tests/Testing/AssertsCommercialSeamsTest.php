@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Testing;
 
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\AssertionFailedError;
 use Splicewire\Beam\Testing\AssertsCommercialSeams;
 use Splicewire\Beam\Tests\TestCase;
@@ -63,6 +64,14 @@ class AssertsCommercialSeamsTest extends TestCase
         return '#/adapter/Stripe/#';
     }
 
+    /** @var list<string> */
+    private array $seedRoots = [];
+
+    protected function commercialSeedRoots(): array
+    {
+        return $this->seedRoots;
+    }
+
     protected function commercialMoneyPaths(): array
     {
         return $this->paths;
@@ -76,6 +85,34 @@ class AssertsCommercialSeamsTest extends TestCase
     public function test_s1_finds_a_cashier_call_in_code_and_not_in_comments_or_the_adapter(): void
     {
         $this->assertSame(["S1 {$this->dir}/app/Billing/Gateway.php checkoutCharge("], array_keys($this->commercialS1()));
+    }
+
+    public function test_i3_finds_a_recurring_stripe_start_anywhere_even_in_the_adapter(): void
+    {
+        // BUY-04 (I3, one engine per fee): BillGenerator bills the fee, so a Stripe recurring subscription is a second
+        // engine wherever it starts. newSubscription( stays S1's.
+        file_put_contents($this->dir.'/adapter/Stripe/Recurring.php', "<?php\n\$s->checkout->sessions->create(['mode' => 'subscription']);\n// 'mode' => 'subscription' in prose\n");
+
+        $this->assertSame(["I3 recurring {$this->dir}/adapter/Stripe/Recurring.php 'mode' => 'subscription'"], array_keys($this->commercialI3()));
+    }
+
+    public function test_i3_flags_a_bound_subscription_binder(): void
+    {
+        // laravel-commerce's StripeDriver starts a Stripe subscription for a recurring Order through the host's binder.
+        $this->app->instance('Rushing\\Commerce\\Contracts\\SubscriptionBinder', new \stdClass);
+
+        $this->assertArrayHasKey('I3 subscription-binder-bound', $this->commercialI3());
+    }
+
+    public function test_i3_flags_a_seeded_stripe_price_id(): void
+    {
+        // C-4: no seeded price id until BQ-2. The seed sweep reads only the database roots.
+        mkdir($this->dir.'/database/seeders', 0777, true);
+        file_put_contents($this->dir.'/database/seeders/PlanSeeder.php', "<?php\n\$settings = ['stripe' => ['price_id' => 'price_123']];\n");
+        file_put_contents($this->dir.'/app/Billing/Reads.php', "<?php\nreturn \$plan->settings['stripe']['price_id'];\n");
+        $this->seedRoots = [$this->dir.'/database'];
+
+        $this->assertSame(["I3 seeded-price-id {$this->dir}/database/seeders/PlanSeeder.php"], array_keys($this->commercialI3()));
     }
 
     public function test_a_failed_sweep_fails_instead_of_reading_clean(): void
@@ -156,7 +193,7 @@ class AssertsCommercialSeamsTest extends TestCase
         config(['fortify.features' => []]);
         $this->assertSame([], $this->commercialR4(), 'Closed and unmounted is the clean case.');
 
-        \Illuminate\Support\Facades\Route::post('register', fn () => 'x');
+        Route::post('register', fn () => 'x');
         app('router')->getRoutes()->refreshNameLookups();
         $this->assertArrayHasKey('R4 register-mounted-while-closed', $this->commercialR4());
 
@@ -172,7 +209,7 @@ class AssertsCommercialSeamsTest extends TestCase
     public function test_r4_is_structural_while_the_host_has_not_declared_its_door(): void
     {
         $this->doorsSay('closed', declared: false);
-        \Illuminate\Support\Facades\Route::post('register', fn () => 'x');
+        Route::post('register', fn () => 'x');
         app('router')->getRoutes()->refreshNameLookups();
 
         $this->assertSame(['R4 account-doors-missing', 'R4 register-mounted-undeclared'], array_keys($this->commercialR4()));
