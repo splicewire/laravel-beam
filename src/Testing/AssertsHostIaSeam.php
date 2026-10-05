@@ -54,7 +54,8 @@ trait AssertsHostIaSeam
 
     /**
      * Roots T6 sweeps, relative to the host's base path (or absolute): source roots, then built bundles. A root that does
-     * not exist at this run (a gitignored build before a build, a js-overlay link that is off) is NAMED in the output,
+     * not exist at this run (a gitignored build before a build), or a `node_modules` package that is a published copy
+     * rather than the js-overlay link, is NAMED in the output,
      * and the ratchet entries under it are unjudged rather than stale. Absence is not a fix.
      *
      * @return array{source: list<string>, built: list<string>}
@@ -96,7 +97,7 @@ trait AssertsHostIaSeam
 
         $lines = [];
         foreach ($this->hostIaAbsentRoots as $root) {
-            $lines[] = "  SKIP   T6 root {$root} is absent here, so its ratchet entries are not judged";
+            $lines[] = "  SKIP   T6 root {$root} is absent here or a published copy (not the overlay link), so its ratchet entries are not judged";
         }
         foreach ($ratchet as $id => $owner) {
             $state = isset($found[$id]) ? '  known  ' : (isset($unjudged[$id]) ? '  unjudged ' : '  STALE  ');
@@ -304,7 +305,7 @@ trait AssertsHostIaSeam
             $paths = [];
             foreach ($roots[$kind] as $root) {
                 $path = str_starts_with($root, '/') ? $root : base_path($root);
-                if (file_exists($path)) {
+                if (file_exists($path) && $this->hostIaIsJudgedRoot($path)) {
                     $paths[realpath($path) ?: $path] = $root;
                 } elseif (! in_array($root, $this->hostIaAbsentRoots, true)) {
                     $this->hostIaAbsentRoots[] = $root;
@@ -337,6 +338,30 @@ trait AssertsHostIaSeam
         }
 
         return $out;
+    }
+
+    /**
+     * A package root under `node_modules` is judged only when it is the js-overlay LINK to a family checkout, which is
+     * what the ratchet's entries were pinned from. A published copy (the overlay off: beam-inertia publishes `src` too)
+     * is a different file set, so it is treated like an absent root: named, and its entries unjudged.
+     */
+    protected function hostIaIsJudgedRoot(string $path): bool
+    {
+        $at = strpos($path, '/node_modules/');
+        if ($at === false) {
+            return true;
+        }
+
+        $segments = explode('/', substr($path, $at + strlen('/node_modules/')));
+        $cursor = substr($path, 0, $at).'/node_modules';
+        foreach ($segments as $segment) {
+            $cursor .= '/'.$segment;
+            if (is_link($cursor)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array<string, array<string, mixed>> */

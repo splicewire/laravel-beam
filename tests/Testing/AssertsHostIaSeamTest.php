@@ -33,9 +33,7 @@ class AssertsHostIaSeamTest extends TestCase
 
     protected function tearDown(): void
     {
-        array_map('unlink', glob($this->dir.'/src/*') ?: []);
-        rmdir($this->dir.'/src');
-        rmdir($this->dir);
+        (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($this->dir);
 
         parent::tearDown();
     }
@@ -86,5 +84,31 @@ class AssertsHostIaSeamTest extends TestCase
         $this->assertSame(["T6 source {$this->dir}/src/header.tsx href=\"/operator\""], array_keys($diff['unlisted']));
         $this->assertSame(["T6 source {$this->dir}/src/clean.tsx Beam Starter"], array_keys($diff['stale']));
         $this->assertSame([], $diff['unjudged']);
+    }
+
+    public function test_a_published_package_copy_is_unjudged_and_the_overlay_link_is_judged(): void
+    {
+        // node_modules/@x/published/src: a real directory, as when the js-overlay is OFF and the tarball ships src.
+        mkdir($this->dir.'/node_modules/@x/published/src', 0777, true);
+        file_put_contents($this->dir.'/node_modules/@x/published/src/layout.tsx', 'Beam Starter');
+        // node_modules/@x/linked -> a family checkout, as when the js-overlay is ON.
+        mkdir($this->dir.'/checkout/src', 0777, true);
+        file_put_contents($this->dir.'/checkout/src/layout.tsx', 'Beam Starter');
+        symlink($this->dir.'/checkout', $this->dir.'/node_modules/@x/linked');
+
+        $published = $this->dir.'/node_modules/@x/published/src';
+        $linked = $this->dir.'/node_modules/@x/linked/src';
+        $this->roots = ['source' => [$published, $linked], 'built' => []];
+
+        $found = $this->hostIaT6();
+        $this->assertSame(["T6 source {$linked}/layout.tsx Beam Starter"], array_keys($found));
+
+        $diff = $this->hostIaRatchetDiff($found, [
+            "T6 source {$linked}/layout.tsx Beam Starter" => 'UX-03',
+            "T6 source {$published}/other.tsx Beam Starter" => 'UX-03',
+        ]);
+        $this->assertSame([], $diff['unlisted']);
+        $this->assertSame([], $diff['stale']);
+        $this->assertSame(["T6 source {$published}/other.tsx Beam Starter"], array_keys($diff['unjudged']));
     }
 }
