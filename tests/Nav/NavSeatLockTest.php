@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Nav;
 
 use Splicewire\Beam\Nav\NavSection;
+use Splicewire\Beam\Nav\NavAudience;
 use Splicewire\Beam\Nav\NavSeatLock;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -37,6 +38,7 @@ class NavSeatLockTest extends TestCase
             order: 10,
             entitlement: $entitlement,
             permission: $permission,
+            audience: NavAudience::Product,
             lock: $lock,
         );
     }

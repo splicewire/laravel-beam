@@ -77,6 +77,9 @@ class NavSection
      * @param  list<string>|null  $entitlement  any-of capability keys — holding ONE reveals the seat.
      *                                          `null` = ungated. `[]` = gated and unsatisfiable
      * @param  string|null  $permission  a single RBAC token, or `null` for ungated
+     * @param  NavAudience  $audience  who the seat is for (ux-walkthrough IA-8, UX-08): `developer` seats are drawn in
+     *                                 the Developer zone, `product` seats in the rail. Required with no default, like
+     *                                 the gate slots; {@see NavAudience} carries the read-only rule that decides it
      * @param  list<array{title: string, href: string, icon?: string, routeName?: string, navOrder?: int}>  $static
      *                                                                                                               hand-authored child rows, in the same shape the flagship
      *                                                                                                               already passes through `section(static: [...])`. They merge
@@ -96,6 +99,7 @@ class NavSection
         public readonly int $order,
         public readonly ?array $entitlement,
         public readonly ?string $permission,
+        public readonly NavAudience $audience,
         public readonly array $static = [],
         public readonly ?NavSeatLock $lock = null,
     ) {}

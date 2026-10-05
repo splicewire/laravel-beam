@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Nav;
 
 use Rushing\Popcorn\Registries\IsRegistry;
+use Splicewire\Beam\Nav\NavAudience;
 use Rushing\Popcorn\Registries\PopulationRequirement;
 use Splicewire\Beam\Nav\NavSection;
 use Splicewire\Beam\Nav\NavSectionRegistry;
@@ -51,6 +52,7 @@ class NavSectionRegistryTest extends TestCase
             order: $order,
             entitlement: $entitlement,
             permission: $permission,
+            audience: NavAudience::Product,
             static: $static,
         );
     }
@@ -254,6 +256,7 @@ class NavSectionRegistryTest extends TestCase
             order: 10,
             entitlement: null,
             permission: null,
+            audience: NavAudience::Product,
             static: [
                 ['title' => 'Dashboard', 'href' => '/operator/dashboard', 'icon' => 'LayoutDashboard', 'routeName' => 'dashboard.section', 'navOrder' => 0],
                 ['title' => 'Connectors', 'href' => '/operator/connectors', 'icon' => 'Cable', 'routeName' => 'connectors.section'],

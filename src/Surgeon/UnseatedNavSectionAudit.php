@@ -149,7 +149,7 @@ class UnseatedNavSectionAudit implements DoctorAudit
                     .'navigation. A `#[ParticleResource(section:)]` says what a resource sits UNDER; it cannot '
                     .'create the section. The seat is a separate declaration: '
                     .'`$app->make(%s::class)->register(new NavSection(key: \'%s\', realm: …, label: …, icon: …, '
-                    .'href: …, order: …, entitlement: null, permission: null), by: \'<package>\')` from the '
+                    .'href: …, order: …, entitlement: null, permission: null, audience: NavAudience::…), by: \'<package>\')` from the '
                     .'declaring package\'s own provider, `bound()`-guarded. ⚠️ ADVISORY, and there are three '
                     .'ways this row is correct as it stands: this host may seat `%s` in a HAND-AUTHORED '
                     .'navigation, which is `Rushing\\DataNav` vocabulary this audit structurally cannot read; '

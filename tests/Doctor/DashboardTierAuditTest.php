@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Doctor;
 
 use Illuminate\Contracts\Pagination\CursorPaginator;
+use Splicewire\Beam\Nav\NavAudience;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Rushing\Doctor\DoctorStatus;
 use Schemastud\Frame\Attributes\Overview;
@@ -45,7 +46,7 @@ class DashboardTierAuditTest extends TestCase
         $this->sections = new NavSectionRegistry;
 
         $this->sections->register(
-            new NavSection(key: 'platform', realm: 'operator', label: 'Platform', icon: 'Server', href: '/platform', order: 10, entitlement: null, permission: null),
+            new NavSection(key: 'platform', realm: 'operator', label: 'Platform', icon: 'Server', href: '/platform', order: 10, entitlement: null, permission: null, audience: NavAudience::Product),
             by: self::class,
         );
     }
@@ -155,6 +156,7 @@ class DashboardTierAuditTest extends TestCase
             new NavSection(
                 key: 'operate', realm: 'operator', label: 'Operate', icon: 'Cog', href: '/operate', order: 5,
                 entitlement: null, permission: null,
+                audience: NavAudience::Product,
                 static: [
                     ['title' => 'Users', 'href' => '/operator/users', 'routeName' => 'users.index'],
                     // A static naming no route joins by href.

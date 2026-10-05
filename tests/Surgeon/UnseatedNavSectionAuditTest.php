@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Surgeon;
 
 use Rushing\Doctor\DoctorStatus;
+use Splicewire\Beam\Nav\NavAudience;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Nav\NavSection;
@@ -78,6 +79,7 @@ class UnseatedNavSectionAuditTest extends TestCase
         $this->sections->register(new NavSection(
             key: $key, realm: $realm, label: ucfirst($key), icon: 'Square',
             href: '/'.$key, order: 10, entitlement: null, permission: null,
+        audience: NavAudience::Product,
         ));
     }
 
