@@ -43,7 +43,12 @@ class ResourceReadGuard
 
     private function inspect(ParticleResource $resource, Request $request, GateContract $gate): Response
     {
-        if ($this->policyBound($resource) !== false) {
+        // A bound policy is no longer a pass (launch security row 51a71469): the list asked nothing else, so every
+        // policy-bound, row-unscoped resource listed in full to any signed-in actor. A bound policy with a viewAny is now
+        // asked, below, after the same scope and realm-entitlement allowances the policy-less read gets. A policy WITHOUT
+        // a viewAny keeps the pass, exactly as ResourceVisibility::listable() reads it, so the read and the nav cannot
+        // disagree; that residual open list is ratcheted (`model-backed-open-list`), never silent.
+        if ($this->policyBound($resource) === true && ! $this->policyHasViewAny($resource)) {
             return Response::allow();
         }
 
@@ -69,6 +74,15 @@ class ResourceReadGuard
         }
 
         return $gate->inspect('viewAny', $resource->modelClass());
+    }
+
+    /** Whether the policy bound to the resource's model declares a viewAny ability. */
+    public function policyHasViewAny(ParticleResource $resource): bool
+    {
+        $model = $resource->modelClass();
+        $policy = $model !== null ? Gate::getPolicyFor($model) : null;
+
+        return $policy !== null && method_exists($policy, 'viewAny');
     }
 
     /** Null means this environment could not build the declared authorization bases. */

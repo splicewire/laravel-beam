@@ -241,13 +241,19 @@ class UngatedResourceReadTest extends TestCase
         $this->assertSame(2, app(ScopedIndexQuery::class)->forDefinition($definition)->count());
     }
 
-    public function test_policy_presence_is_not_a_second_policy_permission_check(): void
+    /**
+     * Inverted by launch security row 51a71469. This used to pin "policy presence is not a second permission check": the
+     * guard passed a bound policy on the premise that the policy was asked elsewhere. Measured on 2026-10-05, nothing on
+     * the list path asked it, so a refusing policy refused the nav seat and served the rows. A bound policy that DEFINES
+     * viewAny is now the list's check.
+     */
+    public function test_a_bound_policy_whose_view_any_refuses_refuses_the_list(): void
     {
         $this->declare();
         Gate::policy(Gadget::class, RefusingFrameGadgetPolicy::class);
         $this->assertFalse(Gate::allows('viewAny', Gadget::class));
 
-        $this->assertTrue(ResourceReadGuard::forApp()->inspectRead(app(ParticleResourceRegistry::class)->get('gadgets'), request())->allowed());
+        $this->assertFalse(ResourceReadGuard::forApp()->inspectRead(app(ParticleResourceRegistry::class)->get('gadgets'), request())->allowed());
     }
 
     public function test_an_indeterminate_probe_does_not_hide_the_real_query_failure(): void
