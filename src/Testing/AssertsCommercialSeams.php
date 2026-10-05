@@ -305,7 +305,8 @@ trait AssertsCommercialSeams
         }
 
         $doors = 'Splicewire\\Beam\\Accounts\\Doors\\AccountDoors';
-        if (! app()->bound($doors) && ! class_exists($doors)) {
+        $undeclared = (app()->bound($doors) || class_exists($doors)) && method_exists($policy = app($doors), 'declared') && ! $policy->declared();
+        if ($undeclared || (! app()->bound($doors) && ! class_exists($doors))) {
             return $mounted
                 ? ['R4 account-doors-missing' => 'no AccountDoors policy declares which doors are open', 'R4 register-mounted-undeclared' => 'POST register is mounted with no declared door policy']
                 : ['R4 account-doors-missing' => 'no AccountDoors policy declares which doors are open'];

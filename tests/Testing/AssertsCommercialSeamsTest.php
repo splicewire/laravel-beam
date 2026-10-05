@@ -131,11 +131,16 @@ class AssertsCommercialSeamsTest extends TestCase
     }
 
     /** Bind a stand-in for beam-accounts' AccountDoors (laravel-beam does not depend on it) with one registration mode. */
-    private function doorsSay(string $registration): void
+    private function doorsSay(string $registration, bool $declared = true): void
     {
-        $this->app->instance('Splicewire\\Beam\\Accounts\\Doors\\AccountDoors', new class($registration)
+        $this->app->instance('Splicewire\\Beam\\Accounts\\Doors\\AccountDoors', new class($registration, $declared)
         {
-            public function __construct(private string $registration) {}
+            public function __construct(private string $registration, private bool $declared) {}
+
+            public function declared(): bool
+            {
+                return $this->declared;
+            }
 
             public function policy(): object
             {
@@ -161,6 +166,16 @@ class AssertsCommercialSeamsTest extends TestCase
 
         config(['fortify.features' => []]);
         $this->assertArrayHasKey('R4 fortify-registration-disagrees', $this->commercialR4());
+    }
+
+    /** Until a host declares its door, R4 reports what it did before the policy existed (no live host changes). */
+    public function test_r4_is_structural_while_the_host_has_not_declared_its_door(): void
+    {
+        $this->doorsSay('closed', declared: false);
+        \Illuminate\Support\Facades\Route::post('register', fn () => 'x');
+        app('router')->getRoutes()->refreshNameLookups();
+
+        $this->assertSame(['R4 account-doors-missing', 'R4 register-mounted-undeclared'], array_keys($this->commercialR4()));
     }
 
     public function test_r4_reports_an_open_door_with_no_route(): void
