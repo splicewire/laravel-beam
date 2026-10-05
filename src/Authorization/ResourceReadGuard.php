@@ -94,7 +94,10 @@ class ResourceReadGuard
         try {
             $bases = app(ParticleListQuery::class)->authorizationBases($resource, $request ?? Request::create('/'));
             foreach ($bases as $builder) {
-                $base = $builder instanceof EloquentBuilder ? $builder->toBase() : $builder->getQuery();
+                // GLOBAL scopes are not authorization (review-r1, build.qa): SoftDeletes' `deleted_at is null` or a type
+                // discriminator put a where on the base and read as "narrowed", so the list skipped viewAny. Only the
+                // resource's own declared scope and its data-filter authorization count; tenancy is the route allowance.
+                $base = $builder instanceof EloquentBuilder ? $builder->withoutGlobalScopes()->toBase() : $builder->getQuery();
                 if (($base->wheres ?? []) !== [] || ($base->joins ?? []) !== []) {
                     return true;
                 }

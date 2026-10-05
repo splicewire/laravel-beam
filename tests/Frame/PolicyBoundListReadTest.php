@@ -51,6 +51,7 @@ class PolicyBoundListReadTest extends TestCase
         Schema::create('gadgets', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('user_id');
+            $table->softDeletes();
         });
         ListReadActor::create(['name' => 'holder']);
         ListReadActor::create(['name' => 'no-team']);
@@ -110,6 +111,31 @@ class PolicyBoundListReadTest extends TestCase
         $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '2');
     }
 
+    /**
+     * A GLOBAL scope is not an authorization scope (review-r1, build.qa): `deleted_at is null` put a where on the base, so
+     * the declared-scope allowance read the list as narrowed and never asked viewAny. Measured live: a no-team user listed
+     * all 34 entries at the tower starter through beam-ux's SoftDeletes BeamUxEntry. Only the resource's own declared scope
+     * and its data-filter authorization narrow now.
+     */
+    public function test_a_soft_delete_global_scope_is_not_a_narrowing_scope(): void
+    {
+        Gate::policy(SoftGadget::class, HolderOnlyGadgetPolicy::class);
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'soft-gadgets',
+            backing: SoftGadget::class,
+            data: GadgetData::class,
+            project: fn (SoftGadget $gadget): GadgetData => new GadgetData((string) $gadget->getKey()),
+            readOnly: true,
+            label: 'Soft gadgets',
+        ));
+
+        $this->as('no-team');
+        $this->getJson('/frame/resources/soft-gadgets')->assertForbidden();
+
+        $this->as('holder');
+        $this->getJson('/frame/resources/soft-gadgets')->assertOk()->assertJsonPath('total', 2);
+    }
+
     public function test_a_policy_without_view_any_keeps_todays_pass_as_listable_reads_it(): void
     {
         Gate::policy(Gadget::class, NoViewAnyGadgetPolicy::class);
@@ -148,4 +174,15 @@ class NoViewAnyGadgetPolicy
     {
         return true;
     }
+}
+
+class SoftGadget extends \Illuminate\Database\Eloquent\Model
+{
+    use \Illuminate\Database\Eloquent\SoftDeletes;
+
+    protected $table = 'gadgets';
+
+    protected $guarded = [];
+
+    public $timestamps = false;
 }
