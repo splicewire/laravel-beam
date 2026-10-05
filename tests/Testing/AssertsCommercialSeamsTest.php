@@ -144,9 +144,24 @@ class AssertsCommercialSeamsTest extends TestCase
 
         $found = array_keys($this->commercialS3());
 
-        $this->assertContains("S3 service-door {$this->dir}/app/Http/Controllers/Mint.php", $found);
-        $this->assertContains("S3 service-door {$this->dir}/app/Splicewire/Token.php", $found);
-        $this->assertNotContains("S3 service-door {$this->dir}/app/Console/Commands/ProvisionServiceUser.php", $found);
+        $this->assertContains("S3 service-door {$this->dir}/app/Http/Controllers/Mint.php: \$doors->create(Door::Service, \$user);", $found);
+        $this->assertContains("S3 service-door {$this->dir}/app/Splicewire/Token.php: \$x = Door::Service;", $found);
+        $this->assertSame([], array_values(array_filter($found, fn ($id) => str_contains($id, 'ProvisionServiceUser.php'))));
+    }
+
+    public function test_s3_names_each_service_door_call_so_an_allowance_covers_one_call_not_a_file(): void
+    {
+        // lead 15:10 (build.qa, review-r1): a listed exception names ONE call site. A second Door::Service added to the
+        // same file is a new, unlisted entry, never hidden under the first one's allowance.
+        mkdir($this->dir.'/app/Services', 0777, true);
+        file_put_contents($this->dir.'/app/Services/SystemAccounts.php', "<?php\n\$a = \$doors->create(Door::Service, \$constant);\n\$b = \$doors->create(Door::Service, \$fromRequest);\n");
+
+        $found = array_values(array_filter(array_keys($this->commercialS3()), fn ($id) => str_contains($id, 'SystemAccounts.php')));
+
+        $this->assertSame([
+            "S3 service-door {$this->dir}/app/Services/SystemAccounts.php: \$a = \$doors->create(Door::Service, \$constant);",
+            "S3 service-door {$this->dir}/app/Services/SystemAccounts.php: \$b = \$doors->create(Door::Service, \$fromRequest);",
+        ], $found);
     }
 
     public function test_i3_finds_a_recurring_stripe_start_anywhere_even_in_the_adapter(): void

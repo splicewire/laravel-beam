@@ -271,9 +271,11 @@ trait AssertsCommercialSeams
         // The service door always admits (BUY-05b, review-r1), so no HTTP-reachable code may pass it: only console
         // commands, seeders and the doors themselves. Known limit: S3 reads call shapes, so a create through
         // `new $model` + `forceFill()->save()` is not detected; the AccountDoors tests hold those paths.
-        foreach ($this->commercialSweep(['Door::Service']) as [$rel, $line]) {
+        // Keyed by the CALL itself (lead 15:10): a listed allowance names one call site, so a second Door::Service in the
+        // same file is a new, unlisted entry rather than one hidden under the first one's allowance.
+        foreach ($this->commercialSweep(['Door::Service']) as [$rel, $line, , $code]) {
             if (! preg_match('#/Console/|/(database|Database)/|/(Seeders|seeders|Testing)/|^database/|/Doors/#', $rel)) {
-                $out["S3 service-door {$rel}"] = "line {$line}";
+                $out["S3 service-door {$rel}: ".trim((string) $code)] = "line {$line}";
             }
         }
         foreach ($this->commercialSweep(['env(']) as [$rel, $line, , $code]) {
