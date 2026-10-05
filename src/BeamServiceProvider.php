@@ -98,6 +98,7 @@ use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UndeclaredOutputAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
+use Splicewire\Beam\Doctor\OpenListResourceAudit;
 use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Doctor\UngatedWriteAudit;
 use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
@@ -1888,6 +1889,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             UngatedResourceReadAudit::class,
+        );
+
+        // Launch security row 51a71469: the ratchet on the list read's remaining open pass (a policy without viewAny).
+        $this->app->bind(OpenListResourceAudit::class, fn () => OpenListResourceAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            OpenListResourceAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered
