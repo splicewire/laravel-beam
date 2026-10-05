@@ -46,6 +46,8 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\GuardActorAdapter;
+use Splicewire\Beam\Brand\BrandResolver;
+use Splicewire\Beam\Brand\ConfigBrandResolver;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Console\BeamDoctorCommand;
@@ -97,6 +99,7 @@ use Splicewire\Beam\Doctor\UndeclaredOutputAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
+use Splicewire\Beam\Doctor\UngatedWriteAudit;
 use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Doctor\UnrehearsableStubAudit;
@@ -362,7 +365,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // an Octane worker re-resolves per request.
         $this->app->singleton(ParticleMounter::class);
         // The brand is read through a resolver (ux-walkthrough IA-14, docs-walkthrough C-1); a host or DOCS-12 rebinds it.
-        $this->app->bindIf(\Splicewire\Beam\Brand\BrandResolver::class, \Splicewire\Beam\Brand\ConfigBrandResolver::class);
+        $this->app->bindIf(BrandResolver::class, ConfigBrandResolver::class);
 
         $this->app->scoped(ParticleMountManager::class, fn ($app) => new ParticleMountManager(
             $app['router'],
@@ -1070,6 +1073,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host
         // mounted, and the count is the gate the `null` → derived-permission-name flip waits on.
         $manifest->register('splicewire/laravel-beam', UngatedOperationAudit::class);
+        // app-walkthrough APP-08 (APP-11): the hand-written trio write routes nothing gates. Advisory, per host.
+        $manifest->register('splicewire/laravel-beam', UngatedWriteAudit::class);
         // The `kind: Write` half of the audit above, split out and GATING (particle-write-surface 02).
         // A write operation naming no `ability:` is the one member of that residue with no legitimate
         // reading — a Read's gate is its query scope, a Write's is nothing — and "did this declaration
