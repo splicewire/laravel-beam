@@ -342,26 +342,20 @@ trait AssertsHostIaSeam
 
     /**
      * A package root under `node_modules` is judged only when it is the js-overlay LINK to a family checkout, which is
-     * what the ratchet's entries were pinned from. A published copy (the overlay off: beam-inertia publishes `src` too)
-     * is a different file set, so it is treated like an absent root: named, and its entries unjudged.
+     * what the ratchet's entries were pinned from. Decided by where it RESOLVES, not by whether it is a link: under
+     * pnpm a published install is a symlink too, into `node_modules/.pnpm/…`. The overlay resolves outside any
+     * `node_modules` (a family checkout). A published copy (the overlay off: beam-inertia publishes `src` too) is a
+     * different file set, so it is treated like an absent root: named, and its entries unjudged.
      */
     protected function hostIaIsJudgedRoot(string $path): bool
     {
-        $at = strpos($path, '/node_modules/');
-        if ($at === false) {
+        if (! str_contains($path, '/node_modules/')) {
             return true;
         }
 
-        $segments = explode('/', substr($path, $at + strlen('/node_modules/')));
-        $cursor = substr($path, 0, $at).'/node_modules';
-        foreach ($segments as $segment) {
-            $cursor .= '/'.$segment;
-            if (is_link($cursor)) {
-                return true;
-            }
-        }
+        $resolved = realpath($path);
 
-        return false;
+        return $resolved !== false && ! str_contains($resolved, '/node_modules/');
     }
 
     /** @return array<string, array<string, mixed>> */

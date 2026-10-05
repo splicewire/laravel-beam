@@ -86,12 +86,16 @@ class AssertsHostIaSeamTest extends TestCase
         $this->assertSame([], $diff['unjudged']);
     }
 
-    public function test_a_published_package_copy_is_unjudged_and_the_overlay_link_is_judged(): void
+    public function test_a_pnpm_installed_package_is_unjudged_and_the_overlay_link_is_judged(): void
     {
-        // node_modules/@x/published/src: a real directory, as when the js-overlay is OFF and the tarball ships src.
-        mkdir($this->dir.'/node_modules/@x/published/src', 0777, true);
-        file_put_contents($this->dir.'/node_modules/@x/published/src/layout.tsx', 'Beam Starter');
-        // node_modules/@x/linked -> a family checkout, as when the js-overlay is ON.
+        // node_modules/@x/published -> node_modules/.pnpm/…: a pnpm install of the published tarball (which ships src),
+        // as when the js-overlay is OFF. It is a symlink too, so only where it resolves tells it from the overlay.
+        $store = $this->dir.'/node_modules/.pnpm/@x+published@0.1.3/node_modules/@x/published';
+        mkdir($store.'/src', 0777, true);
+        file_put_contents($store.'/src/layout.tsx', 'Beam Starter');
+        mkdir($this->dir.'/node_modules/@x', 0777, true);
+        symlink($store, $this->dir.'/node_modules/@x/published');
+        // node_modules/@x/linked -> a family checkout outside any node_modules, as when the js-overlay is ON.
         mkdir($this->dir.'/checkout/src', 0777, true);
         file_put_contents($this->dir.'/checkout/src/layout.tsx', 'Beam Starter');
         symlink($this->dir.'/checkout', $this->dir.'/node_modules/@x/linked');
