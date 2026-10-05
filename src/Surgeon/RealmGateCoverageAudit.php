@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Surgeon;
 
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Splicewire\Beam\Ia\RealmProfiles;
 use Splicewire\Beam\Realm\RealmManifestProjector;
 use Splicewire\Beam\Realm\RealmRegistry;
 
@@ -131,14 +132,13 @@ class RealmGateCoverageAudit implements DoctorAudit
             $findings[] = Finding::warn(
                 self::CHECK_ORPHANED,
                 sprintf(
-                    '%s.%s gates a realm no RealmRegistry entry ships — this host registers %s. '
+                    '%s gates a realm no RealmRegistry entry ships — this host registers %s. '
                     .'RealmManifestProjector::project() iterates the REGISTERED realms and reads '
                     .'$gates[$key], so it never asks for [%s] and the entry is dead config: %s. Nothing is '
                     .'left unguarded by it today, because there is no realm to guard. The cost is latent — '
                     .'register [%s] later and this %s gate fires against it, %s, with no error anywhere. '
                     .'Delete the line, or correct the key to one of the registered realms.',
-                    self::KEY,
-                    $key,
+                    $this->declaredAt($key),
                     implode(', ', $registered),
                     $key,
                     $this->describe($gate),
@@ -178,9 +178,26 @@ class RealmGateCoverageAudit implements DoctorAudit
      */
     protected function gates(): array
     {
-        $gates = config(self::KEY, config('beam.realm_gates', []));
+        $alias = config(self::KEY, config('beam.realm_gates', []));
+        $gates = is_array($alias) ? $alias : [];
 
-        return is_array($gates) ? $gates : [];
+        // The realm profile's gates (ux-walkthrough UX-05) win over the alias, as RealmProfiles::gate() resolves them.
+        $profiles = new RealmProfiles;
+        foreach ((array) config('beam.core.realms', []) as $realm => $profile) {
+            if (! in_array($realm, RealmProfiles::RESERVED, true) && is_array($profile) && is_array($profile['gate'] ?? null)) {
+                $gates[$realm] = $profiles->gate((string) $realm);
+            }
+        }
+
+        return $gates;
+    }
+
+    /** Where a realm's gate is declared: its profile (ux-walkthrough UX-05), else the `realm_gates` alias. */
+    protected function declaredAt(string $realm): string
+    {
+        return is_array(config("beam.core.realms.{$realm}.gate")) && ! in_array($realm, RealmProfiles::RESERVED, true)
+            ? "beam.core.realms.{$realm}.gate"
+            : self::KEY.'.'.$realm;
     }
 
     /**

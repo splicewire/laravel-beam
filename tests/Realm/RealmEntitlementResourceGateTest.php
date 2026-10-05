@@ -130,6 +130,46 @@ class RealmEntitlementResourceGateTest extends TestCase
         $this->assertTrue($this->gate()->allowsResource($definition));
     }
 
+    // ---- one gate source (ux-walkthrough UX-05: the realm profile subsumes realm_gates) ----------
+
+    /** A gate declared only on the realm profile closes the door, as it locks the nav. */
+    public function test_a_profile_only_gate_closes_a_non_central_realm(): void
+    {
+        config(['beam.core.realm_gates' => [], 'beam.core.realms.tenant.gate' => ['entitlement' => 'studio.enter', 'mode' => 'hard']]);
+
+        $definition = $this->register('songs', ['tenant']);
+
+        $this->holding([]);
+        $this->assertFalse($this->gate()->allowsResource($definition));
+
+        $this->holding(['studio.enter']);
+        $this->assertTrue($this->gate()->allowsResource($definition));
+    }
+
+    public function test_a_profile_only_gate_wins_over_the_central_fallback(): void
+    {
+        config(['beam.core.realm_gates' => [], 'beam.core.realms.operator.gate' => ['entitlement' => 'studio.enter', 'mode' => 'hard']]);
+
+        $definition = $this->register('users', ['operator']);
+
+        $this->holding(['os.operate']);
+        $this->assertFalse($this->gate()->allowsResource($definition));
+    }
+
+    /** The door and the nav read one source with one precedence: the profile gate, then the alias. */
+    public function test_the_profile_gate_wins_over_the_alias_at_the_door_as_in_the_nav(): void
+    {
+        config(['beam.core.realms.operator.gate' => ['entitlement' => 'studio.enter', 'mode' => 'hard']]);
+
+        $definition = $this->register('users', ['operator']);
+
+        $this->holding(['os.operate']);
+        $this->assertFalse($this->gate()->allowsResource($definition));
+
+        $this->holding(['studio.enter']);
+        $this->assertTrue($this->gate()->allowsResource($definition));
+    }
+
     // ---- the permit arms ----------------------------------------------------------------------
 
     /**

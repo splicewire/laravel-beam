@@ -11,7 +11,9 @@ namespace Splicewire\Beam\Ia;
  *
  * `beam.core.realms.classes` predates the profile (the realm-marker class list) and is reserved: it is never a realm.
  *
- * Read only by {@see HostIa} and, for its gates, by {@see \Splicewire\Beam\Realm\RealmManifestProjector}.
+ * Read by {@see HostIa}, and for gates by every gate reader, so the nav and the door share ONE source and precedence:
+ * {@see \Splicewire\Beam\Realm\RealmManifestProjector}, {@see \Splicewire\Beam\Realm\RealmGateAbility} (the access
+ * decision) and {@see \Splicewire\Beam\Surgeon\RealmGateCoverageAudit}.
  */
 final class RealmProfiles
 {

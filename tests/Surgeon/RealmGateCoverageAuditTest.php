@@ -65,6 +65,19 @@ class RealmGateCoverageAuditTest extends TestCase
         );
     }
 
+    /** A gate declared on the realm profile (ux-walkthrough UX-05) is audited too, and named where it is declared. */
+    public function test_an_orphaned_profile_gate_is_named_at_its_profile_key(): void
+    {
+        config()->set('beam.core.realm_gates', []);
+        config()->set('beam.core.realms.os.gate', ['entitlement' => 'os.enter', 'mode' => 'hard']);
+
+        $warnings = $this->of($this->audit()->run(), RealmGateCoverageAudit::CHECK_ORPHANED);
+
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString('beam.core.realms.os.gate', $warnings[0]->detail);
+        $this->assertStringContainsString('os.enter', $warnings[0]->detail);
+    }
+
     /** Every orphan gets its own row — none is folded into a summary count. */
     public function test_every_orphaned_gate_gets_its_own_row(): void
     {
