@@ -185,7 +185,7 @@ class RealmGateCoverageAudit implements DoctorAudit
         $profiles = new RealmProfiles;
         foreach ((array) config('beam.core.realms', []) as $realm => $profile) {
             if (! in_array($realm, RealmProfiles::RESERVED, true) && is_array($profile) && is_array($profile['gate'] ?? null)) {
-                $gates[$realm] = $profiles->gate((string) $realm);
+                $gates[$realm] = $profiles->gate((string) $realm) ?? $profile['gate'];
             }
         }
 

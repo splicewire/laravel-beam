@@ -170,6 +170,20 @@ class RealmEntitlementResourceGateTest extends TestCase
         $this->assertTrue($this->gate()->allowsResource($definition));
     }
 
+    /** A profile gate that names no entitlement does not shadow the alias's (build-qa, UX-05 review). */
+    public function test_an_entitlement_less_profile_gate_falls_through_to_the_alias(): void
+    {
+        config([
+            'beam.core.realm_gates' => ['tenant' => ['entitlement' => 'studio.enter', 'mode' => 'hard']],
+            'beam.core.realms.tenant.gate' => ['mode' => 'hard'],
+        ]);
+
+        $definition = $this->register('songs', ['tenant']);
+
+        $this->holding([]);
+        $this->assertFalse($this->gate()->allowsResource($definition));
+    }
+
     // ---- the permit arms ----------------------------------------------------------------------
 
     /**

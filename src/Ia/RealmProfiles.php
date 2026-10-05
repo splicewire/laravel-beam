@@ -47,7 +47,8 @@ final class RealmProfiles
     }
 
     /**
-     * The realm's gate: the profile's, else the deprecated `realm_gates` alias entry, else none.
+     * The realm's gate: the profile's when it names an entitlement, else the deprecated `realm_gates` alias entry,
+     * else none.
      *
      * @return array<string, mixed>|null
      */
@@ -55,7 +56,9 @@ final class RealmProfiles
     {
         $declared = in_array($key, self::RESERVED, true) ? null : config("beam.core.realms.{$key}.gate");
 
-        if (is_array($declared)) {
+        // A profile gate counts only when it names an entitlement: one that does not (say, only a `mode`) must not
+        // shadow an alias entry that does, or the door would open.
+        if (is_array($declared) && is_string($declared['entitlement'] ?? null) && $declared['entitlement'] !== '') {
             return $declared;
         }
 
