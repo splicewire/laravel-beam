@@ -116,6 +116,21 @@ class AssertsCommercialSeamsTest extends TestCase
         $this->assertNotContains("S3 user-create {$this->dir}/app/Accounts/Mirror.php User::updateOrCreate(", $found);
     }
 
+    public function test_s3_flags_a_create_through_a_variable_user_class(): void
+    {
+        // build.qa on BUY-05b: tower's GrantBroker, SystemAccountService and NotionService create central users through
+        // `$userModel::updateOrCreate(` / `firstOrCreate(` (config('auth.providers.users.model')), which the literal
+        // `User::` needles never saw. A variable model that is not a user (`$model::create(`) is not flagged.
+        mkdir($this->dir.'/app/Provisioning', 0777, true);
+        file_put_contents($this->dir.'/app/Provisioning/GrantBroker.php', "<?php\n\$owner = \$userModel::updateOrCreate(['email' => \$e], \$attrs);\n");
+        file_put_contents($this->dir.'/app/Provisioning/Listing.php', "<?php\n\$row = \$model::create(\$attrs);\n");
+
+        $found = array_keys($this->commercialS3());
+
+        $this->assertContains("S3 user-create {$this->dir}/app/Provisioning/GrantBroker.php \$userModel::updateOrCreate(", $found);
+        $this->assertSame([], array_values(array_filter($found, fn ($id) => str_contains($id, 'Listing.php'))));
+    }
+
     public function test_s3_allows_the_service_door_only_off_http(): void
     {
         // BUY-05b (review-r1): Door::Service always admits, so no HTTP-reachable code may pass it. It belongs to console

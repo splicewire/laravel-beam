@@ -257,6 +257,17 @@ trait AssertsCommercialSeams
                 $out["S3 user-create {$rel} {$pattern}"] = "line {$line}";
             }
         }
+        // A create through a VARIABLE user class (build.qa on BUY-05b): `$userModel::updateOrCreate(`, the shape that
+        // resolves config('auth.providers.users.model'). Only a variable named for a user model counts, so
+        // `$model::create(` on any other model stays quiet.
+        foreach ($this->commercialSweep(['::create(', '::forceCreate(', '::firstOrCreate(', '::updateOrCreate(']) as [$rel, $line, , $code]) {
+            if (! preg_match('/(\$\w*[Uu]ser\w*)::(create|forceCreate|firstOrCreate|updateOrCreate)\(/', $code, $m)) {
+                continue;
+            }
+            if (! preg_match('#/(database|Database)/|/(Seeders|seeders|Factories|factories|Testing)/|^database/|/Doors/#', $rel)) {
+                $out["S3 user-create {$rel} {$m[1]}::{$m[2]}("] = "line {$line}";
+            }
+        }
         // The service door always admits (BUY-05b, review-r1), so no HTTP-reachable code may pass it: only console
         // commands, seeders and the doors themselves. Known limit: S3 reads call shapes, so a create through
         // `new $model` + `forceFill()->save()` is not detected; the AccountDoors tests hold those paths.
