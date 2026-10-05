@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Realm;
 
 use Splicewire\Beam\Entitlements\EntitlementGate;
+use Splicewire\Beam\Ia\RealmProfiles;
 
 /**
  * Frame OS ticket 08 (ADR-0013 §4/§5): projects the registered realms into the manifest the frame reads,
@@ -14,7 +15,8 @@ use Splicewire\Beam\Entitlements\EntitlementGate;
  *  - **soft → locked flag.** An unentitled principal STILL sees the realm, but its descriptor carries
  *    `locked: true` + the `upsell` metadata, so a launcher can render it as lockable (monetization).
  *
- * An UNGATED realm (no `beam.core.realm_gates` entry) always projects, unlocked. The gating rides beam
+ * An UNGATED realm (no profile `gate` in `beam.core.realms.{key}` and no deprecated `beam.core.realm_gates` entry)
+ * always projects, unlocked. The gating rides beam
  * config, NOT the shared `RealmDefinition` DTO (which carries no gating field — it is a schemastud shape).
  *
  * Descriptor shape — a plain, JSON-serializable array (ticket 11 wraps it in a laravel-data-nav NavNode;
@@ -55,11 +57,12 @@ class RealmManifestProjector
      */
     public function project(mixed $principal): array
     {
-        $gates = (array) config('beam.core.realm_gates', config('beam.realm_gates', []));
+        $profiles = new RealmProfiles;
         $manifest = [];
 
         foreach ($this->realms->all() as $key => $realm) {
-            $gate = $gates[$key] ?? null;
+            // The realm profile's gate (ux-walkthrough M1), else the deprecated `realm_gates` alias entry.
+            $gate = $profiles->gate($key);
 
             $entitled = $gate === null
                 || $this->entitlements->allows((string) ($gate['entitlement'] ?? ''), $principal);
