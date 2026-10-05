@@ -192,6 +192,16 @@ return [
     'realm_gates' => [],
 
     /*
+    | Host IA (ux-walkthrough IA-6, UX-07). `plays` lists the cross-instance sides this host serves: 'hub' (it pairs
+    | and operates other instances: Tower, the flagship), 'client' (it connects to a hub: a satellite), or neither ([]).
+    | HostIa::serve() mounts a surface only for a side listed here and throws for any other. Null (the default) plays
+    | every side, so a host that has not declared is unchanged.
+    */
+    'ia' => [
+        'plays' => null,
+    ],
+
+    /*
     | Entitlement (feature-plane) wiring (Frame OS ticket 08, ADR-0013 §2). beam is the authority that
     | unifies the two authorization planes: it registers a Laravel Gate ability per known feature key
     | (`entitlement:{key}`) delegating to the entitlement gate, which consults the bound kernel

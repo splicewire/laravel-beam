@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Ia;
 
+use Closure;
 use Illuminate\Support\Facades\Route;
 use InvalidArgumentException;
 use Splicewire\Beam\Realm\RealmManifestProjector;
@@ -12,7 +13,7 @@ use Splicewire\Beam\Realm\RealmRegistry;
  * module answers what both renderers draw: which realms a principal may cross to and where each one's home is, which
  * realm a path is in, and where Back leads. It wraps {@see RealmManifestProjector}, so the gating is the projector's.
  *
- * `plays(Side)` lands with UX-07; landing lives in beam-accounts (`Landing::for()`, UX-11) and reads only `home()`.
+ * {@see plays()} and {@see serve()} are IA-6 (UX-07): a host mounts only the cross-instance sides it plays. Landing lives in beam-accounts (`Landing::for()`, UX-11) and reads only `home()`.
  */
 final class HostIa
 {
@@ -24,6 +25,31 @@ final class HostIa
         private readonly RealmRegistry $registry,
         private readonly RealmProfiles $profiles,
     ) {}
+
+    /**
+     * Whether this host plays `$side` (IA-6). `beam.core.ia.plays` lists the sides; undeclared (null) plays every side,
+     * so a host that has not declared is unchanged.
+     */
+    public function plays(Side $side): bool
+    {
+        $plays = config('beam.core.ia.plays');
+
+        return $plays === null || in_array($side->value, (array) $plays, true);
+    }
+
+    /**
+     * Mount a cross-instance surface: register `$routes`, each tagged with the side it serves (the route action's
+     * `side`, which the host IA seam's T4 reads), or throw {@see SideRefused} when this host does not play that side.
+     * Every D5′ macro for a cross-instance surface, and a host's own inline mount of one, calls this.
+     */
+    public function serve(Side $side, string $surface, Closure $routes): void
+    {
+        if (! $this->plays($side)) {
+            throw SideRefused::for($side, $surface, array_values((array) config('beam.core.ia.plays', [])));
+        }
+
+        Route::group(['side' => $side->value], $routes);
+    }
 
     /**
      * The switcher entries for a principal, the realm `$path` is in, and its Back target.
