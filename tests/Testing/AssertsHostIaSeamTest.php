@@ -115,4 +115,34 @@ class AssertsHostIaSeamTest extends TestCase
         $this->assertSame([], $diff['stale']);
         $this->assertSame(["T6 source {$published}/other.tsx Beam Starter"], array_keys($diff['unjudged']));
     }
+
+    public function test_tests_stories_and_prototypes_are_not_product_source(): void
+    {
+        mkdir($this->dir.'/src/_prototype', 0777, true);
+        file_put_contents($this->dir.'/src/page.test.tsx', 'Beam Starter');
+        file_put_contents($this->dir.'/src/page.stories.tsx', 'Beam Starter');
+        file_put_contents($this->dir.'/src/_prototype/demo.tsx', 'Beam Starter');
+        file_put_contents($this->dir.'/src/tour.tsx', 'Beam Starter');
+        $this->roots = ['source' => [$this->dir.'/src'], 'built' => []];
+
+        $keys = array_keys($this->hostIaT6());
+
+        $this->assertContains("T6 source {$this->dir}/src/tour.tsx Beam Starter", $keys);
+        $this->assertSame([], array_values(array_filter($keys, fn ($k) => str_contains($k, '.test.') || str_contains($k, '.stories.') || str_contains($k, '_prototype'))));
+    }
+
+    public function test_a_scoped_literal_is_judged_only_under_its_roots(): void
+    {
+        file_put_contents($this->dir.'/src/tour.tsx', 'food-safety');
+        $this->roots = ['source' => [$this->dir.'/src'], 'built' => []];
+
+        $this->assertSame([], array_values(array_filter(array_keys($this->hostIaT6()), fn ($k) => str_contains($k, 'food-safety'))), 'food-safety is not judged outside its scoped roots');
+        $this->assertContains('food-safety', $this->hostIaScopedLiteralsFor('ui/src'));
+        $this->assertNotContains('food-safety', $this->hostIaScopedLiteralsFor('app'));
+    }
+
+    private function hostIaScopedLiteralsFor(string $root): array
+    {
+        return array_keys(array_filter($this->hostIaScopedLiterals(), fn (array $scope) => in_array($root, $scope, true)));
+    }
 }

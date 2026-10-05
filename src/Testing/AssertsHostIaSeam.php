@@ -63,7 +63,7 @@ trait AssertsHostIaSeam
     protected function hostIaSweepRoots(): array
     {
         return [
-            'source' => ['app', 'resources/js', 'ui/src', '.env.example', 'node_modules/@splicewire/beam-inertia/src'],
+            'source' => ['app', 'config', 'resources/js', 'ui/src', '.env.example', 'node_modules/@splicewire/beam-inertia/src'],
             'built' => ['public/build', 'public/ui/assets'],
         ];
     }
@@ -86,7 +86,56 @@ trait AssertsHostIaSeam
             'Beam Starter',
             'APP_NAME=Laravel',
             "|| 'Laravel'",
+            // app-walkthrough APP-24: a package surface renders only where it is true (APP-11 removes it).
+            '<SiteFixture',
+            ...$this->hostIaHostLiterals(),
         ];
+    }
+
+    /**
+     * Literals that apply only under some sweep roots: literal => the roots (as `hostIaSweepRoots()` names them) it is
+     * judged in. Elsewhere the same word can be legitimate, such as an eval command's corpus slug or a docs page.
+     *
+     * @return array<string, list<string>>
+     */
+    protected function hostIaScopedLiterals(): array
+    {
+        // APP-25: no vertical is compiled into the host SPA or a family package's product source (APP-12 removes them).
+        $shell = ['ui/src', 'node_modules/@splicewire/beam-inertia/src', 'public/ui/assets', 'public/build'];
+
+        return [
+            'FOOD_SAFETY' => $shell,
+            'food-safety' => $shell,
+            'FoodWire' => $shell,
+            'Food Code' => $shell,
+            'COAs' => $shell,
+            // APP-26: no host guesses a schema authority (APP-13 removes it).
+            "env('SCHEMA_BASE_URI', '" => ['config'],
+        ];
+    }
+
+    /** @return list<string> the literals judged under this sweep root */
+    private function hostIaLiteralsFor(string $root): array
+    {
+        $literals = $this->hostIaForbiddenLiterals();
+        foreach ($this->hostIaScopedLiterals() as $literal => $scope) {
+            if (in_array($root, $scope, true)) {
+                $literals[] = $literal;
+            }
+        }
+
+        return array_values(array_unique($literals));
+    }
+
+    /**
+     * Literals measured at THIS host only, such as the flagship's rendered identifiers (app-walkthrough APP-23(b)).
+     * Each one is an exact rendered string, specific enough not to match ordinary code.
+     *
+     * @return list<string>
+     */
+    protected function hostIaHostLiterals(): array
+    {
+        return [];
     }
 
     protected function assertHostIaSeamRatchet(): void
@@ -315,23 +364,30 @@ trait AssertsHostIaSeam
                 continue;
             }
 
-            $args = ['grep', '-rIlF'];
-            foreach ($this->hostIaForbiddenLiterals() as $literal) {
-                $args[] = '-e';
-                $args[] = $literal;
-            }
-            $process = new Process([...$args, '--', ...array_keys($paths)]);
-            $process->run();
+            foreach ($paths as $real => $root) {
+                $literals = $this->hostIaLiteralsFor($root);
 
-            $this->assertContains($process->getExitCode(), [0, 1], "T6 {$kind} sweep failed (rc {$process->getExitCode()}): ".$process->getErrorOutput());
+                // Tests, stories and prototypes are not product source (app-walkthrough APP-25): they may name what the
+                // product must not.
+                $args = ['grep', '-rIlF', '--exclude=*.test.*', '--exclude=*.spec.*', '--exclude=*.stories.*',
+                    '--exclude-dir=_prototype', '--exclude-dir=__tests__', '--exclude-dir=__fixtures__'];
+                foreach ($literals as $literal) {
+                    $args[] = '-e';
+                    $args[] = $literal;
+                }
+                $process = new Process([...$args, '--', $real]);
+                $process->run();
 
-            foreach (array_filter(explode("\n", $process->getOutput())) as $file) {
-                $content = (string) file_get_contents($file);
-                foreach ($this->hostIaForbiddenLiterals() as $literal) {
-                    if (str_contains($content, $literal)) {
-                        // Built bundle names are content-hashed, so a built finding is keyed by its root.
-                        $where = $kind === 'built' ? $this->hostIaRootOf($file, $paths) : $this->hostIaRelative($file, $paths);
-                        $out["T6 {$kind} {$where} {$literal}"] = "{$this->hostIaRelative($file, $paths)} contains {$literal}";
+                $this->assertContains($process->getExitCode(), [0, 1], "T6 {$kind} sweep of {$root} failed (rc {$process->getExitCode()}): ".$process->getErrorOutput());
+
+                foreach (array_filter(explode("\n", $process->getOutput())) as $file) {
+                    $content = (string) file_get_contents($file);
+                    foreach ($literals as $literal) {
+                        if (str_contains($content, $literal)) {
+                            // Built bundle names are content-hashed, so a built finding is keyed by its root.
+                            $where = $kind === 'built' ? $root : $this->hostIaRelative($file, $paths);
+                            $out["T6 {$kind} {$where} {$literal}"] = "{$this->hostIaRelative($file, $paths)} contains {$literal}";
+                        }
                     }
                 }
             }
