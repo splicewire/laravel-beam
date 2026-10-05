@@ -1,0 +1,133 @@
+<?php
+
+namespace Splicewire\Beam\Tests\Testing;
+
+use Illuminate\Filesystem\Filesystem;
+use PHPUnit\Framework\AssertionFailedError;
+use Splicewire\Beam\Testing\AssertsCommercialSeams;
+use Splicewire\Beam\Tests\TestCase;
+
+/**
+ * The commercial-seam ratchet's own rules (purchase-walkthrough BUY-01): the static sweep reads code and not comments,
+ * the Stripe adapter is exempt, a failed sweep fails rather than reading clean, the ratchet fails on an unlisted
+ * violation AND on a stale entry, and R1 names a money path that does not settle or does not exist.
+ */
+class AssertsCommercialSeamsTest extends TestCase
+{
+    use AssertsCommercialSeams;
+
+    private string $dir;
+
+    /** @var array<string, string> */
+    private array $ratchet = [];
+
+    /** @var array<string, string>|null */
+    private ?array $violations = null;
+
+    /** @var array<string, array{route: ?string, drive: ?\Closure}> */
+    private array $paths = [];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->dir = sys_get_temp_dir().'/commercial-seams-'.bin2hex(random_bytes(4));
+        mkdir($this->dir.'/app/Billing', 0777, true);
+        mkdir($this->dir.'/adapter/Stripe', 0777, true);
+        file_put_contents($this->dir.'/app/Billing/Gateway.php', "<?php\n\$account->checkoutCharge(500, 'Credits');\n");
+        file_put_contents($this->dir.'/app/Billing/Documented.php', "<?php\n// it used to call \$tenant->newSubscription(...)\n /* ->invoice( */\n * ->tab( in prose\n");
+        file_put_contents($this->dir.'/adapter/Stripe/Client.php', "<?php\nuse Stripe\\StripeClient;\n");
+    }
+
+    protected function tearDown(): void
+    {
+        @chmod($this->dir.'/app/Locked', 0755);
+        (new Filesystem)->deleteDirectory($this->dir);
+
+        parent::tearDown();
+    }
+
+    protected function commercialSeamRatchet(): array
+    {
+        return $this->ratchet;
+    }
+
+    protected function commercialSweepRoots(): array
+    {
+        return [$this->dir.'/app', $this->dir.'/adapter'];
+    }
+
+    protected function commercialAdapterPattern(): string
+    {
+        return '#/adapter/Stripe/#';
+    }
+
+    protected function commercialMoneyPaths(): array
+    {
+        return $this->paths;
+    }
+
+    protected function commercialSeamViolations(): array
+    {
+        return $this->violations ?? [...$this->commercialS1(), ...$this->commercialR1()];
+    }
+
+    public function test_s1_finds_a_cashier_call_in_code_and_not_in_comments_or_the_adapter(): void
+    {
+        $this->assertSame(["S1 {$this->dir}/app/Billing/Gateway.php checkoutCharge("], array_keys($this->commercialS1()));
+    }
+
+    public function test_a_failed_sweep_fails_instead_of_reading_clean(): void
+    {
+        mkdir($this->dir.'/app/Locked');
+        file_put_contents($this->dir.'/app/Locked/Hidden.php', "<?php\n\$a->tab(1);\n");
+        chmod($this->dir.'/app/Locked', 0000);
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('grep exit 2');
+
+        $this->commercialS1();
+    }
+
+    public function test_an_unlisted_violation_fails(): void
+    {
+        $this->violations = ['S1 app/Billing/Gateway.php checkoutCharge(' => 'line 2'];
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('Unlisted commercial-seam violations');
+
+        $this->assertCommercialSeamRatchet();
+    }
+
+    public function test_a_stale_entry_fails_so_the_list_only_shrinks(): void
+    {
+        $this->violations = [];
+        $this->ratchet = ['S1 app/Billing/Gone.php checkoutCharge(' => 'BUY-02: moved onto the rail'];
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('Stale ratchet entries');
+
+        $this->assertCommercialSeamRatchet();
+    }
+
+    public function test_an_exact_match_passes(): void
+    {
+        $this->violations = ['R2 posture-missing' => 'no posture()'];
+        $this->ratchet = ['R2 posture-missing' => 'BUY-02: MoneyIn::posture()'];
+
+        $this->assertCommercialSeamRatchet();
+    }
+
+    public function test_r1_names_a_path_that_does_not_settle_and_one_that_does_not_exist(): void
+    {
+        $this->paths = [
+            'credit-checkout' => ['route' => 'credits.checkout', 'drive' => fn () => null],
+            'tower-listing' => ['route' => null, 'drive' => null],
+        ];
+
+        $this->assertSame([
+            'R1 credit-checkout unsettled' => 'credits.checkout',
+            'R1 tower-listing missing' => 'no route',
+        ], $this->commercialR1());
+    }
+}
