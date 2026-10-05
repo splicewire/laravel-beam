@@ -13,6 +13,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -123,6 +124,9 @@ class ParticleController extends Controller
         // sees are exactly the ones hanging off the bound parent. Absent a relative, this is
         // null and the standalone path below is byte-for-byte today's code.
         $relativeQuery = $this->relativeBaseQuery($request);
+
+        // UX-08c: a declared read ability gates the list through a relative mount too.
+        ResourceReadGuard::forApp()->inspectDeclaredAbility($resource, Gate::forUser($request->user()))->authorize();
 
         // beam-docs-satellite 65: a standalone list whose read is gated by NOTHING fails closed here, on
         // read — never at the mount, because whether a host's mount is scoped is a host fact.
@@ -287,6 +291,8 @@ class ParticleController extends Controller
     public function show(Request $request, string $id): Responsable
     {
         $resource = $this->particleResource($request);
+        // UX-08c: a declared read ability refuses before the record is even looked up.
+        ResourceReadGuard::forApp()->inspectDeclaredAbility($resource, Gate::forUser($request->user()))->authorize();
         $model = $this->findParticle($resource, $this->subjectId($request, $id), $request);
         $this->authorize('view', $model);
 

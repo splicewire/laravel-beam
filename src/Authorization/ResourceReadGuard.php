@@ -41,8 +41,52 @@ class ResourceReadGuard
         return $this->inspect($resource, $request, Gate::forUser($actor));
     }
 
+    /**
+     * The read ability a MODEL-backed declaration names (ux-walkthrough UX-08c), or null. A model-backed resource that
+     * declares an ability string as its `policy` is read-gated by it on top of its model's policy: the resource is a
+     * narrower view than the model, as the beam-ux diagnostics are over the entries model every member reads. A
+     * class-string `policy` (the model-backed idiom, `UserPolicy::class`) is a policy, never an ability, and asked as one
+     * it would refuse everyone; a model-less declaration's `policy` is already its read gate elsewhere.
+     */
+    public function declaredReadAbility(ParticleResource $resource): ?string
+    {
+        $ability = (string) $resource->policy;
+
+        if ($ability === '' || class_exists($ability) || $this->policyBound($resource) === null) {
+            return null;
+        }
+
+        return $ability;
+    }
+
+    /**
+     * Does the actor hold the declared read ability, when one is declared? Every read path asks this, through
+     * {@see inspect()} or directly: the list, the detail, the filters and {@see ResourceVisibility::listable()}.
+     */
+    public function inspectDeclaredAbility(ParticleResource $resource, GateContract $gate): Response
+    {
+        $ability = $this->declaredReadAbility($resource);
+
+        if ($ability === null || $gate->allows($ability)) {
+            return Response::allow();
+        }
+
+        return Response::deny("Reading [{$resource->key}] requires [{$ability}].");
+    }
+
+    /** {@see inspectDeclaredAbility()} for a named actor (a null actor is a guest). */
+    public function inspectDeclaredAbilityFor(ParticleResource $resource, ?Authenticatable $actor): Response
+    {
+        return $this->inspectDeclaredAbility($resource, Gate::forUser($actor));
+    }
+
     private function inspect(ParticleResource $resource, Request $request, GateContract $gate): Response
     {
+        $declared = $this->inspectDeclaredAbility($resource, $gate);
+        if ($declared->denied()) {
+            return $declared;
+        }
+
         // A bound policy is no longer a pass (launch security row 51a71469): the list asked nothing else, so every
         // policy-bound, row-unscoped resource listed in full to any signed-in actor. A bound policy with a viewAny is now
         // asked, below, after the same scope and realm-entitlement allowances the policy-less read gets. A policy WITHOUT

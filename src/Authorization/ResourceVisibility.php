@@ -145,6 +145,12 @@ class ResourceVisibility
             return $this->readBoundaryAdmits($definition, $actor);
         }
 
+        // UX-08c: a declared read ability is asked of the same guard every read asks.
+        $resource = $this->particles->find($definition->key);
+        if ($resource !== null && ResourceReadGuard::forApp()->inspectDeclaredAbilityFor($resource, $actor)->denied()) {
+            return false;
+        }
+
         if (! method_exists($policy, 'viewAny')) {
             return true;
         }

@@ -187,6 +187,11 @@ class ResourceFilters
      */
     public function authorizeModel(?string $model, ?ParticleResource $resource): void
     {
+        // UX-08c: a declared read ability refuses the filter metadata as it refuses the rows.
+        if ($resource !== null) {
+            app(ResourceReadGuard::class)->inspectDeclaredAbility($resource, Gate::getFacadeRoot())->authorize();
+        }
+
         if ($model === null || ($policy = Gate::getPolicyFor($model)) === null || ! method_exists($policy, 'viewAny')) {
             return;
         }
