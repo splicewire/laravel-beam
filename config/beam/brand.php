@@ -22,4 +22,10 @@ return [
 
     // The passkey card's sentence, verbatim. Unset → a neutral sentence built from `name`.
     'passkey_copy' => env('BEAM_BRAND_PASSKEY_COPY'),
+
+    // How a buyer reaches the install (BUY-08, BQ-9): the upsell's "talk to us" address for a sales-led plan. Unset:
+    // none, and the upsell offers no contact. A Splicewire host sets it to its one address (SPLICEWIRE_CONTACT_EMAIL).
+    'contact' => [
+        'sales' => env('BEAM_BRAND_CONTACT_SALES'),
+    ],
 ];

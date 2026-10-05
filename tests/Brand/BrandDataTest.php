@@ -32,9 +32,20 @@ class BrandDataTest extends TestCase
         config(['beam.brand' => ['name' => 'Acme', 'legal_entity' => 'Acme Ltd', 'logo' => '/logo.svg', 'title_template' => ':title · Acme', 'passkey_copy' => 'Use a passkey.']]);
 
         $this->assertSame(
-            ['name' => 'Acme', 'logo' => '/logo.svg', 'titleTemplate' => ':title · Acme', 'legalEntity' => 'Acme Ltd', 'passkeyCopy' => 'Use a passkey.'],
+            ['name' => 'Acme', 'logo' => '/logo.svg', 'titleTemplate' => ':title · Acme', 'legalEntity' => 'Acme Ltd', 'passkeyCopy' => 'Use a passkey.', 'contact' => ['sales' => null]],
             Brand::for()->toArray(),
         );
+    }
+
+    public function test_the_sales_contact_is_the_install_s_own_and_absent_unless_declared(): void
+    {
+        // purchase-walkthrough BUY-08 / BQ-9: the upsell's "talk to us" address is the install's, never a literal in a
+        // surface. Unset, there is none: a non-Splicewire install must not route its buyers to Splicewire.
+        config(['beam.brand' => ['name' => 'Acme']]);
+        $this->assertSame(['sales' => null], Brand::for()->toArray()['contact']);
+
+        config(['beam.brand' => ['name' => 'Acme', 'contact' => ['sales' => 'sales@acme.test']]]);
+        $this->assertSame('sales@acme.test', Brand::for()->contact['sales']);
     }
 
     public function test_readers_get_whatever_resolver_is_bound_so_a_subtree_brand_can_land_later(): void

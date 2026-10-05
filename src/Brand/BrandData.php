@@ -6,7 +6,8 @@ use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
- * The install's brand: M8 of the ux-walkthrough SPEC (IA-14), `{name, logo, titleTemplate, legalEntity, passkeyCopy}`.
+ * The install's brand: M8 of the ux-walkthrough SPEC (IA-14), `{name, logo, titleTemplate, legalEntity, passkeyCopy}`,
+ * plus `contact.sales` (purchase-walkthrough BUY-08, BQ-9).
  *
  * Declared once here. Hosts CARRY it: Inertia shares it as `brand`, and the SPA receives it in runtime config. Both
  * render these fields and never spell a brand themselves. It is read through {@see Brand::for()} (a resolver), never
@@ -24,6 +25,13 @@ final class BrandData extends Data
         public readonly ?string $titleTemplate,
         public readonly ?string $legalEntity,
         public readonly string $passkeyCopy,
+        /**
+         * How a buyer reaches the install (purchase-walkthrough BUY-08, BQ-9): `sales` is the "talk to us" address the
+         * upsell offers a sales-led plan. Null unless declared: no company is named by default.
+         *
+         * @var array{sales: ?string}
+         */
+        public readonly array $contact = ['sales' => null],
     ) {}
 
     /**
@@ -42,6 +50,7 @@ final class BrandData extends Data
             legalEntity: self::filled($config['legal_entity'] ?? null),
             passkeyCopy: self::filled($config['passkey_copy'] ?? null)
                 ?? "Passkeys secure your {$name} login. They're tied to your account.",
+            contact: ['sales' => self::filled($config['contact']['sales'] ?? null)],
         );
     }
 
