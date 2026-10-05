@@ -186,18 +186,27 @@ final class UngatedWrites
         return false;
     }
 
-    /** The handler's code with comments removed, so a commented-out gate does not count. */
+    /**
+     * A commented-out gate does not count. The match is a heuristic: a non-gating `->can(` (a response flag such as
+     * `'canEdit' => $user->can(...)`) also reads as a gate.
+     */
     private function handlerAuthorizes(ReflectionFunctionAbstract $handler): bool
     {
-        $file = $handler->getFileName();
+        return preg_match(self::AUTHORIZES, $this->code($handler)) === 1;
+    }
+
+    /** A function's source with comments removed, or '' when it cannot be read. */
+    private function code(ReflectionFunctionAbstract $function): string
+    {
+        $file = $function->getFileName();
         if ($file === false || ! is_readable($file)) {
-            return false;
+            return '';
         }
 
         $body = implode('', array_slice(
             file($file) ?: [],
-            $handler->getStartLine() - 1,
-            $handler->getEndLine() - $handler->getStartLine() + 1,
+            $function->getStartLine() - 1,
+            $function->getEndLine() - $function->getStartLine() + 1,
         ));
 
         $code = '';
@@ -208,15 +217,28 @@ final class UngatedWrites
             $code .= is_array($token) ? $token[1] : $token;
         }
 
-        return preg_match(self::AUTHORIZES, $code) === 1;
+        return $code;
     }
 
-    /** A `#[RequestFromData]` Data or a FormRequest parameter that declares `authorize()`. */
+    /** Declares `authorize()`, and its body is more than `return true;` (review-r1: that gates nothing). */
+    private function authorizes(string $class): bool
+    {
+        if (! method_exists($class, 'authorize')) {
+            return false;
+        }
+
+        $code = $this->code(new ReflectionMethod($class, 'authorize'));
+        $body = preg_replace('/\s+/', '', substr($code, (int) strpos($code, '{')));
+
+        return $body !== '{returntrue;}';
+    }
+
+    /** A `#[RequestFromData]` Data or a FormRequest parameter that declares a real `authorize()`. */
     private function requestAuthorizes(ReflectionFunctionAbstract $handler): bool
     {
         foreach ($handler->getAttributes(self::ATTRIBUTE) as $attribute) {
             $data = $attribute->getArguments()[0] ?? null;
-            if (is_string($data) && method_exists($data, 'authorize')) {
+            if (is_string($data) && class_exists($data) && $this->authorizes($data)) {
                 return true;
             }
         }
@@ -224,7 +246,7 @@ final class UngatedWrites
         foreach ($handler->getParameters() as $parameter) {
             $type = $parameter->getType();
             $class = $type instanceof ReflectionNamedType && ! $type->isBuiltin() ? $type->getName() : null;
-            if ($class !== null && is_a($class, FormRequest::class, true) && method_exists($class, 'authorize')) {
+            if ($class !== null && is_a($class, FormRequest::class, true) && $this->authorizes($class)) {
                 return true;
             }
         }

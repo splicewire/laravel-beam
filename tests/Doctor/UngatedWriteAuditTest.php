@@ -31,6 +31,7 @@ class UngatedWriteAuditTest extends TestCase
         Route::post('fixture/untyped', [UngatedWriteFixtureController::class, 'untyped'])->middleware('auth');
         Route::post('fixture/commented', [UngatedWriteFixtureController::class, 'commentedGate'])->middleware('auth');
         Route::post('fixture/form-request', [UngatedWriteFixtureController::class, 'formRequest'])->middleware('auth');
+        Route::post('fixture/form-request-open', [UngatedWriteFixtureController::class, 'openFormRequest'])->middleware('auth');
         Route::post('fixture/session-only', [UngatedWriteFixtureController::class, 'untyped'])
             ->middleware(\Illuminate\Session\Middleware\AuthenticateSession::class);
         Route::post('fixture/invokable', UngatedWriteInvokableController::class)->middleware('auth');
@@ -48,6 +49,7 @@ class UngatedWriteAuditTest extends TestCase
         $this->assertSame([
             'POST fixture/closure',
             'POST fixture/commented',
+            'POST fixture/form-request-open',
             'POST fixture/invokable',
             'POST fixture/open',
             'POST fixture/public',
@@ -79,7 +81,7 @@ class UngatedWriteAuthorizingData
 {
     public static function authorize(): bool
     {
-        return true;
+        return (bool) auth()->user()?->can('billing.manage');
     }
 }
 
@@ -121,6 +123,11 @@ class UngatedWriteFixtureController
     {
         return 'ok';
     }
+
+    public function openFormRequest(UngatedWriteOpenRequest $request): string
+    {
+        return 'ok';
+    }
 }
 
 class UngatedWriteFixtureRequest extends \Illuminate\Foundation\Http\FormRequest
@@ -128,6 +135,15 @@ class UngatedWriteFixtureRequest extends \Illuminate\Foundation\Http\FormRequest
     public function authorize(): bool
     {
         return false;
+    }
+}
+
+/** review-r1 (a): an authorize() that only returns true gates nothing. */
+class UngatedWriteOpenRequest extends \Illuminate\Foundation\Http\FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
     }
 }
 
