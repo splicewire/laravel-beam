@@ -24,14 +24,14 @@ class UngatedWriteAudit implements DoctorAudit
         $found = $this->writes->find();
 
         if ($found === []) {
-            return [Finding::pass(self::CHECK, 'Every trio-described write route declares a gate (can:/require.*, a handler authorization call, or request-Data authorize()).')];
+            return [Finding::pass(self::CHECK, 'Every write route outside the particle surface and the framework list declares a gate (can:/require.*, a handler authorization call, or a request Data or FormRequest authorize()).')];
         }
 
         $public = array_keys(array_filter($found, fn (array $write) => $write['public']));
         $authenticated = array_keys(array_filter($found, fn (array $write) => ! $write['public']));
 
         return [Finding::warn(self::CHECK, sprintf(
-            '%d trio write route%s declare%s no gate. Authenticated, so any signed-in principal may call it (%d): %s. '
+            '%d write route%s declare%s no gate. Authenticated, so any signed-in principal may call it (%d): %s. '
             .'Public, no authentication at all (%d): %s. Declare `can:`/`require.*` on the route, authorize in the '
             .'handler, or give the request Data an `authorize()`.',
             count($found),
