@@ -88,6 +88,11 @@ trait AssertsHostIaSeam
             "|| 'Laravel'",
             // app-walkthrough APP-24: a package surface renders only where it is true (APP-11 removes it).
             '<SiteFixture',
+            // docs-walkthrough D-T1 (source and built): docs chrome is the package's, not a host's (DOCS-12).
+            'slots: { header',
+            'function DocsHeader',
+            'function BeamCta',
+            'function ThemedApiReference',
             ...$this->hostIaHostLiterals(),
         ];
     }
@@ -102,6 +107,7 @@ trait AssertsHostIaSeam
     {
         // APP-25: no vertical is compiled into the host SPA or a family package's product source (APP-12 removes them).
         $shell = ['ui/src', 'node_modules/@splicewire/beam-inertia/src', 'public/ui/assets', 'public/build'];
+        $hostSource = ['app', 'config', 'resources/js', 'ui/src'];
 
         return [
             'FOOD_SAFETY' => $shell,
@@ -111,6 +117,11 @@ trait AssertsHostIaSeam
             'COAs' => $shell,
             // APP-26: no host guesses a schema authority (APP-13 removes it).
             "env('SCHEMA_BASE_URI', '" => ['config'],
+            // docs-walkthrough D-T2: no host SOURCE themes the API reference (DOCS-13). Source only: a built bundle
+            // legitimately carries the reference library's own variables.
+            'darkMode:' => $hostSource,
+            'hideDarkModeToggle' => $hostSource,
+            '--scalar-' => $hostSource,
         ];
     }
 
