@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Testing;
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\AssertionFailedError;
 use Splicewire\Beam\Testing\AssertsCommercialSeams;
 use Splicewire\Beam\Tests\TestCase;
@@ -116,6 +117,17 @@ class AssertsCommercialSeamsTest extends TestCase
         $this->ratchet = ['R2 posture-missing' => 'BUY-02: MoneyIn::posture()'];
 
         $this->assertCommercialSeamRatchet();
+    }
+
+    public function test_a_drive_restores_the_host_s_stray_request_setting(): void
+    {
+        // build.qa on BUY-01: the drive forced prevention OFF afterwards, which stripped a host's own setting.
+        Http::preventStrayRequests();
+        $this->paths = ['credit-checkout' => ['route' => null, 'drive' => fn () => null]];
+
+        $this->commercialR1();
+
+        $this->assertTrue(Http::preventingStrayRequests());
     }
 
     public function test_r1_names_a_path_that_does_not_settle_and_one_that_does_not_exist(): void

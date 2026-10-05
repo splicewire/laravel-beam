@@ -42,6 +42,11 @@ use Throwable;
  */
 trait AssertsCommercialSeams
 {
+    /** PurchaseCompleted events seen during the current R1 drive; one listener serves every drive in a test. */
+    private int $commercialSettled = 0;
+
+    private bool $commercialListening = false;
+
     /**
      * The host's known violations: violation id => "BUY-NN: why", owned by the ticket that removes it.
      *
@@ -332,18 +337,22 @@ trait AssertsCommercialSeams
         // refuses it) rather than failing on a missing key, which would hide what it does. Nothing is sent either way.
         $previousKeys = ['cashier.secret' => config('cashier.secret'), 'cashier.key' => config('cashier.key'), 'commerce.stripe.secret' => config('commerce.stripe.secret')];
         config(['commerce.driver' => 'fake', 'cashier.secret' => 'sk_test_commercial_seam', 'cashier.key' => 'pk_test_commercial_seam', 'commerce.stripe.secret' => 'sk_test_commercial_seam']);
+        $wasPreventing = Http::preventingStrayRequests();
         Http::preventStrayRequests();
         if (class_exists($requestor) && class_exists($guard)) {
             $requestor::setHttpClient(new $guard($this->commercialRecordingTransport($sent)));
         }
-        $settled = 0;
-        Event::listen($completed, function () use (&$settled) {
-            $settled++;
-        });
+        if (! $this->commercialListening) {
+            Event::listen($completed, function () {
+                $this->commercialSettled++;
+            });
+            $this->commercialListening = true;
+        }
+        $this->commercialSettled = 0;
 
         try {
             $drive();
-            $outcome = $sent !== [] ? 'outbound' : ($settled === 0 ? 'unsettled' : null);
+            $outcome = $sent !== [] ? 'outbound' : ($this->commercialSettled === 0 ? 'unsettled' : null);
             $why = $sent !== [] ? implode(', ', $sent) : '';
         } catch (Throwable $e) {
             $why = '('.class_basename($e).': '.str($e->getMessage())->limit(160).')';
@@ -358,7 +367,7 @@ trait AssertsCommercialSeams
                 $requestor::setHttpClient($previous);
             }
             config(['commerce.driver' => $previousDriver, ...$previousKeys]);
-            Http::preventStrayRequests(false);
+            Http::preventStrayRequests($wasPreventing);
         }
 
         return [$outcome, $why];
