@@ -87,6 +87,19 @@ class AssertsCommercialSeamsTest extends TestCase
         $this->assertSame(["S1 {$this->dir}/app/Billing/Gateway.php checkoutCharge("], array_keys($this->commercialS1()));
     }
 
+    public function test_s1_does_not_flag_the_rails_own_settlements_invoice_but_still_flags_a_cashier_invoice(): void
+    {
+        // purchase-walkthrough BUY-02 part D: `->invoice(` is Cashier's money call, but Settlements::invoice is the rail's
+        // neutral verb that builds a payable Invoice; the pattern must not flag the rail it is steering everyone onto.
+        file_put_contents($this->dir.'/app/Billing/OnTheRail.php', "<?php\n\$invoice = app(Settlements::class)->invoice(\$bill, \$customer);\n");
+        file_put_contents($this->dir.'/app/Billing/OffTheRail.php', "<?php\n\$account->invoice(['collection_method' => 'send_invoice']);\n");
+
+        $found = array_keys($this->commercialS1());
+
+        $this->assertContains("S1 {$this->dir}/app/Billing/OffTheRail.php ->invoice(", $found);
+        $this->assertNotContains("S1 {$this->dir}/app/Billing/OnTheRail.php ->invoice(", $found);
+    }
+
     public function test_i3_finds_a_recurring_stripe_start_anywhere_even_in_the_adapter(): void
     {
         // BUY-04 (I3, one engine per fee): BillGenerator bills the fee, so a Stripe recurring subscription is a second

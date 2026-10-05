@@ -161,7 +161,12 @@ trait AssertsCommercialSeams
     protected function commercialS1(): array
     {
         $out = [];
-        foreach ($this->commercialSweep($this->commercialRailPatterns()) as [$rel, $line, $pattern]) {
+        foreach ($this->commercialSweep($this->commercialRailPatterns()) as [$rel, $line, $pattern, $code]) {
+            // Settlements::invoice is the rail's own neutral verb (it builds a payable Invoice, BUY-02 part D), not
+            // Cashier's money call that `->invoice(` exists to catch.
+            if ($pattern === '->invoice(' && preg_match('/Settlements::class\)\s*->invoice\(/', (string) $code)) {
+                continue;
+            }
             if (! preg_match($this->commercialAdapterPattern(), $rel)) {
                 $out["S1 {$rel} {$pattern}"] = "line {$line}";
             }
