@@ -57,9 +57,10 @@ trait AssertsCommercialSeams
     /**
      * R1's dataset: the money paths this host drives under the fake rail. label => ['route' => the route name this path
      * covers (R3 reads it) or null, 'drive' => a closure that performs the path, or null where the path does not exist
-     * yet (reported as `missing`)].
+     * yet (reported as `missing`), and optionally 'settles' => false for a management path that settles no purchase
+     * (the billing portal is MoneyIn::manage(): clean means nothing outbound and nothing refused; BUY-02)].
      *
-     * @return array<string, array{route: ?string, drive: ?Closure}>
+     * @return array<string, array{route: ?string, drive: ?Closure, settles?: bool}>
      */
     protected function commercialMoneyPaths(): array
     {
@@ -252,7 +253,7 @@ trait AssertsCommercialSeams
     {
         $out = [];
         foreach ($this->commercialMoneyPaths() as $label => $path) {
-            [$outcome, $why] = $path['drive'] === null ? ['missing', ''] : $this->commercialDrive($path['drive']);
+            [$outcome, $why] = $path['drive'] === null ? ['missing', ''] : $this->commercialDrive($path['drive'], $path['settles'] ?? true);
             if ($outcome !== null) {
                 $out["R1 {$label} {$outcome}"] = trim(($path['route'] ?? 'no route').' '.$why);
             }
@@ -342,11 +343,12 @@ trait AssertsCommercialSeams
 
     /**
      * Drive one money path under the fake rail: [outcome, why]. Outcome is null when clean; otherwise `off-rail` (it calls
-     * Stripe directly and the guard refused it), `outbound`, `unsettled` (no PurchaseCompleted), or `error <class>`.
+     * Stripe directly and the guard refused it), `outbound`, `unsettled` (no PurchaseCompleted, for a path that settles
+     * one), or `error <class>`.
      *
      * @return array{0: ?string, 1: string}
      */
-    protected function commercialDrive(Closure $drive): array
+    protected function commercialDrive(Closure $drive, bool $settles = true): array
     {
         $requestor = 'Stripe\\ApiRequestor';
         $guard = 'Rushing\\Commerce\\Stripe\\FakeRailStripeHttpClient';
@@ -375,7 +377,7 @@ trait AssertsCommercialSeams
 
         try {
             $drive();
-            $outcome = $sent !== [] ? 'outbound' : ($this->commercialSettled === 0 ? 'unsettled' : null);
+            $outcome = $sent !== [] ? 'outbound' : ($settles && $this->commercialSettled === 0 ? 'unsettled' : null);
             $why = $sent !== [] ? implode(', ', $sent) : '';
         } catch (Throwable $e) {
             $why = '('.class_basename($e).': '.str($e->getMessage())->limit(160).')';

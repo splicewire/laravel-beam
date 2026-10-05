@@ -198,4 +198,16 @@ class AssertsCommercialSeamsTest extends TestCase
             'R1 tower-listing missing' => 'no route',
         ], $this->commercialR1());
     }
+
+    public function test_r1_holds_a_management_path_clean_without_a_purchase(): void
+    {
+        // purchase-walkthrough BUY-02: the billing portal is MoneyIn::manage(), which settles no purchase; its clean
+        // outcome is "nothing outbound, nothing refused". A path declares that with `settles => false`.
+        $this->paths = [
+            'billing-portal' => ['route' => 'subscription.portal', 'drive' => fn () => null, 'settles' => false],
+            'credit-checkout' => ['route' => 'credits.checkout', 'drive' => fn () => null],
+        ];
+
+        $this->assertSame(['R1 credit-checkout unsettled' => 'credits.checkout'], $this->commercialR1());
+    }
 }
