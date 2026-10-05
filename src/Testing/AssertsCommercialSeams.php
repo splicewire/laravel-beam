@@ -289,18 +289,40 @@ trait AssertsCommercialSeams
         return $out;
     }
 
-    /** R4, account doors (BUY-5): structural until AccountDoors exists; a mounted registration route has no declared policy. */
+    /**
+     * R4, account doors (BUY-5): the declared policy (beam-accounts `AccountDoors`, M10) decides the registration door.
+     * `POST register` is mounted iff registration is open, and Fortify's registration feature agrees. A host without
+     * the policy has nothing declared, so a mounted register route is undeclared. Reached through the container by
+     * class name, because this package does not depend on beam-accounts.
+     */
     protected function commercialR4(): array
     {
-        if (interface_exists('Splicewire\\Beam\\Accounts\\Doors\\AccountDoors')) {
-            return [];
-        }
-
-        $out = ['R4 account-doors-missing' => 'no AccountDoors policy declares which doors are open'];
+        $mounted = false;
         foreach (Router::getRoutes()->getRoutes() as $route) {
             if ($route->uri() === 'register' && in_array('POST', $route->methods(), true)) {
-                $out['R4 register-mounted-undeclared'] = 'POST register is mounted with no declared door policy';
+                $mounted = true;
             }
+        }
+
+        $doors = 'Splicewire\\Beam\\Accounts\\Doors\\AccountDoors';
+        if (! app()->bound($doors) && ! class_exists($doors)) {
+            return $mounted
+                ? ['R4 account-doors-missing' => 'no AccountDoors policy declares which doors are open', 'R4 register-mounted-undeclared' => 'POST register is mounted with no declared door policy']
+                : ['R4 account-doors-missing' => 'no AccountDoors policy declares which doors are open'];
+        }
+
+        $open = app($doors)->policy()->registration === 'open';
+        $fortify = in_array('registration', (array) config('fortify.features', []), true);
+
+        $out = [];
+        if ($mounted && ! $open) {
+            $out['R4 register-mounted-while-closed'] = 'POST register is mounted while the declared registration door is closed';
+        }
+        if ($open && ! $mounted) {
+            $out['R4 register-open-unmounted'] = 'the declared registration door is open but no POST register route is mounted';
+        }
+        if ($fortify !== $open) {
+            $out['R4 fortify-registration-disagrees'] = 'Fortify\'s registration feature does not follow the declared door';
         }
 
         return $out;

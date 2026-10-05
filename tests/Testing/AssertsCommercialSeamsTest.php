@@ -130,6 +130,47 @@ class AssertsCommercialSeamsTest extends TestCase
         $this->assertTrue(Http::preventingStrayRequests());
     }
 
+    /** Bind a stand-in for beam-accounts' AccountDoors (laravel-beam does not depend on it) with one registration mode. */
+    private function doorsSay(string $registration): void
+    {
+        $this->app->instance('Splicewire\\Beam\\Accounts\\Doors\\AccountDoors', new class($registration)
+        {
+            public function __construct(private string $registration) {}
+
+            public function policy(): object
+            {
+                return (object) ['registration' => $this->registration];
+            }
+        });
+    }
+
+    /** BUY-05: R4 judges the declared policy. The register route is mounted iff registration is open, and Fortify agrees. */
+    public function test_r4_holds_the_register_route_to_the_declared_door(): void
+    {
+        $this->doorsSay('closed');
+        config(['fortify.features' => []]);
+        $this->assertSame([], $this->commercialR4(), 'Closed and unmounted is the clean case.');
+
+        \Illuminate\Support\Facades\Route::post('register', fn () => 'x');
+        app('router')->getRoutes()->refreshNameLookups();
+        $this->assertArrayHasKey('R4 register-mounted-while-closed', $this->commercialR4());
+
+        $this->doorsSay('open');
+        config(['fortify.features' => ['registration']]);
+        $this->assertSame([], $this->commercialR4(), 'Open, mounted, and Fortify agrees.');
+
+        config(['fortify.features' => []]);
+        $this->assertArrayHasKey('R4 fortify-registration-disagrees', $this->commercialR4());
+    }
+
+    public function test_r4_reports_an_open_door_with_no_route(): void
+    {
+        $this->doorsSay('open');
+        config(['fortify.features' => ['registration']]);
+
+        $this->assertArrayHasKey('R4 register-open-unmounted', $this->commercialR4());
+    }
+
     public function test_r1_names_a_path_that_does_not_settle_and_one_that_does_not_exist(): void
     {
         $this->paths = [
