@@ -45,6 +45,8 @@ use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
+use Splicewire\Beam\Authorization\BeamSchemaPolicy;
+use Splicewire\Beam\Authorization\GitRepoPolicy;
 use Splicewire\Beam\Authorization\GuardActorAdapter;
 use Splicewire\Beam\Brand\BrandResolver;
 use Splicewire\Beam\Brand\ConfigBrandResolver;
@@ -1651,7 +1653,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // disagreeing about what that meant. The `beam-schema.*` family is a host's admin role's to
         // seed; the host's own `schemas.manage` verb (freeze/migrate) is a `Gate::define` the policy
         // leaves alone.
-        CascadePolicyRegistrar::register(BeamSchema::class);
+        // UX-08c: RESERVED, so its tokens reach a role only when the host grants them by name.
+        $this->app->make(Gate::class)->policy(BeamSchema::class, BeamSchemaPolicy::class);
 
         // `GitRepo` — the last beam-owned model a starter's tenant realm lists with no read boundary at
         // all: no policy, no row predicate, no tenancy, and the tenant realm is ungated. Once 473fbfd
@@ -1660,7 +1663,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // member while it had been the ONLY seat an unprovisioned user was ever shown. It is declared
         // here, the same shape as the two above, so a team role's `git-repo.view` token (granted by
         // beam-accounts' `RolePermissions` from the Gate's policy map) is what reads it.
-        CascadePolicyRegistrar::register(GitRepo::class);
+        // UX-08c: RESERVED, so its tokens reach a role only when the host grants them by name.
+        $this->app->make(Gate::class)->policy(GitRepo::class, GitRepoPolicy::class);
 
         // Every route macro this package ships, contributed by the trait that OWNS it rather than
         // hand-listed here: the particle resource/op mounts, the `->beam()` route-metadata namespace,

@@ -78,11 +78,17 @@ class BeamSchemaPolicyGateTest extends TestCase
         $this->assertSame(app(PermissionNamer::class), app(PermissionNamer::class));
     }
 
-    public function test_beam_schema_binds_a_cascade_policy_that_answers_view_any(): void
+    /**
+     * UX-08c: `BeamSchema` reserves its tokens, so it binds `BeamSchemaPolicy` (GrantedExplicitly) rather than the uniform
+     * {@see ConfiguredModelPolicy} that handed every member `beam-schema.view`. It is still a cascade policy that answers
+     * viewAny, which is what the list read asks (launch security row 51a71469).
+     */
+    public function test_beam_schema_binds_a_reserved_cascade_policy_that_answers_view_any(): void
     {
         $policy = Gate::getPolicyFor(BeamSchema::class);
 
-        $this->assertInstanceOf(ConfiguredModelPolicy::class, $policy);
+        $this->assertInstanceOf(\Splicewire\Beam\Authorization\BeamSchemaPolicy::class, $policy);
+        $this->assertInstanceOf(\Rushing\PermissionCascade\Contracts\GrantedExplicitly::class, $policy);
         $this->assertTrue(method_exists($policy, 'viewAny'));
     }
 

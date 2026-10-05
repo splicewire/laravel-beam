@@ -7,14 +7,17 @@ use Illuminate\Foundation\Auth\User as AuthUser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
-use Rushing\PermissionCascade\Policies\ConfiguredModelPolicy;
+use Rushing\PermissionCascade\Contracts\GrantedExplicitly;
 use Rushing\PermissionCascade\Support\PermissionNamer;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Spatie\Permission\PermissionServiceProvider;
 use Spatie\Permission\Traits\HasRoles;
+use Splicewire\Beam\Authorization\BeamSchemaPolicy;
+use Splicewire\Beam\Authorization\GitRepoPolicy;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Models\GitRepo;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
@@ -98,8 +101,18 @@ class GitRepoPolicyGateTest extends TestCase
 
     public function test_git_repo_binds_a_cascade_policy_under_its_alias(): void
     {
-        $this->assertInstanceOf(ConfiguredModelPolicy::class, Gate::getPolicyFor(GitRepo::class));
+        // UX-08c: a RESERVED cascade policy. Its tokens go to no team role by default (a member would read a host's
+        // repo roots and dirty paths); a host grants them by name. The token names are unchanged.
+        $this->assertInstanceOf(GitRepoPolicy::class, Gate::getPolicyFor(GitRepo::class));
+        $this->assertInstanceOf(GrantedExplicitly::class, Gate::getPolicyFor(GitRepo::class));
         $this->assertSame('git-repo.view', app(PermissionNamer::class)->assemble(GitRepo::class, 'view'));
+    }
+
+    public function test_beam_schema_binds_a_reserved_cascade_policy_too(): void
+    {
+        $this->assertInstanceOf(BeamSchemaPolicy::class, Gate::getPolicyFor(BeamSchema::class));
+        $this->assertInstanceOf(GrantedExplicitly::class, Gate::getPolicyFor(BeamSchema::class));
+        $this->assertSame('beam-schema.view', app(PermissionNamer::class)->assemble(BeamSchema::class, 'view'));
     }
 
     public function test_a_stranger_is_denied_and_a_view_holder_is_admitted(): void
