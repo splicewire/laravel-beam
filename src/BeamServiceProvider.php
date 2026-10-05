@@ -276,12 +276,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             // beam.php file and a beam/ dir is the one real Laravel footgun this move avoids.
             // `beam/core.php` → `beam.core.*`; `beam/client.php` → `beam.client.*` (the promoted client-SDK
             // codegen's config: out_dir, emit_stores, the http-client/route module specifiers, sources).
+            // `beam/brand.php` → `beam.brand.*`: the family's one brand declaration, resolved by `Brand\BrandData`.
             // `webhooks` is the one deliberately FLAT config beam publishes — the outbound
             // webhook edge rehomed here from tower (api-surface-coherence 37), whose keys
             // `webhooks.outbound.{tries,backoff,timeout}` are a stated contract of that
             // ticket. The beam.php-vs-beam/ footgun the nesting rule exists for cannot be
             // caused by a file named `webhooks.php`; see config/webhooks.php's own note.
-            ->hasConfigFile(['beam/core', 'beam/client', 'webhooks'])
+            ->hasConfigFile(['beam/core', 'beam/client', 'beam/brand', 'webhooks'])
             // beam's base tables ship as PUBLISH-ONLY spatie/laravel-package-tools stubs — the idiomatic
             // pattern for a PackageServiceProvider. `runsMigrations` stays FALSE (the package-tools
             // default), so beam-core does NOT auto-load these at runtime — `vendor:publish
@@ -360,6 +361,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // `scoped` on BeamManager's own reasoning, and additionally because it holds the Router — which
         // an Octane worker re-resolves per request.
         $this->app->singleton(ParticleMounter::class);
+        // The brand is read through a resolver (ux-walkthrough IA-14, docs-walkthrough C-1); a host or DOCS-12 rebinds it.
+        $this->app->bindIf(\Splicewire\Beam\Brand\BrandResolver::class, \Splicewire\Beam\Brand\ConfigBrandResolver::class);
 
         $this->app->scoped(ParticleMountManager::class, fn ($app) => new ParticleMountManager(
             $app['router'],
