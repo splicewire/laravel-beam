@@ -21,6 +21,8 @@ class ResourceMount
      * @param  string  $nameStem  The route-name stem the listing's own route takes.
      * @param  list<Route>  $routes  Every stamped route under this root, in route-table order.
      * @param  list<string>  $middleware  Middleware common to EVERY route in the mount.
+     * @param  string|null  $side  The cross-instance side EVERY route in the mount was served for
+     *                             (`Sides::serve`), or null when they declare none or differ (UX-07).
      */
     public function __construct(
         public string $resource,
@@ -28,6 +30,7 @@ class ResourceMount
         public string $nameStem,
         public array $routes = [],
         public array $middleware = [],
+        public ?string $side = null,
     ) {}
 
     public function uri(): string

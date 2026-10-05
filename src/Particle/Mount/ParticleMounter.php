@@ -590,6 +590,11 @@ class ParticleMounter
             $route->middleware($mount->middleware);
         }
 
+        // And the mount's cross-instance side, for the same reason: no enclosing group to inherit it from (UX-07).
+        if ($mount->side !== null) {
+            $route->setAction([...$route->getAction(), 'side' => $mount->side]);
+        }
+
         $route->beam()->returns(ResourceDiscoveryData::class);
 
         return $route;

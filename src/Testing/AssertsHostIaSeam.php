@@ -28,7 +28,7 @@ use Throwable;
  *   (`IaInvariants`) turns it into the full walk.
  * - T3 checks that the landing resolver exists and that Fortify's `home` is not a literal path. UX-11 (`Landing::for()`)
  *   turns it into the A5 door matrix.
- * - T4 recognises a macro's side by the routes it registers, until UX-07 gives macros a declared `Side`.
+ * - T4 reads the side a route was served for (`Sides::serve()` tags it) against `beam.core.ia.plays` (UX-07).
  * - T6 sweeps with `grep -rIF`, which keeps `rg -F`'s exit contract (1 = clean, 0 = matches, 2 = a failed sweep).
  *   ripgrep is not installed on the primary Mac.
  */
@@ -45,12 +45,15 @@ trait AssertsHostIaSeam
     abstract protected function hostIaRatchet(): array;
 
     /**
-     * Which side of a cross-instance relationship this host plays (`hub`, `client`), until `beam.core.ia.plays`
-     * exists (UX-07). Tower and the flagship are hubs, satellites clients, the beam starter neither.
+     * Which sides of a cross-instance relationship this host plays (`hub`, `client`): its declared
+     * `beam.core.ia.plays` (UX-07). Tower and the flagship are hubs, satellites clients, the beam starter neither.
      *
      * @return list<'hub'|'client'>
      */
-    abstract protected function hostIaPlays(): array;
+    protected function hostIaPlays(): array
+    {
+        return array_values((array) config('beam.core.ia.plays', []));
+    }
 
     /**
      * Roots T6 sweeps, relative to the host's base path (or absolute): source roots, then built bundles. A root that does
@@ -338,24 +341,36 @@ trait AssertsHostIaSeam
         return $out;
     }
 
-    /** T4 (structural until UX-07): no route registered by a macro for a side this host does not play. */
+    /**
+     * T4: no route is mounted for a side this host does not play. Structural (UX-07): a route's side is the one
+     * `Sides::serve()` tagged it with. A known cross-instance route (platform connection, device pairing) that was not
+     * served is named `undeclared-side`, and a host that runs this seam without declaring `plays` is named too.
+     */
     protected function hostIaT4(): array
     {
         $out = [];
+        if (config('beam.core.ia.plays') === null) {
+            $out['T4 plays-undeclared'] = 'beam.core.ia.plays is not declared, so every side is mounted';
+        }
         $plays = $this->hostIaPlays();
 
         foreach (Router::getRoutes()->getRoutes() as $route) {
             /** @var Route $route */
             $uri = $route->uri();
             $name = (string) $route->getName();
-            $side = match (true) {
-                str_contains("/{$uri}", '/platform-connection') => 'client',
-                str_starts_with($name, 'device.') => 'hub',
-                default => null,
-            };
-            if ($side !== null && ! in_array($side, $plays, true)) {
-                $label = $name !== '' ? $name : $uri;
-                $out["T4 {$side}-route {$label}"] = "a {$side}-side route at a host that plays [".implode(',', $plays).']';
+            $label = $name !== '' ? $name : $uri;
+            $side = $route->getAction('side');
+
+            if (is_string($side)) {
+                if (! in_array($side, $plays, true)) {
+                    $out["T4 {$side}-route {$label}"] = "a {$side}-side route at a host that plays [".implode(',', $plays).']';
+                }
+
+                continue;
+            }
+
+            if (str_contains("/{$uri}", '/platform-connection') || str_starts_with($name, 'device.')) {
+                $out["T4 undeclared-side {$label}"] = 'a cross-instance route not mounted through Sides::serve()';
             }
         }
 

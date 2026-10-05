@@ -100,6 +100,7 @@ class ResourceMountMap
                     nameStem: $this->nameStem($resource, $routes),
                     routes: array_values($routes),
                     middleware: $this->commonMiddleware($routes),
+                    side: $this->commonSide($routes),
                 );
             }
         }
@@ -230,6 +231,20 @@ class ResourceMountMap
         }
 
         return $common === [] ? $resource : implode('.', $common);
+    }
+
+    /**
+     * The cross-instance side every route in the mount was served for (`Sides::serve` tags the route action), or null
+     * when they declare none or differ. The listing is mounted outside that group, exactly as for the middleware, so it
+     * inherits the side from here (ux-walkthrough UX-07).
+     *
+     * @param  list<Route>  $routes
+     */
+    protected function commonSide(array $routes): ?string
+    {
+        $sides = array_values(array_unique(array_map(fn (Route $route) => $route->getAction('side'), $routes)));
+
+        return count($sides) === 1 && is_string($sides[0]) ? $sides[0] : null;
     }
 
     /**

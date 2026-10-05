@@ -26,29 +26,16 @@ final class HostIa
         private readonly RealmProfiles $profiles,
     ) {}
 
-    /**
-     * Whether this host plays `$side` (IA-6). `beam.core.ia.plays` lists the sides; undeclared (null) plays every side,
-     * so a host that has not declared is unchanged.
-     */
+    /** Whether this host plays `$side` (IA-6). See {@see Sides::plays()}. */
     public function plays(Side $side): bool
     {
-        $plays = config('beam.core.ia.plays');
-
-        return $plays === null || in_array($side->value, (array) $plays, true);
+        return Sides::plays($side);
     }
 
-    /**
-     * Mount a cross-instance surface: register `$routes`, each tagged with the side it serves (the route action's
-     * `side`, which the host IA seam's T4 reads), or throw {@see SideRefused} when this host does not play that side.
-     * Every D5′ macro for a cross-instance surface, and a host's own inline mount of one, calls this.
-     */
+    /** Mount a cross-instance surface for `$side`, or throw {@see SideRefused}. See {@see Sides::serve()}. */
     public function serve(Side $side, string $surface, Closure $routes): void
     {
-        if (! $this->plays($side)) {
-            throw SideRefused::for($side, $surface, array_values((array) config('beam.core.ia.plays', [])));
-        }
-
-        Route::group(['side' => $side->value], $routes);
+        Sides::serve($side, $surface, $routes);
     }
 
     /**
