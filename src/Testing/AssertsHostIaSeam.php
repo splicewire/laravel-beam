@@ -24,8 +24,10 @@ use Throwable;
  * Violation ids are stable across edits (no line numbers): `T<n> <what> <where>`.
  *
  * Structural until their modules exist, as the SPEC's UX-01 row records:
- * - T2 checks I1 and I4 over the host's nav.yml rows only, not each demo principal's projected rails. UX-06
- *   (`IaInvariants`) turns it into the full walk.
+ * - T2 checks I1 and I4 over the host's nav.yml rows. Each principal's PROJECTED rails are checked at runtime instead:
+ *   UX-06's `IaCheckedNavContributor` runs `IaInvariants` on every frame manifest it answers (a host tree that breaks
+ *   one throws), T1 asserts the port is that decorator, and the account rail runs the same check in `accountNav`.
+ *   nav.yml stays here because its account rows never reach a frame manifest.
  * - T3 checks that the landing resolver exists and that Fortify's `home` is not a literal path. UX-11 (`Landing::for()`)
  *   turns it into the A5 door matrix.
  * - T4 reads the side a route was served for (`Sides::serve()` tags it) against `beam.core.ia.plays` (UX-07).
@@ -298,7 +300,7 @@ trait AssertsHostIaSeam
         return $out;
     }
 
-    /** T2 (structural until UX-06): I1 and I4 over the nav.yml rows each rail is seeded from. */
+    /** T2: I1 and I4 over the nav.yml rows each rail is seeded from (the projected rails are checked at runtime, UX-06). */
     protected function hostIaT2(): array
     {
         $out = [];
