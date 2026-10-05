@@ -179,15 +179,27 @@ trait AssertsCommercialSeams
     protected function commercialI3(): array
     {
         $out = [];
-        foreach ($this->commercialSweep(["'mode' => 'subscription'", '"mode" => "subscription"', '->subscriptions->create(']) as [$rel, $line, $pattern]) {
-            $out["I3 recurring {$rel} {$pattern}"] = "line {$line}";
+        // Broad needles, then one regex, so spacing and quote variants are the same start (review-r1).
+        $starts = [
+            'mode=subscription' => '/[\'"]mode[\'"]\s*=>\s*[\'"]subscription[\'"]/',
+            'subscriptions->create' => '/->subscriptions->create\s*\(/',
+        ];
+        foreach ($this->commercialSweep(["'mode'", '"mode"', '->subscriptions->create']) as [$rel, $line, , $code]) {
+            foreach ($starts as $start => $regex) {
+                if (preg_match($regex, $code)) {
+                    $out["I3 recurring {$rel} {$start}"] ??= "line {$line}";
+                }
+            }
         }
         if (app()->bound('Rushing\\Commerce\\Contracts\\SubscriptionBinder')) {
             $out['I3 subscription-binder-bound'] = 'recurring Orders would start a Stripe subscription';
         }
-        foreach ($this->commercialSweep(["'price_id'", '"price_id"'], $this->commercialSeedRoots()) as [$rel, $line]) {
-            $out["I3 seeded-price-id {$rel}"] = "line {$line}";
+        // A JSON or YAML fixture seeds as surely as a seeder (build.qa).
+        $seedFiles = ['*.php', '*.json', '*.yaml', '*.yml'];
+        foreach ($this->commercialSweep(["'price_id'", '"price_id"', 'price_id:'], $this->commercialSeedRoots(), $seedFiles) as [$rel, $line]) {
+            $out["I3 seeded-price-id {$rel}"] ??= "line {$line}";
         }
+        ksort($out);
 
         return $out;
     }
@@ -513,13 +525,14 @@ trait AssertsCommercialSeams
      *
      * @param  list<string>  $patterns
      * @param  list<string>|null  $roots  the roots to read; the sweep roots when null
+     * @param  list<string>  $include  the file globs to read
      * @return list<array{0: string, 1: int, 2: string, 3: string}>
      */
-    protected function commercialSweep(array $patterns, ?array $roots = null): array
+    protected function commercialSweep(array $patterns, ?array $roots = null, array $include = ['*.php']): array
     {
         $hits = [];
         foreach ($this->commercialResolvedRoots($roots ?? $this->commercialSweepRoots()) as $display => $real) {
-            $args = ['grep', '-rIFn', '--include=*.php'];
+            $args = ['grep', '-rIFn', ...array_map(fn (string $glob) => "--include={$glob}", $include)];
             foreach ($patterns as $pattern) {
                 $args[] = '-e';
                 $args[] = $pattern;

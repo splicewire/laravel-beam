@@ -92,8 +92,14 @@ class AssertsCommercialSeamsTest extends TestCase
         // BUY-04 (I3, one engine per fee): BillGenerator bills the fee, so a Stripe recurring subscription is a second
         // engine wherever it starts. newSubscription( stays S1's.
         file_put_contents($this->dir.'/adapter/Stripe/Recurring.php', "<?php\n\$s->checkout->sessions->create(['mode' => 'subscription']);\n// 'mode' => 'subscription' in prose\n");
+        // review-r1: spacing and quote variants are the same start.
+        file_put_contents($this->dir.'/app/Billing/Tight.php', "<?php\n\$a = ['mode'=>\"subscription\"];\n\$s->subscriptions->create (\$p);\n\$b = ['mode' => 'payment'];\n");
 
-        $this->assertSame(["I3 recurring {$this->dir}/adapter/Stripe/Recurring.php 'mode' => 'subscription'"], array_keys($this->commercialI3()));
+        $this->assertSame([
+            "I3 recurring {$this->dir}/adapter/Stripe/Recurring.php mode=subscription",
+            "I3 recurring {$this->dir}/app/Billing/Tight.php mode=subscription",
+            "I3 recurring {$this->dir}/app/Billing/Tight.php subscriptions->create",
+        ], array_keys($this->commercialI3()));
     }
 
     public function test_i3_flags_a_bound_subscription_binder(): void
@@ -110,9 +116,17 @@ class AssertsCommercialSeamsTest extends TestCase
         mkdir($this->dir.'/database/seeders', 0777, true);
         file_put_contents($this->dir.'/database/seeders/PlanSeeder.php', "<?php\n\$settings = ['stripe' => ['price_id' => 'price_123']];\n");
         file_put_contents($this->dir.'/app/Billing/Reads.php', "<?php\nreturn \$plan->settings['stripe']['price_id'];\n");
+        // build.qa: a JSON or YAML fixture seeds as surely as a seeder.
+        mkdir($this->dir.'/database/fixtures', 0777, true);
+        file_put_contents($this->dir.'/database/fixtures/plans.json', '{"stripe": {"price_id": "price_123"}}');
+        file_put_contents($this->dir.'/database/fixtures/plans.yaml', "stripe:\n  price_id: price_123\n");
         $this->seedRoots = [$this->dir.'/database'];
 
-        $this->assertSame(["I3 seeded-price-id {$this->dir}/database/seeders/PlanSeeder.php"], array_keys($this->commercialI3()));
+        $this->assertSame([
+            "I3 seeded-price-id {$this->dir}/database/fixtures/plans.json",
+            "I3 seeded-price-id {$this->dir}/database/fixtures/plans.yaml",
+            "I3 seeded-price-id {$this->dir}/database/seeders/PlanSeeder.php",
+        ], array_keys($this->commercialI3()));
     }
 
     public function test_a_failed_sweep_fails_instead_of_reading_clean(): void
