@@ -34,6 +34,9 @@ use Throwable;
  */
 trait AssertsHostIaSeam
 {
+    /** @var list<string> T6 roots that did not exist at this run; their ratchet entries are unjudged. */
+    private array $hostIaAbsentRoots = [];
+
     /**
      * The host's known violations: violation id => "UX-NN: why", owned by the ticket that removes it.
      *
@@ -50,8 +53,9 @@ trait AssertsHostIaSeam
     abstract protected function hostIaPlays(): array;
 
     /**
-     * Roots T6 sweeps, relative to the host's base path: source roots first, then built bundles. A root that does not
-     * exist is skipped and named, so a sweep cannot pass by reading nothing.
+     * Roots T6 sweeps, relative to the host's base path (or absolute): source roots, then built bundles. A root that does
+     * not exist at this run (a gitignored build before a build, a js-overlay link that is off) is NAMED in the output,
+     * and the ratchet entries under it are unjudged rather than stale. Absence is not a fix.
      *
      * @return array{source: list<string>, built: list<string>}
      */
@@ -88,22 +92,58 @@ trait AssertsHostIaSeam
     {
         $found = $this->hostIaSeamViolations();
         $ratchet = $this->hostIaRatchet();
-
-        $unlisted = array_diff_key($found, $ratchet);
-        $stale = array_diff_key($ratchet, $found);
+        ['unlisted' => $unlisted, 'stale' => $stale, 'unjudged' => $unjudged] = $this->hostIaRatchetDiff($found, $ratchet);
 
         $lines = [];
+        foreach ($this->hostIaAbsentRoots as $root) {
+            $lines[] = "  SKIP   T6 root {$root} is absent here, so its ratchet entries are not judged";
+        }
         foreach ($ratchet as $id => $owner) {
-            $lines[] = (isset($found[$id]) ? '  known  ' : '  STALE  ')."{$id}  →  {$owner}";
+            $state = isset($found[$id]) ? '  known  ' : (isset($unjudged[$id]) ? '  unjudged ' : '  STALE  ');
+            $lines[] = $state."{$id}  →  {$owner}";
         }
         foreach ($unlisted as $id => $detail) {
             $lines[] = "  NEW    {$id}  ({$detail})";
         }
         fwrite(STDERR, "\nHost IA seam ratchet at ".basename(base_path()).': '.count($found).' violation(s), '
-            .count($ratchet).' listed, '.count($unlisted).' unlisted, '.count($stale)." stale\n".implode("\n", $lines)."\n");
+            .count($ratchet).' listed, '.count($unlisted).' unlisted, '.count($stale).' stale, '.count($unjudged)
+            ." unjudged (absent root)\n".implode("\n", $lines)."\n");
 
         $this->assertSame([], $unlisted, 'Unlisted host-IA violations (a regression, or a ratchet entry is missing).');
         $this->assertSame([], $stale, 'Stale ratchet entries: the violation is gone, so delete the entry.');
+    }
+
+    /**
+     * Compare what was found with the ratchet. An entry whose T6 root is absent at this run (a gitignored build output
+     * before a build, or a js-overlay link that is off) is UNJUDGED, not stale: absence is not a fix.
+     *
+     * @param  array<string, string>  $found
+     * @param  array<string, string>  $ratchet
+     * @return array{unlisted: array<string, string>, stale: array<string, string>, unjudged: array<string, string>}
+     */
+    protected function hostIaRatchetDiff(array $found, array $ratchet): array
+    {
+        $unjudged = array_filter(
+            array_diff_key($ratchet, $found),
+            function (string $id): bool {
+                foreach ($this->hostIaAbsentRoots as $root) {
+                    foreach (['source', 'built'] as $kind) {
+                        if ($id === "T6 {$kind} {$root}" || str_starts_with($id, "T6 {$kind} {$root} ") || str_starts_with($id, "T6 {$kind} {$root}/")) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            },
+            ARRAY_FILTER_USE_KEY,
+        );
+
+        return [
+            'unlisted' => array_diff_key($found, $ratchet),
+            'stale' => array_diff_key($ratchet, $found, $unjudged),
+            'unjudged' => $unjudged,
+        ];
     }
 
     /**
@@ -257,14 +297,17 @@ trait AssertsHostIaSeam
     protected function hostIaT6(): array
     {
         $out = [];
+        $this->hostIaAbsentRoots = [];
         $roots = $this->hostIaSweepRoots();
 
         foreach (['source', 'built'] as $kind) {
             $paths = [];
             foreach ($roots[$kind] as $root) {
-                $path = base_path($root);
+                $path = str_starts_with($root, '/') ? $root : base_path($root);
                 if (file_exists($path)) {
                     $paths[realpath($path) ?: $path] = $root;
+                } elseif (! in_array($root, $this->hostIaAbsentRoots, true)) {
+                    $this->hostIaAbsentRoots[] = $root;
                 }
             }
             if ($paths === []) {
