@@ -99,7 +99,8 @@ trait AssertsHostIaSeam
 
     /**
      * Literals that apply only under some sweep roots: literal => the roots (as `hostIaSweepRoots()` names them) it is
-     * judged in. Elsewhere the same word can be legitimate, such as an eval command's corpus slug or a docs page.
+     * judged in. Elsewhere the same word can be legitimate, such as an eval command's corpus slug or a docs page. A scope
+     * may also be a SUBPATH of a root (`app/Navigation` under `app`): the literal is then judged only in files under it.
      *
      * @return array<string, list<string>>
      */
@@ -122,6 +123,15 @@ trait AssertsHostIaSeam
             'darkMode:' => $hostSource,
             'hideDarkModeToggle' => $hostSource,
             '--scalar-' => $hostSource,
+            // app-walkthrough APP-01: hand IA tables and paths the generated routers and projected nav replace.
+            'SECTION_META' => ['ui/src'],             // APP-17
+            'META_AREAS' => ['ui/src'],               // APP-17
+            'TenantManifestLeaf' => ['ui/src'],       // APP-16
+            'export const operatorRealm' => ['ui/src'], // APP-14
+            // APP-14: the footer's rendered `tenant: …` text. JSX-text form, so an object key named `tenant` is not a hit.
+            '>tenant: {' => ['ui/src'],               // APP-14
+            // APP-1: a place's href is minted, never written; judged over app/Navigation only (a SUBPATH scope).
+            "'href' =>" => ['app/Navigation'],         // APP-15
         ];
     }
 
@@ -130,12 +140,31 @@ trait AssertsHostIaSeam
     {
         $literals = $this->hostIaForbiddenLiterals();
         foreach ($this->hostIaScopedLiterals() as $literal => $scope) {
-            if (in_array($root, $scope, true)) {
-                $literals[] = $literal;
+            foreach ($scope as $where) {
+                if ($where === $root || str_starts_with($where, rtrim($root, '/').'/')) {
+                    $literals[] = $literal;
+                    break;
+                }
             }
         }
 
         return array_values(array_unique($literals));
+    }
+
+    /** Whether a file (root-prefixed, as hostIaRelative() spells it) lies inside a scoped literal's scope. */
+    private function hostIaInLiteralScope(string $literal, string $relative): bool
+    {
+        $scope = $this->hostIaScopedLiterals()[$literal] ?? null;
+        if ($scope === null) {
+            return true;
+        }
+        foreach ($scope as $where) {
+            if ($relative === $where || str_starts_with($relative, rtrim($where, '/').'/')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -394,7 +423,7 @@ trait AssertsHostIaSeam
                 foreach (array_filter(explode("\n", $process->getOutput())) as $file) {
                     $content = (string) file_get_contents($file);
                     foreach ($literals as $literal) {
-                        if (str_contains($content, $literal)) {
+                        if (str_contains($content, $literal) && $this->hostIaInLiteralScope($literal, $this->hostIaRelative($file, $paths))) {
                             // Built bundle names are content-hashed, so a built finding is keyed by its root.
                             $where = $kind === 'built' ? $root : $this->hostIaRelative($file, $paths);
                             $out["T6 {$kind} {$where} {$literal}"] = "{$this->hostIaRelative($file, $paths)} contains {$literal}";

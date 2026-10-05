@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Testing;
 
+use Illuminate\Filesystem\Filesystem;
 use Splicewire\Beam\Testing\AssertsHostIaSeam;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -12,7 +13,9 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class AssertsHostIaSeamTest extends TestCase
 {
-    use AssertsHostIaSeam;
+    use AssertsHostIaSeam {
+        hostIaScopedLiterals as traitScopedLiterals;
+    }
 
     private string $dir;
 
@@ -33,7 +36,7 @@ class AssertsHostIaSeamTest extends TestCase
 
     protected function tearDown(): void
     {
-        (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($this->dir);
+        (new Filesystem)->deleteDirectory($this->dir);
 
         parent::tearDown();
     }
@@ -139,6 +142,28 @@ class AssertsHostIaSeamTest extends TestCase
         $this->assertSame([], array_values(array_filter(array_keys($this->hostIaT6()), fn ($k) => str_contains($k, 'food-safety'))), 'food-safety is not judged outside its scoped roots');
         $this->assertContains('food-safety', $this->hostIaScopedLiteralsFor('ui/src'));
         $this->assertNotContains('food-safety', $this->hostIaScopedLiteralsFor('app'));
+    }
+
+    public function test_a_literal_scoped_to_a_subpath_is_judged_only_under_that_subpath(): void
+    {
+        // app-walkthrough APP-01: `'href' =>` is judged over app/Navigation only (APP-1), not every app/ file.
+        mkdir($this->dir.'/src/Navigation', 0777, true);
+        file_put_contents($this->dir.'/src/Navigation/AppNavigation.php', "<?php return ['href' => '/x'];");
+        file_put_contents($this->dir.'/src/Surfaces.php', "<?php return ['href' => '/y'];");
+        $this->roots = ['source' => [$this->dir.'/src'], 'built' => []];
+        $this->scoped = ["'href' =>" => [$this->dir.'/src/Navigation']];
+
+        $keys = array_values(array_filter(array_keys($this->hostIaT6()), fn ($k) => str_contains($k, "'href' =>")));
+
+        $this->assertSame(["T6 source {$this->dir}/src/Navigation/AppNavigation.php 'href' =>"], $keys);
+    }
+
+    /** @var array<string, list<string>>|null */
+    private ?array $scoped = null;
+
+    protected function hostIaScopedLiterals(): array
+    {
+        return $this->scoped ?? $this->traitScopedLiterals();
     }
 
     private function hostIaScopedLiteralsFor(string $root): array
