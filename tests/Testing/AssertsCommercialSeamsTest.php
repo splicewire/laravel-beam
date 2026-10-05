@@ -100,6 +100,40 @@ class AssertsCommercialSeamsTest extends TestCase
         $this->assertNotContains("S1 {$this->dir}/app/Billing/OnTheRail.php ->invoice(", $found);
     }
 
+    public function test_s3_flags_a_central_user_create_but_not_a_tenant_side_mirror(): void
+    {
+        // BUY-05b: S3 matched the SUBSTRING `User::updateOrCreate(`, so `TenantUser::updateOrCreate(` (mirroring an
+        // EXISTING central user into a tenant schema) was flagged as an account created outside AccountDoors.
+        mkdir($this->dir.'/app/Accounts', 0777, true);
+        file_put_contents($this->dir.'/app/Accounts/Mirror.php', "<?php\nTenantUser::updateOrCreate(['id' => \$id], \$attrs);\n");
+        file_put_contents($this->dir.'/app/Accounts/Mints.php', "<?php\nUser::firstOrCreate(['email' => \$e]);\n");
+        file_put_contents($this->dir.'/app/Accounts/Qualified.php', "<?php\n\\App\\Models\\User::create(\$attrs);\n");
+
+        $found = array_keys($this->commercialS3());
+
+        $this->assertContains("S3 user-create {$this->dir}/app/Accounts/Mints.php User::firstOrCreate(", $found);
+        $this->assertContains("S3 user-create {$this->dir}/app/Accounts/Qualified.php User::create(", $found);
+        $this->assertNotContains("S3 user-create {$this->dir}/app/Accounts/Mirror.php User::updateOrCreate(", $found);
+    }
+
+    public function test_s3_allows_the_service_door_only_off_http(): void
+    {
+        // BUY-05b (review-r1): Door::Service always admits, so no HTTP-reachable code may pass it. It belongs to console
+        // commands, seeders and the doors themselves; anywhere else is flagged.
+        mkdir($this->dir.'/app/Console/Commands', 0777, true);
+        mkdir($this->dir.'/app/Http/Controllers', 0777, true);
+        mkdir($this->dir.'/app/Splicewire', 0777, true);
+        file_put_contents($this->dir.'/app/Console/Commands/ProvisionServiceUser.php', "<?php\n\$doors->create(Door::Service, \$user);\n");
+        file_put_contents($this->dir.'/app/Http/Controllers/Mint.php', "<?php\n\$doors->create(Door::Service, \$user);\n");
+        file_put_contents($this->dir.'/app/Splicewire/Token.php', "<?php\n// never Door::Service here\n\$x = Door::Service;\n");
+
+        $found = array_keys($this->commercialS3());
+
+        $this->assertContains("S3 service-door {$this->dir}/app/Http/Controllers/Mint.php", $found);
+        $this->assertContains("S3 service-door {$this->dir}/app/Splicewire/Token.php", $found);
+        $this->assertNotContains("S3 service-door {$this->dir}/app/Console/Commands/ProvisionServiceUser.php", $found);
+    }
+
     public function test_i3_finds_a_recurring_stripe_start_anywhere_even_in_the_adapter(): void
     {
         // BUY-04 (I3, one engine per fee): BillGenerator bills the fee, so a Stripe recurring subscription is a second

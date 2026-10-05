@@ -242,14 +242,27 @@ trait AssertsCommercialSeams
         return $out;
     }
 
-    /** S3, account doors (BUY-5): user-model creation only in AccountDoors (seeders and factories excepted); no `env(` in a controller. */
+    /** S3, account doors (BUY-5): user-model creation only in AccountDoors (seeders and factories excepted); Door::Service off HTTP; no `env(` in a controller. */
     protected function commercialS3(): array
     {
         $out = [];
         $creates = ['User::create(', 'User::forceCreate(', 'User::firstOrCreate(', 'User::updateOrCreate('];
-        foreach ($this->commercialSweep($creates) as [$rel, $line, $pattern]) {
+        foreach ($this->commercialSweep($creates) as [$rel, $line, $pattern, $code]) {
+            // A whole `User::` (BUY-05b): `TenantUser::updateOrCreate(` mirrors an EXISTING central user into a tenant
+            // schema and creates no account; a qualified `\App\Models\User::create(` still counts.
+            if (! preg_match('/(?<!\w)'.preg_quote($pattern, '/').'/', $code)) {
+                continue;
+            }
             if (! preg_match('#/(database|Database)/|/(Seeders|seeders|Factories|factories|Testing)/|^database/|/Doors/#', $rel)) {
                 $out["S3 user-create {$rel} {$pattern}"] = "line {$line}";
+            }
+        }
+        // The service door always admits (BUY-05b, review-r1), so no HTTP-reachable code may pass it: only console
+        // commands, seeders and the doors themselves. Known limit: S3 reads call shapes, so a create through
+        // `new $model` + `forceFill()->save()` is not detected; the AccountDoors tests hold those paths.
+        foreach ($this->commercialSweep(['Door::Service']) as [$rel, $line]) {
+            if (! preg_match('#/Console/|/(database|Database)/|/(Seeders|seeders|Testing)/|^database/|/Doors/#', $rel)) {
+                $out["S3 service-door {$rel}"] = "line {$line}";
             }
         }
         foreach ($this->commercialSweep(['env(']) as [$rel, $line, , $code]) {
