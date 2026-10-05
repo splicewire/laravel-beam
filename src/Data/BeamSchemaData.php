@@ -64,7 +64,9 @@ use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
     label: 'Schemas',
     group: 'Content',
     icon: 'file-json',
-    section: 'authoring',
+    // ux-walkthrough IA-8 (UX-08): a read-only view of code-declared machinery, so it seats with beam-ux's `ops`, the
+    // developer seat, not with authoring.
+    section: 'ops',
     editable: false,
 )]
 #[TypeScript]
