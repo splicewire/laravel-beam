@@ -3,11 +3,11 @@
 namespace Splicewire\Beam\Tests\Nav;
 
 use Rushing\Popcorn\Registries\IsRegistry;
-use Splicewire\Beam\Nav\NavAudience;
 use Rushing\Popcorn\Registries\PopulationRequirement;
+use Splicewire\Beam\Nav\NavAudience;
+use Splicewire\Beam\Nav\NavSeatLock;
 use Splicewire\Beam\Nav\NavSection;
 use Splicewire\Beam\Nav\NavSectionRegistry;
-use Splicewire\Beam\Nav\NavSeatLock;
 use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Tests\TestCase;
 

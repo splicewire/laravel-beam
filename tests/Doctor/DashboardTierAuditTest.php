@@ -3,7 +3,6 @@
 namespace Splicewire\Beam\Tests\Doctor;
 
 use Illuminate\Contracts\Pagination\CursorPaginator;
-use Splicewire\Beam\Nav\NavAudience;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Rushing\Doctor\DoctorStatus;
 use Schemastud\Frame\Attributes\Overview;
@@ -15,6 +14,7 @@ use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Doctor\DashboardTierAudit;
 use Splicewire\Beam\Models\BeamSchema;
+use Splicewire\Beam\Nav\NavAudience;
 use Splicewire\Beam\Nav\NavSection;
 use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;

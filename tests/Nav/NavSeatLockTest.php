@@ -2,9 +2,9 @@
 
 namespace Splicewire\Beam\Tests\Nav;
 
-use Splicewire\Beam\Nav\NavSection;
 use Splicewire\Beam\Nav\NavAudience;
 use Splicewire\Beam\Nav\NavSeatLock;
+use Splicewire\Beam\Nav\NavSection;
 use Splicewire\Beam\Tests\TestCase;
 
 /**

@@ -3,9 +3,9 @@
 namespace Splicewire\Beam\Tests\Surgeon;
 
 use Rushing\Doctor\DoctorStatus;
-use Splicewire\Beam\Nav\NavAudience;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Nav\NavAudience;
 use Splicewire\Beam\Nav\NavSection;
 use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
