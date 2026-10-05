@@ -518,4 +518,236 @@ trait AssertsHostIaSeam
 
         return $file;
     }
+
+    // ── T7a and T8 (app-walkthrough SPEC §5.1, APP-01): closure and seat–gate parity, per realm × principal ─────────
+
+    /**
+     * The principals T7a and T8 walk, by label (`root`, `owner`, `admin`, `member`, `guest`). A host that supplies none
+     * skips T7a and T8; they need the database, so a host runs them from a DB-backed test through
+     * {@see assertHostIaClosureRatchet()}, beside the DB-free T1–T6 ratchet.
+     *
+     * @return list<string>
+     */
+    protected function hostIaPrincipals(): array
+    {
+        return [];
+    }
+
+    /** @return list<string> the realms that emit a frame manifest */
+    protected function hostIaClosureRealms(): array
+    {
+        return ['operator', 'tenant'];
+    }
+
+    /**
+     * The frame manifest (`routeContext`, `nav`, `resources`) a principal receives for a realm, or null when the realm
+     * refuses them (401 or 403).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function hostIaManifestAs(string $realm, string $principal): ?array
+    {
+        return null;
+    }
+
+    /** The HTTP status of a resource's list GET in a realm, as a principal. */
+    protected function hostIaListStatusAs(string $realm, string $principal, string $resource): int
+    {
+        return 0;
+    }
+
+    /**
+     * The closure ratchet: known T7a/T8 violations, id => "APP-NN: why". Same contract as {@see hostIaRatchet()}.
+     *
+     * @return array<string, string>
+     */
+    protected function hostIaClosureRatchet(): array
+    {
+        return [];
+    }
+
+    protected function assertHostIaClosureRatchet(): void
+    {
+        $found = [...$this->hostIaT7(), ...$this->hostIaT8()];
+        ksort($found);
+        $ratchet = $this->hostIaClosureRatchet();
+        $unlisted = array_diff_key($found, $ratchet);
+        $stale = array_diff_key($ratchet, $found);
+
+        $lines = [];
+        foreach ($ratchet as $id => $owner) {
+            $lines[] = (isset($found[$id]) ? '  known  ' : '  STALE  ')."{$id}  →  {$owner}";
+        }
+        foreach ($unlisted as $id => $detail) {
+            $lines[] = "  NEW    {$id}  ({$detail})";
+        }
+        fwrite(STDERR, "\nHost IA closure ratchet (T7a, T8) at ".basename(base_path()).' over '
+            .implode(', ', $this->hostIaPrincipals()).': '.count($found).' violation(s), '.count($ratchet).' listed, '
+            .count($unlisted).' unlisted, '.count($stale)." stale\n".implode("\n", $lines)."\n");
+
+        $this->assertSame([], $unlisted, 'Unlisted closure violations (a regression, or a ratchet entry is missing).');
+        $this->assertSame([], $stale, 'Stale closure entries: the violation is gone, so delete the entry.');
+    }
+
+    /** @var array<string, array<string, mixed>|null> manifests by "realm principal", fetched once per run */
+    private array $hostIaManifests = [];
+
+    /** @return array<string, mixed>|null */
+    private function hostIaManifest(string $realm, string $principal): ?array
+    {
+        $key = "{$realm} {$principal}";
+        if (! array_key_exists($key, $this->hostIaManifests)) {
+            $this->hostIaManifests[$key] = $this->hostIaManifestAs($realm, $principal);
+        }
+
+        return $this->hostIaManifests[$key];
+    }
+
+    /**
+     * T7a, closure (server half): per realm × principal, every nav routeName names a leaf (`nav-orphan`); every
+     * non-parameterised list|detail|widget leaf has a nav home (`no-home`, judged per principal and collapsed to the
+     * realm when no principal seats it); no leaf or nav node has an empty label (`empty-label`). "hrefs are minted" is
+     * T6's `'href' =>` over the host's navigation source. A leaf cannot yet be declared `unseated`, so every homeless
+     * place is listed until APP-15/APP-16/APP-21 seat or un-emit it.
+     */
+    protected function hostIaT7(): array
+    {
+        $out = [];
+        foreach ($this->hostIaClosureRealms() as $realm) {
+            $homeless = [];
+            $judged = 0;
+            foreach ($this->hostIaPrincipals() as $principal) {
+                $manifest = $this->hostIaManifest($realm, $principal);
+                if ($manifest === null) {
+                    continue;
+                }
+                $judged++;
+                $leaves = $this->hostIaLeaves($manifest);
+                $nodes = $this->hostIaNavNodes($manifest['nav'] ?? []);
+                $seated = [];
+                foreach ($nodes as $node) {
+                    $routeName = $node['routeName'] ?? null;
+                    if (trim((string) ($node['title'] ?? '')) === '') {
+                        $out["T7a {$realm} empty-label nav ".($routeName ?? ($node['href'] ?? '?'))] = 'a nav node with no title';
+                    }
+                    if ($routeName === null || str_ends_with($routeName, '.section')) {
+                        continue;
+                    }
+                    $seated[$routeName] = true;
+                    if (! isset($leaves[$routeName])) {
+                        $out["T7a {$realm} {$principal} nav-orphan {$routeName}"] = 'a nav routeName that names no leaf';
+                    }
+                }
+                foreach ($leaves as $routeName => $leaf) {
+                    if (in_array($leaf['mounts'] ?? null, ['list', 'detail', 'widget'], true)
+                        && ! str_contains((string) ($leaf['path'] ?? ''), ':') && ! isset($seated[$routeName])) {
+                        $homeless[$routeName][] = $principal;
+                    }
+                    $resource = $leaf['resource'] ?? null;
+                    if ($resource !== null && trim((string) ($this->hostIaResourceLabel($manifest, $resource) ?? '')) === '') {
+                        $out["T7a {$realm} empty-label leaf {$routeName}"] = "resource {$resource} declares no nav label";
+                    }
+                }
+            }
+            foreach ($homeless as $routeName => $principals) {
+                if (count($principals) === $judged) {
+                    $out["T7a {$realm} no-home {$routeName}"] = 'no principal has a nav home for this place';
+                } else {
+                    foreach ($principals as $principal) {
+                        $out["T7a {$realm} {$principal} no-home {$routeName}"] = 'emitted to this principal with no nav home';
+                    }
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * T8, seat–gate parity: per realm × principal, every seat the principal's nav emits answers its list GET (not 401 or
+     * 403: `seat-denied`), and every list place the projection omits for them is refused (`omitted-open`). The places
+     * are the realm's list leaves as the fullest manifest emits them; a principal the realm refuses outright (guest,
+     * non-Root on operator) must be refused on every one.
+     */
+    protected function hostIaT8(): array
+    {
+        $out = [];
+        foreach ($this->hostIaClosureRealms() as $realm) {
+            $universe = [];
+            foreach ($this->hostIaPrincipals() as $principal) {
+                foreach ($this->hostIaLeaves($this->hostIaManifest($realm, $principal) ?? []) as $leaf) {
+                    if (($leaf['mounts'] ?? null) === 'list' && ($leaf['resource'] ?? null) !== null) {
+                        $universe[$leaf['resource']] = $leaf['routeName'];
+                    }
+                }
+            }
+            ksort($universe);
+            foreach ($this->hostIaPrincipals() as $principal) {
+                $manifest = $this->hostIaManifest($realm, $principal);
+                $seatedResources = [];
+                if ($manifest !== null) {
+                    $leaves = $this->hostIaLeaves($manifest);
+                    foreach ($this->hostIaNavNodes($manifest['nav'] ?? []) as $node) {
+                        $leaf = $leaves[$node['routeName'] ?? ''] ?? null;
+                        if ($leaf !== null && ($leaf['mounts'] ?? null) === 'list' && ($leaf['resource'] ?? null) !== null) {
+                            $seatedResources[$leaf['resource']] = true;
+                        }
+                    }
+                }
+                foreach ($universe as $resource => $routeName) {
+                    $status = $this->hostIaListStatusAs($realm, $principal, $resource);
+                    $denied = in_array($status, [401, 403], true);
+                    if (isset($seatedResources[$resource]) && $denied) {
+                        $out["T8 {$realm} {$principal} seat-denied {$resource}"] = "{$routeName} is seated but its list GET answers {$status}";
+                    } elseif (! isset($seatedResources[$resource]) && ! $denied && $status !== 404) {
+                        $out["T8 {$realm} {$principal} omitted-open {$resource}"] = "{$routeName} is not seated but its list GET answers {$status}";
+                    }
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return array<string, array<string, mixed>> the manifest's leaves by routeName */
+    private function hostIaLeaves(array $manifest): array
+    {
+        $leaves = [];
+        foreach ($manifest['routeContext'] ?? [] as $leaf) {
+            if (isset($leaf['routeName'])) {
+                $leaves[$leaf['routeName']] = $leaf;
+            }
+        }
+
+        return $leaves;
+    }
+
+    /** @return list<array<string, mixed>> every nav node, depth-first */
+    private function hostIaNavNodes(array $nav): array
+    {
+        $nodes = [];
+        $walk = function (array $items) use (&$walk, &$nodes): void {
+            foreach ($items as $node) {
+                if (! is_array($node)) {
+                    continue;
+                }
+                $nodes[] = $node;
+                $walk($node['children'] ?? []);
+            }
+        };
+        $walk($nav['items'] ?? (array_is_list($nav) ? $nav : []));
+
+        return $nodes;
+    }
+
+    private function hostIaResourceLabel(array $manifest, string $resource): ?string
+    {
+        foreach ($manifest['resources'] ?? [] as $definition) {
+            if (($definition['key'] ?? null) === $resource) {
+                return $definition['nav']['label'] ?? $definition['label'] ?? null;
+            }
+        }
+
+        return null;
+    }
 }
