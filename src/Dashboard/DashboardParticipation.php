@@ -6,21 +6,16 @@ use ReflectionClass;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Schemastud\Frame\Registry\WidgetContextProjector;
 use Splicewire\Beam\Particle\ListRouteName;
+use Splicewire\Beam\Summary\BeamResourceSummaryProvider;
 use Throwable;
 
 /**
  * Whether a realm resource is ON the realm's dashboard, and in which context — the actor-free half of
  * the rule, written once (realm-dashboards ticket 04 review).
  *
- * **A realm resource participates by default iff a leaf of the realm's rail resolves to it (by its list
- * route name, else by href), or it declares `summary`/`overview` explicitly; `#[Summary(false)]` opts
- * out regardless.** `overview` is chosen when declared, else `summary`.
- *
- * "Nav-seated" used to mean "declares `section:` and a package seated that section here". At the beam
- * starter, `users` and `teams` declare no `section:` and reach the rail as a seat's STATIC children —
- * so the old reading yielded zero cards on the reference host. The rail is what a user sees, so the
- * rail is the definition; which rail (the projected tree for an actor, or the declared rail actor-free)
- * is the caller's choice — see {@see RailLeaves}.
+ * A declared summary/overview (or a seated custom summary provider) makes a card; rail presence
+ * alone makes a tile. Summary(false) opts out of cards. Developer-zone leaves never participate.
+ * Overview wins over summary. This is the IA-16 / OQ-3 floor (UX-14), shared with the doctor audit.
  *
  * The actor-DEPENDENT half — may this actor list the resource, is its list route mounted here, does its
  * provider answer — stays with beam-ux's `DashboardBacking`. The doctor's `DashboardTierAudit` reads only
@@ -66,6 +61,10 @@ final class DashboardParticipation
         // it must get the same number the tile for that leaf gets.
         $seat = $rail->find(ListRouteName::of($definition), $href);
 
+        if ($seat?->developer) {
+            return null;
+        }
+
         if ($overview !== null && ($overview['participates'] ?? true) !== false) {
             return self::CONTEXT_OVERVIEW;
         }
@@ -74,7 +73,10 @@ final class DashboardParticipation
             return self::CONTEXT_SUMMARY;
         }
 
-        return $seat !== null ? self::CONTEXT_SUMMARY : null;
+        // A custom provider is an explicit summary declaration; rail presence alone is only a tile.
+        return $seat !== null && $definition->summaryProvider !== null
+            && $definition->summaryProvider !== BeamResourceSummaryProvider::class
+                ? self::CONTEXT_SUMMARY : null;
     }
 
     /**

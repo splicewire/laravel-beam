@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Dashboard;
 
+use Splicewire\Beam\Nav\NavAudience;
 use Splicewire\Beam\Nav\NavSection;
 use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Particle\ListRouteName;
@@ -40,12 +41,13 @@ final class RailLeaves
     {
         $leaves = [];
 
-        $walk = function (array $nodes) use (&$walk, &$leaves): void {
+        $walk = function (array $nodes, bool $developer = false) use (&$walk, &$leaves): void {
             foreach ($nodes as $node) {
+                $inDeveloper = $developer || ($node['zone'] ?? null) === 'meta' || ($node['routeName'] ?? null) === 'developer.section';
                 $children = is_array($node['children'] ?? null) ? $node['children'] : [];
 
                 if ($children !== []) {
-                    $walk($children);
+                    $walk($children, $inDeveloper);
 
                     continue;
                 }
@@ -64,6 +66,7 @@ final class RailLeaves
                     routeName: is_string($routeName) ? $routeName : null,
                     title: (string) ($node['title'] ?? $href),
                     icon: is_string($node['icon'] ?? null) ? $node['icon'] : null,
+                    developer: $inDeveloper,
                 );
             }
         };
@@ -94,11 +97,11 @@ final class RailLeaves
                 }
 
                 $routeName = ListRouteName::of($resource);
-                $leaves[] = new NavLeaf(count($leaves), $routeName, $routeName, $resource->label, $resource->icon);
+                $leaves[] = new NavLeaf(count($leaves), $routeName, $routeName, $resource->label, $resource->icon, $seat->audience === NavAudience::Developer);
             }
 
             foreach ($seat->static as $child) {
-                $href = (string) ($child['href'] ?? '');
+                $href = (string) ($child['href'] ?? $child['routeName'] ?? '');
 
                 if ($href === '') {
                     continue;
@@ -110,6 +113,7 @@ final class RailLeaves
                     isset($child['routeName']) ? (string) $child['routeName'] : null,
                     (string) ($child['title'] ?? $href),
                     isset($child['icon']) ? (string) $child['icon'] : null,
+                    $seat->audience === NavAudience::Developer,
                 );
             }
         }

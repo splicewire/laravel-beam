@@ -16,5 +16,6 @@ final class NavLeaf
         public readonly ?string $routeName,
         public readonly string $title,
         public readonly ?string $icon,
+        public readonly bool $developer = false,
     ) {}
 }

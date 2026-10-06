@@ -126,7 +126,7 @@ class DashboardTierAudit implements DoctorAudit
         $total = $declared + count($derived) + count($absent);
 
         if ($total === 0) {
-            return [Finding::inconclusive(self::CHECK, 'No realm resource is on any dashboard here — nothing is in a realm\'s rail or declares a summary.')];
+            return [Finding::inconclusive(self::CHECK, 'No realm resource is on any dashboard here — no eligible resource declares a summary/overview or custom summary provider; rail-only resources are tiles.')];
         }
 
         $findings = [];

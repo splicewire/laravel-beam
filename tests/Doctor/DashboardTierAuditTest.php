@@ -51,6 +51,20 @@ class DashboardTierAuditTest extends TestCase
         );
     }
 
+    public function test_a_declared_card_in_a_developer_seat_does_not_participate(): void
+    {
+        $this->sections->register(new NavSection(
+            key: 'tools', realm: 'operator', label: 'Tools', icon: 'Code', href: '/tools', order: 90,
+            entitlement: null, permission: null, audience: NavAudience::Developer,
+            static: [['title' => 'Tool', 'routeName' => 'tool.index']],
+        ), by: self::class);
+        $this->declare('tool', BeamSchema::class, data: SummaryBoundTierData::class, section: null);
+        $findings = $this->audit()->run();
+        $this->assertCount(1, $findings);
+        $this->assertFalse($findings[0]->conclusive);
+        $this->assertStringNotContainsString('[operator/tool]', $findings[0]->detail);
+    }
+
     private function declare(string $key, string $backing, string $data = WidgetGateData::class, ?string $section = 'platform', ?string $provider = null, array $realms = ['operator']): void
     {
         $this->resources->register(new ParticleResource(
@@ -87,7 +101,7 @@ class DashboardTierAuditTest extends TestCase
         $this->assertSame(DashboardTierAudit::CHECK, $findings[0]->check);
     }
 
-    public function test_a_seated_resource_with_no_binding_and_the_default_provider_warns_as_derived_by_name(): void
+    public function test_a_seated_resource_with_no_binding_is_not_a_derived_card(): void
     {
         $this->declare('widgets', BeamSchema::class);
         // Same shape, NOT seated in this realm's registry — the seat is what puts it on the dashboard.
@@ -100,9 +114,9 @@ class DashboardTierAuditTest extends TestCase
         $findings = $this->audit()->run();
 
         $this->assertCount(1, $findings);
-        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
-        $this->assertStringContainsString('DERIVED', $findings[0]->detail);
-        $this->assertStringContainsString('[operator/widgets]', $findings[0]->detail);
+        $this->assertFalse($findings[0]->conclusive);
+        $this->assertStringNotContainsString('DERIVED', $findings[0]->detail);
+        $this->assertStringNotContainsString('[operator/widgets]', $findings[0]->detail);
         $this->assertStringNotContainsString('unseated', $findings[0]->detail);
         $this->assertStringNotContainsString('hidden', $findings[0]->detail);
         $this->assertStringNotContainsString('elsewhere', $findings[0]->detail);
@@ -126,7 +140,7 @@ class DashboardTierAuditTest extends TestCase
     public function test_a_resource_whose_provider_cannot_answer_warns_as_absent_by_name(): void
     {
         // Default provider over a backing that only streams: declines before it is ever called.
-        $this->declare('feed', TierFeed::class);
+        $this->declare('feed', TierFeed::class, data: SummaryBoundTierData::class);
         // A custom provider that declines when asked.
         $this->declare('shy', BeamSchema::class, provider: DecliningTierProvider::class);
         // A custom provider that throws: a warning line, not a doctor that stops.
@@ -173,23 +187,23 @@ class DashboardTierAuditTest extends TestCase
         $findings = $this->audit()->run();
 
         $this->assertCount(1, $findings);
-        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
-        $this->assertStringContainsString('[operator/users]', $findings[0]->detail);
+        $this->assertFalse($findings[0]->conclusive);
+        $this->assertStringNotContainsString('[operator/users]', $findings[0]->detail);
         $this->assertStringNotContainsString('teams', $findings[0]->detail);
         $this->assertStringNotContainsString('loose', $findings[0]->detail);
     }
 
-    public function test_derived_and_absent_are_reported_as_two_findings(): void
+    public function test_only_declared_absent_cards_are_reported_while_derived_cards_are_off(): void
     {
         $this->declare('widgets', BeamSchema::class);
-        $this->declare('feed', TierFeed::class);
+        $this->declare('feed', TierFeed::class, data: SummaryBoundTierData::class);
 
         $findings = $this->audit()->run();
 
-        $this->assertCount(2, $findings);
-        $this->assertSame([DoctorStatus::Warn, DoctorStatus::Warn], array_column($findings, 'status'));
-        $this->assertStringContainsString('[operator/widgets]', $findings[0]->detail);
-        $this->assertStringContainsString('[operator/feed]', $findings[1]->detail);
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
+        $this->assertStringNotContainsString('[operator/widgets]', $findings[0]->detail);
+        $this->assertStringContainsString('[operator/feed]', $findings[0]->detail);
     }
 }
 

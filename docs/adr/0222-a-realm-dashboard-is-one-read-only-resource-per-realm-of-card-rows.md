@@ -35,14 +35,14 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
    pre-paginated shape (`{data, total, page, perPage}`) so frame's controller returns it untouched. A read
    is paged twice (handler `perPage`, then frame's `per_page` re-slice); a bounded population declares
    itself whole rather than guessing a page size. Never for a record stream.
-3. **Participation is owned once**, in `Splicewire\Beam\Dashboard\DashboardParticipation::contextFor()`: *a
-   realm resource participates by default iff a leaf of the realm's projected rail resolves to it (by list
-   route name, else href), or it declares `summary`/`overview` explicitly; `#[Summary(false)]` opts out;
-   `overview` when declared, else `summary`.* The backing (actor in hand, `RailLeaves::fromNavItems()`) and
-   the doctor audit (actor-free, `RailLeaves::declaredFor()`) read the same rule. The rail is what a user
-   sees, so the rail is the definition.
-4. **Jump-to tiles ARE the rail**: `context: 'nav'` rows appended after every card, in the rail's own walk
-   order, one sort for cards and tiles.
+3. **Participation is owned once**, in `DashboardParticipation::contextFor()`: a declared
+   `summary`/`overview`, or a seated custom summary provider, makes a card. `#[Summary(false)]` opts
+   out; overview wins. Rail presence alone produces no derived-count card. Developer-zone leaves
+   produce neither cards nor tiles. The backing and doctor read the same rule.
+4. **Card XOR tile, one destination once.** Only rail destinations without a successfully rendered
+   card become `context: 'nav'` rows, after cards in rail order. A declined provider falls back to its
+   tile. Duplicate hrefs collapse; the dashboard's own leaf is omitted. Amended by ADR-0224 (UX-14,
+   IA-16, owner OQ-3 recommendation accepted 2026-10-05); cards-only was the rejected alternative.
 5. **The gate is written on the declaration.** `policy:` is `RealmGateAbility::for()` —
    `entitlement:{declared}` for a gated realm, `entitlement:os.operate` for a central realm with none — and,
    for a gate-less non-central realm, `realm-dashboard.view` (`RealmDashboard::OPEN_ABILITY`, defined at
