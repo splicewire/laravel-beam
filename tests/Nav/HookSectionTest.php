@@ -14,6 +14,6 @@ class HookSectionTest extends TestCase
     {
         $resource = (new ReflectionClass(HookData::class))->getAttributes(ParticleResource::class)[0]->newInstance();
 
-        $this->assertSame('system', $resource->section);
+        $this->assertSame('operator-system', $resource->section);
     }
 }
