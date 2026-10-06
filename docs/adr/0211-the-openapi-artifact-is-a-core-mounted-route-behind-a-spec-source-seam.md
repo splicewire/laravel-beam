@@ -252,6 +252,16 @@ own header warns about: *"a package cannot know the taxonomy of every host that 
 > from every other angle — generation succeeds, the file exists, the route 200s, the audit's other three
 > checks all pass — and it is exactly what the old default produced. The check reads the artifact and
 > reports the empty case, naming `route:list` as the comparison. Non-gating, like the rest.
+>
+> **Amended 2026-10-06 (docs-walkthrough DOC-12, DOCS-10): `beam.ux.api_root` leaves the public spec.** The 2026-08-21
+> amendment derived the boundary from `frame.route_prefix` AND `beam.ux.api_root`. DOC-12 (decided) rules that a public
+> reference documents a product, and the CMS's own authoring API under `api_root` is not one. Measured: beam.test and
+> splicewire.test published `/beam/ux/artifacts/{entry}/{version}`, and splicewire.test the CMS op triplets, in specs
+> titled "Laravel API". So the stub now EXCLUDES `{api_root}/*` (an exclusion, because a host that mounts it under `api/`
+> would otherwise publish it through `api/*`) and keeps deriving the Frame socket. It titles the spec from the host's
+> brand (`beam.brand.name`), never the framework default. `laravel-beam-docs`'s `docs.reference-subject` audit holds
+> both on the served artifact, and holds a third rule this ADR did not have: a root whose
+> `beam.docs.openapi.subject` is a product with no product artifact publishes no reference surface.
 
 ## Consequences
 
