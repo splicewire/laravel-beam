@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Realm;
 
+use Illuminate\Support\Facades\Gate;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Ia\RealmProfiles;
 
@@ -64,8 +65,7 @@ class RealmManifestProjector
             // The realm profile's gate (ux-walkthrough M1), else the deprecated `realm_gates` alias entry.
             $gate = $profiles->gate($key);
 
-            $entitled = $gate === null
-                || $this->entitlements->allows((string) ($gate['entitlement'] ?? ''), $principal);
+            $entitled = $gate === null || $this->admits((string) ($gate['entitlement'] ?? ''), $principal);
 
             $mode = $gate['mode'] ?? 'hard';
 
@@ -125,6 +125,25 @@ class RealmManifestProjector
         }
 
         return $descriptor;
+    }
+
+    /**
+     * Whether the principal clears a realm gate's entitlement, asked as the door asks it (ux-walkthrough UX-12a): the
+     * `entitlement:{key}` Gate ability {@see RealmGateAbility} names, for this principal, so a host's `Gate::before`
+     * (the flagship admits Root) reaches the nav too and the nav never offers a realm the door refuses, or hides one
+     * it admits. Where the host defines no ability for the key, the resolver still answers, as before, and
+     * `Gate::before` may add to it.
+     */
+    private function admits(string $entitlement, mixed $principal): bool
+    {
+        $ability = 'entitlement:'.$entitlement;
+        $gate = Gate::forUser($principal);
+
+        if (Gate::has($ability)) {
+            return $gate->allows($ability);
+        }
+
+        return $this->entitlements->allows($entitlement, $principal) || $gate->allows($ability);
     }
 
     /** A humanized fallback title when the gate config declares none (RealmDefinition carries no title). */

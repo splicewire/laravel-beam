@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Tests\Realm;
 
+use Illuminate\Auth\GenericUser;
+use Illuminate\Support\Facades\Gate;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Splicewire\Beam\Realm\RealmManifestProjector;
 use Splicewire\Beam\Realm\RealmRegistry;
@@ -101,5 +103,46 @@ class RealmManifestProjectorTest extends TestCase
         foreach (array_keys($this->app->make(RealmRegistry::class)->all()) as $realmKey) {
             $this->assertContains($realmKey, $this->keys($manifest));
         }
+    }
+
+    /*
+     * ux-walkthrough UX-12a (lead ruling A, 2026-10-06): the nav asks the realm's Gate ability, the one the door asks
+     * (RealmGateAbility), so the two cannot disagree. A host's Gate::before (the flagship lets Root through) admits a
+     * principal the resolver alone does not.
+     */
+    public function test_a_principal_the_door_admits_through_gate_before_is_offered_a_hard_gated_realm(): void
+    {
+        config(['beam.core.realms.operator.gate' => ['entitlement' => 'os.operate', 'mode' => 'hard']]);
+        $this->withResolver([]);
+        Gate::define('entitlement:os.operate', fn ($user = null) => false);
+        Gate::before(fn ($user) => ($user->root ?? false) ? true : null);
+
+        $projector = $this->app->make(RealmManifestProjector::class);
+
+        $this->assertContains('operator', $this->keys($projector->project(new GenericUser(['id' => 1, 'root' => true]))));
+        $this->assertNotContains('operator', $this->keys($projector->project(new GenericUser(['id' => 2, 'root' => false]))));
+    }
+
+    public function test_a_defined_ability_decides_the_realm_even_where_the_resolver_holds_the_key(): void
+    {
+        config(['beam.core.realms.operator.gate' => ['entitlement' => 'os.operate', 'mode' => 'hard']]);
+        $this->withResolver(['os.operate']);
+        // The host narrows the ability; the door then refuses, so the nav must not offer the realm.
+        Gate::define('entitlement:os.operate', fn ($user = null) => false);
+
+        $manifest = $this->app->make(RealmManifestProjector::class)->project(new GenericUser(['id' => 1]));
+
+        $this->assertNotContains('operator', $this->keys($manifest));
+    }
+
+    public function test_gate_before_admits_a_realm_whose_key_has_no_defined_ability(): void
+    {
+        config(['beam.core.realms.operator.gate' => ['entitlement' => 'os.operate', 'mode' => 'hard']]);
+        $this->withResolver([]);
+        Gate::before(fn ($user) => ($user->root ?? false) ? true : null);
+
+        $manifest = $this->app->make(RealmManifestProjector::class)->project(new GenericUser(['id' => 1, 'root' => true]));
+
+        $this->assertContains('operator', $this->keys($manifest));
     }
 }
