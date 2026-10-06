@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Frame;
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Schemastud\Frame\FrameServiceProvider;
@@ -134,6 +135,21 @@ class PolicyBoundListReadTest extends TestCase
 
         $this->as('holder');
         $this->getJson('/frame/resources/soft-gadgets')->assertOk()->assertJsonPath('total', 2);
+    }
+
+    /**
+     * A throw while building the authorization bases is not a scope (build.qa, follow-on to row 51a71469). It used to read
+     * as `scoped() === null`, and the list ALLOWED. Now it is reported, and the read asks viewAny.
+     */
+    public function test_an_authorization_base_that_throws_is_reported_and_asks_view_any(): void
+    {
+        Exceptions::fake();
+        Gate::policy(Gadget::class, HolderOnlyGadgetPolicy::class);
+        $this->declare(fn ($query) => throw new \RuntimeException('the boundary cannot be built here'));
+
+        $this->as('no-team');
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+        Exceptions::assertReported(fn (\RuntimeException $e) => $e->getMessage() === 'the boundary cannot be built here');
     }
 
     public function test_a_policy_without_view_any_keeps_todays_pass_as_listable_reads_it(): void

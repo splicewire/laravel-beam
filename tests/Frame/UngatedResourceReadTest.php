@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -256,16 +257,20 @@ class UngatedResourceReadTest extends TestCase
         $this->assertFalse(ResourceReadGuard::forApp()->inspectRead(app(ParticleResourceRegistry::class)->get('gadgets'), request())->allowed());
     }
 
-    public function test_an_indeterminate_probe_does_not_hide_the_real_query_failure(): void
+    /**
+     * Inverted by the follow-on to launch security row 51a71469 (build.qa). This used to pin the read ALLOWING when the
+     * authorization bases could not be built, so the real query would throw the real error rather than a 403 hiding it.
+     * That made a broken boundary fail OPEN. The read now fails closed, asking viewAny (here: no policy, so refused), and
+     * the throw is REPORTED, so the real failure is still not hidden. The doctor keeps reading the null as "unread".
+     */
+    public function test_an_indeterminate_probe_is_reported_and_refuses_rather_than_failing_open(): void
     {
+        Exceptions::fake();
         $this->declare(scope: fn () => throw new RuntimeException('Unavailable domain context'));
         $resource = app(ParticleResourceRegistry::class)->get('gadgets');
         $this->assertNull(ResourceReadGuard::forApp()->scoped($resource, request()));
-        $this->assertTrue(ResourceReadGuard::forApp()->inspectRead($resource, request())->allowed());
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Unavailable domain context');
-        app(ScopedIndexQuery::class)->forDefinition($resource->toResourceDefinition());
+        $this->assertFalse(ResourceReadGuard::forApp()->inspectRead($resource, request())->allowed());
+        Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'Unavailable domain context');
     }
 
     public function test_a_model_less_backing_does_not_acquire_a_model_policy_requirement(): void

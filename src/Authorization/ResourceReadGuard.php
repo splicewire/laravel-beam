@@ -63,7 +63,15 @@ class ResourceReadGuard
             }
         }
 
-        if ($this->scoped($resource, $request) !== false) {
+        // A throw while building the authorization bases is not a scope: it used to read as null and ALLOW. It is
+        // reported, and the read falls through to the realm entitlement and viewAny.
+        try {
+            $scoped = $this->narrowed($resource, $request);
+        } catch (Throwable $e) {
+            report($e);
+            $scoped = false;
+        }
+        if ($scoped !== false) {
             return Response::allow();
         }
 
@@ -85,28 +93,41 @@ class ResourceReadGuard
         return $policy !== null && method_exists($policy, 'viewAny');
     }
 
-    /** Null means this environment could not build the declared authorization bases. */
+    /**
+     * Null means this environment could not answer: the backing cannot query, or building the declared authorization
+     * bases threw. The doctor reads that null as "unread". The READ does not: {@see inspect()} reports the throw and asks
+     * viewAny instead of allowing (build.qa, follow-on to row 51a71469).
+     */
     public function scoped(ParticleResource $resource, ?Request $request = null): ?bool
+    {
+        try {
+            return $this->narrowed($resource, $request);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether the resource's declared authorization narrows its rows; null when the backing cannot query, so there is
+     * nothing to scope. Throws when the authorization bases cannot be built.
+     */
+    private function narrowed(ParticleResource $resource, ?Request $request): ?bool
     {
         if (! $resource->backing() instanceof QueriesRecords) {
             return null;
         }
-        try {
-            $bases = app(ParticleListQuery::class)->authorizationBases($resource, $request ?? Request::create('/'));
-            foreach ($bases as $builder) {
-                // GLOBAL scopes are not authorization (review-r1, build.qa): SoftDeletes' `deleted_at is null` or a type
-                // discriminator put a where on the base and read as "narrowed", so the list skipped viewAny. Only the
-                // resource's own declared scope and its data-filter authorization count; tenancy is the route allowance.
-                $base = $builder instanceof EloquentBuilder ? $builder->withoutGlobalScopes()->toBase() : $builder->getQuery();
-                if (($base->wheres ?? []) !== [] || ($base->joins ?? []) !== []) {
-                    return true;
-                }
+        $bases = app(ParticleListQuery::class)->authorizationBases($resource, $request ?? Request::create('/'));
+        foreach ($bases as $builder) {
+            // GLOBAL scopes are not authorization (review-r1, build.qa): SoftDeletes' `deleted_at is null` or a type
+            // discriminator put a where on the base and read as "narrowed", so the list skipped viewAny. Only the
+            // resource's own declared scope and its data-filter authorization count; tenancy is the route allowance.
+            $base = $builder instanceof EloquentBuilder ? $builder->withoutGlobalScopes()->toBase() : $builder->getQuery();
+            if (($base->wheres ?? []) !== [] || ($base->joins ?? []) !== []) {
+                return true;
             }
-
-            return false;
-        } catch (Throwable) {
-            return null;
         }
+
+        return false;
     }
 
     /**
