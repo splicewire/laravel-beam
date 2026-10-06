@@ -21,10 +21,11 @@ class OpenListResourceAudit implements DoctorAudit
 {
     public const CHECK = 'resource.read.open-list';
 
-    /** What beam itself accepts: its own resources whose open pass is safe by construction. */
-    public const BEAM_ACCEPTED = [
-        'saved-filters' => 'SavedFilterResourceHandler serves only the caller\'s own, shared or public filters, and authorizes the target resource first',
-    ];
+    /**
+     * What beam itself accepts: nothing. `saved-filters` was accepted here until SavedFilterPolicy declared its viewAny
+     * deliberately; a beam resource whose list is safe declares so on its policy, not in this list.
+     */
+    public const BEAM_ACCEPTED = [];
 
     public function __construct(
         private ParticleResourceRegistry $resources,

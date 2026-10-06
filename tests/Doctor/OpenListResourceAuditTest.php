@@ -74,9 +74,20 @@ class OpenListResourceAuditTest extends TestCase
         $this->assertStringContainsString('no model-backed resource', $findings[0]->detail);
     }
 
-    public function test_beam_accepts_its_own_saved_filters_by_default(): void
+    /** saved-filters declares its viewAny deliberately, so beam accepts nothing by name (follow-on to row 51a71469). */
+    public function test_beam_accepts_no_open_list_by_name(): void
     {
-        $this->assertArrayHasKey('saved-filters', OpenListResourceAudit::accepted());
+        $this->assertSame([], OpenListResourceAudit::BEAM_ACCEPTED);
+        $this->assertArrayNotHasKey('saved-filters', OpenListResourceAudit::accepted());
+    }
+
+    public function test_saved_filters_is_not_an_open_list(): void
+    {
+        $this->assertTrue(method_exists(\Splicewire\Beam\Filters\SavedFilterPolicy::class, 'viewAny'));
+        $saved = collect(app(ParticleResourceRegistry::class)->all())->firstWhere('key', 'saved-filters');
+        if ($saved !== null) {
+            $this->assertTrue(ResourceReadGuard::forApp()->policyHasViewAny($saved));
+        }
     }
 }
 

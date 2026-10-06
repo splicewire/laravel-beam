@@ -7,6 +7,16 @@ use Rushing\DataFilters\SavedFilters\SavedFilter;
 
 class SavedFilterPolicy
 {
+    /**
+     * Any signed-in actor may list saved filters, deliberately: `SavedFilterResourceHandler` serves only the caller's own,
+     * shared or public filters and authorizes the target resource first, so the rows are the boundary. Declared so the
+     * list read asks it instead of passing on its absence (launch security follow-on to row 51a71469).
+     */
+    public function viewAny(Authenticatable $user): bool
+    {
+        return true;
+    }
+
     public function create(Authenticatable $user): bool
     {
         return true;
