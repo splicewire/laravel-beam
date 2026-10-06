@@ -21,6 +21,11 @@ use LogicException;
  * {@see navRow()}; it is never a constructor argument, so it cannot be authored. A page whose leaf mints no href (it is not
  * in that realm's RouteContext) refuses rather than spelling one, which is the drift this type exists to end.
  *
+ * That refusal is a pure contract, so it throws and leaves the POLICY to the caller. A caller on a request path must not let
+ * one missing leaf take a realm's whole navigation down: throw where the host is built and, in production, report and drop
+ * the row (the flagship's nav contributor does this through beam-ux's `IaInvariants::throws()`, which beam cannot depend
+ * on). Build-time callers (a test, a doctor, a dump) can let it throw.
+ *
  * ## No defaults
  *
  * Like {@see NavSection}'s gate slots and audience, every slot is required. `shell: 'app'` and `guard: null` are host
