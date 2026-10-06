@@ -172,7 +172,11 @@ class NavSectionRegistry implements Gated, Registry
             );
         }
 
-        return [...array_values($byKey), ...$apart];
+        // One list, re-sorted (review-r1): a seat kept apart keeps its projection position, not the end of the rail.
+        $all = [...array_values($byKey), ...$apart];
+        usort($all, static fn (NavSection $a, NavSection $b): int => NavSection::compare($a, $b) ?: [$a->label, $a->href] <=> [$b->label, $b->href]);
+
+        return $all;
     }
 
     /** Whether two seats gate their rows identically: the same entitlement, permission, audience and lock. */
