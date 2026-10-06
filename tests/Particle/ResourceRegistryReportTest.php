@@ -3,7 +3,6 @@
 namespace Splicewire\Beam\Tests\Particle;
 
 use Illuminate\Contracts\Pagination\CursorPaginator;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
@@ -324,14 +323,6 @@ class ResourceRegistryReportTest extends TestCase
     }
 }
 
-class ReportStreamOnlyBacking implements StreamsRecords
-{
-    public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
-    {
-        return new Paginator([], $perPage);
-    }
-}
-
 class ReportDeclaringBacking implements DeclaresFilterVocabulary, StreamsRecords
 {
     public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
@@ -342,24 +333,6 @@ class ReportDeclaringBacking implements DeclaresFilterVocabulary, StreamsRecords
     public function filterVocabulary(): FilterVocabulary
     {
         return FilterVocabulary::of(DeclaredFacet::set('source', options: 'feed_sources'));
-    }
-}
-
-class ReportQueryingDeclaringBacking implements DeclaresFilterVocabulary, QueriesRecords, StreamsRecords
-{
-    public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
-    {
-        return new Paginator([], $perPage);
-    }
-
-    public function query(array $filters): Builder
-    {
-        throw new \LogicException('The report never queries a backing.');
-    }
-
-    public function filterVocabulary(): FilterVocabulary
-    {
-        return FilterVocabulary::of(DeclaredFacet::search('keywords'));
     }
 }
 
