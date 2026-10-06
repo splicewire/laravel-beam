@@ -5,6 +5,10 @@
  * and resolved by `Splicewire\Beam\Brand\BrandData::current()`. Hosts and the SPA CARRY it (Inertia shares it; the SPA
  * receives it in runtime config); none of them authors a brand string. This file ships no literal brand: an unset key
  * falls back to `config('app.name')` or a neutral sentence.
+ *
+ * An install serving more than one product (www: Splicewire at `/`, Beam at `/beam/docs`) also declares `beam.brands`
+ * (its own `config/beam/brands.php`): a map from a docs root's declared `product` to a brand of this same shape, read by
+ * `Brand::forProduct()`. An undeclared product reads this file (docs-walkthrough DOCS-12, C-1).
  */
 return [
     // The product name users see. Unset → `config('app.name')`.
@@ -28,4 +32,10 @@ return [
     'contact' => [
         'sales' => env('BEAM_BRAND_CONTACT_SALES'),
     ],
+
+    // The product's own site page, where a docs header's "back" link goes (DOCS-12). Unset → `/`.
+    'home' => env('BEAM_BRAND_HOME'),
+
+    // One line saying what the product is: the docs product switcher's blurb (DOCS-12, C-6). Unset → none.
+    'tagline' => env('BEAM_BRAND_TAGLINE'),
 ];

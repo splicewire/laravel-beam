@@ -14,4 +14,16 @@ final class Brand
     {
         return app(BrandResolver::class)->for($request);
     }
+
+    /**
+     * A product's brand (docs-walkthrough DOCS-12, C-1 and lead ruling 1): `beam.brands[product]`, keyed by a docs root's
+     * declared product, else the install brand. One install serving two products (www: Splicewire at `/`, Beam at
+     * `/beam/docs`) declares both here; an install with one product declares none and reads `beam.brand`.
+     */
+    public static function forProduct(?string $product): BrandData
+    {
+        $declared = $product === null ? null : config("beam.brands.{$product}");
+
+        return is_array($declared) ? BrandData::fromConfig($declared) : self::for();
+    }
 }

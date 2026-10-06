@@ -32,7 +32,7 @@ class BrandDataTest extends TestCase
         config(['beam.brand' => ['name' => 'Acme', 'legal_entity' => 'Acme Ltd', 'logo' => '/logo.svg', 'title_template' => ':title · Acme', 'passkey_copy' => 'Use a passkey.']]);
 
         $this->assertSame(
-            ['name' => 'Acme', 'logo' => '/logo.svg', 'titleTemplate' => ':title · Acme', 'legalEntity' => 'Acme Ltd', 'passkeyCopy' => 'Use a passkey.', 'contact' => ['sales' => null]],
+            ['name' => 'Acme', 'logo' => '/logo.svg', 'titleTemplate' => ':title · Acme', 'legalEntity' => 'Acme Ltd', 'passkeyCopy' => 'Use a passkey.', 'contact' => ['sales' => null], 'home' => null, 'tagline' => null],
             Brand::for()->toArray(),
         );
     }
@@ -69,5 +69,33 @@ class BrandDataTest extends TestCase
 
         $this->assertStringNotContainsString('Splicewire', json_encode($shipped));
         $this->assertStringNotContainsString('Laravel', json_encode($shipped));
+    }
+
+    /*
+     * docs-walkthrough DOCS-12 (C-1, lead ruling 1): a product's brand comes from `beam.brands[product]`, keyed by the
+     * docs root's declared product; an undeclared product reads the install brand. `home` (where its "back" link goes,
+     * ruling 2) and `tagline` (the product switcher's blurb, C-6) are nullable and absent unless declared.
+     */
+    public function test_a_product_brand_comes_from_beam_brands_and_falls_back_to_the_install_brand(): void
+    {
+        config([
+            'beam.brand' => ['name' => 'Splicewire'],
+            'beam.brands' => ['beam' => ['name' => 'Beam', 'home' => 'https://splicewire.test/beam', 'tagline' => 'Build your own app on Beam']],
+        ]);
+
+        $beam = Brand::forProduct('beam');
+        $this->assertSame(['Beam', 'https://splicewire.test/beam', 'Build your own app on Beam'], [$beam->name, $beam->home, $beam->tagline]);
+
+        $this->assertSame('Splicewire', Brand::forProduct('splicewire')->name);
+        $this->assertSame('Splicewire', Brand::forProduct(null)->name);
+    }
+
+    public function test_home_and_tagline_are_absent_unless_declared(): void
+    {
+        config(['beam.brand' => ['name' => 'Acme']]);
+
+        $brand = Brand::for();
+        $this->assertNull($brand->home);
+        $this->assertNull($brand->tagline);
     }
 }

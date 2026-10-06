@@ -32,6 +32,10 @@ final class BrandData extends Data
          * @var array{sales: ?string}
          */
         public readonly array $contact = ['sales' => null],
+        /** The product's own site page: a docs header's "back" link (docs-walkthrough DOCS-12, lead ruling 2). */
+        public readonly ?string $home = null,
+        /** One line saying what the product is: the docs product switcher's blurb (docs-walkthrough C-6). */
+        public readonly ?string $tagline = null,
     ) {}
 
     /**
@@ -51,6 +55,8 @@ final class BrandData extends Data
             passkeyCopy: self::filled($config['passkey_copy'] ?? null)
                 ?? "Passkeys secure your {$name} login. They're tied to your account.",
             contact: ['sales' => self::filled($config['contact']['sales'] ?? null)],
+            home: self::filled($config['home'] ?? null),
+            tagline: self::filled($config['tagline'] ?? null),
         );
     }
 
