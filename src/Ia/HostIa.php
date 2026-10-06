@@ -77,7 +77,15 @@ final class HostIa
             ? new HostRealmBackData($workspace->label, $workspace->href)
             : null;
 
-        return new HostRealmsData(array_values($rows), $current, $back);
+        // APP-11 (M2′, IA-6): the sides this host plays ride the payload, so a renderer can decide
+        // host-true chrome AT THE MOUNT (the banner, Preview, the support widget) instead of hardcoding
+        // it. The source of truth is the same `Sides::plays()` the route macros use.
+        $plays = array_values(array_map(
+            static fn (Side $side): string => $side->value,
+            array_filter(Side::cases(), static fn (Side $side): bool => Sides::plays($side)),
+        ));
+
+        return new HostRealmsData(array_values($rows), $current, $back, $plays);
     }
 
     /** A realm's home href: its profile's route name, minted with the host's prefix. */

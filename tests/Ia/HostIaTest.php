@@ -62,6 +62,22 @@ class HostIaTest extends TestCase
         ], $realms->all());
     }
 
+    public function test_the_payload_carries_the_sides_this_host_plays(): void
+    {
+        // APP-11 (M2′, IA-6): `plays` rides the realms payload, from the same `beam.core.ia.plays`
+        // the route macros read, so a renderer decides host-true chrome at the mount.
+        config(['beam.core.ia.plays' => ['hub']]);
+        $this->assertSame(['hub'], $this->ia()->realms(null)->plays);
+        $this->assertContains('plays', array_keys($this->ia()->realms(null)->toArray()));
+
+        config(['beam.core.ia.plays' => ['client']]);
+        $this->assertSame(['client'], $this->ia()->realms(null)->plays);
+
+        // Undeclared (null) plays every side — a host that has not declared is unchanged.
+        config(['beam.core.ia.plays' => null]);
+        $this->assertEqualsCanonicalizing(['hub', 'client'], $this->ia()->realms(null)->plays);
+    }
+
     public function test_a_host_declares_a_label_and_a_home_by_route_name(): void
     {
         $this->mountHomes();
