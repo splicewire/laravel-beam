@@ -130,7 +130,8 @@ class NavSectionRegistry implements Gated, Registry
      * Seats sharing a key in one realm are ONE seat (ux-walkthrough UX-09; IA-10, IA-13). Tower's Billing task section,
      * commerce's optional `billing` extension seat and a host's bespoke Usage & cost row all name `billing`: each used to
      * draw its own header. The first seat in projection order (the lowest `order`) supplies the header: its label, icon,
-     * href, gates, audience and lock. Every same-key seat's static rows join it, the header's own first. The rows still
+     * href and order. Every same-key seat's static rows join it, the header's own first. Only seats with the SAME gates,
+     * audience and lock merge; a mismatch is refused (thrown outside production, reported and kept apart in it). The rows still
      * sort among the seat's resources by `navOrder` downstream, so a contributor places its row with `navOrder`.
      *
      * @param  list<NavSection>  $sorted
@@ -139,8 +140,23 @@ class NavSectionRegistry implements Gated, Registry
     private function merged(array $sorted): array
     {
         $byKey = [];
+        $apart = [];
         foreach ($sorted as $section) {
             $head = $byKey[$section->key] ?? null;
+            if ($head !== null && ! self::sameGates($head, $section)) {
+                // review-r1, build.qa: merging would hand the joining seat's rows the HEAD's gates (a stricter seat's rows
+                // shown to everyone who sees a looser head) or its audience (a developer seat's rows in the primary zone).
+                // So they are not merged: thrown where the host is built (the UX-06 `beam.ux.ia.throw` policy), so CI
+                // sees it; reported and kept as two seats in production, never silently loosened.
+                $error = new \LogicException("Nav seats [{$section->realm}.{$section->key}] share a key but differ in entitlement, permission, audience or lock, so they are not merged.");
+                if ((bool) config('beam.ux.ia.throw', ! app()->isProduction())) {
+                    throw $error;
+                }
+                report($error);
+                $apart[] = $section;
+
+                continue;
+            }
             $byKey[$section->key] = $head === null ? $section : new NavSection(
                 key: $head->key,
                 realm: $head->realm,
@@ -156,7 +172,16 @@ class NavSectionRegistry implements Gated, Registry
             );
         }
 
-        return array_values($byKey);
+        return [...array_values($byKey), ...$apart];
+    }
+
+    /** Whether two seats gate their rows identically: the same entitlement, permission, audience and lock. */
+    private static function sameGates(NavSection $a, NavSection $b): bool
+    {
+        return $a->entitlement == $b->entitlement
+            && $a->permission === $b->permission
+            && $a->audience === $b->audience
+            && $a->lock == $b->lock;
     }
 
     /**

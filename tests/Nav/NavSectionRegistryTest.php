@@ -75,7 +75,7 @@ class NavSectionRegistryTest extends TestCase
             ->register(new NavSection(key: 'billing', realm: 'operator', label: 'Billing', icon: 'Receipt', href: '/billing', order: 30,
                 entitlement: ['os.operate'], permission: null, audience: NavAudience::Product, static: [['title' => 'Plans']]), by: 'tower')
             ->register(new NavSection(key: 'billing', realm: 'operator', label: 'Extension billing', icon: 'Coins', href: '/x', order: 70,
-                entitlement: null, permission: null, audience: NavAudience::Product, static: [['title' => 'Extension sales']]), by: 'commerce')
+                entitlement: ['os.operate'], permission: null, audience: NavAudience::Product, static: [['title' => 'Extension sales']]), by: 'commerce')
             ->register($this->seat('operator', 'system', 60), by: 'tower')
             ->register(new NavSection(key: 'billing', realm: 'operator', label: 'Billing', icon: 'Receipt', href: '/billing', order: 30,
                 entitlement: ['os.operate'], permission: null, audience: NavAudience::Product, static: [['title' => 'Usage & cost']]), by: 'host');
@@ -99,6 +99,45 @@ class NavSectionRegistryTest extends TestCase
 
         $this->assertSame('Billing', $this->registry()->for('operator')[0]->label);
         $this->assertSame(['A', 'B'], array_column($this->registry()->for('operator')[0]->static, 'title'));
+    }
+
+    /**
+     * review-r1, build.qa: a merged seat's rows take the head's gates, so seats that gate differently must never merge:
+     * a stricter seat's rows would show to everyone the looser head admits, a developer seat's rows would land in the
+     * primary zone. Refused where the host is built, so CI sees it; reported and kept apart in production.
+     */
+    public function test_seats_sharing_a_key_but_not_their_gates_are_never_merged(): void
+    {
+        $open = new NavSection(key: 'billing', realm: 'operator', label: 'Billing', icon: 'Receipt', href: '/billing', order: 30,
+            entitlement: null, permission: null, audience: NavAudience::Product, static: [['title' => 'Open row']]);
+        $variants = [
+            'permission' => ['permission' => 'billing.manage'],
+            'entitlement' => ['entitlement' => ['os.operate']],
+            'audience' => ['audience' => NavAudience::Developer],
+            'lock' => ['entitlement' => null, 'lock' => new NavSeatLock(reason: 'Upgrade')],
+        ];
+
+        foreach ($variants as $what => $diff) {
+            $this->app->forgetInstance(NavSectionRegistry::class);
+            $joiner = new NavSection(...array_merge([
+                'key' => 'billing', 'realm' => 'operator', 'label' => 'Billing', 'icon' => 'Receipt', 'href' => '/billing', 'order' => 70,
+                'entitlement' => null, 'permission' => null, 'audience' => NavAudience::Product, 'static' => [['title' => 'Gated row']],
+            ], $diff));
+            $this->registry()->register($open, by: 'tower')->register($joiner, by: 'commerce');
+
+            config(['beam.ux.ia.throw' => true]);
+            try {
+                $this->registry()->for('operator');
+                $this->fail("a {$what} mismatch must be refused where the host is built");
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString('operator.billing', $e->getMessage());
+            }
+
+            config(['beam.ux.ia.throw' => false]);
+            $seats = $this->registry()->for('operator');
+            $this->assertCount(2, $seats, "a {$what} mismatch keeps the seats apart in production");
+            $this->assertSame([['Open row'], ['Gated row']], array_map(fn (NavSection $s): array => array_column($s->static, 'title'), $seats));
+        }
     }
 
     public function test_it_ships_empty_and_therefore_inert(): void
