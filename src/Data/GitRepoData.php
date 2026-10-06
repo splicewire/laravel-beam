@@ -22,7 +22,7 @@ use Splicewire\Beam\Storage\GitRepoRegistrar;
 #[ParticleResource(
     key: 'git-repo',
     backing: GitRepo::class,
-    label: 'Git Repos',
+    label: 'Git repos',
     group: 'Ops',
     icon: 'git-branch',
     section: 'ops',

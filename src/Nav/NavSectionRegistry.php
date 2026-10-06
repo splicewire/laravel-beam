@@ -119,9 +119,44 @@ class NavSectionRegistry implements Gated, Registry
     {
         $sections = $this->store->matches($realmKey);
 
-        usort($sections, NavSection::compare(...));
+        // Ties on [order, key] break on label then href, so a merged seat's header and row order never depend on
+        // which provider booted first.
+        usort($sections, static fn (NavSection $a, NavSection $b): int => NavSection::compare($a, $b) ?: [$a->label, $a->href] <=> [$b->label, $b->href]);
 
-        return array_values($sections);
+        return $this->merged($sections);
+    }
+
+    /**
+     * Seats sharing a key in one realm are ONE seat (ux-walkthrough UX-09; IA-10, IA-13). Tower's Billing task section,
+     * commerce's optional `billing` extension seat and a host's bespoke Usage & cost row all name `billing`: each used to
+     * draw its own header. The first seat in projection order (the lowest `order`) supplies the header: its label, icon,
+     * href, gates, audience and lock. Every same-key seat's static rows join it, the header's own first. The rows still
+     * sort among the seat's resources by `navOrder` downstream, so a contributor places its row with `navOrder`.
+     *
+     * @param  list<NavSection>  $sorted
+     * @return list<NavSection>
+     */
+    private function merged(array $sorted): array
+    {
+        $byKey = [];
+        foreach ($sorted as $section) {
+            $head = $byKey[$section->key] ?? null;
+            $byKey[$section->key] = $head === null ? $section : new NavSection(
+                key: $head->key,
+                realm: $head->realm,
+                label: $head->label,
+                icon: $head->icon,
+                href: $head->href,
+                order: $head->order,
+                entitlement: $head->entitlement,
+                permission: $head->permission,
+                audience: $head->audience,
+                static: [...$head->static, ...$section->static],
+                lock: $head->lock,
+            );
+        }
+
+        return array_values($byKey);
     }
 
     /**

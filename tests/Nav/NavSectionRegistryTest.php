@@ -63,6 +63,44 @@ class NavSectionRegistryTest extends TestCase
         return array_map(static fn (NavSection $s): string => $s->key, $sections);
     }
 
+    /**
+     * ux-walkthrough UX-09 (IA-10, IA-13; lead 09:01Z ruling 5): two seats with the same key in one realm are ONE seat.
+     * Tower declares the Billing task section, commerce's extension seat is also `billing`, and a host puts its bespoke
+     * pages (Usage & cost) into the package's seat by declaring the same key. Each used to draw a second header.
+     * The lowest-`order` seat supplies the header (label, icon, href, gates, audience); every seat's static rows join it.
+     */
+    public function test_seats_sharing_a_key_in_a_realm_merge_into_one_with_every_static_row(): void
+    {
+        $this->registry()
+            ->register(new NavSection(key: 'billing', realm: 'operator', label: 'Billing', icon: 'Receipt', href: '/billing', order: 30,
+                entitlement: ['os.operate'], permission: null, audience: NavAudience::Product, static: [['title' => 'Plans']]), by: 'tower')
+            ->register(new NavSection(key: 'billing', realm: 'operator', label: 'Extension billing', icon: 'Coins', href: '/x', order: 70,
+                entitlement: null, permission: null, audience: NavAudience::Product, static: [['title' => 'Extension sales']]), by: 'commerce')
+            ->register($this->seat('operator', 'system', 60), by: 'tower')
+            ->register(new NavSection(key: 'billing', realm: 'operator', label: 'Billing', icon: 'Receipt', href: '/billing', order: 30,
+                entitlement: ['os.operate'], permission: null, audience: NavAudience::Product, static: [['title' => 'Usage & cost']]), by: 'host');
+
+        $seats = $this->registry()->for('operator');
+
+        $this->assertSame(['billing', 'system'], $this->keysOf($seats));
+        $this->assertSame('Billing', $seats[0]->label);
+        $this->assertSame(['os.operate'], $seats[0]->entitlement);
+        $this->assertEqualsCanonicalizing(['Plans', 'Extension sales', 'Usage & cost'], array_column($seats[0]->static, 'title'));
+    }
+
+    public function test_the_merged_seat_does_not_depend_on_registration_order(): void
+    {
+        $a = new NavSection(key: 'billing', realm: 'operator', label: 'Billing', icon: 'Receipt', href: '/billing', order: 30,
+            entitlement: null, permission: null, audience: NavAudience::Product, static: [['title' => 'A']]);
+        $b = new NavSection(key: 'billing', realm: 'operator', label: 'Later', icon: 'Coins', href: '/x', order: 70,
+            entitlement: null, permission: null, audience: NavAudience::Product, static: [['title' => 'B']]);
+
+        $this->registry()->register($b, by: 'one')->register($a, by: 'two');
+
+        $this->assertSame('Billing', $this->registry()->for('operator')[0]->label);
+        $this->assertSame(['A', 'B'], array_column($this->registry()->for('operator')[0]->static, 'title'));
+    }
+
     public function test_it_ships_empty_and_therefore_inert(): void
     {
         $this->assertSame([], $this->registry()->for('tenant'));
