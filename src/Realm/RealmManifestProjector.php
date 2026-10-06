@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Realm;
 
+use Illuminate\Contracts\Auth\Access\Authorizable;
 use Illuminate\Support\Facades\Gate;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Ia\RealmProfiles;
@@ -132,10 +133,15 @@ class RealmManifestProjector
      * `entitlement:{key}` Gate ability {@see RealmGateAbility} names, for this principal, so a host's `Gate::before`
      * (the flagship admits Root) reaches the nav too and the nav never offers a realm the door refuses, or hides one
      * it admits. Where the host defines no ability for the key, the resolver still answers, as before, and
-     * `Gate::before` may add to it.
+     * `Gate::before` may add to it. A principal that is not a user (a guest, or a scope such as the tower starter's
+     * PrincipalScope) passes no door and may not reach a host's `Gate::before`, so the resolver alone answers for it.
      */
     private function admits(string $entitlement, mixed $principal): bool
     {
+        if (! $principal instanceof Authorizable) {
+            return $this->entitlements->allows($entitlement, $principal);
+        }
+
         $ability = 'entitlement:'.$entitlement;
         $gate = Gate::forUser($principal);
 

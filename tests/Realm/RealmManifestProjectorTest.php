@@ -2,7 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Realm;
 
-use Illuminate\Auth\GenericUser;
+use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Splicewire\Beam\Realm\RealmManifestProjector;
@@ -20,6 +20,12 @@ class RealmManifestProjectorTest extends TestCase
     private function withResolver(array $held): void
     {
         $this->app->instance(EntitlementResolver::class, new FakeEntitlementResolver($held));
+    }
+
+    /** A framework user (Authorizable, as a request's user is), never persisted. */
+    private function user(array $attributes): User
+    {
+        return (new User)->forceFill($attributes);
     }
 
     private function keys(array $manifest): array
@@ -119,8 +125,8 @@ class RealmManifestProjectorTest extends TestCase
 
         $projector = $this->app->make(RealmManifestProjector::class);
 
-        $this->assertContains('operator', $this->keys($projector->project(new GenericUser(['id' => 1, 'root' => true]))));
-        $this->assertNotContains('operator', $this->keys($projector->project(new GenericUser(['id' => 2, 'root' => false]))));
+        $this->assertContains('operator', $this->keys($projector->project($this->user(['id' => 1, 'root' => true]))));
+        $this->assertNotContains('operator', $this->keys($projector->project($this->user(['id' => 2, 'root' => false]))));
     }
 
     public function test_a_defined_ability_decides_the_realm_even_where_the_resolver_holds_the_key(): void
@@ -130,7 +136,7 @@ class RealmManifestProjectorTest extends TestCase
         // The host narrows the ability; the door then refuses, so the nav must not offer the realm.
         Gate::define('entitlement:os.operate', fn ($user = null) => false);
 
-        $manifest = $this->app->make(RealmManifestProjector::class)->project(new GenericUser(['id' => 1]));
+        $manifest = $this->app->make(RealmManifestProjector::class)->project($this->user(['id' => 1]));
 
         $this->assertNotContains('operator', $this->keys($manifest));
     }
@@ -141,8 +147,31 @@ class RealmManifestProjectorTest extends TestCase
         $this->withResolver([]);
         Gate::before(fn ($user) => ($user->root ?? false) ? true : null);
 
-        $manifest = $this->app->make(RealmManifestProjector::class)->project(new GenericUser(['id' => 1, 'root' => true]));
+        $manifest = $this->app->make(RealmManifestProjector::class)->project($this->user(['id' => 1, 'root' => true]));
 
         $this->assertContains('operator', $this->keys($manifest));
+    }
+
+    /*
+     * A principal that is not a user (the tower starter's PrincipalScope) has no door to agree with, and a host's
+     * Gate::before may type its argument as a user: the resolver answers for it alone, as before.
+     */
+    public function test_a_principal_that_is_not_a_user_is_answered_by_the_resolver_alone(): void
+    {
+        config(['beam.core.realms.operator.gate' => ['entitlement' => 'os.operate', 'mode' => 'hard']]);
+        $scope = new \stdClass;
+        $this->app->instance(EntitlementResolver::class, new class($scope) implements EntitlementResolver
+        {
+            public function __construct(private object $scope) {}
+
+            public function entitlementsFor(mixed $principal): array
+            {
+                return $principal === $this->scope ? ['os.operate'] : [];
+            }
+        });
+        Gate::define('entitlement:os.operate', fn ($user = null) => false);
+        Gate::before(fn (\Illuminate\Contracts\Auth\Access\Authorizable $user) => null);
+
+        $this->assertContains('operator', $this->keys($this->app->make(RealmManifestProjector::class)->project($scope)));
     }
 }
