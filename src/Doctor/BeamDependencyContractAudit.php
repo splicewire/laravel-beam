@@ -20,6 +20,13 @@ use Rushing\Doctor\Finding;
  */
 class BeamDependencyContractAudit
 {
+    /** The check names this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
+    public const CHECK_MARQUEE_DECLARED = 'marquee site-mode gate wired';
+    public const CHECK_FIRST_PARTY_CLOSURE = 'first-party closure declared in repositories';
+    public const CHECK_LOCK_PATH_FREE = 'lock path-free';
+    public const CHECK_REPOS_GIT_RESOLVED = 'repos git-resolved';
+    public const CHECK_STABILITY = 'stability configured';
+
     /**
      * First-party composer vendors (ADR-0073 + ADR-0077): schemastud/ owns the substrate,
      * splicewire/ the product, rushing/ the portfolio shelf. Order does not matter — a name
@@ -54,7 +61,7 @@ class BeamDependencyContractAudit
      */
     private function marqueeGateDeclared(array $composerJson): Finding
     {
-        $check = 'marquee site-mode gate wired';
+        $check = self::CHECK_MARQUEE_DECLARED;
 
         if (! array_key_exists('rushing/laravel-marquee', $composerJson['require'] ?? [])) {
             return Finding::warn(
@@ -91,7 +98,7 @@ class BeamDependencyContractAudit
      */
     private function firstPartyClosureDeclared(array $composerJson, array $vendors): Finding
     {
-        $check = 'first-party closure declared in repositories';
+        $check = self::CHECK_FIRST_PARTY_CLOSURE;
         $requires = array_keys(($composerJson['require'] ?? []) + ($composerJson['require-dev'] ?? []));
         $firstPartyRequires = array_values(array_filter(
             $requires,
@@ -151,7 +158,7 @@ class BeamDependencyContractAudit
      */
     private function lockHasNoPathRefs(?array $composerLock): Finding
     {
-        $check = 'lock path-free';
+        $check = self::CHECK_LOCK_PATH_FREE;
 
         if ($composerLock === null) {
             return Finding::warn($check, 'No composer.lock found — run `composer update` and commit the lock.');
@@ -190,7 +197,7 @@ class BeamDependencyContractAudit
      */
     private function committedReposAreGitResolved(array $composerJson): Finding
     {
-        $check = 'repos git-resolved';
+        $check = self::CHECK_REPOS_GIT_RESOLVED;
 
         $pathRepos = [];
 
@@ -224,7 +231,7 @@ class BeamDependencyContractAudit
      */
     private function stabilityConfigured(array $composerJson): Finding
     {
-        $check = 'stability configured';
+        $check = self::CHECK_STABILITY;
 
         $requires = ($composerJson['require'] ?? []) + ($composerJson['require-dev'] ?? []);
         $hasDevMainPin = false;

@@ -18,9 +18,12 @@ use Rushing\Doctor\Finding;
  */
 class BeamManifestAudit
 {
+    /** The check name this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
+    public const CHECK = 'beam manifest present and valid';
+
     public function run(bool $fileExists, ?string $satellite, ?string $variant): Finding
     {
-        $check = 'beam manifest present and valid';
+        $check = self::CHECK;
 
         if (! $fileExists) {
             return Finding::fail(

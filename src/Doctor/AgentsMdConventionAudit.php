@@ -18,6 +18,10 @@ use Rushing\Doctor\Finding;
  */
 class AgentsMdConventionAudit implements DoctorAudit
 {
+    /** The check names this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
+    public const CHECK_AGENTS_MD = 'AGENTS.md committed / CLAUDE.md gitignored';
+    public const CHECK_WIRING_MARKER = 'ecosystem wiring-skill marker present';
+
     private const MARKER_START = '<!-- ecosystem:start -->';
 
     /**
@@ -33,7 +37,7 @@ class AgentsMdConventionAudit implements DoctorAudit
 
     private function agentsFileCommitted(): Finding
     {
-        $check = 'AGENTS.md committed / CLAUDE.md gitignored';
+        $check = self::CHECK_AGENTS_MD;
 
         if ($this->tracked('CLAUDE.md')) {
             return Finding::warn(
@@ -66,7 +70,7 @@ class AgentsMdConventionAudit implements DoctorAudit
 
     private function wiringSkillMarkerPresent(): Finding
     {
-        $check = 'ecosystem wiring-skill marker present';
+        $check = self::CHECK_WIRING_MARKER;
 
         $claudeMd = base_path('CLAUDE.md');
 

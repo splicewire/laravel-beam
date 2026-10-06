@@ -39,6 +39,9 @@ use Splicewire\Beam\Doctor\BeamDoctorManifest;
  */
 abstract class StubMigrationsAudit implements DoctorAudit
 {
+    /** The check name this audit emits, suffixed with the package it reads (docs-walkthrough DOC-11(c)). */
+    public const CHECK = 'migrations are publish-only stubs';
+
     abstract protected function packageName(): string;
 
     /**
@@ -51,7 +54,7 @@ abstract class StubMigrationsAudit implements DoctorAudit
      */
     public function run(): array
     {
-        $check = "migrations are publish-only stubs ({$this->packageName()})";
+        $check = self::CHECK." ({$this->packageName()})";
 
         $providerFile = (new ReflectionClass($this->serviceProviderClass()))->getFileName();
 

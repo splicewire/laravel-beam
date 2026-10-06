@@ -80,6 +80,9 @@ use Splicewire\Beam\Install\MigrationFiles;
  */
 class MigrationOrderingAudit implements DoctorAudit
 {
+    /** The check name this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
+    public const CHECK = 'cross-package migration ordering';
+
     public function __construct(
         private Application $app,
         private BeamInstallManifest $manifest,
@@ -90,7 +93,7 @@ class MigrationOrderingAudit implements DoctorAudit
      */
     public function run(): array
     {
-        $check = 'cross-package migration ordering';
+        $check = self::CHECK;
 
         $files = $this->population();
         $creators = [];

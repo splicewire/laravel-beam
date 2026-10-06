@@ -19,13 +19,16 @@ use Rushing\Doctor\Finding;
  */
 class McpIsolationAudit
 {
+    /** The check name this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
+    public const CHECK = 'playwright MCP isolated';
+
     /**
      * @param  list<array{source: string, command: string}>  $registrations
      *                                                                       Each entry's `command` is the full invocation string (command + args, sh -c body included).
      */
     public function run(array $registrations): Finding
     {
-        $check = 'playwright MCP isolated';
+        $check = self::CHECK;
 
         if ($registrations === []) {
             return Finding::inconclusive($check, 'no Playwright MCP server is registered — nothing to isolate.');

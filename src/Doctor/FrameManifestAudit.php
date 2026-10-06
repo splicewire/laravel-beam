@@ -13,9 +13,12 @@ use Rushing\Doctor\Finding;
  */
 class FrameManifestAudit
 {
+    /** The check name this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
+    public const CHECK = 'frame manifest';
+
     public function run(): Finding
     {
-        $check = 'frame manifest';
+        $check = self::CHECK;
         $registryClass = 'Schemastud\\Frame\\Contracts\\ResourceRegistry';
 
         if (! class_exists($registryClass) || ! app()->bound($registryClass)) {

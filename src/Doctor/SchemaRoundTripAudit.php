@@ -25,9 +25,12 @@ use Spatie\LaravelData\Data;
  */
 class SchemaRoundTripAudit
 {
+    /** The check name this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
+    public const CHECK = 'schema round-trip';
+
     public function run(): Finding
     {
-        $check = 'schema round-trip';
+        $check = self::CHECK;
 
         try {
             $sample = new class extends Data

@@ -17,6 +17,9 @@ use Splicewire\Beam\BeamServiceProvider;
  */
 class SurgeonWiringAudit
 {
+    /** The check name this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
+    public const CHECK = 'surgeon audits wired';
+
     private const SURGEON_PACKAGE = 'rushing/laravel-surgeon';
 
     /**
@@ -24,7 +27,7 @@ class SurgeonWiringAudit
      */
     public function run(array $composerJson): Finding
     {
-        $check = 'surgeon audits wired';
+        $check = self::CHECK;
 
         $requires = array_keys(($composerJson['require'] ?? []) + ($composerJson['require-dev'] ?? []));
 

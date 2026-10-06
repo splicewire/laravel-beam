@@ -18,12 +18,15 @@ use Rushing\Doctor\Finding;
  */
 class MarqueeGateAudit
 {
+    /** The check name this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
+    public const CHECK = 'marquee gate enforced in web group';
+
     /**
      * @param  list<string>  $webGroup  the effective `web` middleware group
      */
     public function run(array $webGroup, string $middleware, bool $autoRegister, bool $middlewareExists): Finding
     {
-        $check = 'marquee gate enforced in web group';
+        $check = self::CHECK;
 
         if (! $middlewareExists) {
             return Finding::warn(

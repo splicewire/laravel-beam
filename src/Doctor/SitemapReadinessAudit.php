@@ -16,12 +16,15 @@ use Rushing\Doctor\Finding;
  */
 class SitemapReadinessAudit
 {
+    /** The check name this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
+    public const CHECK = 'sitemap routes serve dynamically';
+
     /**
      * @param  list<string>  $shadowingFiles  public/ paths present that would shadow the routes
      */
     public function run(bool $enabled, array $shadowingFiles): Finding
     {
-        $check = 'sitemap routes serve dynamically';
+        $check = self::CHECK;
 
         if (! $enabled) {
             return Finding::warn(
