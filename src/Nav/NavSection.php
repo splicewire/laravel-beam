@@ -77,9 +77,14 @@ class NavSection
      * @param  list<string>|null  $entitlement  any-of capability keys — holding ONE reveals the seat.
      *                                          `null` = ungated. `[]` = gated and unsatisfiable
      * @param  string|null  $permission  a single RBAC token, or `null` for ungated
-     * @param  NavAudience  $audience  who the seat is for (ux-walkthrough IA-8, UX-08): `developer` seats are drawn in
-     *                                 the Developer zone, `product` seats in the rail. Required with no default, like
-     *                                 the gate slots; {@see NavAudience} carries the read-only rule that decides it
+     * @param  NavAudience|null  $audience  who the seat is for (ux-walkthrough IA-8, UX-08): `developer` seats are drawn
+     *                                      in the Developer zone, `product` seats in the rail; {@see NavAudience} carries
+     *                                      the read-only rule that decides it. DEPRECATE-WITH-DEFAULT (lead 17:34Z): a
+     *                                      seat declared before UX-08a omits it, and a required argument fataled every
+     *                                      such installed host on update. Omitted, it is `product` and the declaring
+     *                                      class is named once in the deprecation log and in `beam:doctor`
+     *                                      ({@see \Splicewire\Beam\Doctor\NavSectionAudienceAudit}). Every package
+     *                                      declaration passes it explicitly; it is required again only at a declared major
      * @param  list<array{title: string, href: string, icon?: string, routeName?: string, navOrder?: int}>  $static
      *                                                                                                               hand-authored child rows, in the same shape the flagship
      *                                                                                                               already passes through `section(static: [...])`. They merge
@@ -99,10 +104,55 @@ class NavSection
         public readonly int $order,
         public readonly ?array $entitlement,
         public readonly ?string $permission,
-        public readonly NavAudience $audience,
+        ?NavAudience $audience = null,
         public readonly array $static = [],
         public readonly ?NavSeatLock $lock = null,
-    ) {}
+    ) {
+        $this->audienceDeclared = $audience !== null;
+        $this->audience = $audience ?? NavAudience::Product;
+
+        if (! $this->audienceDeclared) {
+            self::noteUndeclaredAudience();
+        }
+    }
+
+    /** Who the seat is for: as declared, or `product` when a pre-UX-08a declaration omits it. */
+    public readonly NavAudience $audience;
+
+    /** Whether the declaration named its audience; false only for an old-shape seat that took the default. */
+    public readonly bool $audienceDeclared;
+
+    /** @var array<string, true> declaring class (or file) => noted, so each is reported once per process */
+    private static array $undeclaredAudience = [];
+
+    /** @return list<string> every declaring class (or file) that built a seat without an audience, in first-seen order */
+    public static function undeclaredAudience(): array
+    {
+        return array_keys(self::$undeclaredAudience);
+    }
+
+    /** For tests: the noted declarers are process-wide, so a test that reads them starts from none. */
+    public static function forgetUndeclaredAudience(): void
+    {
+        self::$undeclaredAudience = [];
+    }
+
+    private static function noteUndeclaredAudience(): void
+    {
+        // The frame that called `new NavSection(...)`: index 0 is this method, 1 the constructor, 2 the declarer.
+        $frame = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 3)[2] ?? [];
+        $declarer = $frame['class'] ?? (isset($frame['file']) ? $frame['file'] : 'unknown');
+
+        if (isset(self::$undeclaredAudience[$declarer])) {
+            return;
+        }
+        self::$undeclaredAudience[$declarer] = true;
+
+        @trigger_error(sprintf(
+            '%s declares a NavSection without an audience; it is drawn as a product seat. Pass `audience:` explicitly (ux-walkthrough UX-08); it is required again at the next major.',
+            $declarer,
+        ), E_USER_DEPRECATED);
+    }
 
     /**
      * Whether an entitlement gate was DECLARED — true for `[]` as much as for a populated list, false

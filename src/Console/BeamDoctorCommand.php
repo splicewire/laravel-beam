@@ -19,6 +19,7 @@ use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
 use Splicewire\Beam\Doctor\ModelLessReadGateAudit;
+use Splicewire\Beam\Doctor\NavSectionAudienceAudit;
 use Splicewire\Beam\Doctor\ParticleRouteResourceAudit;
 use Splicewire\Beam\Doctor\ParticleSlotCollisionAudit;
 use Splicewire\Beam\Doctor\RelativeEdgeIntegrityAudit;
@@ -218,6 +219,13 @@ class BeamDoctorCommand extends Command
                 DashboardTierAudit::class,
                 false,
                 fn (DashboardTierAudit $audit) => $audit->run(),
+            ),
+            // A NavSection declared without `audience:` (written before UX-08a) boots as a product seat and is named
+            // here. Advisory: the seat works, and the declaration is the declarer's to update (lead 17:34Z).
+            $this->guarded(
+                NavSectionAudienceAudit::class,
+                false,
+                fn (NavSectionAudienceAudit $audit) => $audit->run(),
             ),
         );
 
