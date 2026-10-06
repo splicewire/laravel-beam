@@ -15,11 +15,17 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 #[TypeScript]
 final class HostRealmsData extends Data
 {
-    /** @param  list<HostRealmData>  $realms */
+    /**
+     * @param  list<HostRealmData>  $realms
+     * @param  list<string>  $plays  the cross-instance sides this host plays (Side values, e.g. `hub`,
+     *                               `client`), so a renderer decides host-true chrome at the mount —
+     *                               a package surface renders only where it is true (APP-11/APP-24, IA-6).
+     */
     public function __construct(
         #[DataCollectionOf(HostRealmData::class)]
         public readonly array $realms,
         public readonly ?string $current,
         public readonly ?HostRealmBackData $back,
+        public readonly array $plays = [],
     ) {}
 }
