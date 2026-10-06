@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Support\Facades\Route;
 use InvalidArgumentException;
 use Splicewire\Beam\Realm\RealmManifestProjector;
+use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmRegistry;
 
 /**
@@ -24,6 +25,7 @@ final class HostIa
         private readonly RealmManifestProjector $projector,
         private readonly RealmRegistry $registry,
         private readonly RealmProfiles $profiles,
+        private readonly TenantResolver $tenants,
     ) {}
 
     /** Whether this host plays `$side` (IA-6). See {@see Sides::plays()}. */
@@ -67,6 +69,8 @@ final class HostIa
                 surface: $profile['surface'],
                 locked: (bool) ($descriptor['locked'] ?? false),
                 upsell: $descriptor['upsell'] ?? null,
+                manifest: $this->registry->effective($key)->key,
+                tenantScoped: $this->tenants->resolvesTenantFor($this->registry->effective($key)),
             );
             $bases[$key] = (string) $descriptor['routeBase'];
         }

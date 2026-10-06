@@ -86,7 +86,7 @@ class HostIaTest extends TestCase
         config(['beam.core.realms.tenant' => ['label' => 'Studio', 'home' => 'studio.home']]);
 
         $this->assertSame('/studio', $this->ia()->home('tenant'));
-        $this->assertSame(['key' => 'tenant', 'label' => 'Studio', 'href' => '/studio', 'surface' => 'app', 'locked' => false, 'upsell' => null], $this->row($this->ia()->realms(null), 'tenant'));
+        $this->assertSame(['key' => 'tenant', 'label' => 'Studio', 'href' => '/studio', 'surface' => 'app', 'locked' => false, 'upsell' => null, 'manifest' => 'tenant', 'tenantScoped' => true], $this->row($this->ia()->realms(null), 'tenant'));
     }
 
     public function test_home_is_minted_from_the_route_with_the_host_prefix(): void
@@ -193,6 +193,35 @@ class HostIaTest extends TestCase
         $this->assertSame(['label' => 'App', 'href' => '/dashboard'], $ia->realms(null, '/settings/profile')->toArray()['back']);
         $this->assertNull($ia->realms(null, '/dashboard')->back);
         $this->assertNull($ia->realms(null, '/about')->back);
+    }
+
+    /*
+     * app-walkthrough APP-14 (APP-5, M2′): each realm row says which realm's manifest it reads (the registry's effective
+     * realm, so the `user` realm stacked on `tenant` reads the tenant manifest) and whether that realm resolves a tenant,
+     * so a shell picks its rail and its tenant chrome from the payload instead of from hand realm exports.
+     */
+    public function test_each_realm_names_the_manifest_it_reads_and_whether_it_is_tenant_scoped(): void
+    {
+        $this->mountHomes();
+        $data = $this->ia()->realms(null, '/');
+
+        $read = fn (string $key) => array_intersect_key((array) $this->row($data, $key), array_flip(['manifest', 'tenantScoped']));
+
+        $this->assertSame(['manifest' => 'tenant', 'tenantScoped' => true], $read('tenant'));
+        $this->assertSame(['manifest' => 'operator', 'tenantScoped' => false], $read('operator'));
+        $this->assertSame(['manifest' => 'site', 'tenantScoped' => false], $read('site'));
+        $this->assertSame(['manifest' => 'tenant', 'tenantScoped' => true], $read('user'));
+    }
+
+    public function test_no_realm_is_tenant_scoped_on_a_host_without_tenancy(): void
+    {
+        config(['frame.tenancy' => false]);
+        $this->mountHomes();
+
+        $rows = collect($this->ia()->realms(null, '/')->toArray()['realms']);
+
+        $this->assertNotEmpty($rows);
+        $this->assertTrue($rows->every(fn (array $row) => ($row['tenantScoped'] ?? null) === false));
     }
 
     public function test_classes_is_reserved_for_realm_markers_and_never_read_as_a_realm(): void
