@@ -4,11 +4,15 @@ namespace Splicewire\Beam\Tests\Install;
 
 use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\ServiceProvider;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\InstallStep;
+use Splicewire\Beam\Install\MigrationPublishGuard;
 use Splicewire\Beam\Tests\TestCase;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -29,6 +33,9 @@ class BeamInstallTest extends TestCase
      */
     protected function tearDown(): void
     {
+        Schema::dropIfExists('installer_idempotency_probes');
+        File::delete(glob(base_path('database/migrations/*_installer_idempotency_*.php')) ?: []);
+        File::delete(glob(storage_path('framework/testing/*installer_idempotency_*.php.stub')) ?: []);
         File::deleteDirectory(base_path('config/beam'));
 
         foreach (['', '/shared', '/tenant'] as $sub) {
@@ -43,6 +50,124 @@ class BeamInstallTest extends TestCase
         }
 
         parent::tearDown();
+    }
+
+    public function test_rerunning_the_installer_does_not_republish_or_reapply_a_migration_under_a_new_timestamp(): void
+    {
+        $source = storage_path('framework/testing/create_installer_idempotency_probes.php.stub');
+        File::ensureDirectoryExists(dirname($source));
+        File::put($source, <<<'PHP'
+        <?php
+
+        use Illuminate\Database\Migrations\Migration;
+        use Illuminate\Database\Schema\Blueprint;
+        use Illuminate\Support\Facades\Schema;
+
+        return new class extends Migration {
+            public function up(): void
+            {
+                Schema::create('installer_idempotency_probes', function (Blueprint $table): void {
+                    $table->id();
+                });
+            }
+
+            public function down(): void
+            {
+                Schema::dropIfExists('installer_idempotency_probes');
+            }
+        };
+        PHP);
+
+        $manifest = new BeamInstallManifest;
+        $manifest->register('fixture/idempotent-installer', ['fixture-idempotent-migrations'], migrates: true, order: 0);
+        $this->app->instance(BeamInstallManifest::class, $manifest);
+
+        $provider = new InstallerMigrationFixtureProvider($this->app);
+        $provider->publishMigration(
+            $source,
+            base_path('database/migrations/2026_10_07_000001_create_installer_idempotency_probes.php'),
+        );
+
+        $this->artisan('splicewire:beam:install', ['--no-interaction' => true, '--no-seed' => true])
+            ->assertExitCode(0);
+
+        $firstFiles = glob(base_path('database/migrations/*_create_installer_idempotency_probes.php')) ?: [];
+        $firstLedger = DB::table('migrations')
+            ->where('migration', 'like', '%_create_installer_idempotency_probes')
+            ->pluck('migration')
+            ->all();
+
+        $this->assertCount(1, $firstFiles);
+        $this->assertCount(1, $firstLedger);
+
+        // A new process boots package-tools at a new wall-clock second, so the SAME stub identity
+        // arrives with a different destination filename on the installer rerun.
+        $provider->publishMigration(
+            $source,
+            base_path('database/migrations/2026_10_07_000002_create_installer_idempotency_probes.php'),
+        );
+
+        $secondSelection = $this->app->make(MigrationPublishGuard::class)
+            ->pathsFor('fixture-idempotent-migrations');
+        $this->assertSame([], $secondSelection['paths']);
+        $this->assertSame(['create_installer_idempotency_probes'], $secondSelection['skipped']);
+
+        $this->artisan('splicewire:beam:install', ['--no-interaction' => true, '--no-seed' => true])
+            ->assertExitCode(0);
+
+        $this->assertSame(
+            $firstFiles,
+            glob(base_path('database/migrations/*_create_installer_idempotency_probes.php')) ?: [],
+            'the second install must not publish the same stub identity under a fresh timestamp',
+        );
+        $this->assertSame(
+            $firstLedger,
+            DB::table('migrations')
+                ->where('migration', 'like', '%_create_installer_idempotency_probes')
+                ->pluck('migration')
+                ->all(),
+            'the second install must apply no migration for an identity already in the ledger',
+        );
+    }
+
+    public function test_migration_publish_identity_is_recognised_from_either_disk_or_the_ledger(): void
+    {
+        $publishedSource = storage_path('framework/testing/installer_idempotency_published.php.stub');
+        $appliedSource = storage_path('framework/testing/installer_idempotency_applied.php.stub');
+        File::ensureDirectoryExists(dirname($publishedSource));
+        File::put($publishedSource, '<?php return new class {};');
+        File::put($appliedSource, '<?php return new class {};');
+        File::put(
+            base_path('database/migrations/2026_10_06_000001_installer_idempotency_published.php'),
+            '<?php return new class {};',
+        );
+
+        $repository = $this->app->make('migration.repository');
+        if (! $repository->repositoryExists()) {
+            $repository->createRepository();
+        }
+        $repository->log('2026_10_06_000002_installer_idempotency_applied', 1);
+
+        $provider = new InstallerMigrationFixtureProvider($this->app);
+        $provider->publishMigration(
+            $publishedSource,
+            base_path('database/migrations/2026_10_07_000001_installer_idempotency_published.php'),
+            'fixture-idempotent-identities',
+        );
+        $provider->publishMigration(
+            $appliedSource,
+            base_path('database/migrations/2026_10_07_000002_installer_idempotency_applied.php'),
+            'fixture-idempotent-identities',
+        );
+
+        $selection = $this->app->make(MigrationPublishGuard::class)
+            ->pathsFor('fixture-idempotent-identities');
+
+        $this->assertSame([], $selection['paths']);
+        $this->assertSame([
+            'installer_idempotency_published',
+            'installer_idempotency_applied',
+        ], $selection['skipped']);
     }
 
     public function test_the_manifest_orders_steps_core_first(): void
@@ -354,5 +479,18 @@ class BeamInstallTest extends TestCase
 
         $this->assertSame('Optionally set acme.thing for X.', $byPackage['acme/noted']->note);
         $this->assertNull($byPackage['acme/silent']->note);
+    }
+}
+
+final class InstallerMigrationFixtureProvider extends ServiceProvider
+{
+    public function register(): void {}
+
+    public function publishMigration(
+        string $source,
+        string $destination,
+        string $tag = 'fixture-idempotent-migrations',
+    ): void {
+        $this->publishes([$source => $destination], $tag);
     }
 }

@@ -11,8 +11,10 @@ use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\ConvergencePreflight;
 use Splicewire\Beam\Install\InstallStep;
 use Splicewire\Beam\Install\MigrationCollision;
+use Splicewire\Beam\Install\MigrationPublishGuard;
 use Splicewire\Beam\Install\MigrationTravel;
 use Splicewire\Beam\Install\RehearsedMigration;
+use Splicewire\Beam\Install\SelectedVendorPublisher;
 use Splicewire\Beam\Install\TableOwnershipResolver;
 use Splicewire\Beam\Seed\BeamSeedManifest;
 
@@ -77,8 +79,11 @@ class BeamInstallCommand extends Command
 
     protected $description = 'Interactively configure + install the whole beam stack (core-first) from the self-registration manifest.';
 
-    public function handle(BeamInstallManifest $manifest): int
-    {
+    public function handle(
+        BeamInstallManifest $manifest,
+        MigrationPublishGuard $publishGuard,
+        SelectedVendorPublisher $publisher,
+    ): int {
         // Parse `--travel=` FIRST, before anything is published. A malformed value has to cost a re-read
         // of the flag, not a half-published host waiting on a rerun.
         try {
@@ -156,7 +161,7 @@ class BeamInstallCommand extends Command
         //    afterwards would move the claimed file straight back off its winning stamp. Travel places
         //    the block; ownership then spends its tick against whatever the block now looks like.
         $before = $travel === null ? [] : MigrationTravel::snapshot($this->laravel->databasePath('migrations'));
-        $this->publishSteps($runSteps);
+        $this->publishSteps($runSteps, $publishGuard, $publisher);
         $this->applyTravel($travel, $before);
         $this->resolveTableOwnership($interactive);
 
@@ -336,8 +341,11 @@ class BeamInstallCommand extends Command
      *
      * @param  list<InstallStep>  $steps
      */
-    private function publishSteps(array $steps): void
-    {
+    private function publishSteps(
+        array $steps,
+        MigrationPublishGuard $publishGuard,
+        SelectedVendorPublisher $publisher,
+    ): void {
         $force = (bool) $this->option('force');
 
         foreach ($steps as $step) {
@@ -348,10 +356,13 @@ class BeamInstallCommand extends Command
             }
 
             foreach ($step->publishTags as $tag) {
-                $this->callSilent('vendor:publish', array_merge(
-                    ['--tag' => $tag],
-                    $force ? ['--force' => true] : [],
-                ));
+                $selection = $publishGuard->pathsFor($tag);
+
+                foreach ($selection['skipped'] as $identity) {
+                    $this->line("  ↳ migration {$identity}: already published or applied; skipped");
+                }
+
+                $publisher->publish($this->laravel, $tag, $selection['paths'], $force);
             }
         }
     }
