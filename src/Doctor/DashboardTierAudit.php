@@ -67,7 +67,7 @@ class DashboardTierAudit implements DoctorAudit
                 }
 
                 if (DashboardParticipation::contextFor($definition, $rail) === null) {
-                    continue; // opted out, or neither in the rail nor declared: not on this dashboard
+                    continue; // not an eligible card; a product rail destination may still render as a tile
                 }
 
                 $name = sprintf('[%s/%s]', $realm, $key);
@@ -96,7 +96,7 @@ class DashboardTierAudit implements DoctorAudit
         $total = $declared + count($absent);
 
         if ($total === 0) {
-            return [Finding::inconclusive(self::CHECK, 'No realm resource is on any dashboard here — no eligible resource declares a summary/overview or custom summary provider; rail-only resources are tiles. 0 DERIVED (disabled by participation policy).')];
+            return [Finding::inconclusive(self::CHECK, 'No eligible declared dashboard cards here; there is no card-provider health population to audit. Product rail destinations may still render as tiles. 0 DERIVED (disabled by participation policy).')];
         }
 
         $findings = [];

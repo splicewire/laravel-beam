@@ -211,10 +211,10 @@ class BeamDoctorCommand extends Command
                 false,
                 fn (ModelLessReadGateAudit $audit) => $audit->run(),
             ),
-            // Which realm dashboard cards rest on the DERIVED tier (seated, no `summary`/`overview`
-            // binding, default provider) and which are ABSENT (on the dashboard, provider cannot answer).
-            // Advisory: which resources a host seats in which realm is a host fact, and a derived card is
-            // a working card. It is the work-list realm-dashboards ticket 04 asked for.
+            // Eligible declared cards and their provider health: DECLARED when the provider can answer,
+            // ABSENT when it cannot. Rail-only tiles are outside this card audit's population.
+            // Advisory because realm composition and provider availability are host facts;
+            // no eligible cards is inconclusive. Derived cards are disabled by participation policy.
             $this->guarded(
                 DashboardTierAudit::class,
                 false,

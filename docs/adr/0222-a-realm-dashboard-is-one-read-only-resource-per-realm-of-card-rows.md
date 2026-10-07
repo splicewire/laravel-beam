@@ -56,7 +56,9 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
    index uses (owner scope, saved filters, the declared `scope` closure), never the unscoped builder, so a
    tenant actor's figure equals its index total. A backing that cannot count declines (404).
 8. **No new registry kernel**, no new route-mount verb (`mounts: 'list'`), no host config edit. The doctor's
-   `DashboardTierAudit` (`particle.dashboard-tier`) reports declared / derived / absent per realm resource.
+   `DashboardTierAudit` (`particle.dashboard-tier`) audits eligible declared cards and their provider
+   health: DECLARED when the provider can answer, ABSENT when it cannot. Rail-only tiles are outside
+   that population; no eligible cards is inconclusive. ADR-0224 disables derived-card participation.
 
 ## Consequences
 
@@ -91,3 +93,9 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
   `~/Workspaces/js/packages/splicewire/tower-ux` `7dcddde`; tower `a6392cb` (the bespoke operator
   dashboard controller deleted at parity).
 - Map: `~/Workspaces/splicewire-ecosystem/.scratch/splicewire/splicewire-ecosystem/realm-dashboards/`.
+
+Rule 11 (UX-14 wording correction): occurrence grep for `ADR-0222`, `DashboardBacking`,
+`DashboardParticipation` and `Jump-to tiles ARE the rail` across ecosystem `.scratch` at
+pre-edit 3bc6c808 — 115 instances in 29 files. The named-path dispositions and exact matches
+are in wave5 slice04 `RULE11.md` and `OCCURRENCES.txt` (ecosystem feced560); decision 8 now
+describes eligible cards and provider health consistently with ADR-0224.

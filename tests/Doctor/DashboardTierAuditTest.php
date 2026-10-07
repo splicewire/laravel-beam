@@ -104,7 +104,7 @@ class DashboardTierAuditTest extends TestCase
     public function test_a_seated_resource_with_no_binding_is_not_a_derived_card(): void
     {
         $this->declare('widgets', BeamSchema::class);
-        // Same shape, NOT seated in this realm's registry — the seat is what puts it on the dashboard.
+        // Same undeclared shape, unseated: neither case enters the card-provider health population.
         $this->declare('unseated', BeamSchema::class, section: 'nowhere');
         // Same shape, seated, but opted out.
         $this->declare('hidden', BeamSchema::class, data: OptedOutTierData::class);
@@ -161,10 +161,10 @@ class DashboardTierAuditTest extends TestCase
 
     /**
      * The reference host's shape: `users`/`teams` declare NO `section:` and reach the rail as a seat's
-     * static children. "Nav-seated" means "a leaf of the rail resolves to it", so they are on the
-     * dashboard — and audited — exactly as a `section:` child is.
+     * static children. Seating alone makes them tile destinations, not eligible cards: without a
+     * summary/overview or custom provider declaration, neither enters the provider-health audit.
      */
-    public function test_a_resource_reached_through_a_seats_static_child_is_on_the_dashboard(): void
+    public function test_static_rail_seating_alone_does_not_create_an_eligible_card(): void
     {
         $this->sections->register(
             new NavSection(
