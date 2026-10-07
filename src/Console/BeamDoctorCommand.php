@@ -212,7 +212,8 @@ class BeamDoctorCommand extends Command
                 fn (ModelLessReadGateAudit $audit) => $audit->run(),
             ),
             // Eligible declared cards and their provider health: DECLARED when the provider can answer,
-            // ABSENT when it cannot. Rail-only tiles are outside this card audit's population.
+            // ABSENT when it cannot; UNKNOWN (inconclusive) when authorization prevents checking.
+            // Rail-only tiles are outside this card audit's population.
             // Advisory because realm composition and provider availability are host facts;
             // no eligible cards is inconclusive. Derived cards are disabled by participation policy.
             $this->guarded(

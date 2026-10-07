@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Doctor;
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Container\Container;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
@@ -24,9 +25,10 @@ use Throwable;
  * does not: default derived cards are disabled by UX-14. Developer seats are excluded.
  *
  * The actor-free declared rail keeps gated resources in the provider-health population.
- * DECLARED cards pass; ABSENT cards warn when their provider cannot answer. A host with no
+ * DECLARED cards pass; ABSENT cards warn when their provider cannot answer. Authorization
+ * refusals are UNKNOWN (inconclusive): the actor-free audit could not check provider health. A host with no
  * eligible declarations is inconclusive, never a vacuous pass. The reported 0 DERIVED is the
- * participation policy's invariant, not a third reachable tier. Participation tests pin that
+ * participation policy's invariant, not a provider-health outcome. Participation tests pin that
  * a seated, countable resource without a declaration never enters the card population.
  *
  * Custom providers are called under a guard; exceptions become advisory findings. Actor
@@ -49,6 +51,7 @@ class DashboardTierAudit implements DoctorAudit
     {
         $declared = 0;
         $absent = [];
+        $unknown = [];
 
         foreach (array_keys($this->realms->all()) as $realm) {
             $rail = RailLeaves::declaredFor($realm, $this->sections, $this->resources);
@@ -80,7 +83,13 @@ class DashboardTierAudit implements DoctorAudit
                 }
 
                 if ($custom) {
-                    $declines = $this->declines($definition);
+                    try {
+                        $declines = $this->declines($definition);
+                    } catch (AuthorizationException) {
+                        $unknown[$name] = $name;
+
+                        continue;
+                    }
 
                     if ($declines !== null) {
                         $absent[$name] = $name.' ('.$declines.')';
@@ -93,7 +102,7 @@ class DashboardTierAudit implements DoctorAudit
             }
         }
 
-        $total = $declared + count($absent);
+        $total = $declared + count($absent) + count($unknown);
 
         if ($total === 0) {
             return [Finding::inconclusive(self::CHECK, 'No eligible declared dashboard cards here; there is no card-provider health population to audit. Product rail destinations may still render as tiles. 0 DERIVED (disabled by participation policy).')];
@@ -115,6 +124,20 @@ class DashboardTierAudit implements DoctorAudit
             ));
         }
 
+        if ($unknown !== []) {
+            ksort($unknown);
+
+            $findings[] = Finding::inconclusive(self::CHECK, sprintf(
+                '%d of %d dashboard card%s %s UNKNOWN — authorization prevented the actor-free audit from checking provider health: %s. '
+                .'Cannot check here; verify with a permitted signed-in actor. 0 DERIVED (disabled by participation policy).',
+                count($unknown),
+                $total,
+                $total === 1 ? '' : 's',
+                count($unknown) === 1 ? 'is' : 'are',
+                implode('; ', $unknown),
+            ));
+        }
+
         if ($findings !== []) {
             return $findings;
         }
@@ -131,7 +154,11 @@ class DashboardTierAudit implements DoctorAudit
         return $resource->summaryProvider !== null && $resource->summaryProvider !== BeamResourceSummaryProvider::class;
     }
 
-    /** Why a custom provider yields no card — null when it answers. */
+    /**
+     * Why a custom provider yields no card — null when it answers.
+     *
+     * @throws AuthorizationException when authorization prevents measuring the provider
+     */
     private function declines(ResourceDefinition $definition): ?string
     {
         try {
@@ -142,6 +169,8 @@ class DashboardTierAudit implements DoctorAudit
             }
 
             return $provider->summary($definition) === null ? 'custom provider declines' : null;
+        } catch (AuthorizationException $e) {
+            throw $e;
         } catch (Throwable $e) {
             return 'custom provider threw '.$e::class;
         }

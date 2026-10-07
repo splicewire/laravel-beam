@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Doctor;
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Rushing\Doctor\DoctorStatus;
@@ -137,6 +138,41 @@ class DashboardTierAuditTest extends TestCase
         $this->assertStringContainsString('3 dashboard cards', $findings[0]->detail);
     }
 
+    public function test_an_authorization_refusal_is_unknown_not_absent_or_a_clean_pass(): void
+    {
+        $this->declare('private', BeamSchema::class, provider: ActorRequiredTierProvider::class);
+        $this->declare('custom', BeamSchema::class, provider: AnsweringTierProvider::class);
+
+        $findings = $this->audit()->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertFalse($findings[0]->conclusive);
+        $this->assertSame(DashboardTierAudit::CHECK, $findings[0]->check);
+        $this->assertStringContainsString('1 of 2 dashboard cards is UNKNOWN', $findings[0]->detail);
+        $this->assertStringContainsString('[operator/private]', $findings[0]->detail);
+        $this->assertStringNotContainsString('ABSENT', $findings[0]->detail);
+        $this->assertStringContainsString('0 DERIVED (disabled by participation policy)', $findings[0]->detail);
+    }
+
+    public function test_unknown_provider_health_does_not_hide_a_genuinely_absent_card(): void
+    {
+        $this->declare('private', BeamSchema::class, provider: ActorRequiredTierProvider::class);
+        $this->declare('shy', BeamSchema::class, provider: DecliningTierProvider::class);
+
+        $findings = $this->audit()->run();
+        $this->assertCount(2, $findings);
+        $absent = array_values(array_filter($findings, fn ($finding) => $finding->conclusive));
+        $unknown = array_values(array_filter($findings, fn ($finding) => ! $finding->conclusive));
+        $this->assertCount(1, $absent);
+        $this->assertCount(1, $unknown);
+        $this->assertSame(DoctorStatus::Warn, $absent[0]->status);
+        $this->assertStringContainsString('1 of 2 dashboard cards is ABSENT', $absent[0]->detail);
+        $this->assertStringContainsString('[operator/shy]', $absent[0]->detail);
+        $this->assertStringNotContainsString('[operator/private]', $absent[0]->detail);
+        $this->assertStringContainsString('1 of 2 dashboard cards is UNKNOWN', $unknown[0]->detail);
+        $this->assertStringNotContainsString('[operator/shy]', $unknown[0]->detail);
+    }
+
     public function test_a_resource_whose_provider_cannot_answer_warns_as_absent_by_name(): void
     {
         // Default provider over a backing that only streams: declines before it is ever called.
@@ -260,5 +296,13 @@ class ThrowingTierProvider implements ResourceSummaryProvider
     public function summary(ResourceDefinition $resource): ?SummaryResponseData
     {
         throw new \RuntimeException('no table');
+    }
+}
+
+class ActorRequiredTierProvider implements ResourceSummaryProvider
+{
+    public function summary(ResourceDefinition $resource): ?SummaryResponseData
+    {
+        throw new AuthorizationException('A signed-in actor is required');
     }
 }

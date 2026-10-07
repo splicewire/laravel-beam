@@ -57,8 +57,10 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
    tenant actor's figure equals its index total. A backing that cannot count declines (404).
 8. **No new registry kernel**, no new route-mount verb (`mounts: 'list'`), no host config edit. The doctor's
    `DashboardTierAudit` (`particle.dashboard-tier`) audits eligible declared cards and their provider
-   health: DECLARED when the provider can answer, ABSENT when it cannot. Rail-only tiles are outside
-   that population; no eligible cards is inconclusive. ADR-0224 disables derived-card participation.
+   health: DECLARED when the provider can answer, ABSENT when it cannot, and UNKNOWN (inconclusive)
+   when authorization prevents the actor-free check. UNKNOWN requires a permitted signed-in host
+   check; it is not evidence that the card is absent. Rail-only tiles are outside that population;
+   no eligible cards is inconclusive. ADR-0224 disables derived-card participation.
 
 ## Consequences
 
