@@ -28,5 +28,5 @@ Tests pin unique hrefs, decorated contributors, declaration ordering, declined f
 exclusion. Runbook ADR-0005 and frontend-surfaces amend the fleet rule in step.
 
 Rule 11: grepped ADR-0222 and DashboardBacking/DashboardParticipation across ecosystem .scratch
-before edits — 29 matching files, including 4 realm-dashboards and 0 nav-contribution. The slice04
+before edits — 115 occurrences in 29 files at ecosystem 3bc6c808, including 9 occurrences in realm-dashboards and 0 in nav-contribution. The slice04
 RULE11.md enumerates every match and its disposition; historical evidence is retained and superseded.

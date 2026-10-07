@@ -29,7 +29,7 @@ use Splicewire\Beam\Tests\TestCase;
  * {@see DashboardTierAudit} — the triage instrument for a realm's dashboard cards (realm-dashboards 04).
  *
  * Built on a fresh registry and a fresh seat registry so the population is exactly the fixture. Every
- * tier has a row and every "not on the dashboard" rule has a resource that would be counted without it,
+ * reachable provider outcome has a row and every "not on the dashboard" rule has a resource that would be counted without it,
  * so an audit that counted everything seated, or everything registered, fails an exact-name assertion.
  */
 class DashboardTierAuditTest extends TestCase
@@ -115,7 +115,7 @@ class DashboardTierAuditTest extends TestCase
 
         $this->assertCount(1, $findings);
         $this->assertFalse($findings[0]->conclusive);
-        $this->assertStringNotContainsString('DERIVED', $findings[0]->detail);
+        $this->assertStringContainsString('0 DERIVED (disabled by participation policy)', $findings[0]->detail);
         $this->assertStringNotContainsString('[operator/widgets]', $findings[0]->detail);
         $this->assertStringNotContainsString('unseated', $findings[0]->detail);
         $this->assertStringNotContainsString('hidden', $findings[0]->detail);

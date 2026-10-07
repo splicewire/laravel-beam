@@ -19,40 +19,18 @@ use Splicewire\Beam\Summary\BeamResourceSummaryProvider;
 use Throwable;
 
 /**
- * Which of a realm's dashboard cards rest on the DERIVED tier, and which resources the dashboard would
- * draw but cannot — the triage instrument realm-dashboards ticket 04 asked for, so the state of a
- * host's dashboards is a measurement rather than a screenshot.
+ * Audits declared dashboard cards using the same participation policy as DashboardBacking.
+ * A summary/overview context or seated custom provider declares a card. Rail presence alone
+ * does not: default derived cards are disabled by UX-14. Developer seats are excluded.
  *
- * ## The three tiers
+ * The actor-free declared rail keeps gated resources in the provider-health population.
+ * DECLARED cards pass; ABSENT cards warn when their provider cannot answer. A host with no
+ * eligible declarations is inconclusive, never a vacuous pass. The reported 0 DERIVED is the
+ * participation policy's invariant, not a third reachable tier. Participation tests pin that
+ * a seated, countable resource without a declaration never enters the card population.
  *
- * For every resource ON a realm's dashboard — a leaf of the realm's rail resolves to it, or it declares
- * `summary`/`overview`, and it is not opted out by `#[Summary(false)]` ({@see DashboardParticipation}):
- *
- *  - **declared** — its read Data class binds `summary` or `overview`, or it names its own summary
- *    provider. The card is what its author decided. PASS.
- *  - **derived** — no binding and the default {@see BeamResourceSummaryProvider}: the card is one `total`
- *    figure under the resource's label, drawn by the context-default widget. Honest, but nobody chose
- *    it. WARN, by name, so the list is the work-list.
- *  - **absent** — the resource would be on the dashboard and its provider cannot answer: the default
- *    provider over a backing that only streams, a custom provider that declines or throws. The dashboard
- *    silently drops the card. WARN, by name.
- *
- * ## One rule, two rails
- *
- * "Is this resource on the dashboard" is {@see DashboardParticipation::contextFor()} — the same call
- * beam-ux's `DashboardBacking` makes with the actor in hand. This audit has no actor, so it reads the
- * DECLARED rail ({@see RailLeaves::declaredFor()}) rather than the projected one: a gated tree read as a
- * guest hides every model-less resource, which is exactly the population the ABSENT tier names. A
- * resource the backing would hide from a given actor is still audited, because the tier is a fact about
- * the declaration, not about who is looking.
- *
- * ## Why an advisory
- *
- * Which resources a host places in a realm, and which realms it has, are host facts (AGENTS.md: a check
- * whose answer depends on the host never throws), and a derived card is a working card. It warns so the
- * count is visible; it never fails the exit code. A custom provider is CALLED to learn whether it declines
- * — the only way to know — inside a guard, so a provider that throws is a warning line naming the
- * exception, not a doctor that stops.
+ * Custom providers are called under a guard; exceptions become advisory findings. Actor
+ * gates, mounted routes and the provider's actor-dependent answer still need host evidence.
  */
 class DashboardTierAudit implements DoctorAudit
 {
@@ -70,7 +48,6 @@ class DashboardTierAudit implements DoctorAudit
     public function run(): array
     {
         $declared = 0;
-        $derived = [];
         $absent = [];
 
         foreach (array_keys($this->realms->all()) as $realm) {
@@ -93,7 +70,6 @@ class DashboardTierAudit implements DoctorAudit
                     continue; // opted out, or neither in the rail nor declared: not on this dashboard
                 }
 
-                $binding = DashboardParticipation::declares($definition);
                 $name = sprintf('[%s/%s]', $realm, $key);
                 $custom = $this->customProvider($resource);
 
@@ -113,44 +89,24 @@ class DashboardTierAudit implements DoctorAudit
                     }
                 }
 
-                if (! $binding && ! $custom) {
-                    $derived[$name] = $name.' (in the rail'.($resource->section !== null ? ' under ['.$resource->section.']' : '').', one `total` figure)';
-
-                    continue;
-                }
-
                 $declared++;
             }
         }
 
-        $total = $declared + count($derived) + count($absent);
+        $total = $declared + count($absent);
 
         if ($total === 0) {
-            return [Finding::inconclusive(self::CHECK, 'No realm resource is on any dashboard here — no eligible resource declares a summary/overview or custom summary provider; rail-only resources are tiles.')];
+            return [Finding::inconclusive(self::CHECK, 'No realm resource is on any dashboard here — no eligible resource declares a summary/overview or custom summary provider; rail-only resources are tiles. 0 DERIVED (disabled by participation policy).')];
         }
 
         $findings = [];
-
-        if ($derived !== []) {
-            ksort($derived);
-
-            $findings[] = Finding::warn(self::CHECK, sprintf(
-                '%d of %d dashboard card%s rest%s on the DERIVED tier — in the rail, no `summary`/`overview` binding, default provider: %s. '
-                .'Each draws one `total` figure nobody chose. Declare `#[Summary]`/`#[Overview]` on the read Data class, name a `summaryProvider:`, or opt out with `#[Summary(false)]`.',
-                count($derived),
-                $total,
-                $total === 1 ? '' : 's',
-                count($derived) === 1 ? 's' : '',
-                implode('; ', $derived),
-            ));
-        }
 
         if ($absent !== []) {
             ksort($absent);
 
             $findings[] = Finding::warn(self::CHECK, sprintf(
                 '%d of %d dashboard card%s %s ABSENT — the resource is on the dashboard and its provider cannot answer, so the card is dropped: %s. '
-                .'Name a `summaryProvider:` that can summarize the backing, or opt out with `#[Summary(false)]`.',
+                .'0 DERIVED (disabled by participation policy). Name a `summaryProvider:` that can summarize the backing, or opt out with `#[Summary(false)]`.',
                 count($absent),
                 $total,
                 $total === 1 ? '' : 's',
@@ -164,7 +120,7 @@ class DashboardTierAudit implements DoctorAudit
         }
 
         return [Finding::pass(self::CHECK, sprintf(
-            '%d dashboard card%s, every one on the declared tier (a `summary`/`overview` binding or a custom provider).',
+            '%d dashboard card%s, every one on the declared tier (a `summary`/`overview` binding or a custom provider). 0 DERIVED (disabled by participation policy).',
             $total,
             $total === 1 ? '' : 's',
         ))];
