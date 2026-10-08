@@ -62,6 +62,32 @@ class RouteReachability
     }
 
     /**
+     * Whether this route declares an authorization predicate this reader can actually evaluate.
+     *
+     * Authentication is deliberately not a seat gate: it identifies the caller but does not decide
+     * which authenticated callers may enter. A one-argument `can:` ability and a configured host probe
+     * do. A subject-bearing `can:update,model` is not claimed here because a rail build has no bound
+     * model to ask about; treating it as resolved would turn the discovery class's documented
+     * over-listing caveat into a false authorization promise.
+     */
+    public function declaresGate(Route $route): bool
+    {
+        foreach ($route->gatherMiddleware() as $middleware) {
+            if (! is_string($middleware)) {
+                continue;
+            }
+
+            [$name, $parameters] = $this->split($middleware);
+
+            if (($name === 'can' && count($parameters) === 1) || $this->probe($name) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The two framework spellings beam reads for itself, then the host's probes, then the honest
      * default.
      *
