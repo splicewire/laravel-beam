@@ -26,6 +26,9 @@ use Throwable;
  */
 class SeatGate
 {
+    /** The hidden nav-node meta key carrying a {@see SeatGateResolution}. */
+    public const META = 'beam.seat_gate';
+
     /** A bespoke route's reviewed decision that authentication alone is sufficient. */
     public const OPEN_TO_MEMBERS = '_beam_open_to_members';
 
@@ -52,7 +55,24 @@ class SeatGate
             );
         }
 
-        return $route instanceof Route ? $this->resolveRoute($route, $realm) : null;
+        if ($route instanceof Route) {
+            return $this->resolveRoute($route, $realm);
+        }
+
+        // Frame's routeName is the stable client join and a host may mount the generic resource
+        // socket under a different (or unnamed) HTTP route. The resource declaration still owns the
+        // list leaf's gate, so resolve that arm directly from the realm-projected catalog.
+        try {
+            foreach ($this->resources->definitions($realm) as $resource) {
+                if (ListRouteName::of($resource) === $routeName) {
+                    return new SeatGateResolution(SeatGateKind::Resource, null, resource: $resource);
+                }
+            }
+        } catch (Throwable) {
+            // An unprojectable catalog is unresolved; I6 owns the refusal shape.
+        }
+
+        return null;
     }
 
     public function resolveRoute(Route $route, ?string $realm = null): ?SeatGateResolution
@@ -106,7 +126,7 @@ class SeatGate
 
     public function allows(SeatGateResolution $resolution, ?Authenticatable $actor): bool
     {
-        if (! $this->reachability->allows($resolution->route, $actor)) {
+        if ($resolution->route !== null && ! $this->reachability->allows($resolution->route, $actor)) {
             return false;
         }
 

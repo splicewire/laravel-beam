@@ -11,7 +11,7 @@ final readonly class SeatGateResolution
 {
     public function __construct(
         public SeatGateKind $kind,
-        public Route $route,
+        public ?Route $route,
         public ?ResourceDefinition $resource = null,
         public ?ParticleOperation $operation = null,
     ) {}
