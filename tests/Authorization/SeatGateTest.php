@@ -78,6 +78,27 @@ class SeatGateTest extends TestCase
         $this->assertFalse($this->gate()->for('feeds.publish', $this->denied()));
     }
 
+    public function test_a_frame_list_leaf_resolves_from_the_catalog_without_a_same_named_http_route(): void
+    {
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'catalog-feeds',
+            backing: SeatGateFeedBacking::class,
+            data: WidgetGateData::class,
+            policy: 'feed.read',
+            routeName: 'catalog.index',
+            frame: true,
+            readOnly: true,
+            showable: false,
+        ), ['tenant']);
+
+        $resolution = $this->gate()->resolve('catalog.index', 'tenant');
+
+        $this->assertSame(SeatGateKind::Resource, $resolution?->kind);
+        $this->assertNull($resolution?->route);
+        $this->assertTrue($this->gate()->for('catalog.index', $this->allowed(), 'tenant'));
+        $this->assertFalse($this->gate()->for('catalog.index', $this->denied(), 'tenant'));
+    }
+
     public function test_an_explicitly_open_operation_and_bespoke_route_still_honour_auth_middleware(): void
     {
         $this->operation('preview', false, false);
