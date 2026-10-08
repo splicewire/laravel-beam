@@ -191,6 +191,15 @@ class SeatGateTest extends TestCase
         $this->assertFalse($this->gate()->for('ambient', $this->allowed()));
     }
 
+    public function test_a_route_with_multiple_gate_declarations_is_unresolved(): void
+    {
+        Route::get('/ambiguous', fn () => [])->middleware(['auth', 'can:reports.view'])->name('ambiguous')
+            ->defaults(SeatGate::OPEN_TO_MEMBERS, true);
+
+        $this->assertNull($this->gate()->resolve('ambiguous'));
+        $this->assertFalse($this->gate()->for('ambiguous', $this->allowed()));
+    }
+
     private function operation(string $name, string|false|null $ability, string|false|null $abilityModel): void
     {
         $this->app->make(ParticleOperationRegistry::class)->register(new ParticleOperation(

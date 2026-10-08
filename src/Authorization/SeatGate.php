@@ -132,21 +132,20 @@ class SeatGate
 
     public function resolveRoute(Route $route, ?string $realm = null): ?SeatGateResolution
     {
+        $resolutions = [];
         $operationResource = $route->defaults[ParticleOperationController::RESOURCE] ?? null;
         $operationName = $route->defaults[ParticleOperationController::NAME] ?? null;
 
         if (is_string($operationResource) && is_string($operationName)) {
             $operation = $this->operations->find($operationResource, $operationName);
 
-            if ($operation === null || $operation->ability === null || ! $this->operationCanResolve($operation)) {
-                return null;
+            if ($operation !== null && $operation->ability !== null && $this->operationCanResolve($operation)) {
+                $resolutions[] = new SeatGateResolution(
+                    $operation->ability === false ? SeatGateKind::Open : SeatGateKind::Operation,
+                    $route,
+                    operation: $operation,
+                );
             }
-
-            return new SeatGateResolution(
-                $operation->ability === false ? SeatGateKind::Open : SeatGateKind::Operation,
-                $route,
-                operation: $operation,
-            );
         }
 
         $resourceKey = $route->defaults[ParticleController::RESOURCE] ?? null;
@@ -156,17 +155,19 @@ class SeatGate
             $resource = $declaration?->toResourceDefinition($realm);
 
             if ($resource !== null && $route->getName() === ListRouteName::of($resource)) {
-                return new SeatGateResolution(SeatGateKind::Resource, $route, resource: $resource);
+                $resolutions[] = new SeatGateResolution(SeatGateKind::Resource, $route, resource: $resource);
             }
         }
 
         if (($route->defaults[self::OPEN_TO_MEMBERS] ?? false) === true) {
-            return new SeatGateResolution(SeatGateKind::Open, $route);
+            $resolutions[] = new SeatGateResolution(SeatGateKind::Open, $route);
         }
 
-        return $this->reachability->declaresGate($route)
-            ? new SeatGateResolution(SeatGateKind::Route, $route)
-            : null;
+        if ($this->reachability->declaresGate($route)) {
+            $resolutions[] = new SeatGateResolution(SeatGateKind::Route, $route);
+        }
+
+        return count($resolutions) === 1 ? $resolutions[0] : null;
     }
 
     public function for(string $routeName, ?Authenticatable $actor, ?string $realm = null): bool
