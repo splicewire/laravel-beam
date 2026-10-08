@@ -48,6 +48,7 @@ use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\BeamSchemaPolicy;
 use Splicewire\Beam\Authorization\GitRepoPolicy;
 use Splicewire\Beam\Authorization\GuardActorAdapter;
+use Splicewire\Beam\Authorization\SeatGate;
 use Splicewire\Beam\Brand\BrandResolver;
 use Splicewire\Beam\Brand\ConfigBrandResolver;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
@@ -85,6 +86,7 @@ use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\MarketingSampleAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
+use Splicewire\Beam\Doctor\OpenListResourceAudit;
 use Splicewire\Beam\Doctor\OrphanedGroupWordAudit;
 use Splicewire\Beam\Doctor\PackageStubConflictAudit;
 use Splicewire\Beam\Doctor\ParticleCapabilityDisagreementAudit;
@@ -101,7 +103,6 @@ use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UndeclaredOutputAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
-use Splicewire\Beam\Doctor\OpenListResourceAudit;
 use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Doctor\UngatedWriteAudit;
 use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
@@ -787,6 +788,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // ambient user (MCP over stdio) binds its own. The resolver itself is transport-blind and stateless.
         $this->app->bindIf(ActorPort::class, GuardActorAdapter::class);
         $this->app->bind(AbilityResolver::class);
+        // Seat declarations are registered by host navigation during boot and consumed later by
+        // projection, I6 and the gate stage. They must share one registry-bearing instance.
+        $this->app->singleton(SeatGate::class);
 
         // The client-SDK codegen's default tenant source: reads mounted particle routes off the live route
         // table (the `router` singleton) + resolves each route's output DTO via the resource registry (a CRUD

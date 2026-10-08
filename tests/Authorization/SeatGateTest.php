@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Authorization;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Pagination\CursorPaginator;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Illuminate\Routing\Route as IlluminateRoute;
@@ -67,6 +68,28 @@ class SeatGateTest extends TestCase
         $this->assertFalse($this->gate()->for('feeds.index', null, 'tenant'));
     }
 
+    public function test_a_scoped_list_seat_follows_the_route_read_guard_instead_of_a_stricter_nav_policy(): void
+    {
+        Gate::policy(SeatGateScopedFeed::class, SeatGateScopedFeedPolicy::class);
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'scoped-feeds',
+            backing: SeatGateScopedFeed::class,
+            data: WidgetGateData::class,
+            scope: fn ($query) => $query->where('owner_id', auth()->id()),
+            frame: true,
+            readOnly: true,
+            showable: false,
+        ), ['tenant']);
+
+        Route::get('/scoped-feeds', fn () => [])->middleware('auth')->name('scoped-feeds.index')
+            ->defaults(ParticleController::RESOURCE, 'scoped-feeds');
+
+        $actor = $this->denied();
+        $this->actingAs($actor);
+
+        $this->assertTrue($this->gate()->for('scoped-feeds.index', $actor, 'tenant'));
+    }
+
     public function test_a_subject_free_particle_operation_delegates_to_its_declared_ability(): void
     {
         $this->operation('publish', 'feeds.publish', false);
@@ -128,6 +151,34 @@ class SeatGateTest extends TestCase
         $this->assertFalse($this->gate()->for('admin', $this->denied()));
     }
 
+    public function test_a_spa_seat_can_resolve_from_one_backing_route_or_an_explicit_open_decision(): void
+    {
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'listings',
+            backing: SeatGateFeedBacking::class,
+            data: WidgetGateData::class,
+            policy: 'feed.read',
+            frame: false,
+            readOnly: true,
+            showable: false,
+        ));
+        Route::get('/listings', fn () => [])->middleware('auth')->name('listings.index')
+            ->defaults(ParticleController::RESOURCE, 'listings');
+
+        $gate = $this->gate();
+        $gate->backedBy('creator.page', 'listings.index');
+        $gate->openToMembers('system.page');
+
+        $this->assertSame(SeatGateKind::Resource, $gate->resolve('creator.page')?->kind);
+        $this->assertSame('listings.index', $gate->resolve('creator.page')?->route?->getName());
+        $this->assertTrue($gate->for('creator.page', $this->allowed()));
+        $this->assertFalse($gate->for('creator.page', $this->denied()));
+        $this->assertSame(SeatGateKind::Open, $gate->resolve('system.page')?->kind);
+        $this->assertNull($gate->resolve('system.page')?->route);
+        $this->assertTrue($gate->for('system.page', $this->allowed()));
+        $this->assertFalse($gate->for('system.page', null));
+    }
+
     public function test_undeclared_and_record_scoped_gates_do_not_guess(): void
     {
         Route::get('/ambient', fn () => [])->middleware('auth')->name('ambient');
@@ -177,6 +228,19 @@ class SeatGateFeedBacking implements StreamsRecords
     public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
     {
         return new Paginator([], $perPage);
+    }
+}
+
+class SeatGateScopedFeed extends Model
+{
+    protected $table = 'scoped_feeds';
+}
+
+class SeatGateScopedFeedPolicy
+{
+    public function viewAny(): bool
+    {
+        return false;
     }
 }
 

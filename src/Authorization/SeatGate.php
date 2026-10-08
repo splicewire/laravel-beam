@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Authorization;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
+use LogicException;
 use Splicewire\Beam\Discovery\RouteReachability;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
@@ -32,6 +33,12 @@ class SeatGate
     /** A bespoke route's reviewed decision that authentication alone is sufficient. */
     public const OPEN_TO_MEMBERS = '_beam_open_to_members';
 
+    /** @var array<string, string> SPA/client seat identity => backing data-route name. */
+    private array $backings = [];
+
+    /** @var array<string, true> reviewed seats for which authenticated membership is sufficient. */
+    private array $openSeats = [];
+
     public function __construct(
         private Router $router,
         private ParticleResourceRegistry $resources,
@@ -41,8 +48,56 @@ class SeatGate
         private RouteReachability $reachability,
     ) {}
 
+    /** Declare the one data route whose authorization decision governs a client-side seat. */
+    public function backedBy(string $seatRouteName, string $backingRouteName): void
+    {
+        if ($seatRouteName === '' || $backingRouteName === '' || $seatRouteName === $backingRouteName) {
+            throw new LogicException('A seat gate backing must name two distinct, non-empty routes.');
+        }
+
+        if (isset($this->openSeats[$seatRouteName])) {
+            throw new LogicException("Seat [{$seatRouteName}] already declares an explicit open gate.");
+        }
+
+        if (isset($this->backings[$seatRouteName]) && $this->backings[$seatRouteName] !== $backingRouteName) {
+            throw new LogicException("Seat [{$seatRouteName}] already resolves from [{$this->backings[$seatRouteName]}].");
+        }
+
+        $cursor = $backingRouteName;
+        while (isset($this->backings[$cursor])) {
+            $cursor = $this->backings[$cursor];
+            if ($cursor === $seatRouteName) {
+                throw new LogicException("Seat gate backing [{$seatRouteName}] forms a cycle.");
+            }
+        }
+
+        $this->backings[$seatRouteName] = $backingRouteName;
+    }
+
+    /** Declare, case by case, that the authenticated tenant boundary is this seat's whole gate. */
+    public function openToMembers(string $seatRouteName): void
+    {
+        if ($seatRouteName === '') {
+            throw new LogicException('An explicit open seat must have a route name.');
+        }
+
+        if (isset($this->backings[$seatRouteName])) {
+            throw new LogicException("Seat [{$seatRouteName}] already resolves from [{$this->backings[$seatRouteName]}].");
+        }
+
+        $this->openSeats[$seatRouteName] = true;
+    }
+
     public function resolve(string $routeName, ?string $realm = null): ?SeatGateResolution
     {
+        if (isset($this->openSeats[$routeName])) {
+            return new SeatGateResolution(SeatGateKind::Open, null);
+        }
+
+        if (isset($this->backings[$routeName])) {
+            return $this->resolve($this->backings[$routeName], $realm);
+        }
+
         $routes = $this->router->getRoutes();
         $route = $routes->getByName($routeName);
 
@@ -97,11 +152,8 @@ class SeatGate
         $resourceKey = $route->defaults[ParticleController::RESOURCE] ?? null;
 
         if (is_string($resourceKey)) {
-            try {
-                $resource = $this->resources->definition($resourceKey, $realm);
-            } catch (Throwable) {
-                $resource = null;
-            }
+            $declaration = $this->resources->find($resourceKey);
+            $resource = $declaration?->toResourceDefinition($realm);
 
             if ($resource !== null && $route->getName() === ListRouteName::of($resource)) {
                 return new SeatGateResolution(SeatGateKind::Resource, $route, resource: $resource);
@@ -121,21 +173,42 @@ class SeatGate
     {
         $resolution = $this->resolve($routeName, $realm);
 
-        return $resolution !== null && $this->allows($resolution, $actor);
+        return $resolution !== null && $this->allows($resolution, $actor, $realm);
     }
 
-    public function allows(SeatGateResolution $resolution, ?Authenticatable $actor): bool
+    public function allows(SeatGateResolution $resolution, ?Authenticatable $actor, ?string $realm = null): bool
     {
         if ($resolution->route !== null && ! $this->reachability->allows($resolution->route, $actor)) {
             return false;
         }
 
         return match ($resolution->kind) {
-            SeatGateKind::Resource => $resolution->resource !== null
-                && $this->visibility->listable($resolution->resource, $actor),
+            SeatGateKind::Resource => $this->resourceAllows($resolution, $actor),
             SeatGateKind::Operation => $this->operationAllows($resolution->operation, $actor),
-            SeatGateKind::Route, SeatGateKind::Open => true,
+            SeatGateKind::Route => true,
+            SeatGateKind::Open => $actor !== null,
         };
+    }
+
+    /** Match the actual Frame list path: realm reach first, then the declaration-derived read boundary. */
+    private function resourceAllows(SeatGateResolution $resolution, ?Authenticatable $actor): bool
+    {
+        $definition = $resolution->resource;
+        if ($definition === null || ! $this->visibility->readable($definition, $actor)) {
+            return false;
+        }
+
+        // A service-backed list has no model policy or declaration-derived query to ask. Its route
+        // gate is the declared model-less read ability above plus the route middleware already
+        // checked by allows().
+        if ($definition->model === null) {
+            return $actor !== null;
+        }
+
+        $resource = $this->resources->find($definition->key);
+
+        return $resource !== null
+            && ResourceReadGuard::forApp()->inspectReadFor($resource, request(), $actor)->allowed();
     }
 
     /** A record-bound operation cannot be decided without a record and therefore is not a rail gate. */
