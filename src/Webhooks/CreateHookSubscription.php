@@ -42,8 +42,8 @@ class CreateHookSubscription
         }
 
         $subject = $this->reach->resolveSubject(
-            $input->subject_type instanceof Optional ? null : $input->subject_type,
-            $input->subject_id instanceof Optional ? null : $input->subject_id,
+            $input->subjectType instanceof Optional ? null : $input->subjectType,
+            $input->subjectId instanceof Optional ? null : $input->subjectId,
         );
         $this->reach->authorize($events, $subject);
 

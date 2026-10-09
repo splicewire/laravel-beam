@@ -2,12 +2,12 @@
 
 namespace Splicewire\Beam\Data;
 
-use Illuminate\Validation\ValidationException;
 use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\Validation\ActiveUrl;
 use Spatie\LaravelData\Attributes\Validation\Url;
 use Spatie\LaravelData\Optional;
+use Splicewire\Beam\Data\Concerns\RejectsUnknownInputKeys;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Webhooks\HookSubscriptionReach;
 use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
@@ -70,15 +70,15 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  * ## Wire names are declared, not inherited from the host
  *
  * The ecosystem DTO wire-name standard is camelCase (owner ruling 2026-10-09 18:18Z), greenfield: no aliases, no
- * deprecations. `subject_type` and `subject_id` are snake PHP properties (they mirror the columns), so each carries
- * `#[MapName]` with its camel wire name, beam's per-property convention (as `SavedFilterInputData` declares its
- * wire names). The contract is then the same on every host, whatever its global laravel-data mapper, and the reach
- * check's error keys (`HookSubscriptionReach::inputName()`) read this same declaration.
+ * deprecations. Per `docs/agents/wire-name.convention.md`, DTO properties are camelCase and Eloquent columns stay
+ * snake_case, joined by an explicit property => column map: `subjectType`/`subjectId` here, `subject_type`/`subject_id`
+ * on {@see Hook}, mapped in {@see fromModel()} and {@see toModelAttributes()}. Each also carries `#[MapName]` with the
+ * same camel name, as `SavedFilterInputData` does, so no host mapper can float the published key; the reach check's
+ * error keys (`HookSubscriptionReach::inputName()`) read the same declaration.
  *
- * laravel-data's `MapPropertiesDataPipe` copies a mapped name onto the property but never removes a key that already
- * spells the PHP property name, so `subject_type` would otherwise ride straight through as a second, undeclared wire
- * name. {@see prepareForPipeline()} refuses it with a 422 instead: there is no alias, and an ignored narrowing key
- * would silently broaden the caller's subscription.
+ * The DTO is STRICT on input ({@see RejectsUnknownInputKeys}): any top-level key that is not a declared input name is a
+ * 422 naming that key. For a narrowing filter that is the safe direction: a silently ignored `subject_type`,
+ * `subject_Type` or nested `subject` would otherwise widen the subscription to the whole resource.
  *
  * `BeamData` is beam's own base class, resolved as a sibling in this namespace and so left
  * unimported. Beam ships it so every DTO answers `::jsonSchema()` through the host's configured
@@ -87,6 +87,8 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  */
 class HookInputData extends BeamData implements MapsToModelAttributes
 {
+    use RejectsUnknownInputKeys;
+
     /**
      * @param  list<string>|null  $events  catalog event names; validated against the live catalog at
      *                                     subscribe time, which is a HOST fact and therefore reported
@@ -126,37 +128,15 @@ class HookInputData extends BeamData implements MapsToModelAttributes
          */
         #[MapName('subjectType')]
         #[Description('Registered subject type used with subjectId to narrow delivery reach; clearing it requires authorization for the broader subscription.')]
-        public string|Optional|null $subject_type = new Optional,
+        public string|Optional|null $subjectType = new Optional,
 
         #[MapName('subjectId')]
         #[Description('Record identifier within subjectType that narrows delivery reach; clearing it requires authorization for the broader subscription.')]
-        public string|Optional|null $subject_id = new Optional,
+        public string|Optional|null $subjectId = new Optional,
 
         #[Description('Whether webhook delivery is paused; a paused subscription is stored without dispatching a creation ping.')]
         public ?bool $paused = null,
     ) {}
-
-    /** The snake PHP property names of the subject pair, which are NOT wire names (see the class docblock). */
-    private const UNDECLARED_INPUT = ['subject_type' => 'subjectType', 'subject_id' => 'subjectId'];
-
-    /**
-     * Refuse the snake spelling of the subject pair before mapping or validation runs.
-     *
-     * @param  array<array-key, mixed>  $properties
-     * @return array<array-key, mixed>
-     */
-    public static function prepareForPipeline(array $properties): array
-    {
-        $refused = array_intersect_key(self::UNDECLARED_INPUT, $properties);
-        if ($refused !== []) {
-            throw ValidationException::withMessages(array_map(
-                fn (string $wire): string => "Unknown input; this field's wire name is {$wire}.",
-                $refused,
-            ));
-        }
-
-        return parent::prepareForPipeline($properties);
-    }
 
     /** Edit reads never return the bearer token or HMAC secret. An omitted token stays unchanged. */
     public static function fromModel(Hook $hook): self
@@ -164,8 +144,8 @@ class HookInputData extends BeamData implements MapsToModelAttributes
         return new self(
             endpoint: $hook->endpoint,
             events: $hook->events,
-            subject_type: $hook->subject_type,
-            subject_id: $hook->subject_id,
+            subjectType: $hook->subject_type,
+            subjectId: $hook->subject_id,
             paused: $hook->paused_at !== null,
         );
     }
@@ -174,7 +154,7 @@ class HookInputData extends BeamData implements MapsToModelAttributes
      * The write map: DTO field ⇒ model column. Only keys the caller actually sent are returned, so a
      * PATCH that names one field does not null the other five.
      *
-     * Two gates, deliberately. `endpoint`/`events`/`subject_*` drop their nulls. `token` is gated on
+     * Two gates, deliberately. `endpoint`/`events` drop their nulls. `token` is gated on
      * PRESENCE instead, because an explicit null there is a caller revoking the bearer and that is the
      * one thing the null-dropping gate cannot express. See the class docblock for why `subject_*` is
      * not in that second group.
@@ -198,9 +178,10 @@ class HookInputData extends BeamData implements MapsToModelAttributes
         // revokes the bearer the receiver was checking for; for `subject_*` it widens the hook back to
         // the whole resource, which `HookSubscriptionReach::vetWrite()` authorizes on the subjectless
         // plane before this ever runs. See each property's note.
-        foreach (['token', 'subject_type', 'subject_id'] as $field) {
-            if (! $this->{$field} instanceof Optional) {
-                $attributes[$field] = $this->{$field};
+        // The explicit property => column map (camel DTO, snake columns).
+        foreach (['token' => 'token', 'subjectType' => 'subject_type', 'subjectId' => 'subject_id'] as $property => $column) {
+            if (! $this->{$property} instanceof Optional) {
+                $attributes[$column] = $this->{$property};
             }
         }
 

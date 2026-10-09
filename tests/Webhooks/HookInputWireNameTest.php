@@ -8,6 +8,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Schemastud\Frame\FrameServiceProvider;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\CamelCaseMapper;
@@ -115,21 +116,39 @@ class HookInputWireNameTest extends TestCase
         $this->assertSame((string) $record->getKey(), (string) $hook->subject_id);
     }
 
-    public function test_snake_subject_names_are_refused_not_aliased(): void
+    /**
+     * Every subject-shaped spelling that is not the declared camel pair, plus any other undeclared key, is a 422 naming
+     * the key, and NO hook is written. An ignored narrowing key would otherwise widen the subscription to the whole
+     * resource (build-qa 18:33Z: mixed-case and nested spellings were silently dropped and persisted a broad hook).
+     *
+     * @return array<string, array{0: array<string, mixed>, 1: list<string>}>
+     */
+    public static function refusedSubjectShapes(): array
+    {
+        return [
+            'exact snake' => [['subject_type' => HookWireNameRecord::class, 'subject_id' => '1'], ['subject_type', 'subject_id']],
+            'snake half' => [['subject_type' => HookWireNameRecord::class], ['subject_type']],
+            'mixed case' => [['subject_Type' => HookWireNameRecord::class, 'subject_Id' => '1'], ['subject_Type', 'subject_Id']],
+            'nested' => [['subject' => ['type' => HookWireNameRecord::class, 'id' => '1']], ['subject']],
+            'camel plus snake' => [['subjectType' => HookWireNameRecord::class, 'subjectId' => '1', 'subject_type' => HookWireNameRecord::class, 'subject_id' => '1'], ['subject_type', 'subject_id']],
+            'unknown extra key' => [['subjectType' => HookWireNameRecord::class, 'subjectId' => '1', 'audience' => 'everyone'], ['audience']],
+        ];
+    }
+
+    #[DataProvider('refusedSubjectShapes')]
+    public function test_undeclared_input_keys_are_refused_and_no_hook_is_written(array $extra, array $refused): void
     {
         Bus::fake();
         $this->actingAs((new User)->forceFill(['id' => 1]));
-        $record = HookWireNameRecord::query()->create();
+        HookWireNameRecord::query()->create();
 
-        // No alias, and not silently ignored either: an ignored narrowing key would broaden the subscription.
         $response = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['wire-names.happened'],
-            'subject_type' => HookWireNameRecord::class,
-            'subject_id' => (string) $record->getKey(),
-        ])->assertUnprocessable()->assertJsonValidationErrors(['subject_type', 'subject_id']);
+            ...$extra,
+        ])->assertUnprocessable()->assertJsonValidationErrors($refused);
 
-        $this->assertSame(["Unknown input; this field's wire name is subjectType."], $response->json('errors.subject_type'));
+        $this->assertEqualsCanonicalizing($refused, array_keys($response->json('errors')));
         $this->assertSame(0, Hook::query()->count());
     }
 
@@ -137,8 +156,8 @@ class HookInputWireNameTest extends TestCase
     {
         $properties = app(DataConfig::class)->getDataClass(HookInputData::class)->properties;
 
-        $this->assertSame('subjectType', $properties->get('subject_type')->inputMappedName);
-        $this->assertSame('subjectId', $properties->get('subject_id')->inputMappedName);
+        $this->assertSame('subjectType', $properties->get('subjectType')->inputMappedName);
+        $this->assertSame('subjectId', $properties->get('subjectId')->inputMappedName);
     }
 }
 

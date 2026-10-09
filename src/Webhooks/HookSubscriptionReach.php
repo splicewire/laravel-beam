@@ -117,10 +117,10 @@ class HookSubscriptionReach
         // fall back to the current subject, skip the re-vet — and `HookInputData::toModelAttributes()`
         // would then write the null anyway. That is the ticket-04 gap in a new spelling, which is why
         // particle-write-surface ticket 01 held the `Optional` conversion back until this line existed.
-        $type = $input->subject_type instanceof Optional ? $currentType : $input->subject_type;
-        $id = $input->subject_id instanceof Optional
+        $type = $input->subjectType instanceof Optional ? $currentType : $input->subjectType;
+        $id = $input->subjectId instanceof Optional
             ? $currentId
-            : ($input->subject_id === null ? null : (string) $input->subject_id);
+            : ($input->subjectId === null ? null : (string) $input->subjectId);
 
         $currentEvents = array_values(array_map('strval', (array) ($hook->events ?? [])));
         $events = $input->events !== null
@@ -187,7 +187,7 @@ class HookSubscriptionReach
 
         if ($type === null || $id === null) {
             throw ValidationException::withMessages([
-                $this->inputName('subject_type') => 'Supply both '.$this->inputName('subject_type').' and '.$this->inputName('subject_id').', or neither.',
+                $this->inputName('subjectType') => 'Supply both '.$this->inputName('subjectType').' and '.$this->inputName('subjectId').', or neither.',
             ]);
         }
 
@@ -195,7 +195,7 @@ class HookSubscriptionReach
 
         if (! is_string($class) || ! class_exists($class) || ! is_subclass_of($class, Model::class)) {
             throw ValidationException::withMessages([
-                $this->inputName('subject_type') => "`{$type}` is not a model this host knows.",
+                $this->inputName('subjectType') => "`{$type}` is not a model this host knows.",
             ]);
         }
 
@@ -208,13 +208,13 @@ class HookSubscriptionReach
             // repeated to the caller: they supplied an id, and "this is not a usable id" is the
             // whole of what they are owed.
             throw ValidationException::withMessages([
-                $this->inputName('subject_id') => 'Not a usable id for a '.class_basename($class).'.',
+                $this->inputName('subjectId') => 'Not a usable id for a '.class_basename($class).'.',
             ]);
         }
 
         if ($subject === null) {
             throw ValidationException::withMessages([
-                $this->inputName('subject_id') => 'No such record to subscribe against.',
+                $this->inputName('subjectId') => 'No such record to subscribe against.',
             ]);
         }
 
@@ -256,7 +256,7 @@ class HookSubscriptionReach
         }
 
         throw ValidationException::withMessages([
-            $this->inputName('subject_id') => 'Not a usable id for a '.class_basename($class).' — that record is keyed by integer.',
+            $this->inputName('subjectId') => 'Not a usable id for a '.class_basename($class).' — that record is keyed by integer.',
         ]);
     }
 
