@@ -13,9 +13,24 @@ use Schemastud\JsonNs\Laravel\JsonNsServiceProvider;
 use Spatie\Activitylog\ActivitylogServiceProvider;
 use Spatie\LaravelData\LaravelDataServiceProvider;
 use Splicewire\Beam\BeamServiceProvider;
+use Splicewire\Beam\Tests\Support\ParallelTestbenchApplication;
 
 abstract class TestCase extends Orchestra
 {
+    /**
+     * Keep Testbench's mutable application skeleton private to each ParaTest worker.
+     */
+    public static function applicationBasePath(): string
+    {
+        $basePath = parent::applicationBasePath();
+
+        if (getenv('TEST_TOKEN') === false) {
+            return $basePath;
+        }
+
+        return ParallelTestbenchApplication::basePath($basePath);
+    }
+
     /**
      * The one fixture schema authority this suite mints and asserts `$id`s under.
      *
