@@ -256,6 +256,22 @@ class WireNameDeclarationAuditTest extends TestCase
         $this->assertStringContainsString('global input mapper', $inputDetails[0]);
     }
 
+    public function test_it_reports_bare_snake_output_even_when_the_output_mapper_preserves_that_name(): void
+    {
+        $details = array_map(fn ($finding) => $finding->detail, array_filter(
+            (new WireNameDeclarationAudit(
+                [SnakeOutputData::class],
+                input: null,
+                output: SnakeCaseMapper::class,
+            ))->run(),
+            fn ($finding) => $finding->status !== DoctorStatus::Pass,
+        ));
+
+        $this->assertCount(1, $details);
+        $this->assertStringContainsString('calendar_id', $details[0]);
+        $this->assertStringContainsString('calendarId', $details[0]);
+    }
+
     #[DataProvider('incompleteWireNameExemptions')]
     public function test_a_wire_name_exemption_requires_a_format_citation_and_reason(
         string $format,

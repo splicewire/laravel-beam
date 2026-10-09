@@ -244,10 +244,11 @@ class WireNameDeclarationAudit implements DoctorAudit
                 $published = $this->publishedKey($mapper, $name);
 
                 // Package-owned output DTOs publish camelCase even on hosts that configure no
-                // output mapper. A bare snake PHP property therefore remains a contract defect in
-                // the identity-mapper posture: there is no host rewrite for the older rule below
-                // to observe, but the authored output key itself violates the declared standard.
-                if ($axis === 'output' && str_contains($name, '_') && $published === null) {
+                // output mapper. A bare snake PHP property therefore remains a contract defect when
+                // no output mapper exists OR a configured snake mapper preserves it: there is no
+                // rewrite for the older rule below to observe, but the authored output key itself
+                // violates the declared standard.
+                if ($axis === 'output' && str_contains($name, '_') && ($published === null || $published === $name)) {
                     if ($exemption !== null) {
                         continue;
                     }
