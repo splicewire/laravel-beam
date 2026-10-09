@@ -4,12 +4,14 @@ namespace Splicewire\Beam\Surgeon;
 
 use Illuminate\Support\Str;
 use ReflectionClass;
+use ReflectionProperty;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\MapOutputName;
 use Spatie\LaravelData\Mappers\NameMapper;
+use Splicewire\Beam\Data\Attributes\WireNameExemption;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Throwable;
@@ -71,6 +73,9 @@ class WireNameDeclarationAudit implements DoctorAudit
 
     /** @var array<class-string, array{input: bool, output: bool}> */
     private array $classes;
+
+    /** @var array<string, true> */
+    private array $documentedExemptions = [];
 
     /**
      * An unkeyed list means both axes for callers without registry slot information;
@@ -158,6 +163,7 @@ class WireNameDeclarationAudit implements DoctorAudit
     public function run(): array
     {
         $findings = [];
+        $this->documentedExemptions = [];
 
         foreach ($this->classes as $class => $axes) {
             try {
@@ -194,7 +200,11 @@ class WireNameDeclarationAudit implements DoctorAudit
         }
 
         return $findings === []
-            ? [Finding::pass(self::CHECK, sprintf('%d Data class(es) declare their wire names.', count($this->classes)))]
+            ? [Finding::pass(self::CHECK, sprintf(
+                '%d Data class(es) declare their wire names; %d documented wire-name exemption(s).',
+                count($this->classes),
+                count($this->documentedExemptions),
+            ))]
             : $findings;
     }
 
@@ -212,6 +222,7 @@ class WireNameDeclarationAudit implements DoctorAudit
             }
 
             $name = $property->getName();
+            $exemption = $this->exemptionFor($reflection, $property);
 
             foreach (['input' => $this->input, 'output' => $this->output] as $axis => $mapper) {
                 if (! $axes[$axis] || $this->declares($property, $axis)) {
@@ -225,6 +236,10 @@ class WireNameDeclarationAudit implements DoctorAudit
                 // the identity-mapper posture: there is no host rewrite for the older rule below
                 // to observe, but the authored output key itself violates the declared standard.
                 if ($axis === 'output' && str_contains($name, '_') && $published === null) {
+                    if ($exemption !== null) {
+                        continue;
+                    }
+
                     $undeclared[] = [
                         'property' => $name,
                         'axis' => $axis,
@@ -260,7 +275,7 @@ class WireNameDeclarationAudit implements DoctorAudit
         return $undeclared;
     }
 
-    private function declares(\ReflectionProperty $property, string $axis): bool
+    private function declares(ReflectionProperty $property, string $axis): bool
     {
         if ($property->getAttributes(MapName::class) !== []) {
             return true;
@@ -269,6 +284,25 @@ class WireNameDeclarationAudit implements DoctorAudit
         $attribute = $axis === 'input' ? MapInputName::class : MapOutputName::class;
 
         return $property->getAttributes($attribute) !== [];
+    }
+
+    private function exemptionFor(ReflectionClass $class, ReflectionProperty $property): ?WireNameExemption
+    {
+        $attributes = $property->getAttributes(WireNameExemption::class);
+        $key = $class->getName().'::$'.$property->getName();
+
+        if ($attributes === []) {
+            $attributes = $class->getAttributes(WireNameExemption::class);
+            $key = $class->getName();
+        }
+
+        if ($attributes === []) {
+            return null;
+        }
+
+        $this->documentedExemptions[$key] = true;
+
+        return $attributes[0]->newInstance();
     }
 
     /**
