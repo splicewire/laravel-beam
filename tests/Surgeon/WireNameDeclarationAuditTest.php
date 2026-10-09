@@ -45,7 +45,7 @@ class WireNameDeclarationAuditTest extends TestCase
         $this->assertStringContainsString('calendar_id', $details);
     }
 
-    public function test_an_output_only_dto_is_not_checked_against_the_input_mapper(): void
+    public function test_an_output_only_dto_is_checked_only_against_the_output_contract(): void
     {
         $resources = new ParticleResourceRegistry;
         $resources->register(new ParticleResource(
@@ -59,7 +59,37 @@ class WireNameDeclarationAuditTest extends TestCase
             output: null,
         )->run();
 
-        $this->assertSame([], array_filter($findings, fn ($finding) => $finding->status !== DoctorStatus::Pass));
+        $details = array_values(array_map(fn ($finding) => $finding->detail, array_filter(
+            $findings,
+            fn ($finding) => $finding->status !== DoctorStatus::Pass,
+        )));
+
+        $this->assertCount(1, $details);
+        $this->assertStringContainsString('bare snake output key', $details[0]);
+        $this->assertStringNotContainsString('global input mapper', $details[0]);
+    }
+
+    public function test_a_bare_snake_output_property_is_reported_without_a_host_output_mapper(): void
+    {
+        $resources = new ParticleResourceRegistry;
+        $resources->register(new ParticleResource(
+            key: 'receipts', backing: 'App\\Models\\Receipt', data: SnakeOutputData::class,
+        ));
+
+        $findings = WireNameDeclarationAudit::forRegistries(
+            $resources,
+            new ParticleOperationRegistry,
+            input: CamelCaseMapper::class,
+            output: null,
+        )->run();
+        $details = implode(' ', array_map(fn ($finding) => $finding->detail, array_filter(
+            $findings,
+            fn ($finding) => $finding->status !== DoctorStatus::Pass,
+        )));
+
+        $this->assertStringContainsString('SnakeOutputData::$calendar_id', $details);
+        $this->assertStringContainsString('calendarId', $details);
+        $this->assertStringContainsString('output', $details);
     }
 
     public function test_a_real_input_mismatch_is_still_reported_through_the_registry_slots(): void
@@ -243,6 +273,11 @@ class CamelReadData extends Data
 }
 
 class SnakeInputData extends Data
+{
+    public function __construct(public ?string $calendar_id = null) {}
+}
+
+class SnakeOutputData extends Data
 {
     public function __construct(public ?string $calendar_id = null) {}
 }
