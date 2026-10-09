@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Data;
 
 use Schemastud\DataSchemas\Attributes\Description;
+use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\Validation\ActiveUrl;
 use Spatie\LaravelData\Attributes\Validation\Url;
 use Spatie\LaravelData\Optional;
@@ -65,6 +66,14 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  *     is left to ticket 01's own follow-up rather than done here, so the security repair lands as a
  *     security repair and the surface widening is a separate, separately-reviewed diff.
  *
+ * ## Wire names are declared, not inherited from the host
+ *
+ * `subject_type` and `subject_id` carry `#[MapName]`, as `SavedFilterInputData` does for `is_default` and
+ * `query_parameters`: a package contract must not float with a host's global name mapper (integrator
+ * ruling 2026-10-09 18:11Z, ticket 00 option a). The reach check's error keys read the same declaration
+ * (`HookSubscriptionReach::inputName()`), so they are snake on every host. A host that still has camel
+ * callers aliases them on its own side, deprecated; the package never accepts both.
+ *
  * `BeamData` is beam's own base class, resolved as a sibling in this namespace and so left
  * unimported. Beam ships it so every DTO answers `::jsonSchema()` through the host's configured
  * generator (`66e2dff`) — a particle-declared DTO inside beam that skipped it was the one shape
@@ -109,10 +118,12 @@ class HookInputData extends BeamData implements MapsToModelAttributes
          * converting these two without changing that computation would have written the clear while
          * skipping the re-vet. The two changes are one change; do not split them.
          */
-        #[Description('Registered subject type used with subjectId to narrow delivery reach; clearing it requires authorization for the broader subscription.')]
+        #[MapName('subject_type')]
+        #[Description('Registered subject type used with subject_id to narrow delivery reach; clearing it requires authorization for the broader subscription.')]
         public string|Optional|null $subject_type = new Optional,
 
-        #[Description('Record identifier within subjectType that narrows delivery reach; clearing it requires authorization for the broader subscription.')]
+        #[MapName('subject_id')]
+        #[Description('Record identifier within subject_type that narrows delivery reach; clearing it requires authorization for the broader subscription.')]
         public string|Optional|null $subject_id = new Optional,
 
         #[Description('Whether webhook delivery is paused; a paused subscription is stored without dispatching a creation ping.')]

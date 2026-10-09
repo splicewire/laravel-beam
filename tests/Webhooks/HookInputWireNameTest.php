@@ -11,9 +11,12 @@ use Illuminate\Support\Facades\Schema;
 use Schemastud\Frame\FrameServiceProvider;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\CamelCaseMapper;
+use Spatie\LaravelData\Support\DataConfig;
 use Splicewire\Beam\Data\HookData;
+use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Events\EventType;
 use Splicewire\Beam\Events\EventTypeRegistry;
+use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
@@ -67,7 +70,12 @@ class HookInputWireNameTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_subject_errors_use_the_camel_wire_name_accepted_by_the_host(): void
+    /**
+     * Integrator ruling 18:11Z (ticket 00, option a): the package DECLARES its wire names. `subject_type` and
+     * `subject_id` carry #[MapName], as SavedFilter*Data do, so a host's global CamelCaseMapper cannot float
+     * the contract. This test runs on exactly such a camel host.
+     */
+    public function test_subject_errors_use_the_declared_snake_wire_name_on_a_camel_host(): void
     {
         Bus::fake();
         $this->actingAs((new User)->forceFill(['id' => 1]));
@@ -75,16 +83,45 @@ class HookInputWireNameTest extends TestCase
         $response = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['wire-names.happened'],
-            'subjectType' => HookWireNameRecord::class,
-            'subjectId' => 'not-an-integer',
-        ])->assertUnprocessable()->assertJsonValidationErrors(['subjectId']);
+            'subject_type' => HookWireNameRecord::class,
+            'subject_id' => 'not-an-integer',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['subject_id']);
 
-        $this->assertSame(['subjectId'], array_keys($response->json('errors')));
+        $this->assertSame(['subject_id'], array_keys($response->json('errors')));
+    }
+
+    public function test_a_snake_subject_pair_narrows_the_hook_on_a_camel_host(): void
+    {
+        Bus::fake();
+        $this->actingAs((new User)->forceFill(['id' => 1]));
+        $record = HookWireNameRecord::query()->create();
+
+        $this->postJson('/frame/resources/hooks', [
+            'endpoint' => 'https://receiver.test/inbox',
+            'events' => ['wire-names.happened'],
+            'subject_type' => HookWireNameRecord::class,
+            'subject_id' => (string) $record->getKey(),
+        ])->assertSuccessful();
+
+        $hook = Hook::query()->sole();
+        $this->assertSame(HookWireNameRecord::class, $hook->subject_type);
+        $this->assertSame((string) $record->getKey(), (string) $hook->subject_id);
+    }
+
+    public function test_the_declared_input_names_are_snake_whatever_the_host_mapper(): void
+    {
+        $properties = app(DataConfig::class)
+            ->getDataClass(HookInputData::class)->properties;
+
+        $this->assertSame('subject_type', $properties->get('subject_type')->inputMappedName);
+        $this->assertSame('subject_id', $properties->get('subject_id')->inputMappedName);
     }
 }
 
 class HookWireNameRecord extends Model
 {
+    public $timestamps = false;
+
     protected $table = 'wire_name_records';
 }
 
