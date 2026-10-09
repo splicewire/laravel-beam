@@ -175,7 +175,19 @@ class WireNameDeclarationAudit implements DoctorAudit
                 continue;
             }
 
-            foreach ($this->undeclaredProperties($reflection, $axes) as $row) {
+            try {
+                $undeclared = $this->undeclaredProperties($reflection, $axes);
+            } catch (Throwable $exception) {
+                $findings[] = Finding::warn(self::CHECK, sprintf(
+                    '[%s] could not be audited: %s',
+                    $class,
+                    $exception->getMessage(),
+                ));
+
+                continue;
+            }
+
+            foreach ($undeclared as $row) {
                 $findings[] = Finding::warn(self::CHECK, $row['hostMapped']
                     ? sprintf(
                         '%s::$%s declares no wire name, and the host\'s global %s mapper rewrites it to '
@@ -300,9 +312,10 @@ class WireNameDeclarationAudit implements DoctorAudit
             return null;
         }
 
+        $exemption = $attributes[0]->newInstance();
         $this->documentedExemptions[$key] = true;
 
-        return $attributes[0]->newInstance();
+        return $exemption;
     }
 
     /**
