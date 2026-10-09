@@ -74,10 +74,15 @@ class WireNameDeclarationAuditTest extends TestCase
         $this->assertSame([], $this->detailsFor(DeclaredWireData::class));
     }
 
-    public function test_it_accepts_a_class_level_mapper_as_a_declaration(): void
+    public function test_a_class_level_mapper_does_not_declare_the_beam_ux_entry_wire_names(): void
     {
-        // A class-level mapper is a deliberate declaration even though it names no key per property.
-        $this->assertSame([], $this->detailsFor(ClassMappedWireData::class));
+        // ced292a6's BeamUxEntryInputData shape: a class-level mapper loses to the host's global input
+        // mapper, so neither snake property has a durable declaration of its published wire name.
+        $details = $this->detailsFor(ClassMappedWireData::class);
+
+        $this->assertCount(2, $details);
+        $this->assertStringContainsString('parent_id', implode(' ', $details));
+        $this->assertStringContainsString('nav_order', implode(' ', $details));
     }
 
     public function test_it_does_no_t_report_a_property_the_configured_mapper_leaves_alone(): void
@@ -193,7 +198,10 @@ class DeclaredWireData extends Data
 #[MapInputName(SnakeCaseMapper::class)]
 class ClassMappedWireData extends Data
 {
-    public function __construct(public ?string $calendar_id = null) {}
+    public function __construct(
+        public ?string $parent_id = null,
+        public ?int $nav_order = null,
+    ) {}
 }
 
 class CamelReadData extends Data

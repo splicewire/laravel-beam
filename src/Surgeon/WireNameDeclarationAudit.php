@@ -15,8 +15,8 @@ use Throwable;
 
 /**
  * **The burn-down meter for undeclared wire names.** Every multi-word property on a Data class that
- * declares neither its own name mapping nor a class-level one — and therefore publishes whatever the
- * HOST's global `data.name_mapping_strategy` happens to produce.
+ * declares no property-level name mapping — and therefore publishes whatever the HOST's global
+ * `data.name_mapping_strategy` happens to produce.
  *
  * ## Why this is worth an audit, when the column map already has one
  *
@@ -37,9 +37,9 @@ use Throwable;
  *
  * ## What counts as declared
  *
- * Any of `#[MapName]`, `#[MapInputName]`, `#[MapOutputName]` on the property, **or** on the class. A
- * class-level mapper is a deliberate decision even though it names no key per property, so it clears
- * every property under it.
+ * Any of `#[MapName]`, `#[MapInputName]`, or `#[MapOutputName]` on the property. A class-level mapper
+ * does not declare a property's wire name: the host's global mapper takes precedence over it, so a
+ * package relying on the class attribute still publishes a host-dependent contract.
  *
  * ## ⚠️ Single-word properties are not findings
  *
@@ -140,10 +140,6 @@ class WireNameDeclarationAudit implements DoctorAudit
                 continue;
             }
 
-            if ($this->classDeclaresMapping($reflection)) {
-                continue;
-            }
-
             foreach ($this->partiallyDeclared($reflection) as $property) {
                 $findings[] = Finding::warn(self::CHECK, sprintf(
                     '%s::$%s declares no wire name while its siblings in the same class do — so this '
@@ -174,17 +170,6 @@ class WireNameDeclarationAudit implements DoctorAudit
             : $findings;
     }
 
-    private function classDeclaresMapping(ReflectionClass $reflection): bool
-    {
-        foreach ([MapName::class, MapInputName::class, MapOutputName::class] as $attribute) {
-            if ($reflection->getAttributes($attribute) !== []) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /**
      * Multi-word properties with no wire name **in a class where siblings have one**.
      *
@@ -207,10 +192,6 @@ class WireNameDeclarationAudit implements DoctorAudit
      */
     private function partiallyDeclared(ReflectionClass $reflection): array
     {
-        if ($this->classDeclaresMapping($reflection)) {
-            return []; // a class-level mapper declares every property at once.
-        }
-
         $declared = [];
         $bare = [];
 
