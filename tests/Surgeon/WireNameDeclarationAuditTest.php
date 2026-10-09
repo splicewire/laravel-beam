@@ -191,6 +191,22 @@ class WireNameDeclarationAuditTest extends TestCase
         $this->assertStringContainsString('calendarId', $details[0]);
     }
 
+    public function test_a_bare_snake_input_property_is_reported_without_a_host_input_mapper(): void
+    {
+        $details = array_map(fn ($finding) => $finding->detail, array_filter(
+            (new WireNameDeclarationAudit(
+                [SnakeInputData::class => ['input']],
+                input: null,
+                output: null,
+            ))->run(),
+            fn ($finding) => $finding->status !== DoctorStatus::Pass,
+        ));
+
+        $this->assertCount(1, $details);
+        $this->assertStringContainsString('bare snake input key', $details[0]);
+        $this->assertStringContainsString('calendarId', $details[0]);
+    }
+
     public function test_it_does_no_t_report_single_word_properties(): void
     {
         // Every mapper is the identity on `$id` — there is nothing to disambiguate, so a finding here
@@ -234,7 +250,7 @@ class WireNameDeclarationAuditTest extends TestCase
     public function test_a_documented_format_exemption_suppresses_only_the_bare_snake_output_finding(): void
     {
         $outputFindings = (new WireNameDeclarationAudit(
-            [DocumentedSnakeFormatData::class],
+            [DocumentedSnakeFormatData::class => ['output']],
             input: null,
             output: null,
         ))->run();
