@@ -85,10 +85,10 @@ class FilterVariantExecutionTest extends TestCase
             ->assertJsonPath('data.properties.status.x-filter.optionsRef', 'variant-statuses');
         $params = ['filterVariant' => 'active-records', 'filter' => ['status' => 'open']];
         $id = $this->postJson('frame/resources/saved-filters', [
-            'resource' => 'variant-records', 'name' => 'Owned open', 'query_parameters' => $params,
+            'resource' => 'variant-records', 'name' => 'Owned open', 'queryParameters' => $params,
         ])->assertOk()->json('data.id');
         $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()
-            ->assertJsonPath('data.query_parameters', $params);
+            ->assertJsonPath('data.queryParameters', $params);
         $this->putJson('frame/resources/saved-filters/records/'.$id, ['name' => 'Renamed'])->assertOk();
         $this->getJson('frame/resources/variant-records?'.http_build_query($params))->assertOk()
             ->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Owned open');
@@ -212,13 +212,13 @@ class FilterVariantExecutionTest extends TestCase
     {
         $params = ['filterVariant' => 'active-records', 'filter' => ['status' => 'open']];
         $id = $this->postJson('frame/resources/saved-filters', [
-            'resource' => 'variant-records', 'name' => 'Open', 'query_parameters' => $params,
+            'resource' => 'variant-records', 'name' => 'Open', 'queryParameters' => $params,
         ])->assertSuccessful()->json('data.id');
-        $stored = $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()->json('data.query_parameters');
+        $stored = $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()->json('data.queryParameters');
         $this->assertSame($params, $stored);
         $this->getJson('frame/resources/variant-records?'.http_build_query($stored))
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Owned open');
-        $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Invalid', 'query_parameters' => [
+        $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Invalid', 'queryParameters' => [
             'filterVariant' => 'active-records', 'filter' => ['title' => 'Owned open'],
         ]])->assertUnprocessable();
     }
@@ -229,7 +229,7 @@ class FilterVariantExecutionTest extends TestCase
             $this->getJson('frame/resources/variant-records?filterVariant='.$variant)->assertNotFound();
             $this->getJson('frame/resources/variant-records/filters/'.$variant.'/schema')->assertNotFound();
             $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Invalid',
-                'query_parameters' => ['filterVariant' => $variant]])->assertNotFound();
+                'queryParameters' => ['filterVariant' => $variant]])->assertNotFound();
         }
         $this->getJson('frame/resources/variant-records?filterVariant[]=active-records')->assertUnprocessable();
     }
@@ -237,9 +237,9 @@ class FilterVariantExecutionTest extends TestCase
     public function test_listed_owned_views_do_not_offer_mutations_when_their_stored_variant_is_denied(): void
     {
         $canonical = $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Canonical',
-            'query_parameters' => ['filter' => ['title' => 'Owned open']]])->assertSuccessful()->json('data.id');
+            'queryParameters' => ['filter' => ['title' => 'Owned open']]])->assertSuccessful()->json('data.id');
         $variant = $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Variant',
-            'query_parameters' => ['filterVariant' => 'active-records', 'filter' => ['status' => 'open']]])->assertSuccessful()->json('data.id');
+            'queryParameters' => ['filterVariant' => 'active-records', 'filter' => ['status' => 'open']]])->assertSuccessful()->json('data.id');
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'active-records', backing: VariantPolicyBacking::class, data: SelectedVariantFilters::class,
             policy: 'variant.read', frame: false, readOnly: true,
@@ -259,7 +259,7 @@ class FilterVariantExecutionTest extends TestCase
         $canonical = $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Canonical', 'visibility' => 'shared'])
             ->assertSuccessful()->json('data.id');
         $variant = $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Variant',
-            'query_parameters' => ['filterVariant' => 'active-records']])->assertSuccessful()->json('data.id');
+            'queryParameters' => ['filterVariant' => 'active-records']])->assertSuccessful()->json('data.id');
         DataFilter::registry()->registerDefinition(new ResourceDefinition('active-records', SelectedVariantFilters::class, EnabledVariantQuery::class, User::class, 'variant-records'));
         Gate::before(fn () => true);
         $rows = array_column($this->getJson('frame/resources/saved-filters?filter[resource]=variant-records')->assertOk()->json('data'), null, 'id');
@@ -288,7 +288,7 @@ class FilterVariantExecutionTest extends TestCase
         $this->getJson('frame/resources/variant-records/filters/active-records/schema')->assertForbidden();
         $this->getJson('frame/resources/variant-records/filters/variants')->assertOk()->assertJsonCount(1, 'data.variants');
         $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Denied',
-            'query_parameters' => ['filterVariant' => 'active-records']])->assertForbidden();
+            'queryParameters' => ['filterVariant' => 'active-records']])->assertForbidden();
         Gate::define('entitlement:os.operate', fn () => true);
         $this->getJson('tenant/catalog/variant-records?filterVariant=active-records')->assertNotFound();
         $this->getJson('operator/catalog/variant-records?filterVariant=active-records&filter[status]=open')
@@ -310,7 +310,7 @@ class FilterVariantExecutionTest extends TestCase
             $this->getJson('frame/resources/variant-records?filterVariant='.$variant)->assertNotFound();
             $this->getJson('frame/resources/variant-records/filters/'.$variant.'/schema')->assertNotFound();
             $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Ineligible',
-                'query_parameters' => ['filterVariant' => $variant]])->assertNotFound();
+                'queryParameters' => ['filterVariant' => $variant]])->assertNotFound();
         }
         $this->getJson('frame/resources/variant-records/filters/variants')->assertOk()->assertJsonCount(2, 'data.variants');
     }
@@ -330,7 +330,7 @@ class FilterVariantExecutionTest extends TestCase
         $this->getJson('frame/resources/variant-records?filterVariant=active-records')->assertForbidden();
         $this->getJson('frame/resources/variant-records/filters/active-records/schema')->assertForbidden();
         $this->postJson('frame/resources/saved-filters', ['resource' => 'variant-records', 'name' => 'Denied',
-            'query_parameters' => ['filterVariant' => 'active-records']])->assertForbidden();
+            'queryParameters' => ['filterVariant' => 'active-records']])->assertForbidden();
         $this->getJson('frame/resources/variant-records')->assertOk()->assertJsonCount(3, 'data');
     }
 }

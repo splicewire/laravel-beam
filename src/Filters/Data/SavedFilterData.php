@@ -31,11 +31,11 @@ class SavedFilterData extends BeamData
         public string $id,
         public string $name,
         public string $resource,
-        #[MapName('query_parameters'), MapValues]
+        #[MapName('queryParameters'), MapValues]
         #[WithTransformer(QueryParametersTransformer::class)]
         public array $queryParameters,
         public string $visibility,
-        #[MapName('is_default')]
+        #[MapName('isDefault')]
         public bool $isDefault,
         public ResourceCapabilitiesData $can,
     ) {}

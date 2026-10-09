@@ -76,7 +76,7 @@ class FrameResourceFiltersTest extends TestCase
 
     private function payload(string $resource = 'papers', array $extra = []): array
     {
-        return array_replace(['name' => 'View', 'resource' => $resource, 'query_parameters' => ['filter' => ['count' => '12']]], $extra);
+        return array_replace(['name' => 'View', 'resource' => $resource, 'queryParameters' => ['filter' => ['count' => '12']]], $extra);
     }
 
     private function create(string $target = 'papers', array $extra = []): string
@@ -103,11 +103,32 @@ class FrameResourceFiltersTest extends TestCase
     public function test_canonical_saved_resource_creates_reads_updates_and_deletes(): void
     {
         $id = $this->create();
-        $this->getJson('frame/resources/saved-filters?filter[resource]=papers')->assertOk()->assertJsonPath('data.0.id', $id)->assertJsonPath('data.0.query_parameters.filter.count', 12);
-        $this->putJson("frame/resources/saved-filters/records/{$id}", ['name' => 'Updated', 'query_parameters' => ['filter' => ['count' => '7']]])->assertOk();
-        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.name', 'Updated')->assertJsonPath('data.query_parameters.filter.count', 7);
+        $this->getJson('frame/resources/saved-filters?filter[resource]=papers')->assertOk()->assertJsonPath('data.0.id', $id)->assertJsonPath('data.0.queryParameters.filter.count', 12);
+        $this->putJson("frame/resources/saved-filters/records/{$id}", ['name' => 'Updated', 'queryParameters' => ['filter' => ['count' => '7']]])->assertOk();
+        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.name', 'Updated')->assertJsonPath('data.queryParameters.filter.count', 7);
         $this->deleteJson("frame/resources/saved-filters/records/{$id}")->assertNoContent();
         $this->getJson("frame/resources/saved-filters/records/{$id}")->assertNotFound();
+    }
+
+    public function test_saved_filter_wires_are_camel_and_unknown_snake_keys_are_refused(): void
+    {
+        $created = $this->postJson('frame/resources/saved-filters', [
+            'name' => 'Camel view',
+            'resource' => 'papers',
+            'queryParameters' => ['filter' => ['count' => '12']],
+            'isDefault' => true,
+        ])->assertSuccessful();
+
+        $created->assertJsonPath('data.queryParameters.filter.count', 12)
+            ->assertJsonPath('data.isDefault', true);
+
+        $this->postJson('frame/resources/saved-filters', [
+            'name' => 'Snake view',
+            'resource' => 'papers',
+            'query_parameters' => ['filter' => ['count' => '12']],
+            'is_default' => true,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['query_parameters', 'is_default']);
     }
 
     public function test_parallel_metadata_and_saved_routes_are_absent(): void
@@ -126,18 +147,18 @@ class FrameResourceFiltersTest extends TestCase
     {
         $created = $this->postJson('frame/resources/saved-filters', ['name' => 'Empty', 'resource' => 'papers'])->assertSuccessful();
         $id = $created->json('data.id');
-        $this->assertInstanceOf(\stdClass::class, json_decode($created->getContent())->data->query_parameters);
+        $this->assertInstanceOf(\stdClass::class, json_decode($created->getContent())->data->queryParameters);
         $this->assertSame([], SavedFilter::findOrFail($id)->query_parameters);
         $read = $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk();
         $updated = $this->putJson("frame/resources/saved-filters/records/{$id}", ['name' => 'Still empty'])->assertOk();
         foreach ([$read, $updated] as $response) {
-            $this->assertInstanceOf(\stdClass::class, json_decode($response->getContent())->data->query_parameters);
+            $this->assertInstanceOf(\stdClass::class, json_decode($response->getContent())->data->queryParameters);
             foreach (['owner_type', 'owner_id', 'context_type', 'context_id', 'created_at', 'updated_at'] as $field) {
                 $this->assertArrayNotHasKey($field, $response->json('data'));
             }
         }
         $list = $this->getJson('frame/resources/saved-filters?filter[resource]=papers')->assertOk();
-        $this->assertInstanceOf(\stdClass::class, json_decode($list->getContent())->data[0]->query_parameters);
+        $this->assertInstanceOf(\stdClass::class, json_decode($list->getContent())->data[0]->queryParameters);
         SavedFilter::findOrFail($id)->update(['owner_type' => null, 'owner_id' => null, 'visibility' => 'public']);
         $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.visibility', 'public')->assertJsonPath('data.can.delete', false);
     }
@@ -220,7 +241,7 @@ class FrameResourceFiltersTest extends TestCase
         $this->putJson("frame/resources/saved-filters/records/{$id}", $this->payload('books'))->assertUnprocessable();
 
         foreach ([['filter' => ['unknown' => 1]], ['filter' => ['count' => 'no-number']], ['filter' => 'bad'], ['sort' => ['nested' => []]], ['include' => 'unknown'], ['limit' => 'bad'], ['unrecognized' => true]] as $query) {
-            $this->postJson('frame/resources/saved-filters', $this->payload(extra: ['query_parameters' => $query]))->assertUnprocessable();
+            $this->postJson('frame/resources/saved-filters', $this->payload(extra: ['queryParameters' => $query]))->assertUnprocessable();
         }
         $this->assertSame(1, SavedFilter::count());
         $this->assertSame('papers', SavedFilter::first()->resource);
@@ -228,12 +249,12 @@ class FrameResourceFiltersTest extends TestCase
 
     public function test_default_demotion_is_scoped_to_owner_and_target(): void
     {
-        $first = $this->create(extra: ['is_default' => true]);
-        $book = $this->create('books', ['is_default' => true]);
+        $first = $this->create(extra: ['isDefault' => true]);
+        $book = $this->create('books', ['isDefault' => true]);
         $this->actingAs($this->actor(2));
-        $other = $this->create(extra: ['is_default' => true]);
+        $other = $this->create(extra: ['isDefault' => true]);
         $this->actingAs($this->actor(1));
-        $last = $this->create(extra: ['name' => 'New default', 'is_default' => true]);
+        $last = $this->create(extra: ['name' => 'New default', 'isDefault' => true]);
         $this->assertFalse(SavedFilter::findOrFail($first)->is_default);
         foreach ([$book, $other, $last] as $id) {
             $this->assertTrue(SavedFilter::findOrFail($id)->is_default);
@@ -316,15 +337,15 @@ class FrameResourceFiltersTest extends TestCase
         $this->getJson('frame/resources/stream/filters/options/stream-counts?search=streamed')->assertOk()->assertJsonPath('data.0.label', 'streamed');
         $id = $this->create('stream');
         $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.resource', 'stream')
-            ->assertJsonPath('data.query_parameters.filter.count', '12');
-        $this->putJson("frame/resources/saved-filters/records/{$id}", ['name' => 'Updated stream view', 'query_parameters' => ['filter' => ['count' => 0], 'sort' => '-count']])
-            ->assertOk()->assertJsonPath('data.query_parameters.filter.count', 0);
+            ->assertJsonPath('data.queryParameters.filter.count', '12');
+        $this->putJson("frame/resources/saved-filters/records/{$id}", ['name' => 'Updated stream view', 'queryParameters' => ['filter' => ['count' => 0], 'sort' => '-count']])
+            ->assertOk()->assertJsonPath('data.queryParameters.filter.count', 0);
         $this->getJson('frame/resources/saved-filters?filter[resource]=stream')->assertOk()->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.query_parameters.sort', '-count');
+            ->assertJsonPath('data.0.queryParameters.sort', '-count');
         foreach ([['filter' => ['unknown' => 1]], ['filter' => ['createdAt' => 1]], ['sort' => 'unknown'], ['include' => 'unknown'], ['limit' => 'unbounded']] as $invalid) {
-            $this->postJson('frame/resources/saved-filters', $this->payload('stream', ['query_parameters' => $invalid]))->assertUnprocessable();
+            $this->postJson('frame/resources/saved-filters', $this->payload('stream', ['queryParameters' => $invalid]))->assertUnprocessable();
         }
-        $this->postJson('frame/resources/saved-filters', $this->payload('stream', ['query_parameters' => ['filterVariant' => 'unknown']]))->assertNotFound();
+        $this->postJson('frame/resources/saved-filters', $this->payload('stream', ['queryParameters' => ['filterVariant' => 'unknown']]))->assertNotFound();
         $this->getJson('frame/resources/stream/filters/options/paper-counts')->assertNotFound();
         $this->deleteJson("frame/resources/saved-filters/records/{$id}")->assertNoContent();
         $this->getJson("frame/resources/saved-filters/records/{$id}")->assertNotFound();

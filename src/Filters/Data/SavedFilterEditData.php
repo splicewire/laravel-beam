@@ -9,11 +9,14 @@ use Schemastud\DataSchemas\Attributes\MapValues;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Data\BeamData;
+use Splicewire\Beam\Data\Concerns\RejectsUnknownInputKeys;
 use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
 
 /** The saved-filter edit shape; the persisted target cannot change. */
 class SavedFilterEditData extends BeamData implements MapsToModelAttributes
 {
+    use RejectsUnknownInputKeys;
+
     /** @param array<string, mixed> $queryParameters */
     public function __construct(
         #[Description('Human-readable name of this saved view.')]
@@ -21,12 +24,12 @@ class SavedFilterEditData extends BeamData implements MapsToModelAttributes
         #[Description('The immutable target resource key. It may be omitted when editing.')]
         public string|Optional $resource = new Optional,
         #[Description('Query parameters validated and cast against the target resource filter vocabulary.')]
-        #[MapName('query_parameters'), MapValues]
+        #[MapName('queryParameters'), MapValues]
         public array|Optional $queryParameters = new Optional,
         #[Description('Who can see the view: private, shared or public. Defaults to private on create.')]
         public string|Optional $visibility = new Optional,
         #[Description('Make this the owner default for this resource, demoting their other defaults on the same target.')]
-        #[MapName('is_default')]
+        #[MapName('isDefault')]
         public bool|Optional $isDefault = new Optional,
     ) {}
 
@@ -50,7 +53,7 @@ class SavedFilterEditData extends BeamData implements MapsToModelAttributes
     public static function rules(): array
     {
         return ['resource' => ['sometimes', 'string'], 'name' => ['required', 'string', 'max:255'],
-            'query_parameters' => ['sometimes', 'array'], 'visibility' => ['sometimes', Rule::enum(Visibility::class)],
-            'is_default' => ['sometimes', 'boolean']];
+            'queryParameters' => ['sometimes', 'array'], 'visibility' => ['sometimes', Rule::enum(Visibility::class)],
+            'isDefault' => ['sometimes', 'boolean']];
     }
 }

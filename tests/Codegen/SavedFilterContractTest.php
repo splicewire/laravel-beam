@@ -3,16 +3,30 @@
 namespace Splicewire\Beam\Tests\Codegen;
 
 use ReflectionClass;
+use Rushing\Doctor\DoctorStatus;
 use Schemastud\DataSchemas\Generators\Generator;
 use Schemastud\Frame\Data\ResourceCapabilitiesData;
 use Splicewire\Beam\Codegen\DeclaredParticleTypes;
 use Splicewire\Beam\Filters\Data\SavedFilterData;
 use Splicewire\Beam\Filters\Data\SavedFilterEditData;
 use Splicewire\Beam\Filters\Data\SavedFilterInputData;
+use Splicewire\Beam\Surgeon\WireNameDeclarationAudit;
 use Splicewire\Beam\Tests\TestCase;
 
 class SavedFilterContractTest extends TestCase
 {
+    public function test_saved_filter_dtos_have_no_strict_wire_name_findings(): void
+    {
+        $findings = (new WireNameDeclarationAudit([
+            SavedFilterData::class,
+            SavedFilterInputData::class,
+            SavedFilterEditData::class,
+        ]))->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
+    }
+
     public function test_saved_filter_contracts_generate_objects_and_declared_resource_types(): void
     {
         $generator = app(Generator::class)->forResponse();
@@ -22,10 +36,10 @@ class SavedFilterContractTest extends TestCase
         $this->assertContains('resource', $input['required']);
         $this->assertNotContains('resource', $edit['required']);
         $this->assertArrayHasKey(SavedFilterEditData::class, app(DeclaredParticleTypes::class)->declared());
-        $this->assertSame('object', $read['properties']['query_parameters']['type']);
-        $this->assertSame('object', $input['properties']['query_parameters']['type']);
+        $this->assertSame('object', $read['properties']['queryParameters']['type']);
+        $this->assertSame('object', $input['properties']['queryParameters']['type']);
         $this->assertSame('string', $read['properties']['id']['type']);
-        $this->assertSame('boolean', $read['properties']['is_default']['type']);
+        $this->assertSame('boolean', $read['properties']['isDefault']['type']);
         $this->assertSame('#/$defs/ResourceCapabilitiesData', $read['properties']['can']['$ref']);
         foreach (['create', 'update', 'delete'] as $action) {
             $this->assertSame('boolean', $read['$defs']['ResourceCapabilitiesData']['properties'][$action]['type']);
@@ -33,7 +47,7 @@ class SavedFilterContractTest extends TestCase
         $this->assertArrayHasKey(SavedFilterData::class, app(DeclaredParticleTypes::class)->declared());
         $this->assertArrayHasKey(SavedFilterInputData::class, app(DeclaredParticleTypes::class)->declared());
         $empty = new SavedFilterData('id', 'Empty', 'papers', [], 'private', false, new ResourceCapabilitiesData(true, true, true));
-        $this->assertInstanceOf(\stdClass::class, json_decode($empty->toJson())->query_parameters);
+        $this->assertInstanceOf(\stdClass::class, json_decode($empty->toJson())->queryParameters);
         $this->assertSame([], $empty->queryParameters);
     }
 }

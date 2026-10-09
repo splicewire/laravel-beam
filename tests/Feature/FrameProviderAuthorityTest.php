@@ -99,13 +99,13 @@ class FrameProviderAuthorityTest extends TestCase
     {
         $this->assertNull(DataFilter::tryResource('provider-records'));
         $params = ['filter' => ['customTitle' => 'Matched', 'customMode' => 'exact']];
-        $id = $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Named', 'query_parameters' => $params])
+        $id = $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Named', 'queryParameters' => $params])
             ->assertSuccessful()->json('data.id');
-        $stored = $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()->json('data.query_parameters');
+        $stored = $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()->json('data.queryParameters');
         $this->assertSame($params, $stored);
         $this->getJson('frame/resources/provider-records?'.http_build_query($stored))
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Matched');
-        $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Invalid', 'query_parameters' => ['filter' => ['count' => 4]]])
+        $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Invalid', 'queryParameters' => ['filter' => ['count' => 4]]])
             ->assertUnprocessable();
         $this->assertSame(1, SavedFilter::count());
         $this->assertContains(['validate', 'provider-records', $params], AuthoritativeProvider::$calls);
@@ -117,15 +117,15 @@ class FrameProviderAuthorityTest extends TestCase
         $this->getJson('frame/resources/provider-records/filters/schema')->assertOk()->assertJsonPath('savedViewsResource', null);
         $this->getJson('frame/resources/provider-records/filters/focused/schema')->assertOk()->assertJsonPath('savedViewsResource', 'saved-filters');
         $params = ['filter' => ['customTitle' => 'Matched', 'customMode' => 'exact'], 'filterVariant' => 'focused'];
-        $id = $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Focused', 'query_parameters' => $params])
+        $id = $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Focused', 'queryParameters' => $params])
             ->assertSuccessful()->json('data.id');
-        $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()->assertJsonPath('data.query_parameters', $params);
+        $this->getJson('frame/resources/saved-filters/records/'.$id)->assertOk()->assertJsonPath('data.queryParameters', $params);
         $this->putJson('frame/resources/saved-filters/records/'.$id, ['name' => 'Renamed'])->assertOk()
-            ->assertJsonPath('data.query_parameters', $params);
+            ->assertJsonPath('data.queryParameters', $params);
         $this->getJson('frame/resources/saved-filters?filter[resource]=provider-records&filterVariant=focused')->assertOk()->assertJsonCount(1, 'data');
         $this->getJson('frame/resources/provider-records?'.http_build_query($params))->assertOk()->assertJsonCount(1, 'data');
         unset($params['filterVariant']);
-        $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Unavailable', 'query_parameters' => $params])->assertNotFound();
+        $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => 'Unavailable', 'queryParameters' => $params])->assertNotFound();
         $this->deleteJson('frame/resources/saved-filters/records/'.$id)->assertNoContent();
     }
 
@@ -156,7 +156,7 @@ class FrameProviderAuthorityTest extends TestCase
         $ids = [];
         foreach (['private', 'shared', 'public'] as $visibility) {
             $ids[] = $this->postJson('frame/resources/saved-filters', ['resource' => 'provider-records', 'name' => $visibility,
-                'visibility' => $visibility, 'query_parameters' => ['filter' => ['customTitle' => 'Matched', 'customMode' => 'exact']]])
+                'visibility' => $visibility, 'queryParameters' => ['filter' => ['customTitle' => 'Matched', 'customMode' => 'exact']]])
                 ->assertSuccessful()->assertJsonPath('data.can.delete', true)->json('data.id');
         }
         $this->actingAs((new User)->forceFill(['id' => 2]));
