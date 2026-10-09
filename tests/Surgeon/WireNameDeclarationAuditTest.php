@@ -275,6 +275,19 @@ class WireNameDeclarationAuditTest extends TestCase
         yield 'reason' => ['RFC 8628', '§3.4', ''];
     }
 
+    public function test_an_invalid_declared_exemption_is_reported_instead_of_crashing_the_audit(): void
+    {
+        $findings = (new WireNameDeclarationAudit(
+            [InvalidDocumentedSnakeFormatData::class],
+            input: null,
+            output: null,
+        ))->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
+        $this->assertStringContainsString('Wire-name exemption format must not be empty', $findings[0]->detail);
+    }
+
     public function test_it_stays_quie_t_on_a_class_that_declares_nothing_at_all(): void
     {
         // A class that has made no declaration posture is not "partially" anything — silence here is
@@ -339,6 +352,16 @@ class SingleWordData extends Data
     reason: 'The authoring grammar canonically spells this field in snake_case.',
 )]
 class DocumentedSnakeFormatData extends Data
+{
+    public function __construct(public ?int $nav_order = null) {}
+}
+
+#[WireNameExemption(
+    format: '',
+    citation: 'ADR-0212 frontmatter declaration seam',
+    reason: 'The authoring grammar canonically spells this field in snake_case.',
+)]
+class InvalidDocumentedSnakeFormatData extends Data
 {
     public function __construct(public ?int $nav_order = null) {}
 }
