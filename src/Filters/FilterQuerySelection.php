@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Filters;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Query\ResourceQuery;
 use Rushing\DataFilters\Registry\ResourceDefinition;
@@ -80,26 +81,53 @@ class FilterQuerySelection
         return $scopeRequest;
     }
 
-    /** @param array<string, mixed> $parameters */
+    /**
+     * The saved query's wire key is camel (`queryParameters`, owner ruling 2026-10-09 18:18Z), so every validation
+     * error a client receives names that key. The shared {@see SavedFilterValidator} (rushing/laravel-data-filters)
+     * still prefixes its messages with its storage spelling, `query_parameters.*`; they are re-keyed here, at the one
+     * seam beam owns, rather than changing that package's contract for its other hosts. No snake input is accepted.
+     *
+     * @param  array<string, mixed>  $parameters
+     */
     public function validate(string $target, array $parameters): array
     {
+        try {
+            return $this->validateQuery($target, $parameters);
+        } catch (ValidationException $e) {
+            $errors = [];
+            foreach ($e->errors() as $key => $messages) {
+                $wire = str_starts_with($key, self::STORAGE_PREFIX) ? self::WIRE_PREFIX.substr($key, strlen(self::STORAGE_PREFIX)) : $key;
+                $errors[$wire] = $messages;
+            }
+
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    private const STORAGE_PREFIX = 'query_parameters';
+
+    private const WIRE_PREFIX = 'queryParameters';
+
+    /** @param array<string, mixed> $parameters */
+    private function validateQuery(string $target, array $parameters): array
+    {
         app(ResourceFilters::class)->authorize($target);
-        Validator::make(['query_parameters' => $parameters], [
-            'query_parameters' => ['array:filter,sort,include,limit,filterVariant'],
-            'query_parameters.filter' => ['sometimes', 'array'],
-            'query_parameters.filterVariant' => ['sometimes', 'nullable', 'string'],
-            'query_parameters.sort' => ['sometimes', function ($attribute, $value, $fail) {
+        Validator::make(['queryParameters' => $parameters], [
+            'queryParameters' => ['array:filter,sort,include,limit,filterVariant'],
+            'queryParameters.filter' => ['sometimes', 'array'],
+            'queryParameters.filterVariant' => ['sometimes', 'nullable', 'string'],
+            'queryParameters.sort' => ['sometimes', function ($attribute, $value, $fail) {
                 if (! is_string($value) && ! is_array($value)) {
                     $fail('Sort must be a string or list.');
                 }
             }],
-            'query_parameters.include' => ['sometimes', function ($attribute, $value, $fail) {
+            'queryParameters.include' => ['sometimes', function ($attribute, $value, $fail) {
                 if (! is_string($value) && ! is_array($value)) {
                     $fail('Include must be a string or list.');
                 }
             }],
-            'query_parameters.sort.*' => ['string'],
-            'query_parameters.include.*' => ['string'],
+            'queryParameters.sort.*' => ['string'],
+            'queryParameters.include.*' => ['string'],
         ])->validate();
         $definition = app(ResourceFilterDefinition::class)->definition($target);
         if ($definition === null) {

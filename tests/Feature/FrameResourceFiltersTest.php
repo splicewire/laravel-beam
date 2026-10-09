@@ -9,6 +9,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Rushing\DataFilters\Attributes\Filterable;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Operators\Exact;
@@ -245,6 +246,37 @@ class FrameResourceFiltersTest extends TestCase
         }
         $this->assertSame(1, SavedFilter::count());
         $this->assertSame('papers', SavedFilter::first()->resource);
+    }
+
+    /**
+     * The wire is camel (owner ruling 2026-10-09 18:18Z), so every validation error a client can receive for a saved
+     * query names the camel wire key it sent: `queryParameters.*`, never the snake storage column.
+     *
+     * @return array<string, array{0: array<string, mixed>, 1: string}>
+     */
+    public static function invalidSavedQueries(): array
+    {
+        return [
+            'unknown filter' => [['filter' => ['unknown' => 1]], 'queryParameters.filter.unknown'],
+            'wrong-typed filter value' => [['filter' => ['count' => 'no-number']], 'queryParameters.filter.count'],
+            'non-array filter' => [['filter' => 'bad'], 'queryParameters.filter'],
+            'nested sort' => [['sort' => ['nested' => []]], 'queryParameters.sort.nested'],
+            'unknown include' => [['include' => 'unknown'], 'queryParameters.include'],
+            'non-numeric limit' => [['limit' => 'bad'], 'queryParameters.limit'],
+            'unrecognized key' => [['unrecognized' => true], 'queryParameters'],
+        ];
+    }
+
+    #[DataProvider('invalidSavedQueries')]
+    public function test_saved_query_validation_errors_name_the_camel_wire_key(array $query, string $key): void
+    {
+        $response = $this->postJson('frame/resources/saved-filters', $this->payload(extra: ['queryParameters' => $query]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([$key]);
+
+        foreach (array_keys($response->json('errors')) as $error) {
+            $this->assertStringStartsWith('queryParameters', $error, "error key [{$error}] must name the camel wire key");
+        }
     }
 
     public function test_default_demotion_is_scoped_to_owner_and_target(): void
