@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Surgeon;
 
+use Illuminate\Support\Str;
 use ReflectionClass;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
@@ -169,17 +170,26 @@ class WireNameDeclarationAudit implements DoctorAudit
             }
 
             foreach ($this->undeclaredProperties($reflection, $axes) as $row) {
-                $findings[] = Finding::warn(self::CHECK, sprintf(
-                    '%s::$%s declares no wire name, and the host\'s global %s mapper rewrites it to '
-                    ."'%s' — so the mapper is choosing this package's published key, not the author. "
-                    ."Declare the intended one with #[Map%sName('%s')].",
-                    $reflection->getShortName(),
-                    $row['property'],
-                    $row['axis'],
-                    $row['published'],
-                    ucfirst($row['axis']),
-                    $row['property'],
-                ));
+                $findings[] = Finding::warn(self::CHECK, $row['hostMapped']
+                    ? sprintf(
+                        '%s::$%s declares no wire name, and the host\'s global %s mapper rewrites it to '
+                        ."'%s' — so the mapper is choosing this package's published key, not the author. "
+                        ."Declare the intended one with #[Map%sName('%s')].",
+                        $reflection->getShortName(),
+                        $row['property'],
+                        $row['axis'],
+                        $row['published'],
+                        ucfirst($row['axis']),
+                        $row['property'],
+                    )
+                    : sprintf(
+                        "%s::$%s publishes the bare snake output key '%s', while the package wire standard requires '%s'. "
+                        .'Rename the property camelCase and explicitly map its source/storage name.',
+                        $reflection->getShortName(),
+                        $row['property'],
+                        $row['property'],
+                        $row['published'],
+                    ));
             }
         }
 
@@ -190,7 +200,7 @@ class WireNameDeclarationAudit implements DoctorAudit
 
     /**
      * @param  array{input: bool, output: bool}  $axes
-     * @return list<array{property: string, axis: string, published: string}>
+     * @return list<array{property: string, axis: string, published: string, hostMapped: bool}>
      */
     private function undeclaredProperties(ReflectionClass $reflection, array $axes): array
     {
@@ -210,6 +220,21 @@ class WireNameDeclarationAudit implements DoctorAudit
 
                 $published = $this->publishedKey($mapper, $name);
 
+                // Package-owned output DTOs publish camelCase even on hosts that configure no
+                // output mapper. A bare snake PHP property therefore remains a contract defect in
+                // the identity-mapper posture: there is no host rewrite for the older rule below
+                // to observe, but the authored output key itself violates the declared standard.
+                if ($axis === 'output' && str_contains($name, '_') && $published === null) {
+                    $undeclared[] = [
+                        'property' => $name,
+                        'axis' => $axis,
+                        'published' => Str::camel($name),
+                        'hostMapped' => false,
+                    ];
+
+                    break;
+                }
+
                 // ⚠️ THE WHOLE RULE. Report only where a CONFIGURED global mapper would CHANGE the
                 // name — that is the condition "the mapper is deciding this package's contract".
                 // An identity (no mapper on that axis, or a mapper that leaves the name alone) means
@@ -221,7 +246,12 @@ class WireNameDeclarationAudit implements DoctorAudit
                 // suggestion would have renamed all 212 on the wire. An audit that recommends a
                 // breaking change to a correct declaration is worse than no audit.
                 if ($published !== null && $published !== $name) {
-                    $undeclared[] = ['property' => $name, 'axis' => $axis, 'published' => $published];
+                    $undeclared[] = [
+                        'property' => $name,
+                        'axis' => $axis,
+                        'published' => $published,
+                        'hostMapped' => true,
+                    ];
                     break;
                 }
             }
