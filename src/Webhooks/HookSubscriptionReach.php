@@ -9,6 +9,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\DataConfig;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Events\EventTypeRegistry;
@@ -186,7 +187,7 @@ class HookSubscriptionReach
 
         if ($type === null || $id === null) {
             throw ValidationException::withMessages([
-                'subject_type' => 'Supply both subject_type and subject_id, or neither.',
+                $this->inputName('subject_type') => 'Supply both subject_type and subject_id, or neither.',
             ]);
         }
 
@@ -194,7 +195,7 @@ class HookSubscriptionReach
 
         if (! is_string($class) || ! class_exists($class) || ! is_subclass_of($class, Model::class)) {
             throw ValidationException::withMessages([
-                'subject_type' => "`{$type}` is not a model this host knows.",
+                $this->inputName('subject_type') => "`{$type}` is not a model this host knows.",
             ]);
         }
 
@@ -207,13 +208,13 @@ class HookSubscriptionReach
             // repeated to the caller: they supplied an id, and "this is not a usable id" is the
             // whole of what they are owed.
             throw ValidationException::withMessages([
-                'subject_id' => 'Not a usable id for a '.class_basename($class).'.',
+                $this->inputName('subject_id') => 'Not a usable id for a '.class_basename($class).'.',
             ]);
         }
 
         if ($subject === null) {
             throw ValidationException::withMessages([
-                'subject_id' => 'No such record to subscribe against.',
+                $this->inputName('subject_id') => 'No such record to subscribe against.',
             ]);
         }
 
@@ -255,8 +256,19 @@ class HookSubscriptionReach
         }
 
         throw ValidationException::withMessages([
-            'subject_id' => 'Not a usable id for a '.class_basename($class).' — that record is keyed by integer.',
+            $this->inputName('subject_id') => 'Not a usable id for a '.class_basename($class).' — that record is keyed by integer.',
         ]);
+    }
+
+    /** The validation envelope names the same input field the host accepted. */
+    private function inputName(string $property): string
+    {
+        $dataProperty = app(DataConfig::class)
+            ->getDataClass(HookInputData::class)
+            ->properties
+            ->get($property);
+
+        return $dataProperty?->inputMappedName ?? $property;
     }
 
     /**
