@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Surgeon;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Rushing\Doctor\DoctorStatus;
 use Spatie\LaravelData\Attributes\MapInputName;
@@ -9,6 +10,7 @@ use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\CamelCaseMapper;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
+use Splicewire\Beam\Data\Attributes\WireNameExemption;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -229,6 +231,50 @@ class WireNameDeclarationAuditTest extends TestCase
         $this->assertSame([], array_filter($audit->run(), fn ($f) => $f->status !== DoctorStatus::Pass));
     }
 
+    public function test_a_documented_format_exemption_suppresses_only_the_bare_snake_output_finding(): void
+    {
+        $outputFindings = (new WireNameDeclarationAudit(
+            [DocumentedSnakeFormatData::class],
+            input: null,
+            output: null,
+        ))->run();
+
+        $this->assertCount(1, $outputFindings);
+        $this->assertSame(DoctorStatus::Pass, $outputFindings[0]->status);
+        $this->assertStringContainsString('1 documented wire-name exemption', $outputFindings[0]->detail);
+
+        $inputDetails = array_map(fn ($finding) => $finding->detail, array_filter(
+            (new WireNameDeclarationAudit(
+                [DocumentedSnakeFormatData::class],
+                input: CamelCaseMapper::class,
+                output: null,
+            ))->run(),
+            fn ($finding) => $finding->status !== DoctorStatus::Pass,
+        ));
+
+        $this->assertCount(1, $inputDetails);
+        $this->assertStringContainsString('global input mapper', $inputDetails[0]);
+    }
+
+    #[DataProvider('incompleteWireNameExemptions')]
+    public function test_a_wire_name_exemption_requires_a_format_citation_and_reason(
+        string $format,
+        string $citation,
+        string $reason,
+    ): void {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new WireNameExemption($format, $citation, $reason);
+    }
+
+    /** @return iterable<string, array{string, string, string}> */
+    public static function incompleteWireNameExemptions(): iterable
+    {
+        yield 'format' => ['', 'RFC 8628 §3.4', 'The protocol owns this field.'];
+        yield 'citation' => ['RFC 8628', ' ', 'The protocol owns this field.'];
+        yield 'reason' => ['RFC 8628', '§3.4', ''];
+    }
+
     public function test_it_stays_quie_t_on_a_class_that_declares_nothing_at_all(): void
     {
         // A class that has made no declaration posture is not "partially" anything — silence here is
@@ -285,4 +331,14 @@ class SnakeOutputData extends Data
 class SingleWordData extends Data
 {
     public function __construct(public ?string $id = null, public ?string $channel = null) {}
+}
+
+#[WireNameExemption(
+    format: 'Authored frontmatter',
+    citation: 'ADR-0212 frontmatter declaration seam',
+    reason: 'The authoring grammar canonically spells this field in snake_case.',
+)]
+class DocumentedSnakeFormatData extends Data
+{
+    public function __construct(public ?int $nav_order = null) {}
 }
