@@ -201,10 +201,11 @@ class WireNameDeclarationAudit implements DoctorAudit
                         $row['property'],
                     )
                     : sprintf(
-                        "%s::$%s publishes the bare snake output key '%s', while the package wire standard requires '%s'. "
+                        "%s::$%s publishes the bare snake %s key '%s', while the package wire standard requires '%s'. "
                         .'Rename the property camelCase and explicitly map its source/storage name.',
                         $reflection->getShortName(),
                         $row['property'],
+                        $row['axis'],
                         $row['property'],
                         $row['published'],
                     ));
@@ -243,13 +244,14 @@ class WireNameDeclarationAudit implements DoctorAudit
 
                 $published = $this->publishedKey($mapper, $name);
 
-                // Package-owned output DTOs publish camelCase even on hosts that configure no
-                // output mapper. A bare snake PHP property therefore remains a contract defect when
-                // no output mapper exists OR a configured snake mapper preserves it: there is no
-                // rewrite for the older rule below to observe, but the authored output key itself
-                // violates the declared standard.
-                if ($axis === 'output' && str_contains($name, '_') && ($published === null || $published === $name)) {
-                    if ($exemption !== null) {
+                // Package-owned DTOs publish camelCase even on hosts that configure no mapper for
+                // this axis. A bare snake PHP property therefore remains a contract defect when no
+                // mapper exists OR a configured snake mapper preserves it: there is no rewrite for
+                // the older rule below to observe, but the authored key itself violates the standard.
+                // A documented external-format exemption suppresses only output diagnostics; input
+                // protocol fields still declare their non-camel spelling explicitly with MapName.
+                if (str_contains($name, '_') && ($published === null || $published === $name)) {
+                    if ($axis === 'output' && $exemption !== null) {
                         continue;
                     }
 
