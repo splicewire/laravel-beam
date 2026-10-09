@@ -165,18 +165,18 @@ class HookMorphIdBoundaryTest extends TestCase
         $response = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['ints.happened'],
-            'subject_type' => IntKeyedRecord::class,
-            'subject_id' => (string) Str::uuid(),
+            'subjectType' => IntKeyedRecord::class,
+            'subjectId' => (string) Str::uuid(),
         ]);
 
-        $response->assertStatus(422)->assertJsonValidationErrors('subject_id');
+        $response->assertStatus(422)->assertJsonValidationErrors('subjectId');
 
         // ⚠️ The MESSAGE is asserted, not merely the status, and that is what makes this test able to
         // fail against the code it was written for. On sqlite the pre-repair path also answered 422
         // here — `where id = '<uuid>'` simply matches nothing and `find()` returns null — so a
         // status-only assertion is green against the defect and only turns red on Postgres. The
         // distinct message is the one signal that says the id was REFUSED rather than looked up.
-        $response->assertJsonPath('errors.subject_id.0', 'Not a usable id for a IntKeyedRecord — that record is keyed by integer.');
+        $response->assertJsonPath('errors.subjectId.0', 'Not a usable id for a IntKeyedRecord — that record is keyed by integer.');
 
         $body = $response->getContent();
 
@@ -197,10 +197,10 @@ class HookMorphIdBoundaryTest extends TestCase
         $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['ints.happened'],
-            'subject_type' => IntKeyedRecord::class,
-            'subject_id' => 'the-first-one',
+            'subjectType' => IntKeyedRecord::class,
+            'subjectId' => 'the-first-one',
         ])->assertStatus(422)
-            ->assertJsonPath('errors.subject_id.0', 'Not a usable id for a IntKeyedRecord — that record is keyed by integer.');
+            ->assertJsonPath('errors.subjectId.0', 'Not a usable id for a IntKeyedRecord — that record is keyed by integer.');
     }
 
     /**
@@ -217,8 +217,8 @@ class HookMorphIdBoundaryTest extends TestCase
         $response = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['ints.happened'],
-            'subject_type' => IntKeyedRecord::class,
-            'subject_id' => '999999',
+            'subjectType' => IntKeyedRecord::class,
+            'subjectId' => '999999',
         ])->assertStatus(422);
 
         $this->assertStringContainsString('No such record', (string) $response->getContent());
@@ -240,8 +240,8 @@ class HookMorphIdBoundaryTest extends TestCase
         $id = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['uuids.happened'],
-            'subject_type' => UuidKeyedRecord::class,
-            'subject_id' => $subject->getKey(),
+            'subjectType' => UuidKeyedRecord::class,
+            'subjectId' => $subject->getKey(),
         ])->assertOk()->json('data.hook.id');
 
         $hook = Hook::findOrFail($id);
@@ -262,8 +262,8 @@ class HookMorphIdBoundaryTest extends TestCase
         $id = $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['ints.happened'],
-            'subject_type' => IntKeyedRecord::class,
-            'subject_id' => (string) $subject->getKey(),
+            'subjectType' => IntKeyedRecord::class,
+            'subjectId' => (string) $subject->getKey(),
         ])->assertOk()->json('data.hook.id');
 
         $this->assertSame('1', Hook::findOrFail($id)->subject_id);

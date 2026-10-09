@@ -2,7 +2,9 @@
 
 namespace Splicewire\Beam\Data;
 
+use Illuminate\Validation\ValidationException;
 use Schemastud\DataSchemas\Attributes\Description;
+use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\Validation\ActiveUrl;
 use Spatie\LaravelData\Attributes\Validation\Url;
 use Spatie\LaravelData\Optional;
@@ -65,6 +67,19 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  *     is left to ticket 01's own follow-up rather than done here, so the security repair lands as a
  *     security repair and the surface widening is a separate, separately-reviewed diff.
  *
+ * ## Wire names are declared, not inherited from the host
+ *
+ * The ecosystem DTO wire-name standard is camelCase (owner ruling 2026-10-09 18:18Z), greenfield: no aliases, no
+ * deprecations. `subject_type` and `subject_id` are snake PHP properties (they mirror the columns), so each carries
+ * `#[MapName]` with its camel wire name, beam's per-property convention (as `SavedFilterInputData` declares its
+ * wire names). The contract is then the same on every host, whatever its global laravel-data mapper, and the reach
+ * check's error keys (`HookSubscriptionReach::inputName()`) read this same declaration.
+ *
+ * laravel-data's `MapPropertiesDataPipe` copies a mapped name onto the property but never removes a key that already
+ * spells the PHP property name, so `subject_type` would otherwise ride straight through as a second, undeclared wire
+ * name. {@see prepareForPipeline()} refuses it with a 422 instead: there is no alias, and an ignored narrowing key
+ * would silently broaden the caller's subscription.
+ *
  * `BeamData` is beam's own base class, resolved as a sibling in this namespace and so left
  * unimported. Beam ships it so every DTO answers `::jsonSchema()` through the host's configured
  * generator (`66e2dff`) — a particle-declared DTO inside beam that skipped it was the one shape
@@ -109,15 +124,39 @@ class HookInputData extends BeamData implements MapsToModelAttributes
          * converting these two without changing that computation would have written the clear while
          * skipping the re-vet. The two changes are one change; do not split them.
          */
+        #[MapName('subjectType')]
         #[Description('Registered subject type used with subjectId to narrow delivery reach; clearing it requires authorization for the broader subscription.')]
         public string|Optional|null $subject_type = new Optional,
 
+        #[MapName('subjectId')]
         #[Description('Record identifier within subjectType that narrows delivery reach; clearing it requires authorization for the broader subscription.')]
         public string|Optional|null $subject_id = new Optional,
 
         #[Description('Whether webhook delivery is paused; a paused subscription is stored without dispatching a creation ping.')]
         public ?bool $paused = null,
     ) {}
+
+    /** The snake PHP property names of the subject pair, which are NOT wire names (see the class docblock). */
+    private const UNDECLARED_INPUT = ['subject_type' => 'subjectType', 'subject_id' => 'subjectId'];
+
+    /**
+     * Refuse the snake spelling of the subject pair before mapping or validation runs.
+     *
+     * @param  array<array-key, mixed>  $properties
+     * @return array<array-key, mixed>
+     */
+    public static function prepareForPipeline(array $properties): array
+    {
+        $refused = array_intersect_key(self::UNDECLARED_INPUT, $properties);
+        if ($refused !== []) {
+            throw ValidationException::withMessages(array_map(
+                fn (string $wire): string => "Unknown input; this field's wire name is {$wire}.",
+                $refused,
+            ));
+        }
+
+        return parent::prepareForPipeline($properties);
+    }
 
     /** Edit reads never return the bearer token or HMAC secret. An omitted token stays unchanged. */
     public static function fromModel(Hook $hook): self

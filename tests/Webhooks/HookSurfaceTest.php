@@ -228,8 +228,8 @@ class HookSurfaceTest extends TestCase
         $this->assertArrayNotHasKey('subject_id', $absent);
 
         $cleared = HookInputData::from([
-            'subject_type' => null,
-            'subject_id' => null,
+            'subjectType' => null,
+            'subjectId' => null,
         ])->toModelAttributes();
 
         $this->assertArrayHasKey('subject_type', $cleared);

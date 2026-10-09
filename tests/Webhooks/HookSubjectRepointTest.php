@@ -98,12 +98,12 @@ class HookSubjectRepointTest extends TestCase
 
         $this->postJson('/frame/resources/hooks', $input)->assertForbidden();
         $this->postJson('/frame/resources/hooks', [
-            ...$input, 'subject_type' => $theirs->getMorphClass(), 'subject_id' => (string) $theirs->getKey(),
+            ...$input, 'subjectType' => $theirs->getMorphClass(), 'subjectId' => (string) $theirs->getKey(),
         ])->assertForbidden();
         $this->assertSame(0, Hook::count());
 
         $this->postJson('/frame/resources/hooks', [
-            ...$input, 'subject_type' => $mine->getMorphClass(), 'subject_id' => (string) $mine->getKey(),
+            ...$input, 'subjectType' => $mine->getMorphClass(), 'subjectId' => (string) $mine->getKey(),
         ])->assertOk()->assertJsonPath('data.hook.subject_id', (string) $mine->getKey());
         $this->assertSame(1, Hook::count());
         Bus::assertNothingDispatched();
@@ -174,8 +174,8 @@ class HookSubjectRepointTest extends TestCase
         $hook = $this->hook($mine);
 
         $this->putJson("/hooks/{$hook->id}", [
-            'subject_type' => $theirs->getMorphClass(),
-            'subject_id' => (string) $theirs->getKey(),
+            'subjectType' => $theirs->getMorphClass(),
+            'subjectId' => (string) $theirs->getKey(),
         ])->assertForbidden();
 
         // Refused BEFORE the write — the row still points where it did.
@@ -190,8 +190,8 @@ class HookSubjectRepointTest extends TestCase
         $hook = $this->hook($a);
 
         $this->putJson("/hooks/{$hook->id}", [
-            'subject_type' => $b->getMorphClass(),
-            'subject_id' => (string) $b->getKey(),
+            'subjectType' => $b->getMorphClass(),
+            'subjectId' => (string) $b->getKey(),
         ])->assertOk();
 
         $this->assertSame((string) $b->getKey(), (string) $hook->refresh()->subject_id);
@@ -202,9 +202,9 @@ class HookSubjectRepointTest extends TestCase
         $hook = $this->hook(ReachRecord::create(['reachable' => true]));
 
         $this->putJson("/hooks/{$hook->id}", [
-            'subject_type' => (new ReachRecord)->getMorphClass(),
-            'subject_id' => '99999',
-        ])->assertStatus(422)->assertJsonValidationErrors('subject_id');
+            'subjectType' => (new ReachRecord)->getMorphClass(),
+            'subjectId' => '99999',
+        ])->assertStatus(422)->assertJsonValidationErrors('subjectId');
     }
 
     // ── The same defect in its other spelling: a subjectless hook widening its events ────────────
@@ -246,8 +246,8 @@ class HookSubjectRepointTest extends TestCase
 
         // ReachRecordPolicy::viewAny() is false, so widening to the whole resource is refused.
         $this->putJson("/hooks/{$hook->id}", [
-            'subject_type' => null,
-            'subject_id' => null,
+            'subjectType' => null,
+            'subjectId' => null,
         ])->assertForbidden();
 
         // Refused BEFORE the write — the hook is still narrowed to its subject.
@@ -262,8 +262,8 @@ class HookSubjectRepointTest extends TestCase
         $hook = $this->hook(ReachRecord::create(['reachable' => true]));
 
         $this->putJson("/hooks/{$hook->id}", [
-            'subject_type' => null,
-            'subject_id' => null,
+            'subjectType' => null,
+            'subjectId' => null,
         ])->assertOk();
 
         $this->assertNull($hook->refresh()->subject_type);

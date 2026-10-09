@@ -257,8 +257,8 @@ class HookHttpSurfaceTest extends TestCase
         $this->postJson('/frame/resources/hooks', [
             'endpoint' => 'https://receiver.test/inbox',
             'events' => ['tenants.provisioned'],
-            'subject_type' => 'tenant',
-        ])->assertStatus(422);
+            'subjectType' => 'tenant',
+        ])->assertStatus(422)->assertJsonPath('errors.subjectType.0', 'Supply both subjectType and subjectId, or neither.');
     }
 
     public function test_the_entitlement_snapshot_is_taken_off_the_route_the_request_arrived_through(): void

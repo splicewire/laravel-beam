@@ -187,7 +187,7 @@ class HookSubscriptionReach
 
         if ($type === null || $id === null) {
             throw ValidationException::withMessages([
-                $this->inputName('subject_type') => 'Supply both subject_type and subject_id, or neither.',
+                $this->inputName('subject_type') => 'Supply both '.$this->inputName('subject_type').' and '.$this->inputName('subject_id').', or neither.',
             ]);
         }
 
