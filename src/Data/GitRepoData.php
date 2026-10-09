@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Data;
 
 use Schemastud\Frame\Attributes\Column;
+use Spatie\LaravelData\Attributes\MapName;
 use Splicewire\Beam\Models\GitRepo;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Storage\GitRepoRegistrar;
@@ -30,19 +31,40 @@ use Splicewire\Beam\Storage\GitRepoRegistrar;
 )]
 class GitRepoData extends BeamData
 {
+    // Read projection, camel on the wire (owner ruling 2026-10-09 18:18Z; docs/agents/wire-name.convention.md):
+    // camel properties pinned with #[MapName], snake columns mapped explicitly in project(). No snake alias.
     public function __construct(
         public string $id,
         #[Column(label: 'Root', sort: 0)]
-        public string $root_path,
+        #[MapName('rootPath')]
+        public string $rootPath,
         #[Column(label: 'Branch', sort: 1)]
         public ?string $branch,
         #[Column(label: 'HEAD', sort: 2)]
-        public ?string $head_sha,
+        #[MapName('headSha')]
+        public ?string $headSha,
         /** @var list<string> */
-        public array $dirty_paths,
+        #[MapName('dirtyPaths')]
+        public array $dirtyPaths,
         /** @var list<string> */
-        public array $untracked_paths,
+        #[MapName('untrackedPaths')]
+        public array $untrackedPaths,
         #[Column(label: 'Checked', sort: 3)]
-        public ?string $checked_at,
+        #[MapName('checkedAt')]
+        public ?string $checkedAt,
     ) {}
+
+    /** The explicit column => property map; the particle layer finds this by convention. */
+    public static function project(GitRepo $model): self
+    {
+        return new self(
+            id: (string) $model->getKey(),
+            rootPath: (string) $model->root_path,
+            branch: $model->branch,
+            headSha: $model->head_sha,
+            dirtyPaths: array_values((array) ($model->dirty_paths ?? [])),
+            untrackedPaths: array_values((array) ($model->untracked_paths ?? [])),
+            checkedAt: $model->checked_at?->toIso8601String(),
+        );
+    }
 }

@@ -160,7 +160,7 @@ class HookSurfaceTest extends TestCase
         $projected = HookData::project($hook)->toArray();
 
         $this->assertArrayNotHasKey('secret', $projected);
-        $this->assertArrayHasKey('secret_preview', $projected);
+        $this->assertArrayHasKey('secretPreview', $projected);
         $this->assertStringNotContainsString($hook->secret, json_encode($projected));
     }
 

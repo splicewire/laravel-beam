@@ -104,7 +104,7 @@ class HookSubjectRepointTest extends TestCase
 
         $this->postJson('/frame/resources/hooks', [
             ...$input, 'subjectType' => $mine->getMorphClass(), 'subjectId' => (string) $mine->getKey(),
-        ])->assertOk()->assertJsonPath('data.hook.subject_id', (string) $mine->getKey());
+        ])->assertOk()->assertJsonPath('data.hook.subjectId', (string) $mine->getKey());
         $this->assertSame(1, Hook::count());
         Bus::assertNothingDispatched();
     }

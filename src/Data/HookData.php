@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Data;
 
 use Illuminate\Database\Eloquent\Builder;
 use Schemastud\Frame\Attributes\Column;
+use Spatie\LaravelData\Attributes\MapName;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Webhooks\Data\CreatedHookData;
@@ -65,6 +66,9 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
 )]
 class HookData extends BeamData
 {
+    // Read projection, camel on the wire (owner ruling 2026-10-09 18:18Z; docs/agents/wire-name.convention.md):
+    // camel properties pinned with #[MapName] so no host output mapper floats them, snake columns mapped
+    // explicitly in project(). No snake alias is published.
     public function __construct(
         public string $id,
 
@@ -75,32 +79,41 @@ class HookData extends BeamData
         #[Column(label: 'Events', sort: 1)]
         public array $events,
 
-        public ?string $subject_type,
-        public ?string $subject_id,
+        #[MapName('subjectType')]
+        public ?string $subjectType,
+        #[MapName('subjectId')]
+        public ?string $subjectId,
 
         /** User intent — the owner switched it off, or a lapsed entitlement paused it (13 §4). */
         #[Column(label: 'Paused', sort: 2)]
-        public ?string $paused_at,
+        #[MapName('pausedAt')]
+        public ?string $pausedAt,
 
         /** System health — auto-disabled after `consecutive_failures`. `op/reset` is the way back. */
         #[Column(label: 'Disabled', sort: 3)]
-        public ?string $disabled_at,
+        #[MapName('disabledAt')]
+        public ?string $disabledAt,
 
         #[Column(label: 'Failures', sort: 4)]
-        public int $consecutive_failures,
+        #[MapName('consecutiveFailures')]
+        public int $consecutiveFailures,
 
-        public ?string $last_failure_request_log_id,
+        #[MapName('lastFailureRequestLogId')]
+        public ?string $lastFailureRequestLogId,
 
         #[Column(label: 'Verified', sort: 5)]
-        public ?string $verified_at,
+        #[MapName('verifiedAt')]
+        public ?string $verifiedAt,
 
         /** Enough to recognise the secret you saved. Never enough to sign with. */
-        public string $secret_preview,
+        #[MapName('secretPreview')]
+        public string $secretPreview,
 
         /** Both off-switches clear — the one boolean a UI actually wants, derived rather than stored. */
         public bool $deliverable,
 
-        public ?string $created_at,
+        #[MapName('createdAt')]
+        public ?string $createdAt,
     ) {}
 
     /**
@@ -133,16 +146,16 @@ class HookData extends BeamData
             id: (string) $model->id,
             endpoint: $model->endpoint,
             events: array_values((array) $model->events),
-            subject_type: $model->subject_type,
-            subject_id: $model->subject_id === null ? null : (string) $model->subject_id,
-            paused_at: $model->paused_at?->toIso8601String(),
-            disabled_at: $model->disabled_at?->toIso8601String(),
-            consecutive_failures: (int) $model->consecutive_failures,
-            last_failure_request_log_id: $model->last_failure_request_log_id,
-            verified_at: $model->verified_at?->toIso8601String(),
-            secret_preview: $model->secretPreview(),
+            subjectType: $model->subject_type,
+            subjectId: $model->subject_id === null ? null : (string) $model->subject_id,
+            pausedAt: $model->paused_at?->toIso8601String(),
+            disabledAt: $model->disabled_at?->toIso8601String(),
+            consecutiveFailures: (int) $model->consecutive_failures,
+            lastFailureRequestLogId: $model->last_failure_request_log_id,
+            verifiedAt: $model->verified_at?->toIso8601String(),
+            secretPreview: $model->secretPreview(),
             deliverable: $model->deliverable(),
-            created_at: $model->created_at?->toIso8601String(),
+            createdAt: $model->created_at?->toIso8601String(),
         );
     }
 

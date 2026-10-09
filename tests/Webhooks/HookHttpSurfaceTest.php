@@ -91,7 +91,7 @@ class HookHttpSurfaceTest extends TestCase
         ])->assertOk()->json('data');
         $this->assertNotEmpty($created['secret']);
         $this->assertFalse($created['pinged']);
-        $this->assertNotNull($created['hook']['paused_at']);
+        $this->assertNotNull($created['hook']['pausedAt']);
         $this->assertSame($created['secret'], Hook::findOrFail($created['hook']['id'])->secret);
         Bus::assertNothingDispatched();
     }
@@ -170,7 +170,7 @@ class HookHttpSurfaceTest extends TestCase
         // The read projection every other exposure shares carries a preview and no more.
         $projected = HookData::project($hook)->toArray();
         $this->assertArrayNotHasKey('secret', $projected);
-        $this->assertNotSame($created['secret'], $projected['secret_preview']);
+        $this->assertNotSame($created['secret'], $projected['secretPreview']);
         $id = $hook->getKey();
         $read = $this->getJson("/frame/resources/hooks/records/{$id}")->assertOk()->json('data');
         $updated = $this->putJson("/frame/resources/hooks/records/{$id}", ['paused' => true])->assertOk()->json('data');
@@ -194,7 +194,7 @@ class HookHttpSurfaceTest extends TestCase
         ])->assertOk()->json('data');
 
         $this->assertTrue($created['pinged']);
-        $this->assertNull($created['hook']['verified_at']);
+        $this->assertNull($created['hook']['verifiedAt']);
 
         Bus::assertDispatched(
             DispatchWebhookJob::class,

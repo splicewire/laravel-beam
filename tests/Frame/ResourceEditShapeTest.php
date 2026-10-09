@@ -58,9 +58,10 @@ class ResourceEditShapeTest extends TestCase
     {
         $properties = $this->getJson('/frame/resources/hooks/schema')->assertOk()->json('properties');
         $this->assertArrayHasKey('paused', $properties);
-        $this->assertArrayNotHasKey('secret_preview', $properties);
-        $this->assertArrayNotHasKey('deliverable', $properties);
-        $this->assertArrayNotHasKey('consecutive_failures', $properties);
+        // Neither spelling of a computed read field may leak into the edit form.
+        foreach (['secretPreview', 'secret_preview', 'deliverable', 'consecutiveFailures', 'consecutive_failures'] as $readOnly) {
+            $this->assertArrayNotHasKey($readOnly, $properties);
+        }
     }
 
     public function test_schemas_offer_artifact_creation_and_refuse_in_place_updates(): void
