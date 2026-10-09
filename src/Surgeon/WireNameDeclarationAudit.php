@@ -37,9 +37,16 @@ use Throwable;
  *
  * ## What counts as declared
  *
- * Any of `#[MapName]`, `#[MapInputName]`, or `#[MapOutputName]` on the property. A class-level mapper
- * does not declare a property's wire name: the host's global mapper takes precedence over it, so a
- * package relying on the class attribute still publishes a host-dependent contract.
+ * `#[MapName]`, or the attribute for the inspected direction: `#[MapInputName]` on an input slot and
+ * `#[MapOutputName]` on an output slot. An input-only declaration cannot pin an output contract, nor
+ * vice versa. A class-level mapper does not declare a property's wire name: the host's global mapper
+ * takes precedence over it, so a package relying on the class attribute still publishes a
+ * host-dependent contract.
+ *
+ * Slot direction is part of the fact. Resource `input`/`editData` and operation `input` are inspected
+ * against the input mapper; resource `data`/`createResultData` and operation `output` against the
+ * output mapper. Flattening those slots made output DTOs look broken merely because a host camelized
+ * inputs while deliberately leaving responses alone.
  *
  * ## ⚠️ Single-word properties are not findings
  *
@@ -61,13 +68,14 @@ class WireNameDeclarationAudit implements DoctorAudit
 {
     public const CHECK = 'beam.particle.undeclared-wire-name';
 
-    /** @var list<class-string> */
+    /** @var array<class-string, array{input: bool, output: bool}> */
     private array $classes;
 
     /**
-     * @param  list<class-string>  $classes  the Data classes to inspect. Passed in rather than
-     *                                       discovered here so the caller owns the population — a host
-     *                                       audits its own paths, and a test audits fixtures.
+     * An unkeyed list means both axes for callers without registry slot information;
+     * {@see forRegistries()} supplies the exact declared directions.
+     *
+     * @param  array<int|string, string|list<'input'|'output'>>  $classes
      * @param  class-string|null  $input  the host's configured global INPUT name mapper
      * @param  class-string|null  $output  the host's configured global OUTPUT name mapper
      */
@@ -76,7 +84,20 @@ class WireNameDeclarationAudit implements DoctorAudit
         private ?string $input = null,
         private ?string $output = null,
     ) {
-        $this->classes = array_values($classes);
+        $this->classes = [];
+
+        foreach ($classes as $class => $axes) {
+            if (is_int($class)) {
+                $this->classes[$axes] = ['input' => true, 'output' => true];
+
+                continue;
+            }
+
+            $this->classes[$class] = [
+                'input' => in_array('input', $axes, true),
+                'output' => in_array('output', $axes, true),
+            ];
+        }
     }
 
     /**
@@ -96,14 +117,20 @@ class WireNameDeclarationAudit implements DoctorAudit
         ?string $input = null,
         ?string $output = null,
     ): self {
+        /** @var array<class-string, array{input?: true, output?: true}> $classes */
         $classes = [];
 
-        foreach ($resources->all() as $resource) {
-            foreach ([$resource->data ?? null, $resource->input ?? null, $resource->editData ?? null, $resource->createResultData ?? null] as $slot) {
-                if (is_string($slot) && $slot !== '') {
-                    $classes[$slot] = true;
-                }
+        $add = static function (mixed $slot, string $axis) use (&$classes): void {
+            if (is_string($slot) && $slot !== '') {
+                $classes[$slot][$axis] = true;
             }
+        };
+
+        foreach ($resources->all() as $resource) {
+            $add($resource->data ?? null, 'output');
+            $add($resource->input ?? null, 'input');
+            $add($resource->editData ?? null, 'input');
+            $add($resource->createResultData ?? null, 'output');
         }
 
         foreach ($operations->all() as $operation) {
@@ -111,16 +138,17 @@ class WireNameDeclarationAudit implements DoctorAudit
             // rather than letting the array reach the reflection loop as a "class".
             $outputs = is_array($operation->output ?? null) ? $operation->output : [$operation->output ?? null];
 
-            foreach ([...$outputs, $operation->input ?? null] as $slot) {
-                foreach ((array) $slot as $candidate) {
-                    if (is_string($candidate) && $candidate !== '') {
-                        $classes[$candidate] = true;
-                    }
-                }
+            foreach ($outputs as $slot) {
+                $add($slot, 'output');
             }
+
+            $add($operation->input ?? null, 'input');
         }
 
-        return new self(array_keys($classes), $input, $output);
+        return new self(array_map(
+            static fn (array $axes): array => array_keys($axes),
+            $classes,
+        ), $input, $output);
     }
 
     /**
@@ -130,7 +158,7 @@ class WireNameDeclarationAudit implements DoctorAudit
     {
         $findings = [];
 
-        foreach ($this->classes as $class) {
+        foreach ($this->classes as $class => $axes) {
             try {
                 $reflection = new ReflectionClass($class);
             } catch (Throwable) {
@@ -140,26 +168,16 @@ class WireNameDeclarationAudit implements DoctorAudit
                 continue;
             }
 
-            foreach ($this->partiallyDeclared($reflection) as $property) {
-                $findings[] = Finding::warn(self::CHECK, sprintf(
-                    '%s::$%s declares no wire name while its siblings in the same class do — so this '
-                    ."one field's published key is whatever the global mapper produces and the rest are "
-                    .'pinned. A class that declares some of its wire names and not others has made a '
-                    .'decision and failed to apply it.',
-                    $reflection->getShortName(),
-                    $property,
-                ));
-            }
-
-            foreach ($this->undeclaredProperties($reflection) as $row) {
+            foreach ($this->undeclaredProperties($reflection, $axes) as $row) {
                 $findings[] = Finding::warn(self::CHECK, sprintf(
                     '%s::$%s declares no wire name, and the host\'s global %s mapper rewrites it to '
                     ."'%s' — so the mapper is choosing this package's published key, not the author. "
-                    ."Declare the intended one with #[MapName('%s')].",
+                    ."Declare the intended one with #[Map%sName('%s')].",
                     $reflection->getShortName(),
                     $row['property'],
                     $row['axis'],
                     $row['published'],
+                    ucfirst($row['axis']),
                     $row['property'],
                 ));
             }
@@ -171,55 +189,10 @@ class WireNameDeclarationAudit implements DoctorAudit
     }
 
     /**
-     * Multi-word properties with no wire name **in a class where siblings have one**.
-     *
-     * ⚠️ This exists because {@see undeclaredProperties()} cannot see the realistic slip. That check
-     * reports only where a configured mapper would REWRITE a name — correct, and it is what took this
-     * audit from 232 findings to 20. But after a casing sweep every property is camelCase, so
-     * `CamelCaseMapper` is the IDENTITY on them, and **dropping an attribute during a rename silently
-     * moves that field's published key** (`calendar_id` → `calendarId`) with the transformation test
-     * staying quiet.
-     *
-     * Measured 2026-08-28: removing one `#[MapName]` from a swept DTO produced **no finding at all**
-     * until this check existed.
-     *
-     * Partial declaration is checkable at a single moment, with no baseline — which is what makes it
-     * a doctor's question rather than a diff's. A class that declares NONE of its wire names is not
-     * reported here (it has taken no posture; the transformation rule covers it), so this stays quiet
-     * on the estate's ordinary undeclared classes and speaks only where an intent is visibly broken.
-     *
-     * @return list<string>
-     */
-    private function partiallyDeclared(ReflectionClass $reflection): array
-    {
-        $declared = [];
-        $bare = [];
-
-        foreach ($reflection->getProperties() as $property) {
-            if (! $property->isPublic() || $property->isStatic() || ! $this->isMultiWord($property->getName())) {
-                continue;
-            }
-
-            $hasAttribute = false;
-            foreach ([MapName::class, MapInputName::class, MapOutputName::class] as $attribute) {
-                if ($property->getAttributes($attribute) !== []) {
-                    $hasAttribute = true;
-                    break;
-                }
-            }
-
-            $hasAttribute ? $declared[] = $property->getName() : $bare[] = $property->getName();
-        }
-
-        // Only meaningful when the class has BOTH — all-declared is correct, none-declared is a
-        // different (and quieter) question.
-        return $declared !== [] ? $bare : [];
-    }
-
-    /**
+     * @param  array{input: bool, output: bool}  $axes
      * @return list<array{property: string, axis: string, published: string}>
      */
-    private function undeclaredProperties(ReflectionClass $reflection): array
+    private function undeclaredProperties(ReflectionClass $reflection, array $axes): array
     {
         $undeclared = [];
 
@@ -228,21 +201,13 @@ class WireNameDeclarationAudit implements DoctorAudit
                 continue;
             }
 
-            $declared = false;
-            foreach ([MapName::class, MapInputName::class, MapOutputName::class] as $attribute) {
-                if ($property->getAttributes($attribute) !== []) {
-                    $declared = true;
-                    break;
-                }
-            }
-
-            if ($declared) {
-                continue;
-            }
-
             $name = $property->getName();
 
             foreach (['input' => $this->input, 'output' => $this->output] as $axis => $mapper) {
+                if (! $axes[$axis] || $this->declares($property, $axis)) {
+                    continue;
+                }
+
                 $published = $this->publishedKey($mapper, $name);
 
                 // ⚠️ THE WHOLE RULE. Report only where a CONFIGURED global mapper would CHANGE the
@@ -265,6 +230,17 @@ class WireNameDeclarationAudit implements DoctorAudit
         return $undeclared;
     }
 
+    private function declares(\ReflectionProperty $property, string $axis): bool
+    {
+        if ($property->getAttributes(MapName::class) !== []) {
+            return true;
+        }
+
+        $attribute = $axis === 'input' ? MapInputName::class : MapOutputName::class;
+
+        return $property->getAttributes($attribute) !== [];
+    }
+
     /**
      * What the configured mapper publishes for this property, or null when that axis has no mapper.
      *
@@ -284,20 +260,5 @@ class WireNameDeclarationAudit implements DoctorAudit
         } catch (Throwable) {
             return null;
         }
-    }
-
-    /**
-     * Multi-word in EITHER spelling — `calendarId` and `calendar_id` are the same property under two
-     * conventions, and both publish a key the author did not choose. Testing only for camel humps would
-     * miss the entire population `api-surface-coherence` 100 is about.
-     */
-    private function isMultiWord(string $name): bool
-    {
-        return str_contains($name, '_') || preg_match('/[a-z][A-Z]/', $name) === 1;
-    }
-
-    private function snake(string $name): string
-    {
-        return strtolower((string) preg_replace('/(?<!^)[A-Z]/', '_$0', $name));
     }
 }

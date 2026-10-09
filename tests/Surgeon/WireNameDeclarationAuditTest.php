@@ -38,11 +38,53 @@ class WireNameDeclarationAuditTest extends TestCase
             key: 'receipts', backing: 'App\\Models\\Receipt', createResultData: UndeclaredWireData::class,
         ));
         $findings = WireNameDeclarationAudit::forRegistries(
-            $resources, new ParticleOperationRegistry, input: CamelCaseMapper::class,
+            $resources, new ParticleOperationRegistry, output: CamelCaseMapper::class,
         )->run();
         $details = implode(' ', array_map(fn ($finding) => $finding->detail, $findings));
         $this->assertStringContainsString('UndeclaredWireData', $details);
         $this->assertStringContainsString('calendar_id', $details);
+    }
+
+    public function test_an_output_only_dto_is_not_checked_against_the_input_mapper(): void
+    {
+        $resources = new ParticleResourceRegistry;
+        $resources->register(new ParticleResource(
+            key: 'receipts', backing: 'App\\Models\\Receipt', createResultData: UndeclaredWireData::class,
+        ));
+
+        $findings = WireNameDeclarationAudit::forRegistries(
+            $resources,
+            new ParticleOperationRegistry,
+            input: CamelCaseMapper::class,
+            output: null,
+        )->run();
+
+        $this->assertSame([], array_filter($findings, fn ($finding) => $finding->status !== DoctorStatus::Pass));
+    }
+
+    public function test_a_real_input_mismatch_is_still_reported_through_the_registry_slots(): void
+    {
+        $resources = new ParticleResourceRegistry;
+        $resources->register(new ParticleResource(
+            key: 'receipts',
+            backing: 'App\\Models\\Receipt',
+            data: SingleWordData::class,
+            input: UndeclaredWireData::class,
+        ));
+
+        $findings = WireNameDeclarationAudit::forRegistries(
+            $resources,
+            new ParticleOperationRegistry,
+            input: CamelCaseMapper::class,
+            output: null,
+        )->run();
+        $details = implode(' ', array_map(fn ($finding) => $finding->detail, array_filter(
+            $findings,
+            fn ($finding) => $finding->status !== DoctorStatus::Pass,
+        )));
+
+        $this->assertStringContainsString('UndeclaredWireData::$calendar_id', $details);
+        $this->assertStringContainsString('global input mapper', $details);
     }
 
     /** Defaults to the flagship's real posture: camel on input, nothing on output. */
@@ -142,28 +184,19 @@ class WireNameDeclarationAuditTest extends TestCase
         $this->assertNotSame(DoctorStatus::Fail, $findings[0]->status);
     }
 
-    public function test_it_catches_a_partiall_y_declared_class_even_when_the_mapper_is_the_identity(): void
+    public function test_an_explicit_exception_does_not_force_identity_mapped_siblings_to_declare(): void
     {
-        // ⚠️ The gap the transformation-only rule left, and the realistic slip. After a sweep every
-        // property is camelCase, so CamelCaseMapper is the IDENTITY on them — dropping one attribute
-        // silently moves that field's published key from `calendar_id` to `calendarId` while the
-        // transformation test stays quiet.
-        //
-        // A class that declares SOME of its multi-word wire names and not others has made a decision
-        // and then failed to apply it. That is checkable at one moment, without a baseline.
+        // MarketListingInputData's real shape: repoFullName is the ONE exception, explicitly marked
+        // because GitHub's public vocabulary is `repo_full_name`; installationNotes deliberately
+        // follows the host's camel input contract. The explicit MapInputName is the marker. Inferring
+        // that every sibling must now carry an identity annotation would turn a declaration into noise.
         $audit = new WireNameDeclarationAudit(
-            [PartiallyDeclaredData::class],
+            [ExplicitExceptionalSiblingData::class],
             input: CamelCaseMapper::class,
             output: null,
         );
 
-        $details = array_map(fn ($f) => $f->detail, array_filter(
-            $audit->run(), fn ($f) => $f->status !== DoctorStatus::Pass,
-        ));
-
-        $this->assertCount(1, $details);
-        $this->assertStringContainsString('calendarId', $details[0]);
-        $this->assertStringContainsString('siblings', $details[0]);
+        $this->assertSame([], array_filter($audit->run(), fn ($f) => $f->status !== DoctorStatus::Pass));
     }
 
     public function test_it_stays_quie_t_on_a_class_that_declares_nothing_at_all(): void
@@ -176,11 +209,11 @@ class WireNameDeclarationAuditTest extends TestCase
     }
 }
 
-class PartiallyDeclaredData extends Data
+class ExplicitExceptionalSiblingData extends Data
 {
     public function __construct(
-        public ?string $calendarId = null,                              // attribute DROPPED
-        #[MapName('series_ref')] public ?string $seriesRef = null,      // sibling still declares
+        #[MapInputName('repo_full_name')] public ?string $repoFullName = null,
+        public ?string $installationNotes = null,
     ) {}
 }
 
