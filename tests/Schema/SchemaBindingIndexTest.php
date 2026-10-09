@@ -2,7 +2,10 @@
 
 namespace Splicewire\Beam\Tests\Schema;
 
+use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
+use RuntimeException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Spatie\LaravelData\Data;
@@ -131,6 +134,144 @@ class SchemaBindingIndexTest extends TestCase
         $registry->register($this->resource('hidden-collision'));
     }
 
+    private function recordResource(string $key, string $data = BindingArticleData::class, ?string $ref = null, string $model = BindingRecord::class): ParticleResource
+    {
+        return new ParticleResource(key: $key, backing: $model, data: $data, input: false, readOnly: true, schemaRef: $ref);
+    }
+
+    public function test_record_identity_precedes_model_inference_and_normalizes_versions(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register($this->recordResource('first'));
+        $registry->register($this->recordResource('second', BindingOtherData::class, self::STEM, Model::class));
+        $index = new SchemaBindingIndex($registry);
+        $this->assertSame([], $registry->definitions());
+        $record = new BindingRecord(['schema_ref' => self::STEM.'/7']);
+        $this->assertSame(BindingOtherData::class, $index->dataClassForRecord($record));
+        $record->schema_ref = 'https://unknown.test/no-binding';
+        $this->assertNull($index->dataClassForRecord($record));
+        $record->schema_ref = BindingArticleData::class;
+        $this->assertSame(BindingArticleData::class, $index->dataClassForRecord($record));
+        $this->assertSame(BindingOtherData::class, $index->dataClassForRecord(new RecordTypeBindingRecord(['type_identity' => self::STEM.'/2'])));
+    }
+
+    public function test_identity_priority_and_absent_sources_are_explicit(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register($this->recordResource('article'));
+        $registry->register($this->recordResource('other', BindingOtherData::class, self::STEM));
+        $index = new SchemaBindingIndex($registry);
+        $record = new MethodBindingRecord(['binding_identity' => BindingArticleData::class, 'schema_ref' => self::STEM, 'type_identity' => 'unknown']);
+        $this->assertSame(BindingArticleData::class, $index->dataClassForRecord($record));
+        $record->binding_identity = null;
+        $this->assertSame(BindingOtherData::class, $index->dataClassForRecord($record));
+        $record->binding_identity = '';
+        $record->schema_ref = '';
+        $record->type_identity = BindingArticleData::class;
+        $this->assertSame(BindingArticleData::class, $index->dataClassForRecord($record));
+    }
+
+    public static function invalidIdentities(): array
+    {
+        $cases = [];
+        foreach (['binding_identity', 'schema_ref', 'type_identity'] as $source) {
+            foreach (['false' => false, 'zero' => 0, 'array' => [], 'whitespace' => '  '] as $label => $value) {
+                $cases[$source.' '.$label] = [$source, $value];
+            }
+        }
+        return $cases;
+    }
+
+    #[DataProvider('invalidIdentities')]
+    public function test_invalid_present_identity_cannot_fall_through(string $source, mixed $value): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register($this->recordResource('article'));
+        $record = new MethodBindingRecord;
+        if ($source === 'binding_identity') {
+            $record->schema_ref = BindingArticleData::class;
+        } elseif ($source === 'schema_ref') {
+            $record->type_identity = BindingArticleData::class;
+        }
+        $record->setAttribute($source, $value);
+        $this->expectException(InvalidArgumentException::class);
+        (new SchemaBindingIndex($registry))->dataClassForRecord($record);
+    }
+
+    public function test_plain_model_candidates_are_deduplicated_live_and_never_first_match(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $index = new SchemaBindingIndex($registry);
+        $record = new BindingRecord;
+        $this->assertNull($index->dataClassForRecord($record));
+        $registry->register($this->recordResource('first'));
+        $this->assertSame(BindingArticleData::class, $index->dataClassForRecord($record));
+        $registry->register($this->recordResource('second'));
+        $this->assertSame(BindingArticleData::class, $index->dataClassForRecord($record));
+        $registry->register($this->recordResource('second', BindingOtherData::class));
+        try {
+            $index->dataClassForRecord($record);
+            $this->fail('Different read shapes must be ambiguous.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('first', $exception->getMessage());
+            $this->assertStringContainsString('second', $exception->getMessage());
+        }
+    }
+
+    public function test_inherited_model_ambiguity_is_stable_in_both_registration_orders(): void
+    {
+        $messages = [];
+        foreach ([false, true] as $reverse) {
+            $registry = new ParticleResourceRegistry;
+            $resources = [$this->recordResource('z-child', BindingOtherData::class, model: ChildBindingRecord::class), $this->recordResource('a-base')];
+            foreach ($reverse ? array_reverse($resources) : $resources as $resource) {
+                $registry->register($resource);
+            }
+            try {
+                (new SchemaBindingIndex($registry))->dataClassForRecord(new ChildBindingRecord);
+                $this->fail('An exact model match must not hide the inherited competing shape.');
+            } catch (RuntimeException $exception) {
+                $messages[] = $exception->getMessage();
+                foreach ([ChildBindingRecord::class, 'a-base', 'z-child', BindingArticleData::class, BindingOtherData::class] as $name) {
+                    $this->assertStringContainsString($name, $exception->getMessage());
+                }
+            }
+        }
+        $this->assertSame($messages[0], $messages[1]);
+    }
+
+    public function test_record_lookup_observes_live_authorization_without_hidden_fallback_or_names(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $authorizer = new class implements Authorizer {
+            public bool $allowed = false;
+            public function allows(string $ability, RegistryKey $key): bool { return $this->allowed; }
+        };
+        $registry->authorizeWith($authorizer);
+        $registry->register($this->recordResource('visible'));
+        $registry->register('hidden-secret', $this->recordResource('hidden-secret', BindingOtherData::class, self::STEM), ability: 'secret');
+        $index = new SchemaBindingIndex($registry);
+        $record = new BindingRecord;
+        $this->assertSame(BindingArticleData::class, $index->dataClassForRecord($record));
+        $this->assertNull($index->dataClassForRecord(new BindingRecord(['schema_ref' => self::STEM])));
+        $authorizer->allowed = true;
+        $this->assertSame(BindingOtherData::class, $index->dataClassForRecord(new BindingRecord(['schema_ref' => self::STEM])));
+        try {
+            $index->dataClassForRecord($record);
+            $this->fail('Visible competing shape must be ambiguous.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('hidden-secret', $exception->getMessage());
+        }
+        $authorizer->allowed = false;
+        $registry->register($this->recordResource('visible-other', BindingOtherData::class));
+        try {
+            $index->dataClassForRecord($record);
+            $this->fail('Visible competing shape must remain ambiguous.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringNotContainsString('hidden-secret', $exception->getMessage());
+        }
+    }
+
     public function test_explicit_binding_requires_a_read_data_class(): void
     {
         $resource = $this->resource();
@@ -154,3 +295,15 @@ class SchemaBindingIndexTest extends TestCase
     schemaRef: 'https://beam.test/schemas/content/article/1',
 )]
 class BindingArticleData extends Data {}
+
+class BindingOtherData extends Data {}
+class BindingRecord extends Model { protected $guarded = []; }
+class ChildBindingRecord extends BindingRecord {}
+class RecordTypeBindingRecord extends BindingRecord
+{
+    public function recordType(): mixed { return $this->getAttribute('type_identity'); }
+}
+class MethodBindingRecord extends RecordTypeBindingRecord
+{
+    public function schemaBinding(): mixed { return $this->getAttribute('binding_identity'); }
+}

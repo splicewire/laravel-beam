@@ -102,6 +102,47 @@ class PayloadParticleReaderTest extends TestCase
         $this->reader(null)->hydrate($record, ReadContext::detail());
     }
 
+    public function test_explicit_headless_identity_selects_payload_projection_in_either_registration_order(): void
+    {
+        foreach ([false, true] as $reverse) {
+            $registry = new ParticleResourceRegistry;
+            $resources = [new ParticleResource(key: 'wrong', backing: ReaderFixtureModel::class, data: ReaderFixtureData::class, label: 'First'),
+                new ParticleResource(key: 'chosen', backing: ReaderFixtureModel::class, data: SecondReaderFixtureData::class, schemaRef: 'https://beam.test/schemas/reader/1')];
+            foreach ($reverse ? array_reverse($resources) : $resources as $resource) {
+                $registry->register($resource);
+            }
+            $record = ReaderFixtureModel::create(['schema_ref' => 'https://beam.test/schemas/reader/7', 'payload' => ['title' => 'Payload']]);
+            $record->setAttribute('title', 'Model decoy');
+            $reader = new PayloadParticleReader($registry);
+            $data = $reader->hydrate($record, ReadContext::detail(['extra']));
+            $this->assertInstanceOf(SecondReaderFixtureData::class, $data);
+            $this->assertSame(['title' => 'Payload', 'extra' => 'lazy-Payload'], $data->toArray());
+            $record->schema_ref = 'https://beam.test/schemas/unknown';
+            try {
+                $reader->hydrate($record, ReadContext::detail());
+                $this->fail('Unknown explicit identity cannot use a model projection.');
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('No Data class resolved', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_ambiguous_plain_record_never_selects_first_projection(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        foreach (['first' => ReaderFixtureData::class, 'second' => SecondReaderFixtureData::class] as $key => $data) {
+            $registry->register(new ParticleResource(key: $key, backing: ReaderFixtureModel::class, data: $data, label: $key));
+        }
+        $this->expectException(RuntimeException::class);
+        (new PayloadParticleReader($registry))->hydrate(ReaderFixtureModel::create(['payload' => ['title' => 'Ambiguous']]), ReadContext::detail());
+    }
+
+    public function test_it_refuses_a_string_reference(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->reader(ReaderFixtureData::class)->hydrate('reader/1', ReadContext::detail());
+    }
+
     public function test_cardinality_is_a_mode_on_the_context(): void
     {
         $this->assertSame(Cardinality::One, ReadContext::detail()->cardinality);
@@ -168,3 +209,5 @@ class ReaderFixtureData extends Data
         $this->extra = Lazy::create(fn () => $extra ?? 'lazy-'.$title);
     }
 }
+
+class SecondReaderFixtureData extends ReaderFixtureData {}
