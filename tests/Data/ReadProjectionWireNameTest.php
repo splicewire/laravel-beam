@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Data;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 use Schemastud\Frame\FrameServiceProvider;
+use Spatie\LaravelData\Support\DataContainer;
 use Splicewire\Beam\Data\GitRepoData;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Models\GitRepo;
@@ -37,10 +38,24 @@ class ReadProjectionWireNameTest extends TestCase
         return [FrameServiceProvider::class, ...parent::getPackageProviders($app)];
     }
 
+    /**
+     * laravel-data's DataContainer is process-static: its DataClassFactory caches each Data class's resolved
+     * name mapping from the FIRST app that built it. This suite switches the host's global output mapper
+     * (ReadProjectionWireNameSnakeOutputHostTest sets snake), so it must neither inherit classes cached under
+     * another mapper nor leave its own behind; otherwise later suites read `next_cursor` for `nextCursor`
+     * (the combined-line reds in CompositeStreamedIndex/UnpagedBacking/StreamFilterExecution).
+     */
     protected function setUp(): void
     {
+        DataContainer::get()->reset();
         parent::setUp();
         (require __DIR__.'/../../database/migrations/shared/create_beam_hooks_table.php.stub')->up();
+    }
+
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+        DataContainer::get()->reset();
     }
 
     private function hook(): Hook
