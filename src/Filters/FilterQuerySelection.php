@@ -5,7 +5,6 @@ namespace Splicewire\Beam\Filters;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Query\ResourceQuery;
 use Rushing\DataFilters\Registry\ResourceDefinition;
@@ -83,33 +82,12 @@ class FilterQuerySelection
 
     /**
      * The saved query's wire key is camel (`queryParameters`, owner ruling 2026-10-09 18:18Z), so every validation
-     * error a client receives names that key. The shared {@see SavedFilterValidator} (rushing/laravel-data-filters)
-     * still prefixes its messages with its storage spelling, `query_parameters.*`; they are re-keyed here, at the one
-     * seam beam owns, rather than changing that package's contract for its other hosts. No snake input is accepted.
+     * error a client receives names that key: beam's own rules below use it, and the shared {@see SavedFilterValidator}
+     * (rushing/laravel-data-filters de6dd2fd) emits `queryParameters.*` itself. No snake input is accepted.
      *
      * @param  array<string, mixed>  $parameters
      */
     public function validate(string $target, array $parameters): array
-    {
-        try {
-            return $this->validateQuery($target, $parameters);
-        } catch (ValidationException $e) {
-            $errors = [];
-            foreach ($e->errors() as $key => $messages) {
-                $wire = str_starts_with($key, self::STORAGE_PREFIX) ? self::WIRE_PREFIX.substr($key, strlen(self::STORAGE_PREFIX)) : $key;
-                $errors[$wire] = $messages;
-            }
-
-            throw ValidationException::withMessages($errors);
-        }
-    }
-
-    private const STORAGE_PREFIX = 'query_parameters';
-
-    private const WIRE_PREFIX = 'queryParameters';
-
-    /** @param array<string, mixed> $parameters */
-    private function validateQuery(string $target, array $parameters): array
     {
         app(ResourceFilters::class)->authorize($target);
         Validator::make(['queryParameters' => $parameters], [
