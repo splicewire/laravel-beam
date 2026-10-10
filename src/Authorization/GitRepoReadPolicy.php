@@ -24,7 +24,7 @@ class GitRepoReadPolicy implements ResourceReadPolicy
 
         $realm = $request->route()?->defaults['realm'] ?? null;
         $sharedOperatorSocket = $realm === null
-            && str_starts_with((string) $request->route()?->getName(), 'frame.resources.')
+            && FrameSocketRoute::serves($request)
             && $this->resources->realmsFor($resource->key) === ['operator'];
 
         return $gate->allows('viewAny', GitRepo::class)

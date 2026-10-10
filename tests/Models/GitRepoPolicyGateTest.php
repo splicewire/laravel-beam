@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Rushing\PermissionCascade\Contracts\GrantedExplicitly;
 use Rushing\PermissionCascade\Support\PermissionNamer;
+use Schemastud\Frame\Http\Controllers\FrameResourceController;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Spatie\Permission\PermissionServiceProvider;
@@ -154,14 +155,14 @@ class GitRepoPolicyGateTest extends TestCase
         $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm('operator'), $operator)->allowed());
         $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm('tenant'), $operator)->denied());
         $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm('operator'), $member)->denied());
-        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm(null, 'frame.resources.index'), $operator)->allowed());
-        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm(null, 'api.git-repos.index'), $operator)->denied());
+        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm(null, FrameResourceController::class, 'frame.resources.index'), $operator)->allowed());
+        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm(null, HostGitRepoController::class, 'frame.resources.git-repos.mine'), $operator)->denied());
     }
 
-    private function requestForRealm(?string $realm, ?string $name = null): Request
+    private function requestForRealm(?string $realm, ?string $controller = null, ?string $name = null): Request
     {
         $request = Request::create('/');
-        $route = new Route('GET', '/', fn () => null);
+        $route = new Route('GET', '/', $controller === null ? fn () => null : [$controller, 'index']);
         if ($realm !== null) {
             $route->defaults('realm', $realm);
         }
@@ -198,6 +199,11 @@ class GitRepoPolicyGateTest extends TestCase
 
         return $user;
     }
+}
+
+class HostGitRepoController
+{
+    public function index(): void {}
 }
 
 class GitRepoPolicyGateUser extends AuthUser
