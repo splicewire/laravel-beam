@@ -39,6 +39,12 @@ class SeatGate
     /** @var array<string, true> reviewed seats for which authenticated membership is sufficient. */
     private array $openSeats = [];
 
+    /** @var array<string, array{0: string, 1: string}> client seat => [route-gate route name, resource list route name]. */
+    private array $conjunctions = [];
+
+    /** @var array<string, true> conjunctive seats being resolved, so a gate arm that leads back to its seat cannot recurse. */
+    private array $resolving = [];
+
     public function __construct(
         private Router $router,
         private ParticleResourceRegistry $resources,
@@ -57,6 +63,10 @@ class SeatGate
 
         if (isset($this->openSeats[$seatRouteName])) {
             throw new LogicException("Seat [{$seatRouteName}] already declares an explicit open gate.");
+        }
+
+        if (isset($this->conjunctions[$seatRouteName])) {
+            throw new LogicException("Seat [{$seatRouteName}] already declares a conjunctive gate.");
         }
 
         if (isset($this->backings[$seatRouteName]) && $this->backings[$seatRouteName] !== $backingRouteName) {
@@ -85,13 +95,59 @@ class SeatGate
             throw new LogicException("Seat [{$seatRouteName}] already resolves from [{$this->backings[$seatRouteName]}].");
         }
 
+        if (isset($this->conjunctions[$seatRouteName])) {
+            throw new LogicException("Seat [{$seatRouteName}] already declares a conjunctive gate.");
+        }
+
         $this->openSeats[$seatRouteName] = true;
+    }
+
+    /**
+     * Declare a client seat that needs BOTH a named route gate and a Frame list's read boundary, e.g. a Studio seat that
+     * a disabled medium closes (the route's middleware) and that a principal without the list's read is refused anyway.
+     * It resolves to one Resource resolution carrying the route, so {@see allows()} checks the route's reachability and
+     * then the read. An arm that is not what it declares (no named gate on the route, no such list leaf) leaves the seat
+     * unresolved rather than guessing either half.
+     */
+    public function backedByRouteAndResource(string $seatRouteName, string $gateRouteName, string $resourceRouteName): void
+    {
+        if ($seatRouteName === '' || $gateRouteName === '' || $resourceRouteName === '' || $seatRouteName === $gateRouteName) {
+            throw new LogicException('A conjunctive seat gate must name a seat, a distinct gate route and a list route.');
+        }
+
+        if (isset($this->openSeats[$seatRouteName])) {
+            throw new LogicException("Seat [{$seatRouteName}] already declares an explicit open gate.");
+        }
+
+        if (isset($this->backings[$seatRouteName])) {
+            throw new LogicException("Seat [{$seatRouteName}] already resolves from [{$this->backings[$seatRouteName]}].");
+        }
+
+        $this->conjunctions[$seatRouteName] = [$gateRouteName, $resourceRouteName];
     }
 
     public function resolve(string $routeName, ?string $realm = null): ?SeatGateResolution
     {
         if (isset($this->openSeats[$routeName])) {
             return new SeatGateResolution(SeatGateKind::Open, null);
+        }
+
+        if (isset($this->conjunctions[$routeName])) {
+            if (isset($this->resolving[$routeName])) {
+                return null;
+            }
+            [$gateRouteName, $resourceRouteName] = $this->conjunctions[$routeName];
+            $this->resolving[$routeName] = true;
+            try {
+                $gateArm = $this->resolve($gateRouteName, $realm);
+            } finally {
+                unset($this->resolving[$routeName]);
+            }
+            $resourceArm = $this->resourceResolution($resourceRouteName, $realm);
+
+            return $gateArm?->kind === SeatGateKind::Route && $gateArm->route !== null && $resourceArm?->resource !== null
+                ? new SeatGateResolution(SeatGateKind::Resource, $gateArm->route, resource: $resourceArm->resource)
+                : null;
         }
 
         if (isset($this->backings[$routeName])) {

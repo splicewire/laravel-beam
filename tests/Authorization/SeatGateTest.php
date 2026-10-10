@@ -202,6 +202,103 @@ class SeatGateTest extends TestCase
         $this->assertFalse($gate->for('system.page', null));
     }
 
+    /**
+     * Combined v3 attempt 6 (orch-peer ruling 07:35Z): a client seat may need two gates at once, e.g. Studio's medium route
+     * gate AND the compositions read boundary of the list it lands on. One conjunctive declaration resolves both into a
+     * single Resource resolution that carries the route, so allows() checks the route's reachability, then the read.
+     */
+    public function test_a_conjunctive_seat_admits_only_when_its_route_gate_and_resource_read_both_pass(): void
+    {
+        Gate::define('conj.route', fn (User $user): bool => in_array($user->getAuthIdentifier(), [1, 3], true));
+        Gate::define('conj.read', fn (User $user): bool => in_array($user->getAuthIdentifier(), [1, 2], true));
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'conj-feeds',
+            backing: SeatGateFeedBacking::class,
+            data: WidgetGateData::class,
+            policy: 'conj.read',
+            routeName: 'conj.index',
+            frame: true,
+            readOnly: true,
+            showable: false,
+        ), ['tenant']);
+        Route::get('/conj-ideas', fn () => [])->middleware(['auth', 'can:conj.route'])->name('conj.ideas');
+
+        $gate = $this->gate();
+        $gate->backedByRouteAndResource('conj.index', 'conj.ideas', 'conj.index');
+        $gate->backedBy('conj.section', 'conj.index');
+
+        foreach (['conj.index', 'conj.section'] as $seat) {
+            $resolution = $gate->resolve($seat, 'tenant');
+            $this->assertSame(SeatGateKind::Resource, $resolution?->kind, $seat);
+            $this->assertSame('conj.ideas', $resolution?->route?->getName(), $seat);
+            $this->assertSame('conj-feeds', $resolution?->resource?->key, $seat);
+
+            $this->assertTrue($gate->for($seat, $this->user(1), 'tenant'), "{$seat}: both arms pass");
+            $this->assertFalse($gate->for($seat, $this->user(2), 'tenant'), "{$seat}: the route gate denies");
+            $this->assertFalse($gate->for($seat, $this->user(3), 'tenant'), "{$seat}: the resource read denies");
+            $this->assertFalse($gate->for($seat, $this->user(4), 'tenant'), "{$seat}: both arms deny");
+            $this->assertFalse($gate->for($seat, null, 'tenant'), "{$seat}: a guest");
+        }
+    }
+
+    public function test_a_conjunctive_seat_does_not_guess_when_an_arm_is_not_what_it_declares(): void
+    {
+        Route::get('/conj-plain', fn () => [])->middleware('auth')->name('conj.plain');
+        Route::get('/conj-gated', fn () => [])->middleware(['auth', 'can:reports.view'])->name('conj.gated');
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'conj-only',
+            backing: SeatGateFeedBacking::class,
+            data: WidgetGateData::class,
+            policy: 'feed.read',
+            routeName: 'conj-only.index',
+            frame: true,
+            readOnly: true,
+            showable: false,
+        ), ['tenant']);
+
+        $gate = $this->gate();
+        // The route arm must be a named route gate; an auth-only route has no gate of its own to conjoin.
+        $gate->backedByRouteAndResource('conj.no-route-gate', 'conj.plain', 'conj-only.index');
+        // The resource arm must be a Frame list leaf in the catalog.
+        $gate->backedByRouteAndResource('conj.no-resource', 'conj.gated', 'nothing.index');
+
+        // A gate arm that leads back to its own seat is unresolved, not an endless resolution.
+        $gate->backedByRouteAndResource('conj.loop', 'conj.loop-gate', 'conj-only.index');
+        $gate->backedBy('conj.loop-gate', 'conj.loop');
+        $this->assertNull($gate->resolve('conj.loop', 'tenant'));
+
+        $this->assertNull($gate->resolve('conj.no-route-gate', 'tenant'));
+        $this->assertNull($gate->resolve('conj.no-resource', 'tenant'));
+        $this->assertFalse($gate->for('conj.no-route-gate', $this->allowed(), 'tenant'));
+    }
+
+    public function test_a_conjunctive_declaration_refuses_a_conflicting_or_degenerate_seat(): void
+    {
+        $gate = $this->gate();
+        $gate->backedBy('taken.page', 'listings.index');
+        $gate->openToMembers('open.page');
+
+        foreach ([
+            fn () => $gate->backedByRouteAndResource('', 'a.route', 'a.index'),
+            fn () => $gate->backedByRouteAndResource('seat.page', '', 'a.index'),
+            fn () => $gate->backedByRouteAndResource('seat.page', 'a.route', ''),
+            fn () => $gate->backedByRouteAndResource('seat.page', 'seat.page', 'a.index'),
+            fn () => $gate->backedByRouteAndResource('taken.page', 'a.route', 'a.index'),
+            fn () => $gate->backedByRouteAndResource('open.page', 'a.route', 'a.index'),
+        ] as $i => $declare) {
+            try {
+                $declare();
+                $this->fail("declaration {$i} should have been refused");
+            } catch (\LogicException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        $gate->backedByRouteAndResource('both.page', 'a.route', 'a.index');
+        $this->expectException(\LogicException::class);
+        $gate->backedBy('both.page', 'other.route');
+    }
+
     public function test_undeclared_and_record_scoped_gates_do_not_guess(): void
     {
         Route::get('/ambient', fn () => [])->middleware('auth')->name('ambient');
@@ -252,6 +349,11 @@ class SeatGateTest extends TestCase
     private function denied(): User
     {
         return (new User)->forceFill(['id' => 2]);
+    }
+
+    private function user(int $id): User
+    {
+        return (new User)->forceFill(['id' => $id]);
     }
 }
 
