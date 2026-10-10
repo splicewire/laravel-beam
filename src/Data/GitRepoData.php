@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Data;
 use Illuminate\Database\Eloquent\Builder;
 use Schemastud\Frame\Attributes\Column;
 use Spatie\LaravelData\Attributes\MapName;
+use Splicewire\Beam\Authorization\GitRepoReadPolicy;
 use Splicewire\Beam\Models\GitRepo;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Storage\GitRepoRegistrar;
@@ -29,6 +30,7 @@ use Splicewire\Beam\Storage\GitRepoRegistrar;
     icon: 'git-branch',
     section: 'ops',
     readOnly: true,
+    readPolicy: GitRepoReadPolicy::class,
 )]
 class GitRepoData extends BeamData
 {

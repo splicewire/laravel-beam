@@ -15,6 +15,7 @@ use Spatie\Permission\PermissionServiceProvider;
 use Spatie\Permission\Traits\HasRoles;
 use Splicewire\Beam\Authorization\BeamSchemaPolicy;
 use Splicewire\Beam\Authorization\GitRepoPolicy;
+use Splicewire\Beam\Authorization\GitRepoReadPolicy;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamSchema;
@@ -135,8 +136,21 @@ class GitRepoPolicyGateTest extends TestCase
         $resource = app(ParticleResourceRegistry::class)->find('git-repo');
 
         $this->assertNotNull($resource, 'beam declares the git-repo resource');
+        $this->assertSame(GitRepoReadPolicy::class, $resource->readPolicy);
         $this->assertTrue(ResourceReadGuard::forApp()->policyBound($resource));
         $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, Request::create('/'), $this->holder('git-repo.view'))->allowed());
+    }
+
+    public function test_the_git_repo_projection_admits_an_operator_without_widening_the_model_policy(): void
+    {
+        $resource = app(ParticleResourceRegistry::class)->find('git-repo');
+        $operator = $this->stranger();
+        $member = $this->stranger();
+        Gate::define('entitlement:os.operate', fn (GitRepoPolicyGateUser $user): bool => $user->is($operator));
+
+        $this->assertFalse(Gate::forUser($operator)->allows('viewAny', GitRepo::class));
+        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, Request::create('/'), $operator)->allowed());
+        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, Request::create('/'), $member)->denied());
     }
 
     private function repo(): GitRepo
