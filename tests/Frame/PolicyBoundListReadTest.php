@@ -175,6 +175,7 @@ class PolicyBoundListReadTest extends TestCase
 
         $this->as('no-team');
         $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 2);
+        $this->getJson('/frame/resources/gadgets/filters/schema')->assertOk();
     }
 }
 
