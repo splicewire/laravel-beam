@@ -94,6 +94,7 @@ use Splicewire\Beam\Doctor\ParticleCapabilityDisagreementAudit;
 use Splicewire\Beam\Doctor\ParticleIdConstraintKeyTypeAudit;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
+use Splicewire\Beam\Doctor\ScopedReadAuthenticationAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Doctor\Support\FamilyTailwindScan;
@@ -1915,6 +1916,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             GlobalReadBoundaryAudit::class,
+        );
+
+        $this->app->bind(ScopedReadAuthenticationAudit::class, fn () => ScopedReadAuthenticationAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            ScopedReadAuthenticationAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered
