@@ -134,9 +134,6 @@ class ResourceReadGuard
             report($e);
             $scoped = false;
         }
-        if ($scoped !== false && $this->admitsNoRows($resource, $request)) {
-            return Response::deny("Reading [{$resource->key}] admits no rows for this actor.");
-        }
         if ($scoped !== false) {
             return Response::allow();
         }
