@@ -110,13 +110,33 @@ class SeatGate
             );
         }
 
+        $resource = $this->resourceResolution($routeName, $realm);
+
         if ($route instanceof Route) {
-            return $this->resolveRoute($route, $realm);
+            $routeResolution = $this->resolveRoute($route, $realm);
+
+            if ($resource !== null) {
+                // A generic Frame list route declares its resource and keeps its route middleware.
+                // A same-named SPA shell route does not: the resource declaration wins over an
+                // otherwise ungated/auth-only client route, while a second real gate is ambiguous.
+                if (($route->defaults[ParticleController::RESOURCE] ?? null) === $resource->resource?->key) {
+                    return $routeResolution;
+                }
+
+                return $routeResolution === null ? $resource : null;
+            }
+
+            return $routeResolution;
         }
 
         // Frame's routeName is the stable client join and a host may mount the generic resource
         // socket under a different (or unnamed) HTTP route. The resource declaration still owns the
         // list leaf's gate, so resolve that arm directly from the realm-projected catalog.
+        return $resource;
+    }
+
+    private function resourceResolution(string $routeName, ?string $realm): ?SeatGateResolution
+    {
         try {
             foreach ($this->resources->definitions($realm) as $resource) {
                 if (ListRouteName::of($resource) === $routeName) {

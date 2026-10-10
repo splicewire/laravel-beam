@@ -123,6 +123,28 @@ class SeatGateTest extends TestCase
         $this->assertFalse($this->gate()->for('catalog.index', $this->denied(), 'tenant'));
     }
 
+    public function test_a_frame_list_leaf_outranks_a_same_named_ungated_spa_shell_route(): void
+    {
+        Gate::policy(SeatGateScopedFeed::class, SeatGateScopedFeedPolicy::class);
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'studio',
+            backing: SeatGateScopedFeed::class,
+            data: WidgetGateData::class,
+            routeName: 'studio.index',
+            scope: fn ($query) => $query->where('owner_id', auth()->id()),
+            frame: true,
+            readOnly: true,
+            showable: false,
+        ), ['tenant']);
+        Route::get('/studio', fn () => [])->middleware('auth')->name('studio.index');
+
+        $resolution = $this->gate()->resolve('studio.index', 'tenant');
+
+        $this->assertSame(SeatGateKind::Resource, $resolution?->kind);
+        $this->assertNull($resolution?->route, 'The auth-only SPA route must not replace the backing list gate.');
+        $this->assertFalse($this->gate()->allows($resolution, $this->denied(), 'tenant'));
+    }
+
     public function test_an_explicitly_open_operation_and_bespoke_route_still_honour_auth_middleware(): void
     {
         $this->operation('preview', false, false);
