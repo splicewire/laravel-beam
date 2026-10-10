@@ -235,6 +235,23 @@ class RealmEntitlementResourceGateTest extends TestCase
         $this->assertFalse($this->gate()->entitledThroughRealm('hooks'));
     }
 
+    /** Internal nav input may narrow an HTTP-mounted realm, but it can never replace that route authority. */
+    public function test_an_explicit_nav_realm_cannot_override_the_http_route_realm(): void
+    {
+        $this->register('hooks', ['operator', 'tenant']);
+        $this->holding(['os.operate']);
+        request()->setRouteResolver(fn () => new class
+        {
+            public function parameter(string $key, mixed $default = null): mixed
+            {
+                return $key === 'realm' ? 'operator' : $default;
+            }
+        });
+
+        $this->assertTrue($this->gate()->entitledThroughRealm('hooks', mountedRealm: 'operator'));
+        $this->assertFalse($this->gate()->entitledThroughRealm('hooks', mountedRealm: 'tenant'));
+    }
+
     /** Beam binds itself over frame's permit-everything default, or none of the above runs at a host. */
     public function test_beam_binds_this_gate_over_frames_open_default(): void
     {

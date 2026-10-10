@@ -197,7 +197,14 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
             return false;
         }
 
-        $mountedRealm ??= request()->route('realm');
+        $routeRealm = request()->route('realm');
+        if (is_string($routeRealm) && $routeRealm !== '') {
+            if ($mountedRealm !== null && $mountedRealm !== $routeRealm) {
+                return false;
+            }
+
+            $mountedRealm = $routeRealm;
+        }
         if (is_string($mountedRealm) && $mountedRealm !== '') {
             if (! in_array($mountedRealm, $realms, true)) {
                 return false;
