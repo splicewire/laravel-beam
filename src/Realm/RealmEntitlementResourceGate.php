@@ -4,9 +4,11 @@ namespace Splicewire\Beam\Realm;
 
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate as GateFacade;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
+use Schemastud\Frame\Http\Controllers\FrameManifestController;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceVisibility;
@@ -86,14 +88,14 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * admits. That is inherited deny-by-default, not a branch of our own — the same mechanism
  * `Splicewire\Beam\Write\GateWriteGate` relies on.
  *
- * ## A model-less resource's declared ability is asked FIRST, before any realm arm
+ * ## The list's read decision is asked FIRST, before any realm arm
  *
- * {@see ResourceVisibility::readable()}. Realm membership answers *which door*; it cannot answer *who may
- * read a resource with no model for a policy to be about*, and until 2026-09-12 nothing on this socket
- * did — a model-less resource was served to every principal its realm admitted, whatever it declared.
- * Asked before the realm arms because both permit arms (no realms, an ungated realm) return early, and a
- * declared refusal must not be skippable by which realm list a host wrote. It refuses only a model-less
- * resource declaring `policy:`; an undeclared one keeps app ADR-0119 §2's posture exactly.
+ * On the manifest controller, {@see ResourceVisibility::listable()}. Realm membership answers *which
+ * door*; it cannot replace the resource's own read boundary. The manifest and its nav offer the
+ * corresponding list request, so they ask the same {@see ResourceReadGuard} decision as that list before
+ * projecting a resource. Other Frame sockets retain {@see ResourceVisibility::readable()}: their own
+ * list/detail/summary handlers ask the full guard with route-specific parent and filter context, which a
+ * reach gate cannot precompute without breaking valid relative reads.
  */
 class RealmEntitlementResourceGate implements ResourceAccessGate
 {
@@ -122,16 +124,21 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
     public function allowsResource(ResourceDefinition $definition): bool
     {
         $actor = $this->actorSpecified ? $this->actor : Auth::user();
+        $mountedRealm = request()->route('realm');
+        $mountedRealm = is_string($mountedRealm) && $mountedRealm !== '' ? $mountedRealm : null;
 
-        if (! $this->visibility->readable($definition, $actor)) {
+        $visible = $this->isManifestRequest()
+            ? $this->visibility->listable($definition, $actor, $mountedRealm)
+            : $this->visibility->readable($definition, $actor);
+
+        if (! $visible) {
             return false;
         }
 
         $realms = $this->particles->realmsFor($definition->key);
 
         // An explicitly mounted realm is the door being used; other memberships cannot open it.
-        $mountedRealm = request()->route('realm');
-        if (is_string($mountedRealm) && $mountedRealm !== '') {
+        if ($mountedRealm !== null) {
             if (! in_array($mountedRealm, $realms, true)) {
                 return false;
             }
@@ -163,6 +170,15 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
         }
 
         return false;
+    }
+
+    /** Whether Frame is projecting the actor's advertised resource catalog rather than serving data. */
+    private function isManifestRequest(): bool
+    {
+        $route = request()->route();
+
+        return $route instanceof Route
+            && is_a($route->getControllerClass(), FrameManifestController::class, true);
     }
 
     /** A copy whose reach and declared-read gates are bound to one explicit actor, including a guest. */

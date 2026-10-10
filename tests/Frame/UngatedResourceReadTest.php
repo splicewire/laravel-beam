@@ -216,6 +216,20 @@ class UngatedResourceReadTest extends TestCase
         $this->assertFalse($visibility->listable($definition, null));
     }
 
+    public function test_frame_manifest_only_advertises_resources_the_actor_can_list(): void
+    {
+        $this->declare('refused-gadgets');
+        $this->declare(
+            'admitted-gadgets',
+            fn ($query) => $query->where('user_id', request()->user()->getAuthIdentifier()),
+        );
+
+        $keys = collect($this->getJson('/frame/manifest')->assertOk()->json('resources'))->pluck('key');
+
+        $this->assertNotContains('refused-gadgets', $keys);
+        $this->assertContains('admitted-gadgets', $keys);
+    }
+
     public function test_a_relative_list_with_a_valid_variant_keeps_its_parent_intersection(): void
     {
         $this->declare();
