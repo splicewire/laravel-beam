@@ -71,10 +71,11 @@ class FilterVariantExecutionTest extends TestCase
         }
     }
 
-    public function test_owner_scope_serves_metadata_and_saved_views_without_class_wide_read_permission(): void
+    /** Integrator ruling 2026-10-10 02:43Z supersedes the former scope-wins contract. */
+    public function test_owner_scope_and_class_wide_read_permission_serve_metadata_and_saved_views(): void
     {
-        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
-        $this->assertFalse(Gate::allows('viewAny', VariantRecord::class));
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
+        $this->assertTrue(Gate::allows('viewAny', VariantRecord::class));
         $this->assertSame('sqlite', VariantRecord::resolveConnection()->getDriverName());
         $this->assertSame(':memory:', VariantRecord::resolveConnection()->getDatabaseName());
         $this->getJson('frame/resources/variant-records')->assertOk()->assertJsonCount(3, 'data');
@@ -104,7 +105,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_scoped_metadata_keeps_option_provider_ownership_and_search(): void
     {
-        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         DataFilter::options('variant-statuses', fn (?string $search) => VariantRecord::query()
             ->where('owner_id', auth()->id())->where('title', 'like', '%'.$search.'%')->orderBy('id')->get()
             ->map(fn (VariantRecord $row) => ['value' => $row->getKey(), 'label' => $row->title])->all());
@@ -121,7 +122,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_model_backed_candidate_cannot_borrow_its_targets_owner_scope(): void
     {
-        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'active-records', backing: VariantRecord::class, data: SelectedVariantFilters::class,
             frame: false, readOnly: true,
@@ -140,7 +141,7 @@ class FilterVariantExecutionTest extends TestCase
     {
         // `1 = 0` is the estate's fail-closed row scope for an actor holding no view token. Structurally
         // it is a predicate; it is a refusal, and must not stand in for the ownership scope above.
-        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         DataFilter::registry()->registerDefinition(new ResourceDefinition('variant-records', CanonicalVariantFilters::class,
             NoRowVariantQuery::class, VariantRecord::class));
         DataFilter::options('variant-statuses', fn () => throw new \RuntimeException('Refused options executed'));
@@ -169,7 +170,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_nonframe_consumer_lists_keep_declared_variant_scopes_and_authorization(): void
     {
-        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'variant-records', backing: VariantRecord::class, data: VariantRowData::class,
             frame: false, readOnly: true,
@@ -317,7 +318,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_a_selected_variant_cannot_bypass_its_declared_read_policy(): void
     {
-        Gate::policy(VariantRecord::class, DeniedVariantModelPolicy::class);
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'active-records', backing: VariantPolicyBacking::class, data: SelectedVariantFilters::class,
             policy: 'variant.read', frame: false, readOnly: true,
@@ -392,6 +393,14 @@ class DeniedVariantModelPolicy
     public function viewAny(User $user): bool
     {
         return false;
+    }
+}
+
+class AllowedVariantModelPolicy
+{
+    public function viewAny(User $user): bool
+    {
+        return true;
     }
 }
 

@@ -84,6 +84,7 @@ class ParticleControllerScopeTest extends TestCase
             key: 'sorted-widget',
             backing: SortedWidget::class,
             data: SortedWidgetData::class,
+            scope: fn (Builder $query): Builder => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
         ));
 
         $request = Request::create('/sorted-widgets');
@@ -118,6 +119,7 @@ class ParticleControllerScopeTest extends TestCase
             key: 'weighted-widget',
             backing: WeightedWidget::class,
             data: WeightedWidgetData::class,
+            scope: fn (Builder $query): Builder => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
         ));
 
         $request = Request::create('/weighted-widgets');

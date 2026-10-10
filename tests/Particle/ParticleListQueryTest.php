@@ -64,6 +64,9 @@ class ParticleListQueryTest extends TestCase
             backing: ListCrate::class,
             data: ListCrateData::class,
             includes: ['labels'],
+            // This query-composition fixture deliberately exposes all persisted crates. Policy admission
+            // and the explicit population boundary are conjunctive (integrator ruling 2026-10-10 02:43Z).
+            scope: fn (Builder $query): Builder => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
             label: 'List Crates',
         ));
     }

@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Frame;
 
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
@@ -70,6 +71,9 @@ class DeclaredReadAbilityTest extends TestCase
             key: 'gadgets',
             backing: Gadget::class,
             data: GadgetData::class,
+            // Integrator ruling 2026-10-10 02:43Z: this feature fixture's all-row population
+            // boundary composes with viewAny; the declared ability remains the narrower gate under test.
+            scope: fn (Builder $query): Builder => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
             project: fn (Gadget $gadget): GadgetData => new GadgetData((string) $gadget->getKey()),
             readOnly: true,
             label: 'Gadgets',

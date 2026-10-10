@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Webhooks;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Gate;
@@ -15,6 +16,7 @@ use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Ops\ResetHookOp;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
 use Splicewire\Beam\Webhooks\DispatchWebhookJob;
 use Splicewire\Beam\Webhooks\HookEmitter;
@@ -59,6 +61,11 @@ class HookHttpSurfaceTest extends TestCase
 
         $migration = require __DIR__.'/../../database/migrations/shared/create_beam_hooks_table.php.stub';
         $migration->up();
+
+        // This surface fixture exposes every persisted hook explicitly. Policy admission alone no longer
+        // supplies the population boundary (integrator ruling 2026-10-10 02:43Z).
+        app(ParticleResourceRegistry::class)->get('hooks')->scope =
+            fn (Builder $query): Builder => $query->whereNotNull($query->getModel()->getQualifiedKeyName());
 
         $this->actingAs(new HookHttpUser);
         Gate::before(fn () => true);

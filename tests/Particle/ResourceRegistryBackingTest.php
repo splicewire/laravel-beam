@@ -54,6 +54,7 @@ class ResourceRegistryBackingTest extends TestCase
             key: 'gadgets',
             backing: Gadget::class,
             data: WidgetGateData::class,
+            scope: fn ($query) => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
             label: 'Gadgets',
             section: 'platform',
         ), ['operator']);
@@ -144,7 +145,11 @@ class ResourceRegistryBackingTest extends TestCase
      */
     public function test_a_resource_with_no_read_data_class_is_still_classified_and_listed(): void
     {
-        $this->registry->register(new ParticleResource(key: 'dataless', backing: Gadget::class));
+        $this->registry->register(new ParticleResource(
+            key: 'dataless',
+            backing: Gadget::class,
+            scope: fn ($query) => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
+        ));
 
         $this->actor = $this->stranger();
         $this->assertNotContains('dataless', $this->keys());   // the bound viewAny still refuses
@@ -220,6 +225,7 @@ class ResourceRegistryBackingTest extends TestCase
             key: 'account-tokens',
             backing: Gadget::class,
             data: WidgetGateData::class,
+            scope: fn ($query) => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
             label: 'Tokens',
             readOnly: true,
         ), ['user', 'tenant']);

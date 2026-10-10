@@ -74,6 +74,7 @@ class ResourceContributionTest extends TestCase
             key: 'contrib-crate',
             backing: ContribCrate::class,
             data: ContribCrateData::class,
+            scope: fn ($query) => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
             label: 'Crates',
         ));
     }

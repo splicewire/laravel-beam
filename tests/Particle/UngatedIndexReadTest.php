@@ -129,13 +129,14 @@ class UngatedIndexReadTest extends TestCase
         $this->getJson('/gadgets')->assertOk()->assertJsonCount(1, 'data');
     }
 
-    public function test_a_bound_policy_lets_the_index_through_unchanged(): void
+    /** Integrator ruling 2026-10-10 02:43Z: policy admission without a population scope is refused. */
+    public function test_a_bound_policy_without_a_scope_refuses_the_index(): void
     {
         $this->declare();
         Gate::policy(Gadget::class, GadgetPolicy::class);
         Particle::mount('gadgets')->only(['index'])->register();
 
-        $this->getJson('/gadgets')->assertOk()->assertJsonCount(2, 'data');
+        $this->getJson('/gadgets')->assertForbidden();
     }
 
     public function test_a_relative_mount_lists_through_its_parent_and_is_not_denied(): void

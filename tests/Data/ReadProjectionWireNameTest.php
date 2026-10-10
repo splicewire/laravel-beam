@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Data;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 use Schemastud\Frame\FrameServiceProvider;
@@ -90,6 +91,10 @@ class ReadProjectionWireNameTest extends TestCase
     public function test_the_hooks_particle_index_serves_the_camel_projection(): void
     {
         $this->app->make(ParticleResourceRegistry::class)->registerClass(HookData::class);
+        // Integrator ruling 2026-10-10 02:43Z: a policy-bound list needs viewAny AND an
+        // authored population boundary. This wire-shape test deliberately exposes all fixture rows.
+        $this->app->make(ParticleResourceRegistry::class)->get('hooks')->scope =
+            fn (Builder $query): Builder => $query->whereNotNull($query->getModel()->getQualifiedKeyName());
         $this->actingAs((new User)->forceFill(['id' => 1]));
         Gate::before(fn () => true);
         $hook = $this->hook();
