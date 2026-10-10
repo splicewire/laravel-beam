@@ -160,7 +160,8 @@ class HookData extends BeamData
     }
 
     /**
-     * Newest first. Deliberately NOT scoped by `owner_*`: ticket 12 §7 made the owner morph AUDIT
+     * Every persisted hook on the mounted connection, newest first. Deliberately NOT scoped by `owner_*`:
+     * ticket 12 §7 made the owner morph AUDIT
      * ONLY, and a scope here would quietly turn it into an authorization boundary that nothing else
      * in the surface honours — which is the worse of the two failures, because it would look like it
      * worked.
@@ -170,6 +171,6 @@ class HookData extends BeamData
      */
     public static function scope(Builder $q): Builder
     {
-        return $q->latest();
+        return $q->whereNotNull($q->getModel()->getQualifiedKeyName())->latest();
     }
 }

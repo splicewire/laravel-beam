@@ -105,6 +105,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_scoped_metadata_keeps_option_provider_ownership_and_search(): void
     {
+        // Integrator ruling 2026-10-10 02:43Z: viewAny composes with this fixture's owner scope.
         Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         DataFilter::options('variant-statuses', fn (?string $search) => VariantRecord::query()
             ->where('owner_id', auth()->id())->where('title', 'like', '%'.$search.'%')->orderBy('id')->get()
@@ -122,6 +123,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_model_backed_candidate_cannot_borrow_its_targets_owner_scope(): void
     {
+        // Integrator ruling 2026-10-10 02:43Z: viewAny cannot replace either resource's own scope.
         Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'active-records', backing: VariantRecord::class, data: SelectedVariantFilters::class,
@@ -141,6 +143,7 @@ class FilterVariantExecutionTest extends TestCase
     {
         // `1 = 0` is the estate's fail-closed row scope for an actor holding no view token. Structurally
         // it is a predicate; it is a refusal, and must not stand in for the ownership scope above.
+        // Integrator ruling 2026-10-10 02:43Z: the empty population still composes with viewAny.
         Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         DataFilter::registry()->registerDefinition(new ResourceDefinition('variant-records', CanonicalVariantFilters::class,
             NoRowVariantQuery::class, VariantRecord::class));
@@ -170,6 +173,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_nonframe_consumer_lists_keep_declared_variant_scopes_and_authorization(): void
     {
+        // Integrator ruling 2026-10-10 02:43Z applies to non-Frame consumers too.
         Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'variant-records', backing: VariantRecord::class, data: VariantRowData::class,
@@ -318,6 +322,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_a_selected_variant_cannot_bypass_its_declared_read_policy(): void
     {
+        // Integrator ruling 2026-10-10 02:43Z: model viewAny and the declared ability are both required.
         Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'active-records', backing: VariantPolicyBacking::class, data: SelectedVariantFilters::class,

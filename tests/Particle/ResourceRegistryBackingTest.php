@@ -54,6 +54,7 @@ class ResourceRegistryBackingTest extends TestCase
             key: 'gadgets',
             backing: Gadget::class,
             data: WidgetGateData::class,
+            // Integrator ruling 2026-10-10 02:43Z: explicit all-row fixture population.
             scope: fn ($query) => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
             label: 'Gadgets',
             section: 'platform',
@@ -148,6 +149,7 @@ class ResourceRegistryBackingTest extends TestCase
         $this->registry->register(new ParticleResource(
             key: 'dataless',
             backing: Gadget::class,
+            // Integrator ruling 2026-10-10 02:43Z: explicit all-row fixture population.
             scope: fn ($query) => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
         ));
 
@@ -225,6 +227,7 @@ class ResourceRegistryBackingTest extends TestCase
             key: 'account-tokens',
             backing: Gadget::class,
             data: WidgetGateData::class,
+            // Integrator ruling 2026-10-10 02:43Z: explicit all-row fixture population.
             scope: fn ($query) => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
             label: 'Tokens',
             readOnly: true,

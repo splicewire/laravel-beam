@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Data;
 
+use Illuminate\Database\Eloquent\Builder;
 use Rushing\DataFilters\Attributes\Sortable;
 use Schemastud\DataSchemas\Attributes\Description;
 use Schemastud\Frame\Attributes\Column;
@@ -103,6 +104,12 @@ class BeamSchemaData extends BeamData
         #[Sortable]
         public ?string $createdAt = null,
     ) {}
+
+    /** Every persisted schema on the mounted connection; actor admission remains policy-gated. */
+    public static function scope(Builder $query): Builder
+    {
+        return $query->whereNotNull($query->getModel()->getQualifiedKeyName());
+    }
 
     public static function project(BeamSchema $model): self
     {

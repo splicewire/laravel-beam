@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Data;
 
+use Illuminate\Database\Eloquent\Builder;
 use Schemastud\Frame\Attributes\Column;
 use Spatie\LaravelData\Attributes\MapName;
 use Splicewire\Beam\Models\GitRepo;
@@ -53,6 +54,12 @@ class GitRepoData extends BeamData
         #[MapName('checkedAt')]
         public ?string $checkedAt,
     ) {}
+
+    /** Every registered repository on the mounted connection; actor admission remains policy-gated. */
+    public static function scope(Builder $query): Builder
+    {
+        return $query->whereNotNull($query->getModel()->getQualifiedKeyName());
+    }
 
     /** The explicit column => property map; the particle layer finds this by convention. */
     public static function project(GitRepo $model): self

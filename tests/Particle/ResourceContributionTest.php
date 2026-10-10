@@ -74,6 +74,7 @@ class ResourceContributionTest extends TestCase
             key: 'contrib-crate',
             backing: ContribCrate::class,
             data: ContribCrateData::class,
+            // Integrator ruling 2026-10-10 02:43Z: explicit all-row fixture population.
             scope: fn ($query) => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
             label: 'Crates',
         ));

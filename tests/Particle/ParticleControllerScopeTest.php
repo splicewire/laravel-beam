@@ -84,6 +84,7 @@ class ParticleControllerScopeTest extends TestCase
             key: 'sorted-widget',
             backing: SortedWidget::class,
             data: SortedWidgetData::class,
+            // Integrator ruling 2026-10-10 02:43Z: explicit all-row fixture population.
             scope: fn (Builder $query): Builder => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
         ));
 
@@ -119,6 +120,7 @@ class ParticleControllerScopeTest extends TestCase
             key: 'weighted-widget',
             backing: WeightedWidget::class,
             data: WeightedWidgetData::class,
+            // Integrator ruling 2026-10-10 02:43Z: explicit all-row fixture population.
             scope: fn (Builder $query): Builder => $query->whereNotNull($query->getModel()->getQualifiedKeyName()),
         ));
 

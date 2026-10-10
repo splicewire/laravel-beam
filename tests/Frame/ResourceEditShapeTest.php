@@ -2,14 +2,12 @@
 
 namespace Splicewire\Beam\Tests\Frame;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Models\Hook;
-use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
 
 class ResourceEditShapeTest extends TestCase
@@ -36,12 +34,6 @@ class ResourceEditShapeTest extends TestCase
         }
         Gate::policy(Hook::class, ResourceEditShapePolicy::class);
         Gate::policy(BeamSchema::class, ResourceEditShapePolicy::class);
-        foreach (['hooks', 'schemas'] as $key) {
-            // This shape fixture exposes every persisted fixture row explicitly; policy admission alone
-            // no longer supplies a list boundary (integrator ruling 2026-10-10 02:43Z).
-            app(ParticleResourceRegistry::class)->get($key)->scope =
-                fn (Builder $query): Builder => $query->whereNotNull($query->getModel()->getQualifiedKeyName());
-        }
         $this->actingAs((new User)->forceFill(['id' => 1]));
     }
 

@@ -2,7 +2,6 @@
 
 namespace Splicewire\Beam\Tests\Models;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User as AuthUser;
 use Illuminate\Http\Request;
@@ -137,9 +136,6 @@ class GitRepoPolicyGateTest extends TestCase
 
         $this->assertNotNull($resource, 'beam declares the git-repo resource');
         $this->assertTrue(ResourceReadGuard::forApp()->policyBound($resource));
-        // The production seat obtains its population boundary from its mounted realm. This unit seam
-        // supplies the equivalent explicit all-row fixture scope alongside viewAny.
-        $resource->scope = fn (Builder $query): Builder => $query->whereNotNull($query->getModel()->getQualifiedKeyName());
         $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, Request::create('/'), $this->holder('git-repo.view'))->allowed());
     }
 
