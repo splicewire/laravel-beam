@@ -187,7 +187,8 @@ class ResourceFilters
      */
     public function authorizeModel(?string $model, ?ParticleResource $resource): void
     {
-        // UX-08c: a declared read ability refuses the filter metadata as it refuses the rows.
+        // A declared read ability refuses metadata as it refuses rows, including for policy-less
+        // resources whose backing query must not be executed merely to describe a filter.
         if ($resource !== null) {
             app(ResourceReadGuard::class)->inspectDeclaredAbility($resource, Gate::getFacadeRoot())->authorize();
         }
@@ -197,12 +198,21 @@ class ResourceFilters
         }
 
         $permission = Gate::inspect('viewAny', $model);
-        $guard = app(ResourceReadGuard::class);
-        if ($permission->allowed() || ($resource !== null && $resource->modelClass() === $model
-            && $guard->scoped($resource, request()) === true && ! $guard->admitsNoRows($resource, request()))) {
+        if ($resource === null || $resource->modelClass() !== $model) {
+            $permission->authorize();
+
             return;
         }
 
-        $permission->authorize();
+        // Filter schema, variants and options expose the list's shape. For policy-bound particles,
+        // they therefore require the same conjunctive admission as the data socket: viewAny AND a
+        // declared population boundary that can admit at least one row.
+        $guard = app(ResourceReadGuard::class);
+        abort_unless(
+            $permission->allowed()
+                && $guard->scoped($resource, request()) === true
+                && ! $guard->admitsNoRows($resource, request()),
+            403,
+        );
     }
 }

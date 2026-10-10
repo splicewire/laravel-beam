@@ -3,7 +3,9 @@
 namespace Splicewire\Beam\Realm;
 
 use Illuminate\Contracts\Auth\Access\Gate;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate as GateFacade;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
@@ -95,6 +97,10 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  */
 class RealmEntitlementResourceGate implements ResourceAccessGate
 {
+    protected bool $actorSpecified = false;
+
+    protected ?Authenticatable $actor = null;
+
     /**
      * The estate's one staff entitlement, used when a CENTRAL realm declares no gate of its own.
      *
@@ -115,7 +121,7 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
 
     public function allowsResource(ResourceDefinition $definition): bool
     {
-        $actor = Auth::user();
+        $actor = $this->actorSpecified ? $this->actor : Auth::user();
 
         if (! $this->visibility->readable($definition, $actor)) {
             return false;
@@ -157,6 +163,17 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
         }
 
         return false;
+    }
+
+    /** A copy whose reach and declared-read gates are bound to one explicit actor, including a guest. */
+    public function forActor(?Authenticatable $actor): self
+    {
+        $gate = GateFacade::forUser($actor);
+        $copy = new self($this->particles, $this->realms, $gate, new ResourceVisibility($this->particles, $gate));
+        $copy->actorSpecified = true;
+        $copy->actor = $actor;
+
+        return $copy;
     }
 
     /**

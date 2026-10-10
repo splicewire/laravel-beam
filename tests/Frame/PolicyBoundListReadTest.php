@@ -87,10 +87,12 @@ class PolicyBoundListReadTest extends TestCase
 
         $this->as('no-team');
         $this->getJson('/frame/resources/gadgets')->assertForbidden();
+        $this->getJson('/frame/resources/gadgets/filters/schema')->assertForbidden();
         $this->getJson('/gadgets')->assertForbidden();
 
         $this->as('holder');
         $this->getJson('/frame/resources/gadgets')->assertForbidden();
+        $this->getJson('/frame/resources/gadgets/filters/schema')->assertForbidden();
         $this->getJson('/gadgets')->assertForbidden();
     }
 
@@ -102,6 +104,7 @@ class PolicyBoundListReadTest extends TestCase
 
         $this->as('no-team');
         $this->getJson('/frame/resources/gadgets')->assertForbidden();
+        $this->getJson('/frame/resources/gadgets/filters/schema')->assertForbidden();
     }
 
     public function test_a_declared_scope_without_view_any_refuses_the_list(): void
@@ -111,6 +114,7 @@ class PolicyBoundListReadTest extends TestCase
 
         $this->as('no-team');
         $this->getJson('/frame/resources/gadgets')->assertForbidden();
+        $this->getJson('/frame/resources/gadgets/filters/schema')->assertForbidden();
     }
 
     public function test_view_any_and_a_declared_scope_serve_the_scoped_rows(): void
@@ -120,6 +124,7 @@ class PolicyBoundListReadTest extends TestCase
 
         $this->as('holder');
         $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '1');
+        $this->getJson('/frame/resources/gadgets/filters/schema')->assertOk();
         $this->getJson('/gadgets')->assertOk();
     }
 
