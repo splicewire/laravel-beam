@@ -134,7 +134,11 @@ class ResourceVisibility
      * listing and the read cannot answer two ways. A manifest-only definition (no registered declaration)
      * has no guard to ask, exactly as {@see ScopedIndexQuery::forDefinition()}.
      */
-    public function listable(ResourceDefinition $definition, ?Authenticatable $actor): bool
+    public function listable(
+        ResourceDefinition $definition,
+        ?Authenticatable $actor,
+        ?string $mountedRealm = null,
+    ): bool
     {
         if ($definition->model === null) {
             return $actor !== null && $this->readable($definition, $actor);
@@ -143,13 +147,13 @@ class ResourceVisibility
         $resource = $this->particles->find($definition->key);
 
         if ($resource !== null) {
-            return $this->readBoundaryAdmits($definition, $actor);
+            return $this->readBoundaryAdmits($definition, $actor, $mountedRealm);
         }
 
         $policy = $this->gate->getPolicyFor($definition->model);
 
         if ($policy === null) {
-            return $this->readBoundaryAdmits($definition, $actor);
+            return $this->readBoundaryAdmits($definition, $actor, $mountedRealm);
         }
 
         if (! method_exists($policy, 'viewAny')) {
@@ -165,7 +169,11 @@ class ResourceVisibility
      * A guard that throws — a backing this request cannot build — fails CLOSED: a listing is
      * secure-by-omission, and a nav build must not crash on one declaration.
      */
-    private function readBoundaryAdmits(ResourceDefinition $definition, ?Authenticatable $actor): bool
+    private function readBoundaryAdmits(
+        ResourceDefinition $definition,
+        ?Authenticatable $actor,
+        ?string $mountedRealm = null,
+    ): bool
     {
         $resource = $this->particles->find($definition->key);
 
@@ -174,7 +182,7 @@ class ResourceVisibility
         }
 
         try {
-            return ResourceReadGuard::forApp()->inspectReadFor($resource, request(), $actor)->allowed();
+            return ResourceReadGuard::forApp()->inspectReadFor($resource, request(), $actor, $mountedRealm)->allowed();
         } catch (Throwable) {
             return false;
         }

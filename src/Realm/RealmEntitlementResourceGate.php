@@ -185,7 +185,7 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
      * {@see ResourceReadGuard::inspectRead()} counts this as a read
      * authorization beside a policy, tenancy and a query predicate (ux-demo replay 2026-09-23).
      */
-    public function entitledThroughRealm(string $key, ?Gate $as = null): bool
+    public function entitledThroughRealm(string $key, ?Gate $as = null, ?string $mountedRealm = null): bool
     {
         // `$as` is a Gate already bound to the actor being asked about (ResourceReadGuard::inspectReadFor());
         // without one, the ambient user is asked.
@@ -197,7 +197,7 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
             return false;
         }
 
-        $mountedRealm = request()->route('realm');
+        $mountedRealm ??= request()->route('realm');
         if (is_string($mountedRealm) && $mountedRealm !== '') {
             if (! in_array($mountedRealm, $realms, true)) {
                 return false;

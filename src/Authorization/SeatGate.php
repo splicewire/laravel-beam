@@ -204,7 +204,7 @@ class SeatGate
         }
 
         return match ($resolution->kind) {
-            SeatGateKind::Resource => $this->resourceAllows($resolution, $actor),
+            SeatGateKind::Resource => $this->resourceAllows($resolution, $actor, $realm),
             SeatGateKind::Operation => $this->operationAllows($resolution->operation, $actor),
             SeatGateKind::Route => true,
             SeatGateKind::Open => $actor !== null,
@@ -212,7 +212,11 @@ class SeatGate
     }
 
     /** Match the actual Frame list path: realm reach first, then the declaration-derived read boundary. */
-    private function resourceAllows(SeatGateResolution $resolution, ?Authenticatable $actor): bool
+    private function resourceAllows(
+        SeatGateResolution $resolution,
+        ?Authenticatable $actor,
+        ?string $realm = null,
+    ): bool
     {
         $definition = $resolution->resource;
         if ($definition === null || ! $this->visibility->readable($definition, $actor)) {
@@ -229,7 +233,7 @@ class SeatGate
         $resource = $this->resources->find($definition->key);
 
         return $resource !== null
-            && ResourceReadGuard::forApp()->inspectReadFor($resource, request(), $actor)->allowed();
+            && ResourceReadGuard::forApp()->inspectReadFor($resource, request(), $actor, $realm)->allowed();
     }
 
     /** A record-bound operation cannot be decided without a record and therefore is not a rail gate. */

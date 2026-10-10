@@ -36,9 +36,14 @@ class ResourceReadGuard
      * dashboard's cards, the registry) answers from this boundary instead of a parallel rule. A null
      * actor is a guest: every Gate arm is asked of nobody.
      */
-    public function inspectReadFor(ParticleResource $resource, Request $request, ?Authenticatable $actor): Response
+    public function inspectReadFor(
+        ParticleResource $resource,
+        Request $request,
+        ?Authenticatable $actor,
+        ?string $mountedRealm = null,
+    ): Response
     {
-        return $this->inspect($resource, $request, Gate::forUser($actor));
+        return $this->inspect($resource, $request, Gate::forUser($actor), $mountedRealm);
     }
 
     /**
@@ -80,7 +85,12 @@ class ResourceReadGuard
         return $this->inspectDeclaredAbility($resource, Gate::forUser($actor));
     }
 
-    private function inspect(ParticleResource $resource, Request $request, GateContract $gate): Response
+    private function inspect(
+        ParticleResource $resource,
+        Request $request,
+        GateContract $gate,
+        ?string $mountedRealm = null,
+    ): Response
     {
         $declared = $this->inspectDeclaredAbility($resource, $gate);
         if ($declared->denied()) {
@@ -132,7 +142,7 @@ class ResourceReadGuard
 
         // A hard realm entitlement the caller holds: the realm gate has already refused everyone else at
         // the socket, so this population is exactly what the caller was authorized for.
-        if (app(RealmEntitlementResourceGate::class)->entitledThroughRealm($resource->key, $gate)) {
+        if (app(RealmEntitlementResourceGate::class)->entitledThroughRealm($resource->key, $gate, $mountedRealm)) {
             return Response::allow();
         }
 

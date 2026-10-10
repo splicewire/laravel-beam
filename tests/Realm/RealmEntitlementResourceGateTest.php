@@ -224,6 +224,17 @@ class RealmEntitlementResourceGateTest extends TestCase
         $this->assertTrue($this->gate()->allowsResource($definition));
     }
 
+    /** A nav build names its realm without an HTTP route; that explicit door must still bound the population. */
+    public function test_an_explicit_nav_realm_authorizes_only_its_named_population(): void
+    {
+        $this->register('hooks', ['operator', 'tenant']);
+        $this->holding(['os.operate']);
+
+        $this->assertTrue($this->gate()->entitledThroughRealm('hooks', mountedRealm: 'operator'));
+        $this->assertFalse($this->gate()->entitledThroughRealm('hooks', mountedRealm: 'tenant'));
+        $this->assertFalse($this->gate()->entitledThroughRealm('hooks'));
+    }
+
     /** Beam binds itself over frame's permit-everything default, or none of the above runs at a host. */
     public function test_beam_binds_this_gate_over_frames_open_default(): void
     {
