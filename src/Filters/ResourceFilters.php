@@ -180,11 +180,7 @@ class ResourceFilters
         return (new JsonSchemaGenerator(['strategies' => config('data-schemas.strategies')]))->generate(new \ReflectionClass($definition->data));
     }
 
-    /**
-     * Metadata uses the same declared row boundary as reads, without requiring class-wide access. A
-     * boundary that admits no row for the caller ({@see ResourceReadGuard::admitsNoRows()}) is a refusal,
-     * not a scope, and grants no metadata.
-     */
+    /** Metadata uses the same declared read boundary as the resource list. */
     public function authorizeModel(?string $model, ?ParticleResource $resource): void
     {
         // A declared read ability refuses metadata as it refuses rows, including for policy-less
@@ -197,22 +193,14 @@ class ResourceFilters
             return;
         }
 
-        $permission = Gate::inspect('viewAny', $model);
         if ($resource === null || $resource->modelClass() !== $model) {
-            $permission->authorize();
+            Gate::inspect('viewAny', $model)->authorize();
 
             return;
         }
 
-        // Filter schema, variants and options expose the list's shape. For policy-bound particles,
-        // they therefore require the same conjunctive admission as the data socket: viewAny AND a
-        // declared population boundary that can admit at least one row.
-        $guard = app(ResourceReadGuard::class);
-        abort_unless(
-            $permission->allowed()
-                && $guard->scoped($resource, request()) === true
-                && ! $guard->admitsNoRows($resource, request()),
-            403,
-        );
+        // Filter schema, variants and options expose the list's shape, so they ask the list's guard
+        // rather than re-spelling its policy, population and realm-entitlement arms here.
+        app(ResourceReadGuard::class)->inspectRead($resource, request())->authorize();
     }
 }

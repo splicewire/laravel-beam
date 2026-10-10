@@ -41,8 +41,7 @@ class ResourceReadGuard
         Request $request,
         ?Authenticatable $actor,
         ?string $mountedRealm = null,
-    ): Response
-    {
+    ): Response {
         return $this->inspect($resource, $request, Gate::forUser($actor), $mountedRealm);
     }
 
@@ -90,8 +89,7 @@ class ResourceReadGuard
         Request $request,
         GateContract $gate,
         ?string $mountedRealm = null,
-    ): Response
-    {
+    ): Response {
         $declared = $this->inspectDeclaredAbility($resource, $gate);
         if ($declared->denied()) {
             return $declared;
@@ -135,6 +133,9 @@ class ResourceReadGuard
         } catch (Throwable $e) {
             report($e);
             $scoped = false;
+        }
+        if ($scoped !== false && $this->admitsNoRows($resource, $request)) {
+            return Response::deny("Reading [{$resource->key}] admits no rows for this actor.");
         }
         if ($scoped !== false) {
             return Response::allow();

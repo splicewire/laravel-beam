@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Schemastud\Frame\FrameServiceProvider;
+use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -126,6 +127,30 @@ class PolicyBoundListReadTest extends TestCase
         $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '1');
         $this->getJson('/frame/resources/gadgets/filters/schema')->assertOk();
         $this->getJson('/gadgets')->assertOk();
+    }
+
+    public function test_filter_metadata_uses_the_same_realm_entitled_decision_as_the_list(): void
+    {
+        Gate::policy(Gadget::class, HolderOnlyGadgetPolicy::class);
+        config(['beam.core.realm_gates' => ['staffroom' => ['entitlement' => 'staff.read']]]);
+        app(ParticleResourceRegistry::class)->loadRealmMap(['staffroom' => ['gadgets']]);
+        Gate::define('entitlement:staff.read', fn ($actor) => $actor?->name === 'holder');
+        $this->declare();
+
+        $this->assertFalse(app(ResourceReadGuard::class)->scoped(
+            app(ParticleResourceRegistry::class)->get('gadgets'),
+            request(),
+        ));
+
+        $this->as('holder');
+        $this->getJson('/frame/resources/gadgets')->assertOk();
+        $this->getJson('/frame/resources/gadgets/filters/schema')->assertOk();
+        $this->getJson('/frame/resources/gadgets/filters/variants')->assertOk();
+
+        $this->as('no-team');
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+        $this->getJson('/frame/resources/gadgets/filters/schema')->assertForbidden();
+        $this->getJson('/frame/resources/gadgets/filters/variants')->assertForbidden();
     }
 
     /**

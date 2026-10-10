@@ -148,6 +148,7 @@ class FilterVariantExecutionTest extends TestCase
         DataFilter::registry()->registerDefinition(new ResourceDefinition('variant-records', CanonicalVariantFilters::class,
             NoRowVariantQuery::class, VariantRecord::class));
         DataFilter::options('variant-statuses', fn () => throw new \RuntimeException('Refused options executed'));
+        $this->getJson('frame/resources/variant-records')->assertForbidden();
         $this->getJson('frame/resources/variant-records/filters/schema')->assertForbidden();
         $this->getJson('frame/resources/variant-records/filters/variants')->assertForbidden();
         $this->getJson('frame/resources/variant-records/filters/options/variant-statuses')->assertForbidden();
