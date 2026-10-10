@@ -74,6 +74,35 @@ class ScopedReadAuthenticationAuditTest extends TestCase
         $this->assertSame(DoctorStatus::Pass, $audit->run()[0]->status);
     }
 
+    public function test_an_unauthenticated_record_read_is_not_hidden_by_the_absence_of_an_index(): void
+    {
+        $resources = new ParticleResourceRegistry;
+        $resources->register(new ParticleResource(
+            key: 'gadgets',
+            backing: Gadget::class,
+            data: GadgetData::class,
+            scope: fn ($query) => $query->where('user_id', 1),
+            frame: false,
+        ));
+
+        Route::get('api/gadgets/{gadget}', [ParticleController::class, 'show'])
+            ->defaults(ParticleController::RESOURCE, 'gadgets')
+            ->name('gadgets.show');
+
+        $audit = new ScopedReadAuthenticationAudit(
+            app(Router::class),
+            $resources,
+            ResourceReadGuard::forApp(),
+        );
+
+        $findings = $audit->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Fail, $findings[0]->status);
+        $this->assertStringContainsString('[gadgets]', $findings[0]->detail);
+        $this->assertStringContainsString('GET api/gadgets/{gadget}', $findings[0]->detail);
+    }
+
     public function test_a_model_policy_is_authority_and_removes_the_resource_from_the_stopgap_population(): void
     {
         $resources = new ParticleResourceRegistry;

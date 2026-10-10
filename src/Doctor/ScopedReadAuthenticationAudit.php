@@ -50,7 +50,7 @@ class ScopedReadAuthenticationAudit implements DoctorAudit
         $keys = $this->keys();
         $unsafe = [];
 
-        foreach ($this->indexRoutes() as $key => $routes) {
+        foreach ($this->readRoutes() as $key => $routes) {
             if (! in_array($key, $keys, true)) {
                 continue;
             }
@@ -85,15 +85,14 @@ class ScopedReadAuthenticationAudit implements DoctorAudit
     }
 
     /** @return array<string, list<RouteInstance>> */
-    private function indexRoutes(): array
+    private function readRoutes(): array
     {
         $routes = [];
 
         foreach ($this->router->getRoutes()->getRoutes() as $route) {
             $key = $route->defaults[ParticleController::RESOURCE] ?? null;
             if (! is_string($key)
-                || ! in_array('GET', $route->methods(), true)
-                || $route->getActionMethod() !== 'index') {
+                || ! in_array('GET', $route->methods(), true)) {
                 continue;
             }
 
