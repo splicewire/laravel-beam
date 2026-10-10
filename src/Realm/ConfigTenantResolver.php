@@ -7,14 +7,20 @@ use Splicewire\Beam\Realm\Contracts\TenantResolver;
 
 /**
  * The default {@see TenantResolver}: a realm resolves a tenant when it is one of the configured
- * tenant-bearing realms AND tenancy is enabled for this deployment (`config('frame.tenancy')`, default
- * true). Central/operator and user realms are never tenant-bearing.
+ * tenant-bearing realms AND this deployment uses STANCL-IDENTIFIED TENANCY (`config('frame.tenancy')`,
+ * default true). Central/operator and user realms are never tenant-bearing.
  *
- * The deployment-shape switch stays config-driven (a single-tenant satellite sets `frame.tenancy=false`
- * and the tenant realm resolves centrally — the exact behaviour the retired `$tenancy` flag gave) but no
- * longer rides the agnostic `RealmDefinition`. WHICH realms are tenant-bearing is this resolver's config
- * (default `['tenant']`), not a per-realm flag — a host with differently-keyed tenant realms binds its
- * own instance.
+ * `config('frame.tenancy')` is the deployment's tenant-IDENTIFICATION-MODE switch, NOT a tenant count:
+ *   - true (default): stancl-identified tenancy — a tenant is a domain/path with a per-tenant database, so
+ *     the tenant realm resolves a (current) stancl tenant.
+ *   - false: the host does not identify tenants via stancl. That includes a MEMBERSHIP-identified host,
+ *     where the tenant is a team / `tenant_users` seat on the central connection (still MULTI-tenant), as
+ *     well as a single-tenant install. `false` only says "no stancl tenant to resolve here", so downstream
+ *     (e.g. the frame nav projection) uses the membership-seated path instead of requiring a current stancl
+ *     tenant + actor mirror. (This replaces the retired per-realm `$tenancy` flag.)
+ *
+ * WHICH realms are tenant-bearing is this resolver's config (default `['tenant']`), not a per-realm flag —
+ * a host with differently-keyed tenant realms binds its own instance.
  */
 class ConfigTenantResolver implements TenantResolver
 {
