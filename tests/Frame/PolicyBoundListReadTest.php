@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Tests\Frame;
 
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Exceptions;
@@ -16,10 +18,9 @@ use Splicewire\Beam\Tests\Fixtures\ReadGuard\GadgetData;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * The list read asks the bound policy's viewAny (launch security row 51a71469). Until this, a bound policy was a PASS for
- * the list: `ResourceReadGuard::inspect()` returned allow as soon as any policy was bound, the list asked nothing else,
- * and its rows were narrowed only by a declared scope. So every policy-bound, row-unscoped resource listed in full to any
- * signed-in actor, a user with no team and no token included, while viewAny gated only the nav seat.
+ * The list read requires BOTH the bound policy's viewAny and a declared scope (integrator ruling 2026-10-10 02:43Z).
+ * Neither half substitutes for the other: policy admission without a row/tenant/realm boundary would expose the whole
+ * population, while a scope without policy admission let a role-less member read rows a policy explicitly withheld.
  *
  * A policy WITHOUT a viewAny method keeps today's pass, exactly as `ResourceVisibility::listable()` reads it, so the read and
  * the nav cannot disagree; that residual open list is enumerated and ratcheted, not hidden.
@@ -79,7 +80,7 @@ class PolicyBoundListReadTest extends TestCase
         $this->actingAs(ListReadActor::query()->where('name', $name)->firstOrFail());
     }
 
-    public function test_a_bound_policy_refuses_the_list_to_an_actor_its_view_any_refuses(): void
+    public function test_view_any_without_a_scope_refuses_the_list(): void
     {
         Gate::policy(Gadget::class, HolderOnlyGadgetPolicy::class);
         $this->declare();
@@ -89,27 +90,37 @@ class PolicyBoundListReadTest extends TestCase
         $this->getJson('/gadgets')->assertForbidden();
 
         $this->as('holder');
-        $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 2);
-        $this->getJson('/gadgets')->assertOk();
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+        $this->getJson('/gadgets')->assertForbidden();
     }
 
-    public function test_a_gate_before_superuser_still_lists_it(): void
+    public function test_a_gate_before_superuser_still_needs_a_scope(): void
     {
         Gate::policy(Gadget::class, HolderOnlyGadgetPolicy::class);
         $this->declare();
         Gate::before(fn () => true);
 
         $this->as('no-team');
-        $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 2);
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
     }
 
-    public function test_a_declared_narrowing_scope_still_serves_its_own_rows(): void
+    public function test_a_declared_scope_without_view_any_refuses_the_list(): void
     {
         Gate::policy(Gadget::class, HolderOnlyGadgetPolicy::class);
         $this->declare(fn ($query) => $query->where('user_id', auth()->id()));
 
         $this->as('no-team');
-        $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '2');
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+    }
+
+    public function test_view_any_and_a_declared_scope_serve_the_scoped_rows(): void
+    {
+        Gate::policy(Gadget::class, HolderOnlyGadgetPolicy::class);
+        $this->declare(fn ($query) => $query->where('user_id', auth()->id()));
+
+        $this->as('holder');
+        $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '1');
+        $this->getJson('/gadgets')->assertOk();
     }
 
     /**
@@ -134,7 +145,7 @@ class PolicyBoundListReadTest extends TestCase
         $this->getJson('/frame/resources/soft-gadgets')->assertForbidden();
 
         $this->as('holder');
-        $this->getJson('/frame/resources/soft-gadgets')->assertOk()->assertJsonPath('total', 2);
+        $this->getJson('/frame/resources/soft-gadgets')->assertForbidden();
     }
 
     /**
@@ -147,7 +158,7 @@ class PolicyBoundListReadTest extends TestCase
         Gate::policy(Gadget::class, HolderOnlyGadgetPolicy::class);
         $this->declare(fn ($query) => throw new \RuntimeException('the boundary cannot be built here'));
 
-        $this->as('no-team');
+        $this->as('holder');
         $this->getJson('/frame/resources/gadgets')->assertForbidden();
         Exceptions::assertReported(fn (\RuntimeException $e) => $e->getMessage() === 'the boundary cannot be built here');
     }
@@ -192,9 +203,9 @@ class NoViewAnyGadgetPolicy
     }
 }
 
-class SoftGadget extends \Illuminate\Database\Eloquent\Model
+class SoftGadget extends Model
 {
-    use \Illuminate\Database\Eloquent\SoftDeletes;
+    use SoftDeletes;
 
     protected $table = 'gadgets';
 

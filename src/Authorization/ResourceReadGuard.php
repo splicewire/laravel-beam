@@ -87,13 +87,24 @@ class ResourceReadGuard
             return $declared;
         }
 
-        // A bound policy is no longer a pass (launch security row 51a71469): the list asked nothing else, so every
-        // policy-bound, row-unscoped resource listed in full to any signed-in actor. A bound policy with a viewAny is now
-        // asked, below, after the same scope and realm-entitlement allowances the policy-less read gets. A policy WITHOUT
-        // a viewAny keeps the pass, exactly as ResourceVisibility::listable() reads it, so the read and the nav cannot
-        // disagree; that residual open list is ratcheted (`model-backed-open-list`), never silent.
-        if ($this->policyBound($resource) === true && ! $this->policyHasViewAny($resource)) {
+        // A bound policy with viewAny and the resource's scope are CONJUNCTIVE (integrator ruling 2026-10-10 02:43Z):
+        // the policy says which actors may list, while tenancy / a declared predicate / a hard realm entitlement says
+        // which population they may list. Neither can replace the other. A policy WITHOUT viewAny keeps the existing
+        // pass, exactly as ResourceVisibility::listable() reads it; that residual open list remains ratcheted
+        // (`model-backed-open-list`), never silent.
+        $policyBound = $this->policyBound($resource);
+        $policyRequiresViewAny = $policyBound === true && $this->policyHasViewAny($resource);
+
+        if ($policyBound === true && ! $policyRequiresViewAny) {
             return Response::allow();
+        }
+
+        if ($policyRequiresViewAny) {
+            $policy = $gate->inspect('viewAny', $resource->modelClass());
+
+            if ($policy->denied()) {
+                return $policy;
+            }
         }
 
         $route = $request->route();
@@ -123,6 +134,10 @@ class ResourceReadGuard
         // the socket, so this population is exactly what the caller was authorized for.
         if (app(RealmEntitlementResourceGate::class)->entitledThroughRealm($resource->key, $gate)) {
             return Response::allow();
+        }
+
+        if ($policyRequiresViewAny) {
+            return Response::deny("Reading [{$resource->key}] requires a tenant, declared row, or realm-entitlement scope.");
         }
 
         return $gate->inspect('viewAny', $resource->modelClass());

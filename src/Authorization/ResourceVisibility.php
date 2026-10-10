@@ -120,10 +120,11 @@ class ResourceVisibility
     /**
      * May `$actor` be SHOWN this resource in a listing (a nav seat, a registry row)?
      *
-     * A model-backed resource: its model's `viewAny` when a policy declaring one is bound, and visible
-     * otherwise — a missing policy on a READ falls through to the row scope (api-surface-coherence 135,
-     * ADR-0156 §83), and a null actor cannot satisfy a bound `viewAny` (2026-09-05). A model-less resource:
-     * never to a null actor, and otherwise {@see readable()}.
+     * A registered model-backed resource: the SAME {@see ResourceReadGuard} decision as its list route,
+     * including the conjunctive `viewAny` + scope rule for a policy that declares `viewAny` (integrator
+     * ruling 2026-10-10 02:43Z). A manifest-only definition retains the policy fallback because it has no
+     * Beam declaration whose scope the guard could inspect. A model-less resource: never to a null actor,
+     * and otherwise {@see readable()}.
      *
      * A model-backed resource with NO policy bound is shown only when {@see ResourceReadGuard} would let
      * this actor read it — tenancy, a declared row predicate, or a hard realm entitlement the actor holds
@@ -139,16 +140,16 @@ class ResourceVisibility
             return $actor !== null && $this->readable($definition, $actor);
         }
 
+        $resource = $this->particles->find($definition->key);
+
+        if ($resource !== null) {
+            return $this->readBoundaryAdmits($definition, $actor);
+        }
+
         $policy = $this->gate->getPolicyFor($definition->model);
 
         if ($policy === null) {
             return $this->readBoundaryAdmits($definition, $actor);
-        }
-
-        // UX-08c: a declared read ability is asked of the same guard every read asks.
-        $resource = $this->particles->find($definition->key);
-        if ($resource !== null && ResourceReadGuard::forApp()->inspectDeclaredAbilityFor($resource, $actor)->denied()) {
-            return false;
         }
 
         if (! method_exists($policy, 'viewAny')) {

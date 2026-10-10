@@ -68,7 +68,8 @@ class SeatGateTest extends TestCase
         $this->assertFalse($this->gate()->for('feeds.index', null, 'tenant'));
     }
 
-    public function test_a_scoped_list_seat_follows_the_route_read_guard_instead_of_a_stricter_nav_policy(): void
+    /** Integrator ruling 2026-10-10 02:43Z: list admission is viewAny AND scope; scope no longer wins. */
+    public function test_a_scoped_list_seat_still_requires_its_nav_policy(): void
     {
         Gate::policy(SeatGateScopedFeed::class, SeatGateScopedFeedPolicy::class);
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
@@ -87,7 +88,7 @@ class SeatGateTest extends TestCase
         $actor = $this->denied();
         $this->actingAs($actor);
 
-        $this->assertTrue($this->gate()->for('scoped-feeds.index', $actor, 'tenant'));
+        $this->assertFalse($this->gate()->for('scoped-feeds.index', $actor, 'tenant'));
     }
 
     public function test_a_subject_free_particle_operation_delegates_to_its_declared_ability(): void
