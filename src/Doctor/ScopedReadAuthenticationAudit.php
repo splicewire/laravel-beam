@@ -7,6 +7,9 @@ use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Routing\Router;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Schemastud\Frame\Http\Controllers\FrameResourceController;
+use Schemastud\Frame\Http\Controllers\FrameResourceFiltersController;
+use Schemastud\Frame\Http\Controllers\FrameResourceSummaryController;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -62,6 +65,18 @@ class ScopedReadAuthenticationAudit implements DoctorAudit
             }
         }
 
+        if ($keys !== []) {
+            foreach ($this->genericFrameReadRoutes() as $route) {
+                if (! $this->authenticated($route)) {
+                    $unsafe[] = sprintf(
+                        'generic Frame resource socket for [%s] at GET %s',
+                        implode(', ', $keys),
+                        $route->uri(),
+                    );
+                }
+            }
+        }
+
         if ($unsafe !== []) {
             sort($unsafe);
 
@@ -100,6 +115,36 @@ class ScopedReadAuthenticationAudit implements DoctorAudit
         }
 
         return $routes;
+    }
+
+    /** @return list<RouteInstance> */
+    private function genericFrameReadRoutes(): array
+    {
+        return array_values(array_filter(
+            $this->router->getRoutes()->getRoutes(),
+            fn (RouteInstance $route): bool => in_array('GET', $route->methods(), true)
+                && $this->dispatchesGenericFrameResource($route),
+        ));
+    }
+
+    private function dispatchesGenericFrameResource(RouteInstance $route): bool
+    {
+        $controller = explode('@', $route->getActionName(), 2)[0];
+        if (! class_exists($controller)) {
+            return false;
+        }
+
+        foreach ([
+            FrameResourceController::class,
+            FrameResourceFiltersController::class,
+            FrameResourceSummaryController::class,
+        ] as $socket) {
+            if (is_a($controller, $socket, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function authenticated(RouteInstance $route): bool
