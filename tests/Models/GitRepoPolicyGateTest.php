@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Models;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User as AuthUser;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Rushing\PermissionCascade\Contracts\GrantedExplicitly;
@@ -144,13 +145,32 @@ class GitRepoPolicyGateTest extends TestCase
     public function test_the_git_repo_projection_admits_an_operator_without_widening_the_model_policy(): void
     {
         $resource = app(ParticleResourceRegistry::class)->find('git-repo');
+        app(ParticleResourceRegistry::class)->loadRealmMap(['operator' => ['git-repo']]);
         $operator = $this->stranger();
         $member = $this->stranger();
         Gate::define('entitlement:os.operate', fn (GitRepoPolicyGateUser $user): bool => $user->is($operator));
 
         $this->assertFalse(Gate::forUser($operator)->allows('viewAny', GitRepo::class));
-        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, Request::create('/'), $operator)->allowed());
-        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, Request::create('/'), $member)->denied());
+        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm('operator'), $operator)->allowed());
+        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm('tenant'), $operator)->denied());
+        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm('operator'), $member)->denied());
+        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm(null, 'frame.resources.index'), $operator)->allowed());
+        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, $this->requestForRealm(null, 'api.git-repos.index'), $operator)->denied());
+    }
+
+    private function requestForRealm(?string $realm, ?string $name = null): Request
+    {
+        $request = Request::create('/');
+        $route = new Route('GET', '/', fn () => null);
+        if ($realm !== null) {
+            $route->defaults('realm', $realm);
+        }
+        if ($name !== null) {
+            $route->name($name);
+        }
+        $request->setRouteResolver(fn () => $route);
+
+        return $request;
     }
 
     private function repo(): GitRepo
