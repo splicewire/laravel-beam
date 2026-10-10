@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Frame;
 
 use Illuminate\Auth\Access\Response;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Schema\Blueprint;
@@ -12,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
+use Rushing\DataFilters\Query\ResourceQuery;
 use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
@@ -291,6 +293,74 @@ class PolicyBoundListReadTest extends TestCase
         Exceptions::assertReported(fn (\RuntimeException $e) => $e->getMessage() === 'the boundary cannot be built here');
     }
 
+    /**
+     * A DECLARED scope is the resource's boundary, read from the declaration and never by running it as somebody else
+     * (integrator ruling c353ac01, 16:13Z). Its privileged branch may return every row, as BaseModelPolicy::scopeForUser()
+     * does for an unqualified `.view` holder, or Schemastud's pages scope does for an owner. That empty WHERE is the scope's
+     * own decision, admitted because authority (viewAny) passes AND the declared boundary is scoped.
+     */
+    public function test_a_declared_scope_admits_its_privileged_all_row_branch_and_narrows_a_member(): void
+    {
+        Gate::policy(Gadget::class, SignedInGadgetPolicy::class);
+        $this->declare(fn ($query) => auth()->user()?->name === 'holder' ? $query : $query->where('user_id', auth()->id()));
+
+        $this->as('holder');
+        $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 2);
+        $this->getJson('/frame/resources/gadgets/filters/schema')->assertOk();
+        $this->getJson('/gadgets')->assertOk();
+
+        $this->as('no-team');
+        $this->getJson('/frame/resources/gadgets')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '2');
+
+        $guard = app(ResourceReadGuard::class);
+        $resource = app(ParticleResourceRegistry::class)->get('gadgets');
+        $this->assertTrue($guard->declaresScope($resource));
+        $this->assertTrue($guard->inspectReadFor($resource, request(), null)->denied(), 'a guest fails viewAny');
+    }
+
+    /**
+     * A filter Query class's own base is not a declared scope: structurally it cannot be told from a bare model query
+     * (FilterVariantExecutionTest's UnscopedVariantQuery). Its member branch narrows at runtime and passes; the privileged
+     * all-row branch is refused until the resource declares a scope of its own.
+     */
+    public function test_a_query_class_base_is_not_a_declared_scope(): void
+    {
+        Gate::policy(Gadget::class, SignedInGadgetPolicy::class);
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'queried-gadgets',
+            backing: Gadget::class,
+            data: GadgetData::class,
+            query: PrivilegedAllRowGadgetQuery::class,
+            project: fn (Gadget $gadget): GadgetData => new GadgetData((string) $gadget->getKey()),
+            readOnly: true,
+            label: 'Queried gadgets',
+        ));
+
+        $this->assertFalse(app(ResourceReadGuard::class)->declaresScope(app(ParticleResourceRegistry::class)->get('queried-gadgets')));
+
+        $this->as('holder');
+        $this->getJson('/frame/resources/queried-gadgets')->assertForbidden();
+        $this->getJson('/frame/resources/queried-gadgets/filters/schema')->assertForbidden();
+
+        $this->as('no-team');
+        $this->getJson('/frame/resources/queried-gadgets')->assertOk()->assertJsonPath('total', 1);
+    }
+
+    /** No declared scope and no tenant or realm boundary: viewAny alone still refuses, for the privileged actor too. */
+    public function test_an_undeclared_boundary_still_refuses_the_privileged_actor(): void
+    {
+        Gate::policy(Gadget::class, SignedInGadgetPolicy::class);
+        $this->declare();
+
+        $resource = app(ParticleResourceRegistry::class)->get('gadgets');
+        $this->assertFalse(app(ResourceReadGuard::class)->declaresScope($resource));
+
+        $this->as('holder');
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+        $this->getJson('/frame/resources/gadgets/filters/schema')->assertForbidden();
+    }
+
     public function test_a_policy_without_view_any_keeps_todays_pass_as_listable_reads_it(): void
     {
         Gate::policy(Gadget::class, NoViewAnyGadgetPolicy::class);
@@ -321,6 +391,30 @@ class HolderOnlyGadgetPolicy
     public function view(mixed $user, mixed $gadget): bool
     {
         return $user?->name === 'holder';
+    }
+}
+
+class SignedInGadgetPolicy
+{
+    public function viewAny(mixed $user): bool
+    {
+        return $user !== null;
+    }
+
+    public function view(mixed $user, mixed $gadget): bool
+    {
+        return $user !== null;
+    }
+}
+
+/** 'holder' reads every gadget; anyone else reads their own. */
+class PrivilegedAllRowGadgetQuery extends ResourceQuery
+{
+    protected function baseQuery(Request $request): Builder
+    {
+        $query = Gadget::query();
+
+        return auth()->user()?->name === 'holder' ? $query : $query->where('user_id', auth()->id());
     }
 }
 

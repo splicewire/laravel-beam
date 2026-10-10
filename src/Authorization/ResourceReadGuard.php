@@ -142,11 +142,21 @@ class ResourceReadGuard
         // reported, and the read falls through to the realm entitlement and viewAny.
         try {
             $scoped = $this->narrowed($resource, $request);
+            $built = true;
         } catch (Throwable $e) {
             report($e);
             $scoped = false;
+            $built = false;
         }
         if ($scoped !== false) {
+            return Response::allow();
+        }
+
+        // A DECLARED scope is the boundary (integrator ruling c353ac01, 16:13Z): its privileged branch may return every
+        // row (BaseModelPolicy::scopeForUser() for an unqualified `.view` holder, a host scope for its owner), and that
+        // empty WHERE is the scope's own decision. Authority has already passed above; the declaration is read from the
+        // resource, never by running the scope as anyone else. A boundary that threw is not admitted by its declaration.
+        if ($built && $policyRequiresViewAny && $this->declaresScope($resource)) {
             return Response::allow();
         }
 
@@ -161,6 +171,17 @@ class ResourceReadGuard
         }
 
         return $gate->inspect('viewAny', $resource->modelClass());
+    }
+
+    /**
+     * Does the resource DECLARE a row scope? Read from the declaration, never by executing it: the Data class's `scope()`
+     * convention or an explicit `scope` closure. A data-filters Query class's own `baseQuery()` is NOT a declaration: an
+     * override that returns the bare model query is structurally indistinguishable from one that narrows, and viewAny
+     * cannot borrow it (FilterVariantExecutionTest, integrator ruling 02:43Z).
+     */
+    public function declaresScope(ParticleResource $resource): bool
+    {
+        return $resource->scope !== null;
     }
 
     /** Whether the policy bound to the resource's model declares a viewAny ability. */
