@@ -123,6 +123,11 @@ class SeatGate
             throw new LogicException("Seat [{$seatRouteName}] already resolves from [{$this->backings[$seatRouteName]}].");
         }
 
+        if (isset($this->conjunctions[$seatRouteName]) && $this->conjunctions[$seatRouteName] !== [$gateRouteName, $resourceRouteName]) {
+            [$gate, $list] = $this->conjunctions[$seatRouteName];
+            throw new LogicException("Seat [{$seatRouteName}] already resolves from [{$gate}] and [{$list}].");
+        }
+
         $this->conjunctions[$seatRouteName] = [$gateRouteName, $resourceRouteName];
     }
 

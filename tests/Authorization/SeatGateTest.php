@@ -295,6 +295,20 @@ class SeatGateTest extends TestCase
         }
 
         $gate->backedByRouteAndResource('both.page', 'a.route', 'a.index');
+        // The same declaration again is idempotent; a different one is refused, so no provider order can silently
+        // swap a seat's arms (build-qa, navfix review).
+        $gate->backedByRouteAndResource('both.page', 'a.route', 'a.index');
+        foreach ([
+            fn () => $gate->backedByRouteAndResource('both.page', 'b.route', 'a.index'),
+            fn () => $gate->backedByRouteAndResource('both.page', 'a.route', 'b.index'),
+        ] as $i => $redeclare) {
+            try {
+                $redeclare();
+                $this->fail("redeclaration {$i} should have been refused");
+            } catch (\LogicException) {
+                $this->addToAssertionCount(1);
+            }
+        }
         $this->expectException(\LogicException::class);
         $gate->backedBy('both.page', 'other.route');
     }
