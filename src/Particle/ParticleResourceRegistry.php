@@ -21,6 +21,7 @@ use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\Superseded;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Doctor\ParticleRouteResourceAudit;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
@@ -376,6 +377,26 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
                     (string) $key,
                 ));
             }
+        }
+
+        if ($resource->readPolicy !== null && (! class_exists($resource->readPolicy)
+            || ! is_subclass_of($resource->readPolicy, ResourceReadPolicy::class))) {
+            throw new InvalidArgumentException(sprintf(
+                'Particle resource [%s] read policy [%s] must implement %s.',
+                $resource->key,
+                $resource->readPolicy,
+                ResourceReadPolicy::class,
+            ));
+        }
+
+        $registered = $this->lookup($resource->key);
+        if ($registered !== null && $registered->readPolicy !== $resource->readPolicy) {
+            throw new InvalidArgumentException(sprintf(
+                'Particle resource [%s] cannot change its read policy from [%s] to [%s].',
+                $resource->key,
+                $registered->readPolicy ?? 'none',
+                $resource->readPolicy ?? 'none',
+            ));
         }
 
         // Capability is the CEILING; the affordance flags narrow it (ticket 11 §A5). A resource opening

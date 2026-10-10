@@ -173,6 +173,7 @@ class AttributedParticleDiscovery
             editData: $attribute->editData,
             createResultData: $attribute->createResultData,
             policy: $attribute->policy,
+            readPolicy: $attribute->readPolicy,
             query: $attribute->query,
             group: $attribute->group,
             icon: $attribute->icon,

@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Particle;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
+use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
@@ -78,6 +79,7 @@ class AttributedParticleDiscoveryTest extends TestCase
         $this->assertSame('enriched', $resource->form);
         $this->assertSame('App\\Data\\WidgetEditData', $resource->editData);
         $this->assertSame('widget', $resource->policy);
+        $this->assertSame(FixtureAttributedReadPolicy::class, $resource->readPolicy);
         $this->assertSame('App\\Queries\\WidgetQuery', $resource->query);
         $this->assertSame('Catalog', $resource->group);
         $this->assertSame('cube', $resource->icon);
@@ -279,6 +281,7 @@ class FixtureLegacyFilterableResource {}
     form: 'enriched',
     editData: 'App\\Data\\WidgetEditData',
     policy: 'widget',
+    readPolicy: FixtureAttributedReadPolicy::class,
     query: 'App\\Queries\\WidgetQuery',
     group: 'Catalog',
     icon: 'cube',
@@ -289,6 +292,17 @@ class FixtureLegacyFilterableResource {}
     readOnly: true,
 )]
 class FixtureFramedResource {}
+
+class FixtureAttributedReadPolicy implements ResourceReadPolicy
+{
+    public function inspect(
+        ?\Illuminate\Contracts\Auth\Authenticatable $actor,
+        \Splicewire\Beam\Particle\ParticleResource $resource,
+        Request $request,
+    ): \Illuminate\Auth\Access\Response {
+        return \Illuminate\Auth\Access\Response::allow();
+    }
+}
 
 #[ParticleOp(
     resource: 'library-lyrics',

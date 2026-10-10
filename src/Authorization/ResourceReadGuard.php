@@ -27,7 +27,7 @@ class ResourceReadGuard
     /** Inspect the declared read boundary before caller filters or record selection can narrow it. */
     public function inspectRead(ParticleResource $resource, Request $request): Response
     {
-        return $this->inspect($resource, $request, Gate::getFacadeRoot());
+        return $this->inspect($resource, $request, Gate::getFacadeRoot(), $request->user());
     }
 
     /**
@@ -42,7 +42,7 @@ class ResourceReadGuard
         ?Authenticatable $actor,
         ?string $mountedRealm = null,
     ): Response {
-        return $this->inspect($resource, $request, Gate::forUser($actor), $mountedRealm);
+        return $this->inspect($resource, $request, Gate::forUser($actor), $actor, $mountedRealm);
     }
 
     /**
@@ -88,6 +88,7 @@ class ResourceReadGuard
         ParticleResource $resource,
         Request $request,
         GateContract $gate,
+        ?Authenticatable $actor,
         ?string $mountedRealm = null,
     ): Response {
         $declared = $this->inspectDeclaredAbility($resource, $gate);
@@ -101,14 +102,17 @@ class ResourceReadGuard
         // pass, exactly as ResourceVisibility::listable() reads it; that residual open list remains ratcheted
         // (`model-backed-open-list`), never silent.
         $policyBound = $this->policyBound($resource);
-        $policyRequiresViewAny = $policyBound === true && $this->policyHasViewAny($resource);
+        $policyRequiresViewAny = $resource->readPolicy !== null
+            || ($policyBound === true && $this->policyHasViewAny($resource));
 
-        if ($policyBound === true && ! $policyRequiresViewAny) {
+        if ($resource->readPolicy === null && $policyBound === true && ! $policyRequiresViewAny) {
             return Response::allow();
         }
 
         if ($policyRequiresViewAny) {
-            $policy = $gate->inspect('viewAny', $resource->modelClass());
+            $policy = $resource->readPolicy !== null
+                ? app($resource->readPolicy)->inspect($actor, $resource, $request)
+                : $gate->inspect('viewAny', $resource->modelClass());
 
             if ($policy->denied()) {
                 return $policy;

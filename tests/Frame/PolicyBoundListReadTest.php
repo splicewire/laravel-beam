@@ -2,15 +2,19 @@
 
 namespace Splicewire\Beam\Tests\Frame;
 
+use Illuminate\Auth\Access\Response;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
+use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -62,13 +66,14 @@ class PolicyBoundListReadTest extends TestCase
         Gadget::create(['user_id' => 2]);
     }
 
-    private function declare(?\Closure $scope = null): void
+    private function declare(?\Closure $scope = null, ?string $readPolicy = null): void
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'gadgets',
             backing: Gadget::class,
             data: GadgetData::class,
             scope: $scope,
+            readPolicy: $readPolicy,
             project: fn (Gadget $gadget): GadgetData => new GadgetData((string) $gadget->getKey()),
             readOnly: true,
             label: 'Gadgets',
@@ -127,6 +132,43 @@ class PolicyBoundListReadTest extends TestCase
         $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '1');
         $this->getJson('/frame/resources/gadgets/filters/schema')->assertOk();
         $this->getJson('/gadgets')->assertOk();
+    }
+
+    public function test_a_resource_read_policy_replaces_only_the_model_view_any_arm(): void
+    {
+        Gate::policy(Gadget::class, HolderOnlyGadgetPolicy::class);
+        $this->declare(
+            fn ($query) => $query->where('user_id', auth()->id()),
+            AuthenticatedResourceReadPolicy::class,
+        );
+
+        $this->as('no-team');
+        $this->getJson('/frame/resources/gadgets')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '2');
+        $this->getJson('/gadgets')->assertOk();
+    }
+
+    public function test_a_resource_read_policy_deny_and_the_scope_half_each_fail_closed(): void
+    {
+        Gate::policy(Gadget::class, HolderOnlyGadgetPolicy::class);
+        $this->declare(
+            fn ($query) => $query->where('user_id', auth()->id()),
+            DenyingResourceReadPolicy::class,
+        );
+
+        $this->as('holder');
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'unscoped-gadgets',
+            backing: Gadget::class,
+            data: GadgetData::class,
+            readPolicy: AuthenticatedResourceReadPolicy::class,
+            project: fn (Gadget $gadget): GadgetData => new GadgetData((string) $gadget->getKey()),
+            readOnly: true,
+            label: 'Unscoped gadgets',
+        ));
+        $this->getJson('/frame/resources/unscoped-gadgets')->assertForbidden();
     }
 
     public function test_filter_metadata_uses_the_same_realm_entitled_decision_as_the_list(): void
@@ -231,6 +273,22 @@ class NoViewAnyGadgetPolicy
     public function view(mixed $user, mixed $gadget): bool
     {
         return true;
+    }
+}
+
+class AuthenticatedResourceReadPolicy implements ResourceReadPolicy
+{
+    public function inspect(?Authenticatable $actor, ParticleResource $resource, Request $request): Response
+    {
+        return $actor === null ? Response::deny('Authentication required.') : Response::allow();
+    }
+}
+
+class DenyingResourceReadPolicy implements ResourceReadPolicy
+{
+    public function inspect(?Authenticatable $actor, ParticleResource $resource, Request $request): Response
+    {
+        return Response::deny('Resource-specific denial.');
     }
 }
 

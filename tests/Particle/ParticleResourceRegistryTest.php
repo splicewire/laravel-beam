@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Particle;
 use Illuminate\Pagination\CursorPaginator;
 use InvalidArgumentException;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleResource as ParticleResourceRuntime;
@@ -28,6 +29,54 @@ use Splicewire\Beam\Tests\TestCase;
  */
 class ParticleResourceRegistryTest extends TestCase
 {
+    public function test_read_policy_must_implement_the_contract(): void
+    {
+        $registry = new ParticleResourceRegistry;
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(ResourceReadPolicy::class);
+        $registry->register(new ParticleResourceRuntime(
+            key: 'widgets',
+            backing: 'App\\Models\\Widget',
+            readPolicy: FixtureUnannotated::class,
+        ));
+    }
+
+    public function test_a_resource_read_policy_cannot_be_added_changed_or_removed_by_redeclaration(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register(new ParticleResourceRuntime(
+            key: 'widgets',
+            backing: 'App\\Models\\Widget',
+            readPolicy: FixtureResourceReadPolicy::class,
+        ));
+
+        $registry->register(new ParticleResourceRuntime(
+            key: 'widgets',
+            backing: 'App\\Models\\Widget',
+            readPolicy: FixtureResourceReadPolicy::class,
+        ));
+        $this->assertSame(FixtureResourceReadPolicy::class, $registry->get('widgets')->readPolicy);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('cannot change its read policy');
+        $registry->register(new ParticleResourceRuntime(key: 'widgets', backing: 'App\\Models\\Widget'));
+    }
+
+    public function test_a_later_declaration_cannot_add_a_read_policy(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register(new ParticleResourceRuntime(key: 'widgets', backing: 'App\\Models\\Widget'));
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('cannot change its read policy');
+        $registry->register(new ParticleResourceRuntime(
+            key: 'widgets',
+            backing: 'App\\Models\\Widget',
+            readPolicy: FixtureResourceReadPolicy::class,
+        ));
+    }
+
     public function test_it_stores_a_declaration_and_projects_at_build_time(): void
     {
         $registry = new ParticleResourceRegistry;
@@ -309,6 +358,17 @@ class FixtureFramedParticleResource {}
 class FixtureRestOnlyParticleResource {}
 
 class FixtureUnannotated {}
+
+class FixtureResourceReadPolicy implements ResourceReadPolicy
+{
+    public function inspect(
+        ?\Illuminate\Contracts\Auth\Authenticatable $actor,
+        ParticleResourceRuntime $resource,
+        \Illuminate\Http\Request $request,
+    ): \Illuminate\Auth\Access\Response {
+        return \Illuminate\Auth\Access\Response::allow();
+    }
+}
 
 /**
  * A backing that can only stream — no query, no write. Stands in for the estate's genuine unions
