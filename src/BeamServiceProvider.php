@@ -81,6 +81,7 @@ use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
+use Splicewire\Beam\Doctor\GlobalReadBoundaryAudit;
 use Splicewire\Beam\Doctor\IdentifierLabelAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
@@ -1906,6 +1907,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             OpenListResourceAudit::class,
+        );
+
+        // Integrator ruling 2026-10-10 15:13Z: a whole-population read is a declaration, never a
+        // fallback. Enumerate every resource that opts into it so the host's deliberate list is visible.
+        $this->app->bind(GlobalReadBoundaryAudit::class, fn () => GlobalReadBoundaryAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            GlobalReadBoundaryAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered

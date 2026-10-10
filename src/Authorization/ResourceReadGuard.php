@@ -105,10 +105,6 @@ class ResourceReadGuard
         $policyRequiresViewAny = $resource->readPolicy !== null
             || ($policyBound === true && $this->policyHasViewAny($resource));
 
-        if ($resource->readPolicy === null && $policyBound === true && ! $policyRequiresViewAny) {
-            return Response::allow();
-        }
-
         if ($policyRequiresViewAny) {
             $policy = $resource->readPolicy !== null
                 ? app($resource->readPolicy)->inspect($actor, $resource, $request)
@@ -117,6 +113,18 @@ class ResourceReadGuard
             if ($policy->denied()) {
                 return $policy;
             }
+        }
+
+        if ($resource->readBoundary === ParticleResource::READ_BOUNDARY_GLOBAL) {
+            if (! $policyRequiresViewAny && $this->declaredReadAbility($resource) === null) {
+                return Response::deny("Reading [{$resource->key}] requires a declared authority for its global boundary.");
+            }
+
+            return Response::allow();
+        }
+
+        if ($resource->readPolicy === null && $policyBound === true && ! $policyRequiresViewAny) {
+            return Response::allow();
         }
 
         $route = $request->route();

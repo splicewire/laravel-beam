@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Schema;
 use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
+use Splicewire\Beam\Authorization\RealmEntitlementReadPolicy;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -66,7 +67,13 @@ class PolicyBoundListReadTest extends TestCase
         Gadget::create(['user_id' => 2]);
     }
 
-    private function declare(?\Closure $scope = null, ?string $readPolicy = null): void
+    /** @param list<string> $realms */
+    private function declare(
+        ?\Closure $scope = null,
+        ?string $readPolicy = null,
+        ?string $readBoundary = null,
+        array $realms = [],
+    ): void
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'gadgets',
@@ -74,10 +81,11 @@ class PolicyBoundListReadTest extends TestCase
             data: GadgetData::class,
             scope: $scope,
             readPolicy: $readPolicy,
+            readBoundary: $readBoundary,
             project: fn (Gadget $gadget): GadgetData => new GadgetData((string) $gadget->getKey()),
             readOnly: true,
             label: 'Gadgets',
-        ));
+        ), $realms);
         Particle::mount('gadgets')->only(['index'])->register();
     }
 
@@ -169,6 +177,54 @@ class PolicyBoundListReadTest extends TestCase
             label: 'Unscoped gadgets',
         ));
         $this->getJson('/frame/resources/unscoped-gadgets')->assertForbidden();
+    }
+
+    public function test_a_realm_entitlement_policy_requires_the_declared_entitlement_and_keeps_the_row_scope(): void
+    {
+        config(['beam.core.realm_gates' => ['staffroom' => ['entitlement' => 'staff.read']]]);
+        Gate::define('entitlement:staff.read', fn ($actor) => $actor?->name === 'holder');
+        $this->declare(
+            fn ($query) => $query->where('user_id', auth()->id()),
+            RealmEntitlementReadPolicy::class,
+            realms: ['staffroom'],
+        );
+
+        $this->as('holder');
+        $this->getJson('/frame/resources/gadgets')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '1');
+
+        $this->as('no-team');
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+    }
+
+    public function test_a_declared_global_boundary_still_requires_authority(): void
+    {
+        Gate::policy(Gadget::class, HolderOnlyGadgetPolicy::class);
+        $this->declare(readPolicy: AuthenticatedResourceReadPolicy::class, readBoundary: 'global');
+
+        $this->as('no-team');
+        $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 2);
+
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'authority-less-global',
+            backing: UnpolicedGadget::class,
+            data: GadgetData::class,
+            readBoundary: 'global',
+            readOnly: true,
+            label: 'Authority-less global',
+        ));
+        $this->getJson('/frame/resources/authority-less-global')->assertForbidden();
+    }
+
+    public function test_an_allowed_no_row_boundary_returns_an_empty_list(): void
+    {
+        $this->declare(
+            fn ($query) => $query->whereRaw('1 = 0'),
+            AuthenticatedResourceReadPolicy::class,
+        );
+
+        $this->as('holder');
+        $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 0);
     }
 
     public function test_filter_metadata_uses_the_same_realm_entitled_decision_as_the_list(): void
@@ -301,4 +357,8 @@ class SoftGadget extends Model
     protected $guarded = [];
 
     public $timestamps = false;
+}
+
+class UnpolicedGadget extends Gadget
+{
 }

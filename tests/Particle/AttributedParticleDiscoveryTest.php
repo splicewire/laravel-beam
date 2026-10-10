@@ -80,6 +80,7 @@ class AttributedParticleDiscoveryTest extends TestCase
         $this->assertSame('App\\Data\\WidgetEditData', $resource->editData);
         $this->assertSame('widget', $resource->policy);
         $this->assertSame(FixtureAttributedReadPolicy::class, $resource->readPolicy);
+        $this->assertSame('global', $resource->readBoundary);
         $this->assertSame('App\\Queries\\WidgetQuery', $resource->query);
         $this->assertSame('Catalog', $resource->group);
         $this->assertSame('cube', $resource->icon);
@@ -282,6 +283,7 @@ class FixtureLegacyFilterableResource {}
     editData: 'App\\Data\\WidgetEditData',
     policy: 'widget',
     readPolicy: FixtureAttributedReadPolicy::class,
+    readBoundary: 'global',
     query: 'App\\Queries\\WidgetQuery',
     group: 'Catalog',
     icon: 'cube',

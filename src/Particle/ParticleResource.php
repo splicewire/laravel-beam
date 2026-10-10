@@ -68,6 +68,8 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  */
 class ParticleResource implements HasRegistryKey
 {
+    public const READ_BOUNDARY_GLOBAL = 'global';
+
     /**
      * The key this declaration registers under — {@see $key}, verbatim.
      *
@@ -267,6 +269,7 @@ class ParticleResource implements HasRegistryKey
         public ?string $policy = null,
         /** @var class-string<\Splicewire\Beam\Authorization\ResourceReadPolicy>|null */
         public ?string $readPolicy = null,
+        public ?string $readBoundary = null,
         public ?string $query = null,
         public ?string $group = null,
         public ?string $icon = null,

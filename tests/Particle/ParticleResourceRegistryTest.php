@@ -77,6 +77,37 @@ class ParticleResourceRegistryTest extends TestCase
         ));
     }
 
+    public function test_read_boundary_is_global_or_absent_and_cannot_change_by_redeclaration(): void
+    {
+        $registry = new ParticleResourceRegistry;
+
+        try {
+            $registry->register(new ParticleResourceRuntime(
+                key: 'invalid',
+                backing: 'App\\Models\\Widget',
+                readBoundary: 'tenant',
+            ));
+            $this->fail('An unknown read boundary must be rejected.');
+        } catch (InvalidArgumentException $exception) {
+            $this->assertStringContainsString('must be [global] or null', $exception->getMessage());
+        }
+
+        $registry->register(new ParticleResourceRuntime(
+            key: 'widgets',
+            backing: 'App\\Models\\Widget',
+            readBoundary: ParticleResourceRuntime::READ_BOUNDARY_GLOBAL,
+        ));
+        $registry->register(new ParticleResourceRuntime(
+            key: 'widgets',
+            backing: 'App\\Models\\Widget',
+            readBoundary: ParticleResourceRuntime::READ_BOUNDARY_GLOBAL,
+        ));
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('cannot change its read boundary');
+        $registry->register(new ParticleResourceRuntime(key: 'widgets', backing: 'App\\Models\\Widget'));
+    }
+
     public function test_it_stores_a_declaration_and_projects_at_build_time(): void
     {
         $registry = new ParticleResourceRegistry;

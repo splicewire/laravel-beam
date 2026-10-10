@@ -389,6 +389,15 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
             ));
         }
 
+        if ($resource->readBoundary !== null && $resource->readBoundary !== ParticleResource::READ_BOUNDARY_GLOBAL) {
+            throw new InvalidArgumentException(sprintf(
+                'Particle resource [%s] read boundary [%s] must be [%s] or null.',
+                $resource->key,
+                $resource->readBoundary,
+                ParticleResource::READ_BOUNDARY_GLOBAL,
+            ));
+        }
+
         $registered = $this->lookup($resource->key);
         if ($registered !== null && $registered->readPolicy !== $resource->readPolicy) {
             throw new InvalidArgumentException(sprintf(
@@ -396,6 +405,14 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
                 $resource->key,
                 $registered->readPolicy ?? 'none',
                 $resource->readPolicy ?? 'none',
+            ));
+        }
+        if ($registered !== null && $registered->readBoundary !== $resource->readBoundary) {
+            throw new InvalidArgumentException(sprintf(
+                'Particle resource [%s] cannot change its read boundary from [%s] to [%s].',
+                $resource->key,
+                $registered->readBoundary ?? 'none',
+                $resource->readBoundary ?? 'none',
             ));
         }
 

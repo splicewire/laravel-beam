@@ -106,6 +106,7 @@ class ParticleResource
         public ?string $policy = null,
         /** @var class-string<\Splicewire\Beam\Authorization\ResourceReadPolicy>|null */
         public ?string $readPolicy = null,
+        public ?string $readBoundary = null,
         public ?string $query = null,
         public ?string $group = null,
         public ?string $icon = null,
