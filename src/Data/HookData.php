@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Data;
 use Illuminate\Database\Eloquent\Builder;
 use Schemastud\Frame\Attributes\Column;
 use Spatie\LaravelData\Attributes\MapName;
+use Splicewire\Beam\Authorization\ModelOrOperatorReadPolicy;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Webhooks\Data\CreatedHookData;
@@ -55,6 +56,7 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
     group: 'Platform',
     icon: 'webhook',
     section: 'operator-system', // the operator rail's System task section (ux-walkthrough UX-09, IA-10; lead 10:04Z)
+    readPolicy: ModelOrOperatorReadPolicy::class,
     // The create affordance is the HOST's. Frame's generic "New" opens the generic create form, and a
     // hook's create is not generic: it MINTS A SECRET that is returned exactly once, so the flagship's
     // HooksPage owns a bespoke create dialog plus a reveal-once follow-up dialog. The page was spelling
