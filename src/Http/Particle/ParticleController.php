@@ -37,6 +37,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\Subject\ResourceRecordLookup;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
+use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
 use Splicewire\Beam\Write\ModelAttributeMapper;
 use Splicewire\Beam\Write\ParticleWriter;
 
@@ -454,7 +455,7 @@ class ParticleController extends Controller
      * initializer, or a hard realm entitlement the caller holds authorizes, and this is where the four
      * are read. The fourth was added 2026-09-23 by owner ruling: a realm gate already refuses everyone
      * else at the socket, and without it every policy-less operator-realm resource refused its own
-     * operators ({@see \Splicewire\Beam\Realm\RealmEntitlementResourceGate::entitledThroughRealm()}).
+     * operators ({@see RealmEntitlementResourceGate::entitledThroughRealm()}).
      *
      * ## On READ, never at the mount
      *
@@ -614,10 +615,10 @@ class ParticleController extends Controller
         $query = ($request !== null ? $this->relativeBaseQuery($request) : null)
             ?? $this->queryableBacking($resource)->query([]);
 
-        // Row-level READ authorization for subject resolution (ADR-0156 §83 — the `scope` closure),
-        // the declared `includes`, and the declared `routeKey`. Operations share the backing,
-        // includes and public identifier through this collaborator, but deliberately not this list/read
-        // scope: their own declared ability is their authority contract.
+        // Row-level READ authorization for CRUD subject resolution (ADR-0156 §83 — the `scope`
+        // closure), plus the declared `includes` and `routeKey`. Operations use the same collaborator
+        // through `forOperation()`: an explicit operation scope may omit actor-relative list admission,
+        // but the full read scope remains the fail-closed population boundary.
         //
         // The BASE query stays here: only this path can have a bound relative, and reading one needs the
         // Request the subject port deliberately refuses.

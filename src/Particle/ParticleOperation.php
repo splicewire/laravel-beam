@@ -210,9 +210,11 @@ use Splicewire\Beam\Routing\IdConstraint;
  *
  * What the default now does differently is the point: it resolves through the RESOURCE's backing and
  * applies its declared `includes` / `routeKey`, rather than running a bare
- * `$model::query()->findOrFail($id)`. It deliberately does not import the resource's list/read
- * operation population boundary: the operation's own `ability` is the authority contract for the resolved subject, and list
- * admission cannot pre-empt it with a 404.
+ * `$model::query()->findOrFail($id)`. It applies the resource's explicit `operationScope`, falling
+ * back to the full read `scope` when none is declared. That keeps tenant, owner, visibility and
+ * resource-identity boundaries in front of the operation while permitting a declared split to omit
+ * actor-relative list admission. The operation's own `ability` then decides authority for the
+ * resolved subject.
  *
  * ⚠️ **`$model` did not delete at ticket 02, and the reason given here was false.** The paragraph that
  * stood in this slot read: *"It has a real remaining job: it is the fallback subject class for an

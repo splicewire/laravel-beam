@@ -55,9 +55,10 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * fail-closed default. The operation's own authority is asked only after boundary resolution.
  *
  * `throughResource: false` resolves against the bare model instead. It exists for the measured case
- * where the resource's backing cannot be used at the mount. It remains for compatibility with tower's
- * invitation `accept` declaration. It is a backing compatibility escape hatch, not an authorization
- * switch; a through-resource lookup remains governed by the declared operation boundary.
+ * where the resource's backing cannot be used at the mount and remains for compatibility with tower's
+ * invitation `accept` declaration. This opt-out bypasses the resource's operation boundary as well as
+ * its backing, so it is an authorization-sensitive compatibility escape hatch: declarations using it
+ * must carry their complete boundary in the token/column predicate and operation gate.
  *
  * ⚠️ **Which model that is no longer comes from the operation.** This used to read *"resolves against
  * {@see ParticleOperation::$model}"*, and it was the one path that made that deprecated slot look

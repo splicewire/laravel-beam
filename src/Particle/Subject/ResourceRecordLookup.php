@@ -39,7 +39,8 @@ use Splicewire\Beam\Particle\ParticleResource;
  * {@see ParticleOperationController} resolved every operation's
  * subject with a bare `$operation->model::query()->findOrFail($id)`. That divergence was a live
  * authorization gap, not a stylistic one. The later operation-authority contract separates those two
- * callers at the same seam: CRUD reads apply read scope; operations apply their own declared gate.
+ * callers at the same seam: CRUD reads apply read scope; operations apply their declared operation
+ * boundary (or the full read scope by default), then their own declared gate.
  *
  * The caller supplies the BASE query, because the two callers legitimately differ there:
  * `findParticle()` may start from a bound relative's query (which needs the request), while
