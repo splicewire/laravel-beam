@@ -6,6 +6,7 @@ use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Splicewire\Beam\Authorization\ModelOrOperatorReadPolicy;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -53,10 +54,15 @@ class RealmEntitlementResourceGateTest extends TestCase
     }
 
     /** Register `$key` into the membership authority with the realms a host would have declared. */
-    private function register(string $key, array $realms): ResourceDefinition
+    private function register(string $key, array $realms, ?string $readPolicy = null): ResourceDefinition
     {
         $this->app->make(ParticleResourceRegistry::class)->register(
-            new ParticleResource(key: $key, backing: BeamSchema::class, data: ResourceDefinition::class),
+            new ParticleResource(
+                key: $key,
+                backing: BeamSchema::class,
+                data: ResourceDefinition::class,
+                readPolicy: $readPolicy,
+            ),
             $realms,
         );
 
@@ -227,7 +233,7 @@ class RealmEntitlementResourceGateTest extends TestCase
     /** A nav build names its realm without an HTTP route; that explicit door must still bound the population. */
     public function test_an_explicit_nav_realm_authorizes_only_its_named_population(): void
     {
-        $this->register('hooks', ['operator', 'tenant']);
+        $this->register('hooks', ['operator', 'tenant'], ModelOrOperatorReadPolicy::class);
         $this->holding(['os.operate']);
 
         $this->assertTrue($this->gate()->entitledThroughRealm('hooks', mountedRealm: 'operator'));
@@ -238,7 +244,7 @@ class RealmEntitlementResourceGateTest extends TestCase
     /** Internal nav input may narrow an HTTP-mounted realm, but it can never replace that route authority. */
     public function test_an_explicit_nav_realm_cannot_override_the_http_route_realm(): void
     {
-        $this->register('hooks', ['operator', 'tenant']);
+        $this->register('hooks', ['operator', 'tenant'], ModelOrOperatorReadPolicy::class);
         $this->holding(['os.operate']);
         request()->setRouteResolver(fn () => new class
         {
