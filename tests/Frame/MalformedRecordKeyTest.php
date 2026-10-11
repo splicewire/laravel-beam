@@ -91,6 +91,18 @@ class MalformedRecordKeyTest extends TestCase
         $this->getJson('/frame/resources/malformed-key-records/records/not-a-uuid')->assertNotFound();
         $this->getJson('/frame/resources/malformed-key-records/records/'.Str::uuid())->assertNotFound();
     }
+
+    public function test_a_valid_existing_uuid_still_resolves_for_every_frame_record_verb(): void
+    {
+        $record = MalformedKeyRecord::create(['name' => 'Before']);
+        $path = "/frame/resources/malformed-key-records/records/{$record->getKey()}";
+
+        $this->getJson($path)->assertOk()->assertJsonPath('data.name', 'Before');
+        $this->putJson($path, ['name' => 'After'])->assertOk()->assertJsonPath('data.name', 'After');
+        $this->deleteJson($path)->assertNoContent();
+
+        $this->assertNull(MalformedKeyRecord::find($record->getKey()));
+    }
 }
 
 class MalformedKeyRecord extends Model
