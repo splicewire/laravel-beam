@@ -7,13 +7,10 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Splicewire\Beam\Particle\ParticleResource;
-use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
-/** Keeps model readers intact and adds operator authority only through an operator mount. */
+/** Keeps model readers intact and adds operator authority only through this request's explicit operator-realm mount. */
 class ModelOrOperatorReadPolicy implements ResourceReadPolicy
 {
-    public function __construct(private ParticleResourceRegistry $resources) {}
-
     public function inspect(
         ?Authenticatable $actor,
         ParticleResource $resource,
@@ -27,11 +24,7 @@ class ModelOrOperatorReadPolicy implements ResourceReadPolicy
         }
 
         $realm = $request->route()?->defaults['realm'] ?? null;
-        $sharedOperatorSocket = $realm === null
-            && FrameSocketRoute::serves($request)
-            && in_array('operator', $this->resources->realmsFor($resource->key), true);
-
-        if (($realm === 'operator' || $sharedOperatorSocket) && $gate->allows('entitlement:os.operate')) {
+        if ($realm === 'operator' && $gate->allows('entitlement:os.operate')) {
             return Response::allow();
         }
 

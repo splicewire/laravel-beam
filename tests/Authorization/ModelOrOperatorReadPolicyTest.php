@@ -22,6 +22,22 @@ class ModelOrOperatorReadPolicyTest extends TestCase
         $this->assertSame(ModelOrOperatorReadPolicy::class, $resource->readPolicy);
     }
 
+    public function test_operator_entitlement_requires_this_requests_operator_mount(): void
+    {
+        $resource = app(ParticleResourceRegistry::class)->get('hooks');
+        app(ParticleResourceRegistry::class)->loadRealmMap(['operator' => ['hooks'], 'tenant' => ['hooks']]);
+        Gate::policy(Hook::class, ModelOrOperatorFixturePolicy::class);
+
+        $operator = (new ModelOrOperatorActor)->forceFill(['id' => 1]);
+        $operator->operator = true;
+        Gate::define('entitlement:os.operate', fn (ModelOrOperatorActor $actor): bool => $actor->operator);
+
+        $policy = app(ModelOrOperatorReadPolicy::class);
+
+        $this->assertTrue($policy->inspect($operator, $resource, $this->requestForRealm('operator'))->allowed());
+        $this->assertTrue($policy->inspect($operator, $resource, $this->requestForRealm(null, FrameResourceController::class))->denied());
+    }
+
     public function test_model_readers_and_operator_mounts_are_independent_authority_arms(): void
     {
         $resource = app(ParticleResourceRegistry::class)->get('hooks');
@@ -39,8 +55,6 @@ class ModelOrOperatorReadPolicyTest extends TestCase
 
         $this->assertTrue($policy->inspect($member, $resource, $this->requestForRealm('tenant'))->allowed());
         $this->assertTrue($policy->inspect($member, $resource, $this->requestForRealm('operator'))->allowed());
-        $this->assertTrue($policy->inspect($operator, $resource, $this->requestForRealm('operator'))->allowed());
-        $this->assertTrue($policy->inspect($operator, $resource, $this->requestForRealm(null, FrameResourceController::class))->allowed());
         $this->assertTrue($policy->inspect($operator, $resource, $this->requestForRealm(null, ModelOrOperatorHostController::class))->denied());
         $this->assertTrue($policy->inspect($operator, $resource, $this->requestForRealm('tenant'))->denied());
         $this->assertTrue($policy->inspect($stranger, $resource, $this->requestForRealm('operator'))->denied());
