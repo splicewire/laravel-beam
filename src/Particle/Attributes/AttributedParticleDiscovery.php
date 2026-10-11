@@ -166,6 +166,7 @@ class AttributedParticleDiscovery
             afterWrite: self::conventionOn($class, 'afterWrite'),
             project: self::conventionOn($class, 'project'),
             scope: self::conventionOn($class, 'scope'),
+            operationScope: self::conventionOn($class, 'operationScope'),
             // The manifest fields the attribute now carries (RDU-02) — projected into Frame's
             // ResourceDefinition when this declaration is a framed admin resource.
             label: $attribute->label,

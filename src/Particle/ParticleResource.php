@@ -131,6 +131,8 @@ class ParticleResource implements HasRegistryKey
      *                                                                   row-level scope by realm (e.g. "My Teams" vs "Members" reading the same table under different
      *                                                                   realms); a closure that only declares one param is still called correctly — PHP ignores the
      *                                                                   uncalled extra arg.
+     * @param  (Closure(Builder, ?string $realm): Builder)|null  $operationScope
+     *                                                                            the population boundary used to resolve operation subjects when list admission is stricter than the operation's own authority. null (default) reuses the full `$scope` and therefore fails closed. Declare this only to split actor-relative list admission from tenant, owner, visibility or resource-identity predicates; those boundary predicates must remain here.
      *
      * The remaining params are the optional editor/**manifest** concerns — a resource that declares a
      * non-empty {@see $label} is {@see isFramed() framed} and projects into Frame via
@@ -263,6 +265,7 @@ class ParticleResource implements HasRegistryKey
         public ?Closure $afterWrite = null,
         public ?Closure $project = null,
         public ?Closure $scope = null,
+        public ?Closure $operationScope = null,
         public string $label = '',
         public string $form = 'bare',
         public ?string $editData = null,

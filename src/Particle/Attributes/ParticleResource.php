@@ -31,6 +31,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * in by {@see AttributedParticleDiscovery} when present (each is optional):
  *
  *   - `public static function scope(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder`  (actor via the `Auth` facade — the beam scope convention)
+ *   - `public static function operationScope(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder`  (operation population boundary; absent ⇒ full `scope`)
  *   - `public static function project(\Illuminate\Database\Eloquent\Model $model): \Spatie\LaravelData\Data`
  *   - `public static function prepare(\Illuminate\Database\Eloquent\Model $model, mixed $input, mixed $actor): void`
  *   - `public static function afterWrite(\Illuminate\Database\Eloquent\Model $model, mixed $input): void`

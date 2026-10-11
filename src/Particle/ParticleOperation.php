@@ -211,7 +211,7 @@ use Splicewire\Beam\Routing\IdConstraint;
  * What the default now does differently is the point: it resolves through the RESOURCE's backing and
  * applies its declared `includes` / `routeKey`, rather than running a bare
  * `$model::query()->findOrFail($id)`. It deliberately does not import the resource's list/read
- * `scope`: the operation's own `ability` is the authority contract for the resolved subject, and list
+ * operation population boundary: the operation's own `ability` is the authority contract for the resolved subject, and list
  * admission cannot pre-empt it with a 404.
  *
  * ⚠️ **`$model` did not delete at ticket 02, and the reason given here was false.** The paragraph that

@@ -87,8 +87,9 @@ class ParticleOperationController extends Controller
         // This line used to be `$operation->model::query()->findOrFail($id)` — the entire subject
         // resolution for every operation. The default resolver now resolves through the resource's
         // BACKING, eager loads and public identifier, but deliberately not its list/read `scope`: this
-        // controller applies the operation's own declared authority below, and list admission must not
-        // return 404 before that independent contract is asked. It falls back to the old line verbatim
+        // controller applies the operation's own declared authority below. Subject lookup first keeps
+        // the resource's population boundary; only an explicitly split operationScope may omit
+        // actor-relative list admission. It falls back to the old line verbatim
         // when the resource key is not registered.
         //
         // ⚠️ That last clause used to end "…which is the live `Sharing::attachTo()` / `market-products.*`

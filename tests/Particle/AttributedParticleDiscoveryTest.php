@@ -63,6 +63,7 @@ class AttributedParticleDiscoveryTest extends TestCase
 
         // Present convention methods → non-null closures.
         $this->assertNotNull($resource->scope);
+        $this->assertNotNull($resource->operationScope);
         $this->assertNotNull($resource->prepare);
         $this->assertNotNull($resource->project);
         // afterWrite is NOT declared on the fixture → stays null.
@@ -110,6 +111,7 @@ class AttributedParticleDiscoveryTest extends TestCase
         $resource = $this->app->make(ParticleResourceRegistry::class)->get('bare');
 
         $this->assertNull($resource->scope);
+        $this->assertNull($resource->operationScope);
         $this->assertNull($resource->prepare);
         $this->assertNull($resource->project);
     }
@@ -256,6 +258,11 @@ class FixtureInput {}
 class FixtureLyricResource
 {
     public static function scope(Builder $q): Builder
+    {
+        return $q;
+    }
+
+    public static function operationScope(Builder $q): Builder
     {
         return $q;
     }

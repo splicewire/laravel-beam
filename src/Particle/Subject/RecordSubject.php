@@ -16,11 +16,11 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * ## It resolves through the RESOURCE, which is the change
  *
  * The subject is looked up through the resource's backing and then through
- * {@see ResourceRecordLookup}, sharing the resource's `includes` and `routeKey`. It deliberately does
- * NOT inherit the resource's list/read `scope`: an operation carries its own `ability`, and
- * {@see ParticleOperationController} asks that authority contract about
- * the resolved subject. Running list admission first can turn an admitted operation into a 404 before
- * its own gate is ever asked.
+ * {@see ResourceRecordLookup}, sharing the resource's `includes`, `routeKey`, and operation population
+ * boundary. A resource may declare `operationScope` to omit actor-relative list admission while
+ * retaining tenant, owner, visibility and identity predicates. Without that split it inherits the
+ * full read `scope`, fail-closed. Only after boundary resolution does
+ * {@see ParticleOperationController} ask the operation's own authority contract about the subject.
  *
  * ## ⚠️ The `$model` fallback was defended here as load-bearing. It is not, and the count was false
  *

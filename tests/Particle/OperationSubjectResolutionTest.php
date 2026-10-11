@@ -28,8 +28,8 @@ use Splicewire\Beam\Tests\TestCase;
  * `$operation->model::query()->findOrFail($id)`, so an operation reached rows the resource's own
  * read path could not. Applying that read scope to operations, however, made list admission run
  * before the operation's own declared authority could be asked. The two contracts are independent:
- * reads keep the resource scope, while an operation resolves through the resource's backing and
- * public identifier, then asks its own `ability` about the resolved subject.
+ * reads keep the resource scope, while an operation resolves through the resource's declared
+ * population boundary and public identifier, then asks its own `ability` about the resolved subject.
  *
  * The `$model` fallback is pinned just as hard, because it is not vestigial: 13+ operations across
  * `beam-accounts`, `beam-rank` and `beam-market` register against a resource key that is not a
@@ -55,7 +55,10 @@ class OperationSubjectResolutionTest extends TestCase
         SubjectWidget::create(['slug' => 'shown', 'visible' => true]);
         SubjectWidget::create(['slug' => 'hidden', 'visible' => false]);
 
-        $this->resource(scope: fn (Builder $q) => $q->where('visible', true));
+        $this->resource(
+            scope: fn (Builder $q) => $q->where('visible', true),
+            operationScope: fn (Builder $q) => $q,
+        );
         $this->mount($this->op(ability: 'ping'));
 
         Gate::define('ping', fn (SubjectUser $actor, SubjectWidget $subject): bool => $subject->slug === 'hidden');
@@ -65,6 +68,36 @@ class OperationSubjectResolutionTest extends TestCase
         // admits it, and refuses row 1 because that same operation gate denies it.
         $this->postJson('/subject-widgets/2/ping')->assertOk()->assertJson(['id' => 2]);
         $this->postJson('/subject-widgets/1/ping')->assertForbidden();
+    }
+
+    public function test_an_operation_keeps_the_full_resource_scope_when_no_operation_boundary_is_declared(): void
+    {
+        SubjectWidget::create(['slug' => 'shown', 'visible' => true]);
+        SubjectWidget::create(['slug' => 'hidden', 'visible' => false]);
+
+        $this->resource(scope: fn (Builder $q) => $q->where('visible', true));
+        $this->mount($this->op(ability: false));
+
+        $this->postJson('/subject-widgets/1/ping')->assertOk()->assertJson(['id' => 1]);
+        $this->postJson('/subject-widgets/2/ping')->assertNotFound();
+        $this->postJson('/subject-widgets/999/ping')->assertNotFound();
+    }
+
+    public function test_an_operation_boundary_keeps_population_identity_while_skipping_list_admission(): void
+    {
+        SubjectWidget::create(['slug' => 'tenant-a-shown', 'visible' => true]);
+        SubjectWidget::create(['slug' => 'tenant-a-hidden', 'visible' => false]);
+        SubjectWidget::create(['slug' => 'tenant-b-hidden', 'visible' => false]);
+
+        $this->resource(
+            scope: fn (Builder $q) => $q->where('visible', true)->whereKey([1, 2]),
+            operationScope: fn (Builder $q) => $q->whereKey([1, 2]),
+        );
+        $this->mount($this->op(ability: false));
+
+        $this->postJson('/subject-widgets/2/ping')->assertOk()->assertJson(['id' => 2]);
+        $this->postJson('/subject-widgets/3/ping')->assertNotFound();
+        $this->postJson('/subject-widgets/999/ping')->assertNotFound();
     }
 
     public function test_a_resource_declaring_no_scope_resolves_exactly_as_before(): void
@@ -157,13 +190,18 @@ class OperationSubjectResolutionTest extends TestCase
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────
 
-    private function resource(?\Closure $scope = null, ?string $routeKey = null, array $includes = []): void
-    {
+    private function resource(
+        ?\Closure $scope = null,
+        ?\Closure $operationScope = null,
+        ?string $routeKey = null,
+        array $includes = [],
+    ): void {
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'subject-widgets',
             backing: SubjectWidget::class,
             includes: $includes,
             scope: $scope,
+            operationScope: $operationScope,
             routeKey: $routeKey,
         ));
     }

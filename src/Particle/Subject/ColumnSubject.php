@@ -49,18 +49,19 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * ## ⚠️ `throughResource` — registered backing/includes versus the compatibility model path
  *
  * By default the lookup runs through the resource's backing and {@see ResourceRecordLookup}, so the
- * resource's `includes` apply exactly as they do for {@see RecordSubject}; only `routeKey` is
- * overridden, by the column declared here. Its list/read `scope` does not apply: the operation's own
- * declared authority is asked after resolution.
+ * resource's `includes` and operation population boundary apply exactly as they do for
+ * {@see RecordSubject}; only `routeKey` is overridden, by the column declared here. A declared
+ * `operationScope` may omit actor-relative list admission, but the full read `scope` remains the
+ * fail-closed default. The operation's own authority is asked only after boundary resolution.
  *
  * `throughResource: false` resolves against the bare model instead. It exists for the measured case
  * where the resource's backing cannot be used at the mount. It remains for compatibility with tower's
- * invitation `accept` declaration, but skipping list/read scope is no longer its distinguishing job:
- * every operation subject is governed by the operation's own authority rather than list admission.
+ * invitation `accept` declaration. It is a backing compatibility escape hatch, not an authorization
+ * switch; a through-resource lookup remains governed by the declared operation boundary.
  *
  * ⚠️ **Which model that is no longer comes from the operation.** This used to read *"resolves against
  * {@see ParticleOperation::$model}"*, and it was the one path that made that deprecated slot look
- * unavoidable — the opt-out is about skipping the resource's SCOPE, not about disowning the resource.
+ * unavoidable — the opt-out is about using a non-queryable backing, not about disowning the resource.
  * So it now reads the model off the same backing, through {@see OperationSubjectModel}. The opt-out
  * stops being a reason to declare `model:`.
  *

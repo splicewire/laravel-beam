@@ -93,11 +93,14 @@ class ColumnSubjectResolutionTest extends TestCase
 
     // ── Operation authority stays independent of resource read scope ───────────────────────────────
 
-    public function test_it_does_not_apply_the_resources_read_scope_by_default(): void
+    public function test_it_applies_the_declared_operation_boundary_instead_of_list_admission(): void
     {
         ColumnWidget::create(['token' => 'tok-a', 'slug' => 'a', 'visible' => false]);
 
-        $this->resource(scope: fn (Builder $q) => $q->where('visible', true));
+        $this->resource(
+            scope: fn (Builder $q) => $q->where('visible', true),
+            operationScope: fn (Builder $q) => $q,
+        );
         $this->mount($this->op(subject: new ColumnSubject('token')));
 
         $this->postJson('/column-widgets/tok-a/ping')->assertOk()->assertJson(['id' => 1]);
@@ -107,8 +110,7 @@ class ColumnSubjectResolutionTest extends TestCase
     {
         ColumnWidget::create(['token' => 'tok-a', 'slug' => 'a', 'visible' => false]);
 
-        // The measured declaration remains supported even though list/read scope is now independent
-        // of every operation subject lookup.
+        // The measured declaration remains supported as a backing compatibility path.
         $this->resource(scope: fn (Builder $q) => $q->where('visible', true));
         $this->mount($this->op(subject: new ColumnSubject('token', throughResource: false)));
 
@@ -156,13 +158,18 @@ class ColumnSubjectResolutionTest extends TestCase
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────
 
-    private function resource(?\Closure $scope = null, ?string $routeKey = null, array $includes = []): void
-    {
+    private function resource(
+        ?\Closure $scope = null,
+        ?\Closure $operationScope = null,
+        ?string $routeKey = null,
+        array $includes = [],
+    ): void {
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'column-widgets',
             backing: ColumnWidget::class,
             includes: $includes,
             scope: $scope,
+            operationScope: $operationScope,
             routeKey: $routeKey,
         ));
     }

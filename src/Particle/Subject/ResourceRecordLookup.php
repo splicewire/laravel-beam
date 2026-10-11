@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Particle\Subject;
 
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
@@ -22,10 +23,11 @@ use Splicewire\Beam\Particle\ParticleResource;
  *      within whatever those already narrowed to — a product slug unique per SELLER under a relative
  *      mount, with the seller's own slug carrying the single global constraint.
  *
- * An OPERATION deliberately skips step 1. Its declared `ability` is its authority contract, checked
- * against the resolved subject by {@see ParticleOperationController}; importing list/read admission
- * first turns an independently authorized operation into a 404 before that contract can run. It still
- * resolves through the resource's backing, eager loads and public identifier.
+ * An OPERATION applies the resource's `operationScope`, or falls back to the full read `scope` when
+ * none is declared. This keeps the population boundary (tenant, owner, visibility and resource
+ * identity) in front of every operation while allowing a resource to separate actor-relative LIST
+ * admission from the operation's own authority contract. The fallback is deliberately fail-closed:
+ * an unsplit resource never loses its existing scope merely because an operation addresses it.
  *
  * A null `scope`/`routeKey` and an empty `includes` leave the query untouched, so a resource declaring
  * none of the three resolves through exactly the `findOrFail($id)` it always did.
@@ -58,14 +60,15 @@ class ResourceRecordLookup
      */
     public function within(ParticleResource $resource, Builder $query, string $id, ?string $column = null): Model
     {
-        return $this->resolve($resource, $query, $id, $column, applyReadScope: true);
+        return $this->resolve($resource, $query, $id, $column, $resource->scope);
     }
 
     /**
-     * Resolve an operation subject through the resource without importing its list/read admission.
+     * Resolve an operation subject through its declared population boundary.
      *
-     * The operation controller applies the operation's own `ability` after this returns. `includes`
-     * and the public identifier remain resource facts, so operations still share those declarations.
+     * The operation controller applies the operation's own `ability` after this returns. A declared
+     * `operationScope` may omit actor-relative list admission, but must preserve tenant, owner,
+     * visibility and identity predicates. Without one, the full read scope is retained.
      *
      * @param  Builder<Model>  $query
      */
@@ -75,7 +78,9 @@ class ResourceRecordLookup
         string $id,
         ?string $column = null,
     ): Model {
-        return $this->resolve($resource, $query, $id, $column, applyReadScope: false);
+        $scope = $resource->operationScope ?? $resource->scope;
+
+        return $this->resolve($resource, $query, $id, $column, $scope);
     }
 
     /** @param Builder<Model> $query */
@@ -84,10 +89,10 @@ class ResourceRecordLookup
         Builder $query,
         string $id,
         ?string $column,
-        bool $applyReadScope,
+        ?Closure $scope,
     ): Model {
-        if ($applyReadScope && $resource->scope !== null) {
-            $query = ($resource->scope)($query) ?? $query;
+        if ($scope !== null) {
+            $query = $scope($query) ?? $query;
         }
 
         if ($resource->includes !== []) {
