@@ -46,26 +46,23 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * it usually DOES want alongside is `idConstraint: IdConstraint::None` on the operation, since a token
  * will not satisfy a `uuid`-shaped resource constraint.
  *
- * ## ⚠️ `throughResource` — an opt-out, because the resource's gate is not always answerable
+ * ## ⚠️ `throughResource` — registered backing/includes versus the compatibility model path
  *
  * By default the lookup runs through the resource's backing and {@see ResourceRecordLookup}, so the
- * resource's `scope` (ADR-0156 §83's row-level read gate) and `includes` apply exactly as they do for
- * {@see RecordSubject}; only `routeKey` is overridden, by the column declared here. That is the safe
- * default and it should stay the answer for nearly every resource.
+ * resource's `includes` apply exactly as they do for {@see RecordSubject}; only `routeKey` is
+ * overridden, by the column declared here. Its list/read `scope` does not apply: the operation's own
+ * declared authority is asked after resolution.
  *
  * `throughResource: false` resolves against the bare model instead. It exists for the measured case
- * where the resource's scope CANNOT be satisfied at the mount: tower's invitation `accept` is a central
- * route with no tenancy middleware, so the resource's `tenant_id` scope — correct on every other verb —
- * would 404 every legitimate accept. The opt-out is deliberately a declaration rather than a silent
- * fallback, because "this operation resolves past the resource's row gate" is a sentence whose author
- * should have to write it down.
+ * where the resource's backing cannot be used at the mount. It remains for compatibility with tower's
+ * invitation `accept` declaration, but skipping list/read scope is no longer its distinguishing job:
+ * every operation subject is governed by the operation's own authority rather than list admission.
  *
  * ⚠️ **Which model that is no longer comes from the operation.** This used to read *"resolves against
  * {@see ParticleOperation::$model}"*, and it was the one path that made that deprecated slot look
  * unavoidable — the opt-out is about skipping the resource's SCOPE, not about disowning the resource.
- * So it now reads the model off the same backing, through
- * {@see OperationSubjectModel}, and skips only the gate. The opt-out keeps its exact
- * meaning and stops being a reason to declare `model:`.
+ * So it now reads the model off the same backing, through {@see OperationSubjectModel}. The opt-out
+ * stops being a reason to declare `model:`.
  *
  * ## ⚠️ It takes NO extra predicate, and that is a decision
  *
@@ -85,8 +82,8 @@ class ColumnSubject implements ResolvesOperationSubject
     /**
      * @param  string  $column  the column the `{id}` segment is matched against
      * @param  bool  $throughResource  whether to resolve through the registered resource's backing and
-     *                                 its declared `scope`/`includes`; `false` resolves against the bare
-     *                                 model (still read from the resource's backing), past the row gate
+     *                                 declared `includes`; `false` resolves against the bare model
+     *                                 (still read from the resource's backing)
      */
     public function __construct(
         public string $column = '',
@@ -132,7 +129,7 @@ class ColumnSubject implements ResolvesOperationSubject
 
             if ($backing instanceof QueriesRecords) {
                 return ($this->lookup ?? new ResourceRecordLookup)
-                    ->within($resource, $backing->query([]), $id, $this->column);
+                    ->forOperation($resource, $backing->query([]), $id, $this->column);
             }
         }
 

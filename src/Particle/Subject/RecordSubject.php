@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Particle\Subject;
 
 use Illuminate\Database\Eloquent\Model;
+use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -15,12 +16,11 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * ## It resolves through the RESOURCE, which is the change
  *
  * The subject is looked up through the resource's backing and then through
- * {@see ResourceRecordLookup} — the same `scope` / `includes` / `routeKey` tail
- * `ParticleController::findParticle()` applies. So an operation inherits the resource's row-level
- * gate (ADR-0156 §83) instead of needing the host to re-state it in a second vocabulary, which is
- * what hosts were doing: `audiostud`'s `timeline-projects.regenerate` carries an owner ability whose
- * comment says *"auth middleware alone would let any authenticated user regenerate any project"* —
- * a gate the resource had already declared and the operation path threw away.
+ * {@see ResourceRecordLookup}, sharing the resource's `includes` and `routeKey`. It deliberately does
+ * NOT inherit the resource's list/read `scope`: an operation carries its own `ability`, and
+ * {@see ParticleOperationController} asks that authority contract about
+ * the resolved subject. Running list admission first can turn an admitted operation into a 404 before
+ * its own gate is ever asked.
  *
  * ## ⚠️ The `$model` fallback was defended here as load-bearing. It is not, and the count was false
  *
@@ -96,7 +96,8 @@ class RecordSubject implements ResolvesOperationSubject
             $backing = $resource->backing();
 
             if ($backing instanceof QueriesRecords) {
-                return ($this->lookup ?? new ResourceRecordLookup)->within($resource, $backing->query([]), $id);
+                return ($this->lookup ?? new ResourceRecordLookup)
+                    ->forOperation($resource, $backing->query([]), $id);
             }
         }
 

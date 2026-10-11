@@ -85,12 +85,11 @@ class ParticleOperationController extends Controller
         // The operation's SUBJECT, through its declared resolver (particle-operation-surface ticket 02).
         //
         // This line used to be `$operation->model::query()->findOrFail($id)` — the entire subject
-        // resolution for every operation, and a live authorization gap: {@see ParticleController} resolves
-        // the same kind of subject through the resource's BACKING and then applies the resource's `scope`
-        // closure (ADR-0156 §83's row-level gate), its `includes` and its `routeKey`, and the operation
-        // path applied none of them. So an op on a `whereVisible()`-scoped resource, declaring no ability,
-        // reached rows the read path correctly hid. The default resolver closes that by resolving through
-        // the resource — and falls back to the old line verbatim when the resource key is not registered.
+        // resolution for every operation. The default resolver now resolves through the resource's
+        // BACKING, eager loads and public identifier, but deliberately not its list/read `scope`: this
+        // controller applies the operation's own declared authority below, and list admission must not
+        // return 404 before that independent contract is asked. It falls back to the old line verbatim
+        // when the resource key is not registered.
         //
         // ⚠️ That last clause used to end "…which is the live `Sharing::attachTo()` / `market-products.*`
         // shape." It is not live. Booted-registry probe of all 21 `~/Herd` roots, 2026-08-31: 107

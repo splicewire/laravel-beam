@@ -614,13 +614,10 @@ class ParticleController extends Controller
         $query = ($request !== null ? $this->relativeBaseQuery($request) : null)
             ?? $this->queryableBacking($resource)->query([]);
 
-        // Row-level authorization for subject resolution (ADR-0156 §83 — the `scope` closure), the declared
-        // `includes`, and the declared `routeKey`, through the collaborator that is now the ONE
-        // implementation of that tail. It was not, until particle-operation-surface ticket 02: this method
-        // applied all three while `ParticleOperationController` resolved an operation's subject with a bare
-        // `$operation->model::query()->findOrFail($id)`, so the row gate was CRUD-only and an operation on a
-        // scoped resource reached rows this path correctly hid. Shared rather than mirrored, because two
-        // copies of a gate are a gate that will diverge again.
+        // Row-level READ authorization for subject resolution (ADR-0156 §83 — the `scope` closure),
+        // the declared `includes`, and the declared `routeKey`. Operations share the backing,
+        // includes and public identifier through this collaborator, but deliberately not this list/read
+        // scope: their own declared ability is their authority contract.
         //
         // The BASE query stays here: only this path can have a bound relative, and reading one needs the
         // Request the subject port deliberately refuses.

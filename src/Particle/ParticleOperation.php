@@ -209,10 +209,10 @@ use Splicewire\Beam\Routing\IdConstraint;
  * resource-wide and says so.
  *
  * What the default now does differently is the point: it resolves through the RESOURCE's backing and
- * applies the resource's declared `scope` / `includes` / `routeKey`, rather than running a bare
- * `$model::query()->findOrFail($id)`. So an operation inherits the resource's row-level gate
- * (ADR-0156 §83) instead of the gate being CRUD-only — which it was, measurably: an operation on a
- * `whereVisible()`-scoped resource, declaring no ability, reached rows the read path correctly hid.
+ * applies its declared `includes` / `routeKey`, rather than running a bare
+ * `$model::query()->findOrFail($id)`. It deliberately does not import the resource's list/read
+ * `scope`: the operation's own `ability` is the authority contract for the resolved subject, and list
+ * admission cannot pre-empt it with a 404.
  *
  * ⚠️ **`$model` did not delete at ticket 02, and the reason given here was false.** The paragraph that
  * stood in this slot read: *"It has a real remaining job: it is the fallback subject class for an

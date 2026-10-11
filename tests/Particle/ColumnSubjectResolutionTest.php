@@ -91,26 +91,24 @@ class ColumnSubjectResolutionTest extends TestCase
         $this->postJson('/column-widgets/a/ping')->assertNotFound();
     }
 
-    // ── The resource scope, and the opt-out the tower case needs ────────────────────────────────────
+    // ── Operation authority stays independent of resource read scope ───────────────────────────────
 
-    public function test_it_honours_the_resources_row_gate_by_default(): void
+    public function test_it_does_not_apply_the_resources_read_scope_by_default(): void
     {
         ColumnWidget::create(['token' => 'tok-a', 'slug' => 'a', 'visible' => false]);
 
         $this->resource(scope: fn (Builder $q) => $q->where('visible', true));
         $this->mount($this->op(subject: new ColumnSubject('token')));
 
-        // 404, not a load-then-403: the scoped-out row must never resolve at all.
-        $this->postJson('/column-widgets/tok-a/ping')->assertNotFound();
+        $this->postJson('/column-widgets/tok-a/ping')->assertOk()->assertJson(['id' => 1]);
     }
 
-    public function test_through_resource_false_resolves_past_the_resources_scope(): void
+    public function test_through_resource_false_keeps_the_compatibility_model_path(): void
     {
         ColumnWidget::create(['token' => 'tok-a', 'slug' => 'a', 'visible' => false]);
 
-        // The measured case: an operation mounted OUTSIDE the middleware that makes the resource's
-        // scope answerable (tower's invitation `accept` is central, with no tenancy context), where
-        // resolving through the resource would 404 every legitimate call.
+        // The measured declaration remains supported even though list/read scope is now independent
+        // of every operation subject lookup.
         $this->resource(scope: fn (Builder $q) => $q->where('visible', true));
         $this->mount($this->op(subject: new ColumnSubject('token', throughResource: false)));
 

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Particle;
@@ -25,10 +26,10 @@ use Splicewire\Beam\Tests\TestCase;
  *
  * The defect these pin: `ParticleOperationController::invoke()` was a bare
  * `$operation->model::query()->findOrFail($id)`, so an operation reached rows the resource's own
- * read path could not. The `scope` closure is ADR-0156 §83's ROW-LEVEL gate — a resolve-by-id that
- * skips it is an authorization hole, not a cosmetic inconsistency, and it was live: the flagship
- * app's `market-extensions.install` sits on a resource scoped `whereVisible()` and declares no
- * ability, so a withdrawn listing was installable while the read path correctly hid it.
+ * read path could not. Applying that read scope to operations, however, made list admission run
+ * before the operation's own declared authority could be asked. The two contracts are independent:
+ * reads keep the resource scope, while an operation resolves through the resource's backing and
+ * public identifier, then asks its own `ability` about the resolved subject.
  *
  * The `$model` fallback is pinned just as hard, because it is not vestigial: 13+ operations across
  * `beam-accounts`, `beam-rank` and `beam-market` register against a resource key that is not a
@@ -47,19 +48,23 @@ class OperationSubjectResolutionTest extends TestCase
         });
     }
 
-    // ── The resource's `scope` closure gates the op's subject resolution ─────────────────────────────
+    // ── The operation's authority is independent of the resource's read scope ───────────────────────
 
-    public function test_an_operation_cannot_resolve_a_row_the_resources_scope_excludes(): void
+    public function test_an_operation_resolves_a_subject_the_read_scope_excludes_then_applies_its_own_ability(): void
     {
         SubjectWidget::create(['slug' => 'shown', 'visible' => true]);
         SubjectWidget::create(['slug' => 'hidden', 'visible' => false]);
 
         $this->resource(scope: fn (Builder $q) => $q->where('visible', true));
-        $this->mount($this->op());
+        $this->mount($this->op(ability: 'ping'));
 
-        // 404, not a load-then-403: the excluded row must never resolve at all.
-        $this->postJson('/subject-widgets/2/ping')->assertNotFound();
-        $this->postJson('/subject-widgets/1/ping')->assertOk()->assertJson(['id' => 1]);
+        Gate::define('ping', fn (SubjectUser $actor, SubjectWidget $subject): bool => $subject->slug === 'hidden');
+        $this->actingAs(new SubjectUser);
+
+        // The read scope would return only row 1. The operation reaches row 2 because its own gate
+        // admits it, and refuses row 1 because that same operation gate denies it.
+        $this->postJson('/subject-widgets/2/ping')->assertOk()->assertJson(['id' => 2]);
+        $this->postJson('/subject-widgets/1/ping')->assertForbidden();
     }
 
     public function test_a_resource_declaring_no_scope_resolves_exactly_as_before(): void
@@ -163,8 +168,11 @@ class OperationSubjectResolutionTest extends TestCase
         ));
     }
 
-    private function op(mixed $subject = null, ?callable $handle = null): ParticleOperation
-    {
+    private function op(
+        mixed $subject = null,
+        ?callable $handle = null,
+        string|false|null $ability = null,
+    ): ParticleOperation {
         return new ParticleOperation(
             resource: 'subject-widgets',
             name: 'ping',
@@ -173,6 +181,7 @@ class OperationSubjectResolutionTest extends TestCase
             handle: $handle === null
                 ? fn ($model) => ['id' => $model->getKey()]
                 : \Closure::fromCallable($handle),
+            ability: $ability,
             subject: $subject,
         );
     }
