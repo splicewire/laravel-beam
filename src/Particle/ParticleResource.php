@@ -16,6 +16,7 @@ use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceActionDefinition;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Filters\BeamResourceFilterProvider;
 use Splicewire\Beam\Frame\ParticleResourceActions;
@@ -270,7 +271,7 @@ class ParticleResource implements HasRegistryKey
         public string $form = 'bare',
         public ?string $editData = null,
         public ?string $policy = null,
-        /** @var class-string<\Splicewire\Beam\Authorization\ResourceReadPolicy>|null */
+        /** @var class-string<ResourceReadPolicy>|null */
         public ?string $readPolicy = null,
         public ?string $readBoundary = null,
         public ?string $query = null,

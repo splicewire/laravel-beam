@@ -6,6 +6,7 @@ use Attribute;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\ResourceFilterProvider;
 use Schemastud\Frame\Contracts\ResourceSummaryProvider;
+use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -105,7 +106,7 @@ class ParticleResource
         public string $form = 'bare',
         public ?string $editData = null,
         public ?string $policy = null,
-        /** @var class-string<\Splicewire\Beam\Authorization\ResourceReadPolicy>|null */
+        /** @var class-string<ResourceReadPolicy>|null */
         public ?string $readPolicy = null,
         public ?string $readBoundary = null,
         public ?string $query = null,
