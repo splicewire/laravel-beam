@@ -3,9 +3,11 @@
 namespace Splicewire\Beam\Tests\Particle;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -45,6 +47,10 @@ class OperationSubjectResolutionTest extends TestCase
             $table->id();
             $table->string('slug');
             $table->boolean('visible')->default(true);
+        });
+        Schema::create('uuid_subject_widgets', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('slug');
         });
     }
 
@@ -128,6 +134,32 @@ class OperationSubjectResolutionTest extends TestCase
         $this->mount($this->op());
 
         $this->postJson('/subject-widgets/2/ping')->assertOk()->assertJson(['id' => 2]);
+    }
+
+    public function test_an_operation_rejects_a_malformed_uuid_before_querying_its_subject(): void
+    {
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'uuid-subject-widgets',
+            backing: UuidSubjectWidget::class,
+        ));
+        $operation = new ParticleOperation(
+            resource: 'uuid-subject-widgets',
+            name: 'ping',
+            kind: OperationKind::Write,
+            handle: fn ($model) => ['id' => $model->getKey()],
+        );
+        $this->app->make(ParticleOperationRegistry::class)->register($operation);
+        Particle::ops('uuid-subject-widgets', 'uuid-subject-widgets', 'ping');
+
+        $queries = [];
+        DB::listen(function ($query) use (&$queries): void {
+            if (str_contains($query->sql, 'uuid_subject_widgets')) {
+                $queries[] = $query->sql;
+            }
+        });
+
+        $this->postJson('/uuid-subject-widgets/not-a-uuid/ping')->assertNotFound();
+        $this->assertSame([], $queries, 'A malformed operation subject UUID must not reach the database.');
     }
 
     // ── A declared route key is the op's identifier too ──────────────────────────────────────────────
@@ -254,6 +286,17 @@ class OperationSubjectResolutionTest extends TestCase
 class SubjectWidget extends Model
 {
     protected $table = 'subject_widgets';
+
+    public $timestamps = false;
+
+    protected $guarded = [];
+}
+
+class UuidSubjectWidget extends Model
+{
+    use HasUuids;
+
+    protected $table = 'uuid_subject_widgets';
 
     public $timestamps = false;
 

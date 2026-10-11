@@ -20,6 +20,7 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
 use Splicewire\Beam\Particle\Subject\SubjectResolvers;
 use Splicewire\Beam\Rendering\DeclaresDelivery;
+use Splicewire\Beam\Routing\RecordKey;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -81,6 +82,10 @@ class ParticleOperationController extends Controller
         $name = $defaults[static::NAME] ?? throw new RuntimeException('Operation route missing its name default.');
 
         $operation = $this->operations->get($resource, $name);
+
+        if ($id !== null) {
+            RecordKey::assertMatches($operation->idConstraint, $id, $operation->model ?? $operation->resource);
+        }
 
         // The operation's SUBJECT, through its declared resolver (particle-operation-surface ticket 02).
         //

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Routing\RecordKey;
 
 /**
  * The ONE implementation of "resolve this resource's `{id}` to a record".
@@ -105,6 +106,8 @@ class ResourceRecordLookup
         if ($key !== null) {
             return $query->where($key, $id)->firstOrFail();
         }
+
+        RecordKey::assertValidFor($query->getModel()::class, $id);
 
         return $query->findOrFail($id);
     }

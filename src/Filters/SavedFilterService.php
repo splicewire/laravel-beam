@@ -14,6 +14,7 @@ use Schemastud\Frame\Data\ResourceQueryData;
 use Schemastud\Frame\Filters\ResourceFilters as FrameResourceFilters;
 use Splicewire\Beam\Filters\Data\SavedFilterEditData;
 use Splicewire\Beam\Filters\Data\SavedFilterInputData;
+use Splicewire\Beam\Routing\RecordKey;
 use Splicewire\Beam\Write\ModelAttributeMapper;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -43,6 +44,8 @@ class SavedFilterService
 
     public function find(string $id, bool $owned = false): SavedFilter
     {
+        RecordKey::assertValidFor(SavedFilter::class, $id);
+
         $saved = SavedFilter::query()->findOrFail($id);
         $this->authorizeStoredTarget($saved);
         $query = $this->visibleQuery($saved->resource);

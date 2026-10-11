@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Schemastud\Frame\Contracts\WriteSubjectResolver;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
+use Splicewire\Beam\Routing\RecordKey;
 
 /**
  * Beam's answer to frame's {@see WriteSubjectResolver}: the record a write policy is asked about is
@@ -36,7 +37,16 @@ class ParticleWriteSubjectResolver implements WriteSubjectResolver
         if ($resource === null || ! $resource->backing() instanceof QueriesRecords) {
             $model = $definition->model;
 
+            if ($model !== null) {
+                RecordKey::assertValidFor($model, $id);
+            }
+
             return $model === null ? null : $model::query()->find($id);
+        }
+
+        $model = $resource->modelClass();
+        if ($model !== null) {
+            RecordKey::assertValidFor($model, $id);
         }
 
         return $this->scopes->scoped($resource->backing()->query([]), $resource)->find($id);

@@ -8,6 +8,7 @@ use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Routing\RecordKey;
 
 /**
  * One record, resolved from the URL's `{id}` — the DEFAULT, and what every declaration got implicitly
@@ -102,6 +103,8 @@ class RecordSubject implements ResolvesOperationSubject
         }
 
         $model = ($this->models ?? new OperationSubjectModel($resources))->require($operation);
+
+        RecordKey::assertValidFor($model, $id);
 
         return $model::query()->findOrFail($id);
     }

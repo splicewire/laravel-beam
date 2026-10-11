@@ -7,6 +7,7 @@ use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -109,6 +110,27 @@ class FrameResourceFiltersTest extends TestCase
         $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.name', 'Updated')->assertJsonPath('data.queryParameters.filter.count', 7);
         $this->deleteJson("frame/resources/saved-filters/records/{$id}")->assertNoContent();
         $this->getJson("frame/resources/saved-filters/records/{$id}")->assertNotFound();
+    }
+
+    public function test_a_malformed_saved_filter_uuid_is_404_before_the_lookup_queries_postgres(): void
+    {
+        foreach (['get', 'put', 'delete'] as $verb) {
+            $queries = [];
+            DB::listen(function ($query) use (&$queries): void {
+                if (str_contains($query->sql, 'saved_filters')) {
+                    $queries[] = $query->sql;
+                }
+            });
+
+            $response = match ($verb) {
+                'get' => $this->getJson('frame/resources/saved-filters/records/not-a-uuid'),
+                'put' => $this->putJson('frame/resources/saved-filters/records/not-a-uuid', ['name' => 'Changed']),
+                'delete' => $this->deleteJson('frame/resources/saved-filters/records/not-a-uuid'),
+            };
+
+            $response->assertNotFound();
+            $this->assertSame([], $queries, "A malformed saved-filter UUID reached the database on {$verb}.");
+        }
     }
 
     public function test_saved_filter_wires_are_camel_and_unknown_snake_keys_are_refused(): void

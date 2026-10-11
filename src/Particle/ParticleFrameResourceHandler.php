@@ -25,6 +25,7 @@ use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
+use Splicewire\Beam\Routing\RecordKey;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Write\ModelAttributeMapper;
 use Splicewire\Beam\Write\ParticleWriter;
@@ -170,7 +171,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         // as its list rows (the resource's `project` closure, e.g. CustomerData::fromModel), so a detail row
         // matches a list row. An editable resource keeps its edit projection (`editData ?? data`) to pre-fill
         // the form.
-        $model = $this->query($definition)->findOrFail($id);
+        $model = $this->find($definition, $id);
 
         return $definition->editable
             ? $this->projectEdit($definition, $model)
@@ -222,7 +223,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     {
         $this->assertWritable($definition, 'update');
 
-        $model = $this->query($definition)->findOrFail($id);
+        $model = $this->find($definition, $id);
 
         $parsed = $this->parseInput($definition, $input);
         $this->prepare($definition, $model, $parsed);
@@ -235,10 +236,19 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     {
         $this->assertWritable($definition, 'destroy');
 
-        $this->query($definition)->findOrFail($id)->delete();
+        $this->find($definition, $id)->delete();
     }
 
     // ---- internals -----------------------------------------------------------------------------------
+
+    protected function find(ResourceDefinition $definition, string $id): Model
+    {
+        if ($definition->model !== null) {
+            RecordKey::assertValidFor($definition->model, $id);
+        }
+
+        return $this->query($definition)->findOrFail($id);
+    }
 
     /**
      * Refuse a non-read verb on a resource whose {@see ResourceDefinition} does not permit it — a
