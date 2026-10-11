@@ -100,6 +100,25 @@ class OperationSubjectResolutionTest extends TestCase
         $this->postJson('/subject-widgets/999/ping')->assertNotFound();
     }
 
+    public function test_a_subject_blind_permission_cannot_cross_the_operation_boundary(): void
+    {
+        SubjectWidget::create(['slug' => 'tenant-a', 'visible' => false]);
+        SubjectWidget::create(['slug' => 'tenant-b', 'visible' => false]);
+
+        $this->resource(
+            scope: fn (Builder $q) => $q->whereKey(1),
+            operationScope: fn (Builder $q) => $q->whereKey(1),
+        );
+        $this->mount($this->op(ability: 'touch-widgets'));
+
+        Gate::before(fn (SubjectUser $actor, string $ability): ?bool => $ability === 'touch-widgets' ? true : null);
+        $this->actingAs(new SubjectUser);
+
+        $this->postJson('/subject-widgets/1/ping')->assertOk();
+        $this->postJson('/subject-widgets/2/ping')->assertNotFound();
+        $this->postJson('/subject-widgets/999/ping')->assertNotFound();
+    }
+
     public function test_a_resource_declaring_no_scope_resolves_exactly_as_before(): void
     {
         SubjectWidget::create(['slug' => 'shown', 'visible' => true]);
