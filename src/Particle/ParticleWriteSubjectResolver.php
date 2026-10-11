@@ -45,7 +45,7 @@ class ParticleWriteSubjectResolver implements WriteSubjectResolver
         }
 
         $model = $resource->modelClass();
-        if ($model !== null) {
+        if ($model !== null && $resource->routeKey === null) {
             RecordKey::assertValidFor($model, $id);
         }
 

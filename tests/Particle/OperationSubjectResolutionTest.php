@@ -162,6 +162,26 @@ class OperationSubjectResolutionTest extends TestCase
         $this->assertSame([], $queries, 'A malformed operation subject UUID must not reach the database.');
     }
 
+    public function test_a_uuid_backing_does_not_constrain_a_declared_string_route_key(): void
+    {
+        UuidSubjectWidget::create(['slug' => 'blue']);
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'uuid-subject-widgets',
+            backing: UuidSubjectWidget::class,
+            routeKey: 'slug',
+        ));
+        $operation = new ParticleOperation(
+            resource: 'uuid-subject-widgets',
+            name: 'ping',
+            kind: OperationKind::Write,
+            handle: fn ($model) => ['id' => $model->getKey()],
+        );
+        $this->app->make(ParticleOperationRegistry::class)->register($operation);
+        Particle::ops('uuid-subject-widgets', 'uuid-subject-widgets', 'ping');
+
+        $this->postJson('/uuid-subject-widgets/blue/ping')->assertOk();
+    }
+
     // ── A declared route key is the op's identifier too ──────────────────────────────────────────────
 
     public function test_an_operation_resolves_by_the_resources_declared_route_key(): void
