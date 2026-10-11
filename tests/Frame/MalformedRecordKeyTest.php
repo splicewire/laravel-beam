@@ -86,6 +86,35 @@ class MalformedRecordKeyTest extends TestCase
         $this->assertSame([], $queries, 'A malformed UUID must be rejected before it reaches the database.');
     }
 
+    #[DataProvider('recordVerbs')]
+    public function test_a_declared_route_key_does_not_disable_the_primary_key_guard_used_by_frame(string $verb): void
+    {
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'malformed-key-records',
+            backing: MalformedKeyRecord::class,
+            data: MalformedKeyData::class,
+            scope: fn ($query) => $query,
+            label: 'Malformed key records',
+            routeKey: 'name',
+        ));
+
+        $queries = [];
+        DB::listen(function ($query) use (&$queries): void {
+            if (str_contains($query->sql, 'malformed_key_records')) {
+                $queries[] = $query->sql;
+            }
+        });
+
+        $response = match ($verb) {
+            'get' => $this->getJson('/frame/resources/malformed-key-records/records/not-a-uuid'),
+            'put' => $this->putJson('/frame/resources/malformed-key-records/records/not-a-uuid', ['name' => 'Changed']),
+            'delete' => $this->deleteJson('/frame/resources/malformed-key-records/records/not-a-uuid'),
+        };
+
+        $response->assertNotFound();
+        $this->assertSame([], $queries, 'Frame resolves records by primary key even when the resource declares a route key.');
+    }
+
     public function test_a_malformed_uuid_and_a_valid_missing_uuid_have_the_same_not_found_status(): void
     {
         $this->getJson('/frame/resources/malformed-key-records/records/not-a-uuid')->assertNotFound();
@@ -102,6 +131,30 @@ class MalformedRecordKeyTest extends TestCase
         $this->deleteJson($path)->assertNoContent();
 
         $this->assertNull(MalformedKeyRecord::find($record->getKey()));
+    }
+
+    public function test_a_uuid_trait_on_a_non_primary_column_does_not_constrain_an_integer_primary_key(): void
+    {
+        Schema::create('integer_key_records', function (Blueprint $table): void {
+            $table->id();
+            $table->uuid('public_id')->unique();
+            $table->string('name');
+        });
+
+        Gate::policy(IntegerKeyRecord::class, IntegerKeyPolicy::class);
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'integer-key-records',
+            backing: IntegerKeyRecord::class,
+            data: IntegerKeyData::class,
+            scope: fn ($query) => $query,
+            label: 'Integer key records',
+        ));
+
+        $record = IntegerKeyRecord::create(['name' => 'Integer primary key']);
+
+        $this->getJson("/frame/resources/integer-key-records/records/{$record->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Integer primary key');
     }
 }
 
@@ -121,6 +174,27 @@ class MalformedKeyActor extends User {}
 class MalformedKeyData extends Data
 {
     public function __construct(public string $id, public string $name) {}
+}
+
+class IntegerKeyRecord extends Model
+{
+    use HasUuids;
+
+    protected $table = 'integer_key_records';
+
+    protected $guarded = [];
+
+    public $timestamps = false;
+
+    public function uniqueIds(): array
+    {
+        return ['public_id'];
+    }
+}
+
+class IntegerKeyData extends Data
+{
+    public function __construct(public int $id, public string $name) {}
 }
 
 class MalformedKeyPolicy
@@ -146,6 +220,19 @@ class MalformedKeyPolicy
     }
 
     public function delete(Authenticatable $actor, MalformedKeyRecord $record): bool
+    {
+        return true;
+    }
+}
+
+class IntegerKeyPolicy
+{
+    public function viewAny(Authenticatable $actor): bool
+    {
+        return true;
+    }
+
+    public function view(Authenticatable $actor, IntegerKeyRecord $record): bool
     {
         return true;
     }

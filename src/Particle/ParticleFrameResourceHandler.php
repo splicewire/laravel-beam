@@ -243,9 +243,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     protected function find(ResourceDefinition $definition, string $id): Model
     {
-        $resource = $this->resource($definition);
-
-        if ($definition->model !== null && $resource?->routeKey === null) {
+        if ($definition->model !== null) {
             RecordKey::assertValidFor($definition->model, $id);
         }
 

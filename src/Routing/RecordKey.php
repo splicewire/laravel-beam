@@ -22,6 +22,12 @@ final class RecordKey
             return;
         }
 
+        $instance = new $model;
+
+        if (! in_array($instance->getKeyName(), $instance->uniqueIds(), true)) {
+            return;
+        }
+
         self::assertMatches(IdConstraint::Uuid, $value, $model);
     }
 
