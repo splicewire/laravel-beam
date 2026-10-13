@@ -149,7 +149,13 @@ class ResourceReadGuard
             $built = false;
         }
         if ($scoped !== false) {
-            return Response::allow();
+            // A narrowed population is a boundary, not caller authority. Preserve explicit resource/model
+            // policies and Gate::before, but never let a WHERE clause authenticate an otherwise ungated read.
+            if ($policyRequiresViewAny || $this->declaredReadAbility($resource) !== null) {
+                return Response::allow();
+            }
+
+            return $gate->inspect('viewAny', $resource->modelClass());
         }
 
         // A DECLARED scope is the boundary (integrator ruling c353ac01, 16:13Z): its privileged branch may return every

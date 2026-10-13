@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
+use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -36,13 +37,14 @@ class UngatedIndexReadTest extends TestCase
         $this->actingAs(new ReadGuardUser);
     }
 
-    private function declare(?\Closure $scope = null): void
+    private function declare(?\Closure $scope = null, ?string $readPolicy = null): void
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'gadgets',
             backing: Gadget::class,
             data: GadgetData::class,
             scope: $scope,
+            readPolicy: $readPolicy,
             project: fn (Gadget $gadget) => new GadgetData((string) $gadget->id),
             frame: false,
         ));
@@ -112,21 +114,44 @@ class UngatedIndexReadTest extends TestCase
         $this->getJson('/gadgets')->assertOk()->assertJsonCount(2, 'data');
     }
 
-    public function test_a_declared_scope_closure_is_the_gate(): void
+    /** Integrator ruling 2026-10-10 15:33Z: a row scope is a boundary, never caller authority. */
+    public function test_a_declared_scope_without_read_authority_refuses_the_index(): void
     {
         $this->declare(scope: fn ($q) => $q->where('user_id', 1));
         Particle::mount('gadgets')->only(['index'])->register();
 
-        $this->getJson('/gadgets')->assertOk()->assertJsonCount(1, 'data');
+        $this->getJson('/gadgets')->assertForbidden();
     }
 
-    public function test_a_predicated_base_query_is_the_gate(): void
+    public function test_a_guest_cannot_borrow_a_declared_row_scope_as_read_authority(): void
+    {
+        $this->declare(scope: fn ($q) => $q->where('user_id', 1));
+        Particle::mount('gadgets')->only(['index'])->register();
+        $this->app['auth']->forgetGuards();
+
+        $this->getJson('/gadgets')->assertForbidden();
+    }
+
+    public function test_an_authenticated_read_policy_and_declared_scope_are_conjunctive(): void
+    {
+        $this->declare(
+            scope: fn ($q) => $q->where('user_id', 1),
+            readPolicy: AuthenticatedReadPolicy::class,
+        );
+        Particle::mount('gadgets')->only(['index'])->register();
+
+        $this->getJson('/gadgets')->assertOk()->assertJsonCount(1, 'data');
+        $this->app['auth']->forgetGuards();
+        $this->getJson('/gadgets')->assertForbidden();
+    }
+
+    public function test_a_predicated_base_query_is_not_read_authority(): void
     {
         $this->declare();
         $this->filterWith(OwnedGadgetQuery::class);
         Particle::mount('gadgets')->only(['index'])->register();
 
-        $this->getJson('/gadgets')->assertOk()->assertJsonCount(1, 'data');
+        $this->getJson('/gadgets')->assertForbidden();
     }
 
     /** Integrator ruling 2026-10-10 02:43Z: policy admission without a population scope is refused. */
