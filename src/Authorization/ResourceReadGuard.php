@@ -8,6 +8,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\ParticleListQuery;
@@ -218,6 +219,20 @@ class ResourceReadGuard
      * nothing to scope. Throws when the authorization bases cannot be built.
      */
     private function narrowed(ParticleResource $resource, ?Request $request): ?bool
+    {
+        $connection = DB::connection();
+        if ($connection->transactionLevel() === 0) {
+            return $this->buildNarrowed($resource, $request);
+        }
+
+        // inspect() deliberately reports a broken authorization probe and fails closed. On PostgreSQL, catching the
+        // query error inside the caller's transaction without first rolling back a savepoint leaves that transaction
+        // aborted (25P02), so an authorization question poisons unrelated work. Laravel's nested transaction creates
+        // and rolls back exactly that savepoint, then rethrows for inspect()/scoped() to keep their documented answer.
+        return $connection->transaction(fn (): ?bool => $this->buildNarrowed($resource, $request));
+    }
+
+    private function buildNarrowed(ParticleResource $resource, ?Request $request): ?bool
     {
         if (! $resource->backing() instanceof QueriesRecords) {
             return null;
