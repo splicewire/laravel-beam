@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Schemastud\Frame\FrameServiceProvider;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Filters\DeclaredResourceQuery;
 use Splicewire\Beam\Particle\Backing\DeclaredFacet;
@@ -36,7 +37,7 @@ class StreamFilterExecutionTest extends TestCase
         $this->actingAs((new User)->forceFill(['id' => 1]));
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'boolean-stream', backing: BooleanStreamBacking::class, data: BooleanStreamRow::class,
-            frame: true, readOnly: true, showable: false,
+            frame: true, readOnly: true, showable: false, readPolicy: AuthenticatedReadPolicy::class,
         ));
         Particle::mount('boolean-stream', 'boolean-stream')->only(['index']);
     }

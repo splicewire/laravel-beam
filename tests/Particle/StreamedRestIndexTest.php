@@ -2,8 +2,10 @@
 
 namespace Splicewire\Beam\Tests\Particle;
 
+use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\ResponseBodyEnvelope;
@@ -41,6 +43,7 @@ class StreamedRestIndexTest extends TestCase
             // has to close the write affordances it would otherwise open by default. That refusal is
             // ticket 03's, at REGISTRATION; this file exercises the read it left unserved.
             readOnly: true,
+            readPolicy: AuthenticatedReadPolicy::class,
         ));
     }
 
@@ -51,6 +54,7 @@ class StreamedRestIndexTest extends TestCase
         $route = new Route('GET', '/streamed-probes', []);
         $route->defaults(ParticleController::RESOURCE, 'streamed-probe');
         $request->setRouteResolver(fn () => $route);
+        $request->setUserResolver(fn () => new User);
 
         return $this->app->make(ParticleController::class)
             ->index($request)

@@ -165,6 +165,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_selected_variant_executes_its_facet_and_keeps_both_query_scopes(): void
     {
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         $this->getJson('frame/resources/variant-records?filterVariant=active-records&filter[status]=open')
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Owned open');
         $this->getJson('frame/resources/variant-records?filterVariant=active-records&filter[status]=closed')
@@ -210,6 +211,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_variant_scope_ids_ignore_canonical_pagination_defaults(): void
     {
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         DataFilter::registry()->registerDefinition(new ResourceDefinition('variant-records', CanonicalVariantFilters::class, LimitedOwnerVariantQuery::class, VariantRecord::class));
         $this->getJson('frame/resources/variant-records?filterVariant=active-records&filter[status]=open')
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Owned open');
@@ -217,6 +219,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_variant_only_query_saves_reloads_and_applies_without_canonical_fallback(): void
     {
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         $params = ['filterVariant' => 'active-records', 'filter' => ['status' => 'open']];
         $id = $this->postJson('frame/resources/saved-filters', [
             'resource' => 'variant-records', 'name' => 'Open', 'queryParameters' => $params,
@@ -232,6 +235,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_invalid_cross_target_and_cross_model_variants_fail_on_reads_and_saves(): void
     {
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         foreach (['unknown', 'other-records', 'wrong-model'] as $variant) {
             $this->getJson('frame/resources/variant-records?filterVariant='.$variant)->assertNotFound();
             $this->getJson('frame/resources/variant-records/filters/'.$variant.'/schema')->assertNotFound();
@@ -284,6 +288,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_nonframed_candidate_still_requires_its_declared_realm(): void
     {
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'active-records', backing: VariantRecord::class, data: SelectedVariantFilters::class,
             frame: false, readOnly: true,
@@ -304,6 +309,7 @@ class FilterVariantExecutionTest extends TestCase
 
     public function test_vocabulary_only_and_unresolved_candidates_are_ineligible_variants(): void
     {
+        Gate::policy(VariantRecord::class, AllowedVariantModelPolicy::class);
         DataFilter::registry()->registerDefinition(new ResourceDefinition('vocabulary-only', SelectedVariantFilters::class, \stdClass::class, VariantRecord::class, 'variant-records'));
         DataFilter::registry()->registerDefinition(new ResourceDefinition('unresolved-variant', SelectedVariantFilters::class, EnabledVariantQuery::class, null, 'variant-records'));
         $this->app->bind(ResourceModelResolver::class, fn () => new class implements ResourceModelResolver

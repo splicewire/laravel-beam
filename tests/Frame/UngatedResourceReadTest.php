@@ -16,6 +16,7 @@ use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Facades\Particle;
@@ -73,13 +74,14 @@ class UngatedResourceReadTest extends TestCase
         $this->actingAs($actor);
     }
 
-    private function declare(string $key = 'gadgets', ?Closure $scope = null): void
+    private function declare(string $key = 'gadgets', ?Closure $scope = null, ?string $readPolicy = null): void
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: $key,
             backing: Gadget::class,
             data: GadgetData::class,
             scope: $scope,
+            readPolicy: $readPolicy,
             project: function (Gadget $gadget): GadgetData {
                 $this->projected[] = $gadget->getKey();
 
@@ -119,9 +121,12 @@ class UngatedResourceReadTest extends TestCase
         $this->assertSame([], array_values(array_filter($queries, fn (string $query): bool => str_contains(strtolower($query), 'count('))));
     }
 
-    public function test_declared_owner_scope_still_serves_list_detail_and_summary(): void
+    public function test_authenticated_authority_and_owner_scope_serve_list_detail_and_summary(): void
     {
-        $this->declare(scope: fn ($query) => $query->where('user_id', request()->user()->getAuthIdentifier()));
+        $this->declare(
+            scope: fn ($query) => $query->where('user_id', request()->user()->getAuthIdentifier()),
+            readPolicy: AuthenticatedReadPolicy::class,
+        );
 
         $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '1');
         $this->getJson('/frame/resources/gadgets/records/1')->assertOk()->assertJsonPath('data.id', '1');
@@ -138,9 +143,9 @@ class UngatedResourceReadTest extends TestCase
         $this->getJson('/frame/resources/gadgets/summary?filter[user_id]=1')->assertForbidden();
     }
 
-    public function test_a_predicated_query_preserves_the_owned_list_and_aggregate(): void
+    public function test_authenticated_authority_and_a_predicated_query_preserve_the_owned_list_and_aggregate(): void
     {
-        $this->declare();
+        $this->declare(readPolicy: AuthenticatedReadPolicy::class);
         DataFilter::registry()->registerDefinition(new FilterDefinition('gadgets', GadgetData::class, OwnedGadgetQuery::class, Gadget::class));
 
         $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', '1');
@@ -222,6 +227,7 @@ class UngatedResourceReadTest extends TestCase
         $this->declare(
             'admitted-gadgets',
             fn ($query) => $query->where('user_id', request()->user()->getAuthIdentifier()),
+            AuthenticatedReadPolicy::class,
         );
 
         $keys = collect($this->getJson('/frame/manifest')->assertOk()->json('resources'))->pluck('key');
@@ -287,12 +293,15 @@ class UngatedResourceReadTest extends TestCase
         Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'Unavailable domain context');
     }
 
-    public function test_a_model_less_backing_does_not_acquire_a_model_policy_requirement(): void
+    public function test_a_model_less_backing_uses_its_declared_read_policy_without_a_model_policy(): void
     {
-        $resource = new ParticleResource(key: 'external', backing: new FrameReadExternalBacking, data: GadgetData::class, readOnly: true);
+        $resource = new ParticleResource(
+            key: 'external', backing: new FrameReadExternalBacking, data: GadgetData::class,
+            readPolicy: AuthenticatedReadPolicy::class, readOnly: true,
+        );
 
         $this->assertNull(ResourceReadGuard::forApp()->policyBound($resource));
-        $this->assertTrue(ResourceReadGuard::forApp()->inspectRead($resource, request())->allowed());
+        $this->assertTrue(ResourceReadGuard::forApp()->inspectReadFor($resource, request(), auth()->user())->allowed());
     }
 }
 

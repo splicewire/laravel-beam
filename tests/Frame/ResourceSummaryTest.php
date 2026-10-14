@@ -19,6 +19,7 @@ use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Routing\ResourceRoutes;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\Entitlements\FakeEntitlementResolver;
@@ -74,12 +75,13 @@ class ResourceSummaryTest extends TestCase
             key: 'scoped-widgets', backing: SummaryWidget::class, data: SummaryWidgetData::class,
             frame: true, readOnly: true, label: 'Scoped widgets', icon: 'box',
             scope: fn (Builder $q) => $q->where('owner_id', auth()->id()),
+            readPolicy: AuthenticatedReadPolicy::class,
         ));
 
         // The query declaration supplies this resource's owner boundary.
         $registry->register(new ParticleResource(
             key: 'filtered-widgets', backing: SummaryWidget::class, data: SummaryWidgetData::class,
-            frame: true, readOnly: true, label: 'Filtered widgets',
+            frame: true, readOnly: true, label: 'Filtered widgets', readPolicy: AuthenticatedReadPolicy::class,
         ));
         DataFilter::registry()->registerDefinition(new FilterDefinition(
             key: 'filtered-widgets', data: SummaryWidgetData::class, query: OwnerScopedWidgetQuery::class, model: SummaryWidget::class,
@@ -98,6 +100,7 @@ class ResourceSummaryTest extends TestCase
             key: 'realm-widgets', backing: SummaryWidget::class, data: SummaryWidgetData::class,
             frame: true, readOnly: true, label: 'Realm widgets',
             scope: fn (Builder $q, ?string $realm) => $q->where('owner_id', $realm === 'alpha' ? 1 : 2),
+            readPolicy: AuthenticatedReadPolicy::class,
         ), ['alpha', 'beta']);
 
         // Realm-gated: operator membership, refused to a principal without the entitlement.
