@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Authorization;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
@@ -220,7 +221,7 @@ class ResourceReadGuard
      */
     private function narrowed(ParticleResource $resource, ?Request $request): ?bool
     {
-        $connection = DB::connection();
+        $connection = $this->probeConnection($resource);
         if ($connection->transactionLevel() === 0) {
             return $this->buildNarrowed($resource, $request);
         }
@@ -230,6 +231,13 @@ class ResourceReadGuard
         // aborted (25P02), so an authorization question poisons unrelated work. Laravel's nested transaction creates
         // and rolls back exactly that savepoint, then rethrows for inspect()/scoped() to keep their documented answer.
         return $connection->transaction(fn (): ?bool => $this->buildNarrowed($resource, $request));
+    }
+
+    private function probeConnection(ParticleResource $resource): Connection
+    {
+        $model = $resource->modelClass();
+
+        return $model === null ? DB::connection() : (new $model)->getConnection();
     }
 
     private function buildNarrowed(ParticleResource $resource, ?Request $request): ?bool

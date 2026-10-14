@@ -30,7 +30,7 @@ class ResourceReadGuardPostgresTest extends TestCase
         parent::defineEnvironment($app);
 
         $app['config']->set('database.default', 'pgsql');
-        $app['config']->set('database.connections.pgsql', [
+        $connection = [
             'driver' => 'pgsql',
             'host' => env('BEAM_TEST_PGSQL_HOST', '127.0.0.1'),
             'port' => env('BEAM_TEST_PGSQL_PORT', '5432'),
@@ -41,7 +41,9 @@ class ResourceReadGuardPostgresTest extends TestCase
             'prefix' => '',
             'search_path' => 'public',
             'sslmode' => 'prefer',
-        ]);
+        ];
+        $app['config']->set('database.connections.pgsql', $connection);
+        $app['config']->set('database.connections.pgsql_resource', $connection);
     }
 
     public function test_a_failed_scope_probe_does_not_abort_the_callers_transaction(): void
@@ -51,7 +53,7 @@ class ResourceReadGuardPostgresTest extends TestCase
             key: 'missing-relation',
             backing: MissingRelationReadModel::class,
             scope: function ($query) {
-                DB::select('select * from resource_read_guard_missing_relation');
+                $query->getConnection()->select('select * from resource_read_guard_missing_relation');
 
                 return $query;
             },
@@ -69,9 +71,41 @@ class ResourceReadGuardPostgresTest extends TestCase
             DB::rollBack();
         }
     }
+
+    public function test_a_failed_scope_probe_uses_the_backing_models_non_default_connection_savepoint(): void
+    {
+        Exceptions::fake();
+        $resource = new ParticleResource(
+            key: 'missing-relation-on-resource-connection',
+            backing: NonDefaultMissingRelationReadModel::class,
+            scope: function ($query) {
+                $query->getConnection()->select('select * from resource_read_guard_missing_relation');
+
+                return $query;
+            },
+            readOnly: true,
+            label: 'Missing relation on resource connection',
+        );
+        $resourceConnection = DB::connection('pgsql_resource');
+
+        $resourceConnection->beginTransaction();
+
+        try {
+            $this->assertTrue(ResourceReadGuard::forApp()->inspectRead($resource, Request::create('/'))->denied());
+            $this->assertSame(1, $resourceConnection->selectOne('select 1 as value')->value);
+            Exceptions::assertReported(fn (QueryException $e): bool => $e->getCode() === '42P01');
+        } finally {
+            $resourceConnection->rollBack();
+        }
+    }
 }
 
 class MissingRelationReadModel extends Model
 {
     protected $table = 'resource_read_guard_missing_relation';
+}
+
+class NonDefaultMissingRelationReadModel extends MissingRelationReadModel
+{
+    protected $connection = 'pgsql_resource';
 }
