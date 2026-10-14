@@ -8,6 +8,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
@@ -224,6 +225,16 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         $this->assertWritable($definition, 'update');
 
         $model = $this->find($definition, $id);
+
+        // projectEdit() supplies Frame's row identity alongside the declared editable fields.
+        // It may round-trip, but it must never select another record or enter the write DTO.
+        if (array_key_exists('id', $input)) {
+            if ((! is_string($input['id']) && ! is_int($input['id'])) || (string) $input['id'] !== $id) {
+                throw ValidationException::withMessages(['id' => 'The id must match the route record key.']);
+            }
+
+            unset($input['id']);
+        }
 
         $parsed = $this->parseInput($definition, $input);
         $this->prepare($definition, $model, $parsed);
