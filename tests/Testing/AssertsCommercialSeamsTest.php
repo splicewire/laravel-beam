@@ -6,6 +6,8 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\AssertionFailedError;
+use Rushing\Doctor\DoctorStatus;
+use Rushing\Surgeon\Conformance\UnresolvableImportAudit;
 use Splicewire\Beam\Testing\AssertsCommercialSeams;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -80,6 +82,17 @@ class AssertsCommercialSeamsTest extends TestCase
     protected function commercialSeamViolations(): array
     {
         return $this->violations ?? [...$this->commercialS1(), ...$this->commercialR1()];
+    }
+
+    public function test_the_optional_commercial_test_helper_has_no_stripe_class_load_dependency(): void
+    {
+        $stripeFailures = array_values(array_filter(
+            (new UnresolvableImportAudit(dirname(__DIR__, 2)))->suggestOperations(),
+            fn ($suggestion) => $suggestion->finding->status === DoctorStatus::Fail
+                && str_contains($suggestion->finding->detail, 'Stripe\\HttpClient\\ClientInterface'),
+        ));
+
+        $this->assertSame([], $stripeFailures, 'A Stripe-free consumer must be able to install Beam without a shipped class-load dependency on stripe-php.');
     }
 
     public function test_s1_finds_a_cashier_call_in_code_and_not_in_comments_or_the_adapter(): void

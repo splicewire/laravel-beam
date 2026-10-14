@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route as Router;
 use ReflectionFunction;
-use Stripe\HttpClient\ClientInterface;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -477,17 +476,16 @@ trait AssertsCommercialSeams
     /** A stripe-php transport that records every request it would send; under the fake rail it must stay empty. */
     private function commercialRecordingTransport(array &$sent): object
     {
-        return new class($sent) implements ClientInterface
-        {
-            public function __construct(private array &$sent) {}
+        // This is a PHPUnit-only host testing helper, and commercialDrive() calls it only after confirming stripe-php is
+        // installed. Building the optional interface dynamically keeps Beam installable by Stripe-free production hosts.
+        $transport = $this->createMock('Stripe\\HttpClient\\ClientInterface');
+        $transport->method('request')->willReturnCallback(function ($method, $absUrl) use (&$sent) {
+            $sent[] = strtoupper((string) $method).' '.$absUrl;
 
-            public function request($method, $absUrl, $headers, $params, $hasFile, $apiMode = 'v1', $maxNetworkRetries = null)
-            {
-                $this->sent[] = strtoupper((string) $method).' '.$absUrl;
+            return ['{"id":"stripe_obj","object":"customer"}', 200, []];
+        });
 
-                return ['{"id":"stripe_obj","object":"customer"}', 200, []];
-            }
-        };
+        return $transport;
     }
 
     /** @param  list<string>  $s1Files */
