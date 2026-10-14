@@ -2,12 +2,16 @@
 
 namespace Splicewire\Beam\Tests\Authorization;
 
+use Illuminate\Auth\Access\Response;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
+use Splicewire\Beam\Authorization\ResourceReadPolicy;
+use Splicewire\Beam\Particle\Backing\BacksModel;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -98,6 +102,26 @@ class ResourceReadGuardPostgresTest extends TestCase
             $resourceConnection->rollBack();
         }
     }
+
+    public function test_a_non_querying_backing_with_a_non_model_class_keeps_its_read_answer_in_a_transaction(): void
+    {
+        $resource = new ParticleResource(
+            key: 'non-querying-domain-records',
+            backing: new NonQueryingDomainRecordBacking,
+            readPolicy: AllowingDomainRecordReadPolicy::class,
+            readOnly: true,
+            label: 'Non-querying domain records',
+        );
+
+        DB::beginTransaction();
+
+        try {
+            $this->assertTrue(ResourceReadGuard::forApp()->inspectRead($resource, Request::create('/'))->allowed());
+            $this->assertSame(1, DB::selectOne('select 1 as value')->value);
+        } finally {
+            DB::rollBack();
+        }
+    }
 }
 
 class MissingRelationReadModel extends Model
@@ -108,4 +132,25 @@ class MissingRelationReadModel extends Model
 class NonDefaultMissingRelationReadModel extends MissingRelationReadModel
 {
     protected $connection = 'pgsql_resource';
+}
+
+class NonQueryingDomainRecordBacking implements BacksModel
+{
+    public function modelClass(): string
+    {
+        return DomainRecordWithRequiredConstructor::class;
+    }
+}
+
+class DomainRecordWithRequiredConstructor
+{
+    public function __construct(public string $id) {}
+}
+
+class AllowingDomainRecordReadPolicy implements ResourceReadPolicy
+{
+    public function inspect(?Authenticatable $actor, ParticleResource $resource, Request $request): Response
+    {
+        return Response::allow();
+    }
 }

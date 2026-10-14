@@ -7,6 +7,7 @@ use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
@@ -221,6 +222,10 @@ class ResourceReadGuard
      */
     private function narrowed(ParticleResource $resource, ?Request $request): ?bool
     {
+        if (! $resource->backing() instanceof QueriesRecords) {
+            return null;
+        }
+
         $connection = $this->probeConnection($resource);
         if ($connection->transactionLevel() === 0) {
             return $this->buildNarrowed($resource, $request);
@@ -237,7 +242,9 @@ class ResourceReadGuard
     {
         $model = $resource->modelClass();
 
-        return $model === null ? DB::connection() : (new $model)->getConnection();
+        return $model !== null && is_a($model, Model::class, true)
+            ? (new $model)->getConnection()
+            : DB::connection();
     }
 
     private function buildNarrowed(ParticleResource $resource, ?Request $request): ?bool
