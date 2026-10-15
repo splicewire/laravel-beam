@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Storage;
 
 use Illuminate\Contracts\Filesystem\Filesystem;
+use RuntimeException;
 
 /**
  * The **filesystem projection** tier of the storage seam (beam-storage-driver charter) — the disk half
@@ -24,10 +25,11 @@ class DiskStorageDriver implements DeletableStorageDriver
         return true;
     }
 
+    /** A disk that refuses the delete (`delete()` false with `throw` off) throws rather than returning as removed. */
     public function delete(string $key): void
     {
-        if ($this->disk->exists($key)) {
-            $this->disk->delete($key);
+        if ($this->disk->exists($key) && ! $this->disk->delete($key)) {
+            throw new RuntimeException("DiskStorageDriver could not delete [{$key}].");
         }
     }
 

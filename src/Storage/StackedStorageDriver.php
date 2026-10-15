@@ -28,7 +28,7 @@ use Splicewire\Beam\Schema\BeamSchemaRegistry;
  * A file-primary co-dev stack and the S3 public-disk backing (charter) are alternate ORDERINGS of this
  * same composite — declared conformance points, not separate classes.
  */
-class StackedStorageDriver implements DeletableStorageDriver
+class StackedStorageDriver implements ConnectionAwareStorageDriver, DeletableStorageDriver
 {
     /** @var array<int, StorageDriver> */
     protected array $tiers;
@@ -65,6 +65,18 @@ class StackedStorageDriver implements DeletableStorageDriver
         }
 
         return $primary;
+    }
+
+    /**
+     * A copy of this stack whose connection-aware tiers are bound to `$connection`. A tier that is not
+     * connection-aware (the disk mirror is connection-independent) is carried over as it is.
+     */
+    public function onConnection(?string $connection): static
+    {
+        return new static(...array_map(
+            fn (StorageDriver $tier): StorageDriver => $tier instanceof ConnectionAwareStorageDriver ? $tier->onConnection($connection) : $tier,
+            $this->tiers,
+        ));
     }
 
     /** True only when every tier this stack writes can also remove what it wrote. */

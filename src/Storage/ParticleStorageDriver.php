@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Storage;
 
+use Illuminate\Database\Eloquent\Builder;
+use RuntimeException;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Write\AsSystemWriter;
 use Splicewire\Beam\Write\Contracts\WriteGate;
@@ -21,8 +23,11 @@ use Splicewire\Beam\Write\ParticleWriter;
  * round-trip a stable key). `list($namespace)` queries `meta->namespace`. `staleness` compares
  * `updated_at`.
  */
-class ParticleStorageDriver implements DeletableStorageDriver
+class ParticleStorageDriver implements ConnectionAwareStorageDriver, DeletableStorageDriver
 {
+    /** The connection this driver works on; null is the default connection. */
+    protected ?string $connection = null;
+
     /**
      * Takes either a {@see ParticleWriter} or a **closure resolving one per write**.
      *
@@ -49,9 +54,23 @@ class ParticleStorageDriver implements DeletableStorageDriver
         return $this->writer instanceof ParticleWriter ? $this->writer : ($this->writer)();
     }
 
+    public function onConnection(?string $connection): static
+    {
+        $bound = clone $this;
+        $bound->connection = $connection;
+
+        return $bound;
+    }
+
+    /** @return Builder<BeamParticle> */
+    protected function particles(): Builder
+    {
+        return BeamParticle::on($this->connection);
+    }
+
     public function read(string $key): ?StorageItem
     {
-        $particle = BeamParticle::find($key);
+        $particle = $this->particles()->find($key);
         if ($particle === null) {
             return null;
         }
@@ -61,7 +80,8 @@ class ParticleStorageDriver implements DeletableStorageDriver
 
     public function write(string $key, array $body, ?string $namespace = null): StorageItem
     {
-        $particle = $key !== '' ? BeamParticle::find($key) ?? new BeamParticle : new BeamParticle;
+        $particle = ($key !== '' ? $this->particles()->find($key) : null)
+            ?? (new BeamParticle)->setConnection($this->connection);
 
         // The disk-grouping coordinate addresses the item; it is NOT part of the versioned body, so it
         // rides `meta` (untouched by the schema payload) rather than the payload the writer versions.
@@ -77,7 +97,7 @@ class ParticleStorageDriver implements DeletableStorageDriver
 
     public function list(?string $namespace = null): array
     {
-        $query = BeamParticle::query();
+        $query = $this->particles();
 
         if ($namespace !== null) {
             $query->where('meta->namespace', $namespace);
@@ -86,23 +106,28 @@ class ParticleStorageDriver implements DeletableStorageDriver
         return $query->get()->map(fn (BeamParticle $p): StorageItem => $this->itemFrom($p))->all();
     }
 
-    /**
-     * Delete the particle row. Its `beam_versions` history is left in place: the port removes the item, and
-     * whether a body's snapshots outlive it is the versioning package's call, not this seam's.
-     */
     public function canDelete(): bool
     {
         return true;
     }
 
+    /**
+     * Delete the particle row. Its `beam_versions` history is left in place: the port removes the item, and
+     * whether a body's snapshots outlive it is the versioning package's call, not this seam's. A delete a
+     * `deleting` listener cancels throws rather than returning as removed.
+     */
     public function delete(string $key): void
     {
-        BeamParticle::find($key)?->delete();
+        $particle = $this->particles()->find($key);
+
+        if ($particle !== null && $particle->delete() === false) {
+            throw new RuntimeException("ParticleStorageDriver could not delete particle [{$key}]: the delete was cancelled.");
+        }
     }
 
     public function staleness(string $key, int $candidateModifiedAt): int
     {
-        $particle = BeamParticle::find($key);
+        $particle = $this->particles()->find($key);
         if ($particle === null || $particle->updated_at === null) {
             return 0;
         }

@@ -3,11 +3,14 @@
 namespace Splicewire\Beam\Tests\Storage;
 
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use LogicException;
+use RuntimeException;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\BeamSchemaRegistry;
@@ -29,11 +32,27 @@ use Splicewire\Beam\Write\ParticleWriter;
  */
 class StorageDriverTest extends TestCase
 {
+    private const SECOND = 'second';
+
     protected function setUp(): void
     {
         parent::setUp();
 
+        config(['database.connections.'.self::SECOND => [
+            'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '', 'foreign_key_constraints' => true,
+        ]]);
         $this->createTables();
+        Schema::connection(self::SECOND)->create(Beam::table('particles'), function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('schema_ref')->nullable()->index();
+            $table->string('schema_id')->nullable()->index();
+            $table->string('migration_status')->nullable()->index();
+            $table->string('head_version')->nullable();
+            $table->json('payload')->nullable();
+            $table->json('meta')->nullable();
+            $table->string('source_tier')->default('local')->index();
+            $table->timestamps();
+        });
 
         Gate::define('create', fn ($user = null) => true);
         Gate::define('update', fn ($user = null) => true);
@@ -197,6 +216,103 @@ class StorageDriverTest extends TestCase
         $this->assertTrue((new StackedStorageDriver($this->particleDriver(), $disk))->canDelete());
     }
 
+    /**
+     * A particle driver bound to a connection reads and deletes THERE, never on the default: the
+     * connection travels with the driver instead of through the process-wide default (build-qa R2 HIGH).
+     */
+    public function test_a_particle_driver_bound_to_a_connection_deletes_there_and_not_on_the_default(): void
+    {
+        $id = '01a00000-0000-7000-8000-0000000000b1';
+        $this->particleRow(self::SECOND, $id);
+        $this->particleRow(null, $id);
+        $default = DB::getDefaultConnection();
+
+        $bound = $this->particleDriver()->onConnection(self::SECOND);
+        $this->assertNotNull($bound->read($id));
+        $bound->delete($id);
+
+        $this->assertSame(0, $this->particleCount(self::SECOND, $id), 'the bound connection kept its row');
+        $this->assertSame(1, $this->particleCount(null, $id), 'the default connection lost a same-id row');
+        $this->assertSame($default, DB::getDefaultConnection());
+    }
+
+    /** The interleaving control: while a bound delete runs, the process default is never the bound one. */
+    public function test_a_bound_delete_never_changes_the_default_connection_while_it_runs(): void
+    {
+        $id = '01a00000-0000-7000-8000-0000000000b2';
+        $this->particleRow(self::SECOND, $id);
+        $default = DB::getDefaultConnection();
+        $seen = [];
+        BeamParticle::deleting(function () use (&$seen): void {
+            $seen[] = DB::getDefaultConnection();
+        });
+
+        $this->particleDriver()->onConnection(self::SECOND)->delete($id);
+
+        $this->assertSame([$default], $seen);
+    }
+
+    public function test_a_stacked_driver_binds_its_connection_aware_tiers(): void
+    {
+        $disk = $this->diskDriver();
+        $stacked = (new StackedStorageDriver($this->particleDriver(), $disk))->onConnection(self::SECOND);
+        $written = $stacked->write('', ['a' => 1], 'kit.bound');
+        $this->particleRow(null, $written->key);
+
+        $stacked->delete($written->key);
+
+        $this->assertSame(0, $this->particleCount(self::SECOND, $written->key));
+        $this->assertSame(1, $this->particleCount(null, $written->key), 'a same-id default row was deleted');
+        $this->assertNull($disk->read($written->key));
+    }
+
+    /** A disk that refuses to delete fails loudly; a returning delete always means removal (R2 MED). */
+    public function test_a_disk_that_refuses_the_delete_throws(): void
+    {
+        $refusing = $this->refusingDiskDriver();
+        $refusing->write('kit/hero/component/stuck.tsx', ['a' => 1], 'kit.stuck');
+
+        $this->expectException(RuntimeException::class);
+        $refusing->delete('kit/hero/component/stuck.tsx');
+    }
+
+    public function test_a_cancelled_particle_delete_throws_and_keeps_the_row(): void
+    {
+        $id = '01a00000-0000-7000-8000-0000000000b3';
+        $this->particleRow(null, $id);
+        BeamParticle::deleting(fn (): bool => false);
+
+        // Captured, not asserted inside the try: PHPUnit's own AssertionFailedError is a RuntimeException.
+        $thrown = null;
+        try {
+            $this->particleDriver()->delete($id);
+        } catch (RuntimeException $e) {
+            $thrown = $e;
+        }
+
+        $this->assertInstanceOf(RuntimeException::class, $thrown, 'a cancelled particle delete returned as removed');
+
+        $this->assertSame(1, $this->particleCount(null, $id));
+    }
+
+    /** Mirrors go first, so a mirror that refuses stops the stack before the source-of-record row. */
+    public function test_a_stack_whose_mirror_refuses_keeps_the_particle_row(): void
+    {
+        $stacked = new StackedStorageDriver($this->particleDriver(), $this->refusingDiskDriver());
+        $written = $stacked->write('', ['a' => 1], 'kit.stuck');
+
+        $thrown = null;
+        try {
+            $stacked->delete($written->key);
+        } catch (RuntimeException $e) {
+            $thrown = $e;
+        }
+
+        $this->assertInstanceOf(RuntimeException::class, $thrown, 'a stack whose mirror refused reported a delete');
+
+        $this->assertSame(1, $this->particleCount(null, $written->key), 'the source-of-record row went first');
+    }
+
     public function test_stacked_rejects_empty_tiers(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -220,6 +336,31 @@ class StorageDriverTest extends TestCase
     private function keyFor(StorageDriver $driver, string $suffix): string
     {
         return $driver instanceof ParticleStorageDriver ? '' : "kit/hero/component/hero-{$suffix}.tsx";
+    }
+
+    private function refusingDiskDriver(): DiskStorageDriver
+    {
+        $fake = Storage::disk('local');
+
+        return new DiskStorageDriver(new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public function delete($paths)
+            {
+                return false;
+            }
+        });
+    }
+
+    private function particleRow(?string $connection, string $id): void
+    {
+        DB::connection($connection)->table(Beam::table('particles'))->insert([
+            'id' => $id, 'payload' => '[]', 'meta' => '{"namespace":""}', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    private function particleCount(?string $connection, string $id): int
+    {
+        return DB::connection($connection)->table(Beam::table('particles'))->where('id', $id)->count();
     }
 
     private function createTables(): void

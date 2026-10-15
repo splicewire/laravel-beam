@@ -21,8 +21,9 @@ interface DeletableStorageDriver extends StorageDriver
 
     /**
      * Remove the item at `$key` from everything this driver writes. A missing key is a no-op, not an
-     * error. When {@see canDelete()} is false this throws a {@see \LogicException} and removes nothing:
-     * a delete that returns always means full removal, never a partial one.
+     * error. When {@see canDelete()} is false this throws a {@see \LogicException} and removes nothing;
+     * when a store refuses the removal at run time it throws a {@see \RuntimeException}. A delete that
+     * returns always means full removal, never a partial one.
      */
     public function delete(string $key): void;
 }
