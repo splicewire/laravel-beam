@@ -15,6 +15,7 @@ use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Models\Hook;
+use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\Subject\ResourceRecordLookup;
 use Throwable;
@@ -92,10 +93,21 @@ class HookSubscriptionReach
                     continue;
                 }
 
+                // The base is the resource's resolved backing, as `ParticleController::findParticle()`
+                // starts from it: a model-backed `QueriesRecords` backing may narrow the population
+                // itself, and `Model::query()` would re-admit what it leaves out. A relative mount's
+                // bound-parent base is NOT applied: hook authorization has no request, so no bound
+                // relative exists here; the resource's declared scope and backing are the boundary.
+                $resource = $this->resources->get($key);
+                $backing = $resource->backing();
+                if (! $backing instanceof QueriesRecords) {
+                    throw new AuthorizationException("The subject's population for [{$key}] cannot be queried.");
+                }
+
                 try {
                     (new ResourceRecordLookup)->within(
-                        $this->resources->get($key),
-                        $subject::query(),
+                        $resource,
+                        $backing->query([]),
                         (string) $subject->getKey(),
                         $subject->getKeyName(),
                     );

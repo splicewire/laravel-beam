@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Models\Hook;
+use Splicewire\Beam\Particle\Backing\EloquentBacking;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
@@ -38,6 +39,7 @@ class HookSubjectScopeReachTest extends TestCase
         Schema::create('scope_probe_records', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('owner_id');
+            $table->boolean('hidden')->default(false);
         });
 
         Gate::policy(ScopeProbeRecord::class, ScopeProbePolicy::class);
@@ -51,6 +53,10 @@ class HookSubjectScopeReachTest extends TestCase
         $registry->register(new ParticleResource(
             key: 'open-probes',
             backing: ScopeProbeRecord::class,
+        ));
+        $registry->register(new ParticleResource(
+            key: 'backed-probes',
+            backing: VisibleOnlyProbeBacking::class,
         ));
 
         $this->actingAs(new ScopeProbeUser);
@@ -114,6 +120,29 @@ class HookSubjectScopeReachTest extends TestCase
         $this->reach()->authorize(['scoped-probes.persisted'], null);
     }
 
+    /**
+     * The population is the resource's queryable BACKING, not `Model::query()`: a model-backed
+     * `QueriesRecords` backing may itself narrow the rows (here: never the hidden ones), and `show`
+     * starts from that base (`ParticleController::findParticle()`), so the hook check must too.
+     */
+    public function test_a_subject_the_resource_backing_does_not_serve_is_refused(): void
+    {
+        $hidden = ScopeProbeRecord::create(['owner_id' => ScopeProbeUser::ID, 'hidden' => true]);
+
+        $this->expectException(AuthorizationException::class);
+
+        $this->reach()->authorize(['backed-probes.persisted'], $hidden);
+    }
+
+    public function test_a_subject_the_resource_backing_serves_is_admitted(): void
+    {
+        $shown = ScopeProbeRecord::create(['owner_id' => ScopeProbeUser::ID]);
+
+        $this->reach()->authorize(['backed-probes.persisted'], $shown);
+
+        $this->assertFalse((bool) $shown->hidden);
+    }
+
     public function test_re_pointing_a_hook_at_a_subject_outside_the_scope_is_refused(): void
     {
         $theirs = ScopeProbeRecord::create(['owner_id' => 99]);
@@ -169,6 +198,20 @@ class ScopeProbeRecord extends Model
     protected $table = 'scope_probe_records';
 
     protected $guarded = [];
+}
+
+/** A model-backed backing whose own query serves only the rows that are not hidden. */
+class VisibleOnlyProbeBacking extends EloquentBacking
+{
+    public function __construct()
+    {
+        parent::__construct(ScopeProbeRecord::class);
+    }
+
+    public function query(array $filters): Builder
+    {
+        return parent::query($filters)->where('hidden', false);
+    }
 }
 
 class ScopeProbePolicy
