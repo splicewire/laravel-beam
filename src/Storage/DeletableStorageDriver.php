@@ -13,6 +13,16 @@ namespace Splicewire\Beam\Storage;
  */
 interface DeletableStorageDriver extends StorageDriver
 {
-    /** Remove the item at `$key`. A missing key is a no-op, not an error. */
+    /**
+     * Whether {@see delete()} can remove EVERYTHING this driver writes for a key. A composite answers
+     * false when any of its tiers cannot delete; a caller that wants removal checks this first.
+     */
+    public function canDelete(): bool;
+
+    /**
+     * Remove the item at `$key` from everything this driver writes. A missing key is a no-op, not an
+     * error. When {@see canDelete()} is false this throws a {@see \LogicException} and removes nothing:
+     * a delete that returns always means full removal, never a partial one.
+     */
     public function delete(string $key): void;
 }

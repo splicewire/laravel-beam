@@ -90,6 +90,11 @@ class ParticleStorageDriver implements DeletableStorageDriver
      * Delete the particle row. Its `beam_versions` history is left in place: the port removes the item, and
      * whether a body's snapshots outlive it is the versioning package's call, not this seam's.
      */
+    public function canDelete(): bool
+    {
+        return true;
+    }
+
     public function delete(string $key): void
     {
         BeamParticle::find($key)?->delete();

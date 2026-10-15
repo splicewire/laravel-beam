@@ -19,6 +19,11 @@ class DiskStorageDriver implements DeletableStorageDriver
 {
     public function __construct(protected Filesystem $disk) {}
 
+    public function canDelete(): bool
+    {
+        return true;
+    }
+
     public function delete(string $key): void
     {
         if ($this->disk->exists($key)) {

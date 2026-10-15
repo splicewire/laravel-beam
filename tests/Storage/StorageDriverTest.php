@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
+use LogicException;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\BeamSchemaRegistry;
@@ -150,8 +151,12 @@ class StorageDriverTest extends TestCase
         $this->assertFalse(Storage::disk('local')->exists($written->key), 'the mirror file is gone');
     }
 
-    /** A tier that cannot delete is skipped, not fatal: the deletable tiers still drop their copies. */
-    public function test_stacked_delete_skips_a_tier_that_cannot_delete(): void
+    /**
+     * A stack holding a tier that cannot delete refuses the delete and removes NOTHING: a delete that
+     * returns means every tier the stack wrote is gone, so a caller can never read success as full
+     * removal while a copy survives in a plain tier (build-qa 947dd76f MED).
+     */
+    public function test_stacked_delete_refuses_and_removes_nothing_when_a_tier_cannot_delete(): void
     {
         $disk = $this->diskDriver();
         $readOnly = new class implements StorageDriver
@@ -179,9 +184,17 @@ class StorageDriverTest extends TestCase
         $stacked = new StackedStorageDriver($disk, $readOnly);
 
         $written = $stacked->write('kit/hero/component/skip.tsx', ['a' => 1], 'kit.skip');
-        $stacked->delete($written->key);
 
-        $this->assertNull($disk->read($written->key));
+        try {
+            $stacked->delete($written->key);
+            $this->fail('a stack with a non-deletable tier reported a delete');
+        } catch (LogicException $refused) {
+            $this->assertStringContainsString('cannot delete', $refused->getMessage());
+        }
+
+        $this->assertNotNull($disk->read($written->key), 'the deletable tier was emptied before the refusal');
+        $this->assertFalse($stacked->canDelete());
+        $this->assertTrue((new StackedStorageDriver($this->particleDriver(), $disk))->canDelete());
     }
 
     public function test_stacked_rejects_empty_tiers(): void

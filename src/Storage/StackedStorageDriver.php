@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Storage;
 
 use InvalidArgumentException;
+use LogicException;
 use Splicewire\Beam\Schema\BeamSchemaRegistry;
 
 /**
@@ -66,17 +67,33 @@ class StackedStorageDriver implements DeletableStorageDriver
         return $primary;
     }
 
+    /** True only when every tier this stack writes can also remove what it wrote. */
+    public function canDelete(): bool
+    {
+        foreach ($this->tiers as $tier) {
+            if (! $tier instanceof DeletableStorageDriver || ! $tier->canDelete()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /**
-     * Remove the key from every tier that can delete — mirrors first, so a failure on the primary leaves
-     * the source-of-record standing rather than a row whose projection is already gone. A tier that is a
-     * plain {@see StorageDriver} is skipped.
+     * Remove the key from every tier — mirrors first, so a failure on the primary leaves the
+     * source-of-record standing rather than a row whose projection is already gone. A stack holding a
+     * tier that cannot delete refuses before touching any tier: `write()` lands in every tier, so
+     * deleting only some of them would report removal while a copy survives.
      */
     public function delete(string $key): void
     {
+        if (! $this->canDelete()) {
+            throw new LogicException('StackedStorageDriver cannot delete: a tier cannot remove what the stack wrote to it.');
+        }
+
         foreach (array_reverse($this->tiers) as $tier) {
-            if ($tier instanceof DeletableStorageDriver) {
-                $tier->delete($key);
-            }
+            /** @var DeletableStorageDriver $tier */
+            $tier->delete($key);
         }
     }
 
