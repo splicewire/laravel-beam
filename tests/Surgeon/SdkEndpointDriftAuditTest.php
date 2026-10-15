@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Surgeon;
 
+use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Routing\RouteCollection;
@@ -24,7 +25,7 @@ class SdkEndpointDriftAuditTest extends TestCase
 {
     private function audit(): SdkEndpointDriftAudit
     {
-        return new SdkEndpointDriftAudit('/nonexistent'); // requestsDir unused by suggestFor()
+        return new SdkEndpointDriftAudit('/nonexistent', ['beam-market']); // requestsDir unused by suggestFor()
     }
 
     public function test_empty_sdk_literals_are_inconclusive(): void
@@ -261,11 +262,11 @@ class SdkEndpointDriftAuditTest extends TestCase
     {
         $literals = [
             ['file' => '/pkg/Login.php', 'literal' => '/api/v1/login'],
-            ['file' => '/pkg/Tokens.php', 'literal' => '/api/v1/account/tokens'],
+            ['file' => '/pkg/Tokens.php', 'literal' => '/api/v1/beam/accounts/tokens'],
             ['file' => '/pkg/Ideas.php', 'literal' => '/api/v1/studio/ideas'],
         ];
 
-        $findings = $this->audit()->suggestFor($literals, ['api/v1/login', 'api/v1/account/tokens']);
+        $findings = $this->audit()->suggestFor($literals, ['api/v1/login', 'api/v1/beam/accounts/tokens']);
 
         $this->assertCount(1, $findings);
         $this->assertSame('pass', $findings[0]->finding->status->value);
@@ -278,20 +279,31 @@ class SdkEndpointDriftAuditTest extends TestCase
     public function test_package_mount_measures_drift_only_within_its_served_family(): void
     {
         $literals = [
-            ['file' => '/pkg/Heartbeat.php', 'literal' => '/api/beam-market/reporting/heartbeat'],
-            ['file' => '/pkg/Usage.php', 'literal' => '/api/beam-market/reporting/usage'],
-            ['file' => '/pkg/Orders.php', 'literal' => '/api/beam-market/orders'],
+            ['file' => '/pkg/Heartbeat.php', 'literal' => '/api/example-package/reporting/heartbeat'],
+            ['file' => '/pkg/Usage.php', 'literal' => '/api/example-package/reporting/usage'],
+            ['file' => '/pkg/Orders.php', 'literal' => '/api/example-package/orders'],
         ];
-        $routes = ['api/beam-market/reporting/heartbeat', 'api/beam-market/reporting/usages'];
+        $routes = ['api/example-package/reporting/heartbeat', 'api/example-package/reporting/usages'];
 
-        $findings = $this->audit()->suggestFor($literals, $routes);
+        $previousContainer = Container::getInstance();
+        $container = new Container;
+        $container->instance('config', new Repository([
+            'beam' => ['client' => ['surgeon' => ['sdk_package_mounts' => ['example-package']]]],
+        ]));
+        Container::setInstance($container);
+        try {
+            $audit = SdkEndpointDriftAudit::forClientPackage('/nonexistent');
+        } finally {
+            Container::setInstance($previousContainer);
+        }
+        $findings = $audit->suggestFor($literals, $routes);
 
         $this->assertCount(2, $findings);
         $this->assertSame('pass', $findings[0]->finding->status->value);
         $this->assertFalse($findings[0]->finding->conclusive);
-        $this->assertStringContainsString('api/beam-market/orders', $findings[0]->finding->detail);
+        $this->assertStringContainsString('api/example-package/orders', $findings[0]->finding->detail);
         $this->assertSame('fail', $findings[1]->finding->status->value);
-        $this->assertStringContainsString('/api/beam-market/reporting/usage ', $findings[1]->finding->detail);
+        $this->assertStringContainsString('/api/example-package/reporting/usage ', $findings[1]->finding->detail);
     }
 
     /** The discrimination half of the slice gate: a drift inside a served prefix still Fails. */

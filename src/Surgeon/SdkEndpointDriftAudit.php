@@ -32,8 +32,10 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
 {
     public const CHECK = 'sdk.endpoint-drift';
 
+    /** @param list<string> $packageMounts API package namespaces that group semantic families. */
     public function __construct(
         protected string $requestsDir,
+        protected array $packageMounts = [],
     ) {}
 
     /**
@@ -61,7 +63,7 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
     {
         $requestsDir ??= base_path('vendor/'.config('beam.client.surgeon.sdk_package', 'splicewire/laravel-connector').'/src/Requests');
 
-        return new self($requestsDir);
+        return new self($requestsDir, config('beam.client.surgeon.sdk_package_mounts', []));
     }
 
     /**
@@ -273,7 +275,7 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
     /**
      * Semantic family addressed by a literal. Ordinary API mounts keep two segments (`api/device`),
      * so serving device/code still measures a drifted device/token. Version namespaces (`vN`) and
-     * the known package namespace `beam-market` group unrelated families, so include their next
+     * configured package namespaces group unrelated families, so include their next
      * segment: `api/v1/login`, `api/v1/studio`, `api/beam-market/reporting`.
      * Exact and same-root suffix evidence still arms each literal's family independently.
      */
@@ -281,7 +283,7 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
     {
         $segments = explode('/', $this->normalize($this->routeShape($literal)));
         $namespace = $segments[1] ?? '';
-        $depth = preg_match('/^v\d+$/', $namespace) === 1 || $namespace === 'beam-market' ? 3 : 2;
+        $depth = preg_match('/^v\d+$/', $namespace) === 1 || in_array($namespace, $this->packageMounts, true) ? 3 : 2;
 
         return implode('/', array_slice($segments, 0, $depth));
     }

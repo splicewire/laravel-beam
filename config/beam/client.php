@@ -134,6 +134,8 @@ return [
             ],
             'exclude_dirs' => ['credits'],
         ],
+        // Package namespaces whose next segment identifies the endpoint family (versions are automatic).
+        'sdk_package_mounts' => ['beam-market'],
         'sdk_package' => env('BEAM_CLIENT_SDK_PACKAGE', 'splicewire/laravel-connector'),
         'sdk_namespace' => env('BEAM_CLIENT_SDK_NAMESPACE', 'Splicewire\\Client\\Requests'),
 
