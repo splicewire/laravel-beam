@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Webhooks;
 
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Gate;
@@ -15,6 +16,7 @@ use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Particle\Subject\ResourceRecordLookup;
 use Throwable;
 
 /**
@@ -63,9 +65,14 @@ class HookSubscriptionReach
     /**
      * Ask the action plane (api-surface-coherence 13 §1–§2).
      *
-     * With a subject: `view` on that record. Without: `viewAny` on the model class behind EVERY
-     * resource key the subscription spans — all of them, not the first, because an events array
-     * naming two resources is two claims and passing one of them is not passing.
+     * With a subject: `view` on that record, AND the record inside the READ scope of every resource key
+     * the subscription spans that is backed by the record's class — the same population `show` resolves
+     * through ({@see ResourceRecordLookup::within()}). `view` alone was not enough wherever a model's
+     * `view` is wider than its resource's row scope: laravel-beam-market's Product answers `view: true`
+     * while `market-listings` scopes to the acting Seller's own rows, so a hook writer could subscribe to
+     * another Seller's draft (ticket 00 nomination, 2026-10-15). Without a subject: `viewAny` on the model
+     * class behind EVERY resource key the subscription spans — all of them, not the first, because an
+     * events array naming two resources is two claims and passing one of them is not passing.
      *
      * A resource key beam cannot resolve to a backing model is neither silently allowed nor fatal:
      * it means the host registered an event for a resource it has since dropped, which is an
@@ -79,6 +86,23 @@ class HookSubscriptionReach
     {
         if ($subject !== null) {
             Gate::authorize('view', $subject);
+
+            foreach ($this->resourceKeysOf($events) as $key) {
+                if ($this->backingModel($key) !== $subject::class) {
+                    continue;
+                }
+
+                try {
+                    (new ResourceRecordLookup)->within(
+                        $this->resources->get($key),
+                        $subject::query(),
+                        (string) $subject->getKey(),
+                        $subject->getKeyName(),
+                    );
+                } catch (ModelNotFoundException) {
+                    throw new AuthorizationException("The subject is outside [{$key}]'s read scope.");
+                }
+            }
 
             return;
         }
