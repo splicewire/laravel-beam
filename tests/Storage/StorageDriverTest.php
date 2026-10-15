@@ -14,6 +14,7 @@ use RuntimeException;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\BeamSchemaRegistry;
+use Splicewire\Beam\Storage\ConnectionAwareStorageDriver;
 use Splicewire\Beam\Storage\DeletableStorageDriver;
 use Splicewire\Beam\Storage\DiskStorageDriver;
 use Splicewire\Beam\Storage\ParticleStorageDriver;
@@ -313,6 +314,35 @@ class StorageDriverTest extends TestCase
         $this->assertSame(1, $this->particleCount(null, $written->key), 'the source-of-record row went first');
     }
 
+    /**
+     * A BOUND stack deletes only when every tier is connection-aware: a tier that is not might be
+     * DB-backed and would still delete on the default connection while the bound tiers delete on theirs
+     * (build-qa R3 HIGH). It refuses instead — canDelete() false, delete() throws and removes nothing. The
+     * disk tier says outright that it is connection-independent, so the default stack still deletes.
+     */
+    public function test_a_bound_stack_with_a_tier_that_is_not_connection_aware_refuses_to_delete(): void
+    {
+        $disk = $this->diskDriver();
+        $this->assertInstanceOf(ConnectionAwareStorageDriver::class, $disk);
+        $this->assertSame($disk, $disk->onConnection(self::SECOND), 'the disk tier is connection-independent');
+        $this->assertTrue((new StackedStorageDriver($this->particleDriver(), $disk))->onConnection(self::SECOND)->canDelete());
+
+        $mixed = new StackedStorageDriver($this->particleDriver(), $this->unbindableDeletableDriver());
+        $this->assertTrue($mixed->canDelete(), 'unbound, every tier works on the default connection');
+
+        $bound = $mixed->onConnection(self::SECOND);
+        $this->assertFalse($bound->canDelete());
+
+        $id = '01a00000-0000-7000-8000-0000000000b4';
+        $this->particleRow(self::SECOND, $id);
+        $this->expectException(LogicException::class);
+        try {
+            $bound->delete($id);
+        } finally {
+            $this->assertSame(1, $this->particleCount(self::SECOND, $id), 'the bound particle tier deleted before the refusal');
+        }
+    }
+
     public function test_stacked_rejects_empty_tiers(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -336,6 +366,40 @@ class StorageDriverTest extends TestCase
     private function keyFor(StorageDriver $driver, string $suffix): string
     {
         return $driver instanceof ParticleStorageDriver ? '' : "kit/hero/component/hero-{$suffix}.tsx";
+    }
+
+    /** A deletable tier that does not say which connection it uses — as a host's DB-backed tier might not. */
+    private function unbindableDeletableDriver(): DeletableStorageDriver
+    {
+        return new class implements DeletableStorageDriver
+        {
+            public function read(string $key): ?StorageItem
+            {
+                return null;
+            }
+
+            public function write(string $key, array $body, ?string $namespace = null): StorageItem
+            {
+                return new StorageItem($key, $body, $namespace, null);
+            }
+
+            public function list(?string $namespace = null): array
+            {
+                return [];
+            }
+
+            public function staleness(string $key, int $candidateModifiedAt): int
+            {
+                return 0;
+            }
+
+            public function canDelete(): bool
+            {
+                return true;
+            }
+
+            public function delete(string $key): void {}
+        };
     }
 
     private function refusingDiskDriver(): DiskStorageDriver

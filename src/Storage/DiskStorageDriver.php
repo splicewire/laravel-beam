@@ -16,9 +16,15 @@ use RuntimeException;
  * namespace→disk a *derivation*, not an identity). `staleness` compares the disk file's mtime against a
  * candidate — the seam an operator's config-gated `update-from-newer` reads to decide if disk is newer.
  */
-class DiskStorageDriver implements DeletableStorageDriver
+class DiskStorageDriver implements ConnectionAwareStorageDriver, DeletableStorageDriver
 {
     public function __construct(protected Filesystem $disk) {}
+
+    /** Connection-independent: a disk path does not live on a database connection, so binding is a no-op. */
+    public function onConnection(?string $connection): static
+    {
+        return $this;
+    }
 
     public function canDelete(): bool
     {

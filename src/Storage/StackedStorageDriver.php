@@ -33,6 +33,9 @@ class StackedStorageDriver implements ConnectionAwareStorageDriver, DeletableSto
     /** @var array<int, StorageDriver> */
     protected array $tiers;
 
+    /** Set on a copy {@see onConnection()} made: its tiers must all honour the binding to delete. */
+    protected bool $bound = false;
+
     public function __construct(StorageDriver ...$tiers)
     {
         if ($tiers === []) {
@@ -69,21 +72,31 @@ class StackedStorageDriver implements ConnectionAwareStorageDriver, DeletableSto
 
     /**
      * A copy of this stack whose connection-aware tiers are bound to `$connection`. A tier that is not
-     * connection-aware (the disk mirror is connection-independent) is carried over as it is.
+     * connection-aware is carried over as it is, and makes the bound copy refuse to delete.
      */
     public function onConnection(?string $connection): static
     {
-        return new static(...array_map(
+        $bound = new static(...array_map(
             fn (StorageDriver $tier): StorageDriver => $tier instanceof ConnectionAwareStorageDriver ? $tier->onConnection($connection) : $tier,
             $this->tiers,
         ));
+        $bound->bound = true;
+
+        return $bound;
     }
 
-    /** True only when every tier this stack writes can also remove what it wrote. */
+    /**
+     * True only when every tier this stack writes can also remove what it wrote — and, on a copy bound to
+     * a connection, only when every tier is connection-aware: a tier that is not might be DB-backed and
+     * would delete on the default connection while the bound tiers delete on theirs.
+     */
     public function canDelete(): bool
     {
         foreach ($this->tiers as $tier) {
             if (! $tier instanceof DeletableStorageDriver || ! $tier->canDelete()) {
+                return false;
+            }
+            if ($this->bound && ! $tier instanceof ConnectionAwareStorageDriver) {
                 return false;
             }
         }
