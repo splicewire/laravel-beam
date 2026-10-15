@@ -15,9 +15,16 @@ use Illuminate\Contracts\Filesystem\Filesystem;
  * namespace→disk a *derivation*, not an identity). `staleness` compares the disk file's mtime against a
  * candidate — the seam an operator's config-gated `update-from-newer` reads to decide if disk is newer.
  */
-class DiskStorageDriver implements StorageDriver
+class DiskStorageDriver implements DeletableStorageDriver
 {
     public function __construct(protected Filesystem $disk) {}
+
+    public function delete(string $key): void
+    {
+        if ($this->disk->exists($key)) {
+            $this->disk->delete($key);
+        }
+    }
 
     public function read(string $key): ?StorageItem
     {

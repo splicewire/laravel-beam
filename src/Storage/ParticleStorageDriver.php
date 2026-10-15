@@ -21,7 +21,7 @@ use Splicewire\Beam\Write\ParticleWriter;
  * round-trip a stable key). `list($namespace)` queries `meta->namespace`. `staleness` compares
  * `updated_at`.
  */
-class ParticleStorageDriver implements StorageDriver
+class ParticleStorageDriver implements DeletableStorageDriver
 {
     /**
      * Takes either a {@see ParticleWriter} or a **closure resolving one per write**.
@@ -84,6 +84,15 @@ class ParticleStorageDriver implements StorageDriver
         }
 
         return $query->get()->map(fn (BeamParticle $p): StorageItem => $this->itemFrom($p))->all();
+    }
+
+    /**
+     * Delete the particle row. Its `beam_versions` history is left in place: the port removes the item, and
+     * whether a body's snapshots outlive it is the versioning package's call, not this seam's.
+     */
+    public function delete(string $key): void
+    {
+        BeamParticle::find($key)?->delete();
     }
 
     public function staleness(string $key, int $candidateModifiedAt): int

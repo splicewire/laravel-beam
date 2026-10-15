@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\BeamSchemaRegistry;
+use Splicewire\Beam\Storage\DeletableStorageDriver;
 use Splicewire\Beam\Storage\DiskStorageDriver;
 use Splicewire\Beam\Storage\ParticleStorageDriver;
 use Splicewire\Beam\Storage\StackedStorageDriver;
@@ -109,6 +111,77 @@ class StorageDriverTest extends TestCase
         $this->assertSame(1, $disk->staleness($item->key, $stored + 100), 'a newer candidate is stale-positive');
         $this->assertSame(-1, $disk->staleness($item->key, $stored - 100), 'an older candidate is stale-negative');
         $this->assertSame(0, $disk->staleness('absent', 12345), 'an absent key is neutral');
+    }
+
+    /** Each shipped driver can remove what it stored; deleting a missing key is a no-op, not an error. */
+    public function test_each_driver_deletes_an_item_and_ignores_a_missing_key(): void
+    {
+        foreach ($this->driversUnderTest() as $label => $driver) {
+            $this->assertInstanceOf(DeletableStorageDriver::class, $driver, $label);
+
+            $written = $driver->write($this->keyFor($driver, 'gone'), ['a' => 1], "kit.delete.{$label}");
+            $this->assertNotNull($driver->read($written->key), $label);
+
+            $driver->delete($written->key);
+
+            $this->assertNull($driver->read($written->key), $label.' reads null after delete');
+            $driver->delete($written->key);
+            $driver->delete('does-not-exist-'.$label);
+        }
+    }
+
+    /**
+     * The default Stacked removes the source-of-record row AND the materialized disk mirror — the pair a
+     * write created. Measured live (ux-demo-convergence step 2): a force-deleted entry left exactly this
+     * pair behind, one `beam_particles` row and one mirror file per run.
+     */
+    public function test_stacked_delete_removes_the_row_and_the_mirror_file(): void
+    {
+        $disk = $this->diskDriver();
+        $stacked = new StackedStorageDriver($this->particleDriver(), $disk);
+
+        $written = $stacked->write('', [], '');
+        $this->assertTrue(Storage::disk('local')->exists($written->key), 'precondition: the mirror file exists');
+        $this->assertSame(1, BeamParticle::query()->whereKey($written->key)->count(), 'precondition: the row exists');
+
+        $stacked->delete($written->key);
+
+        $this->assertSame(0, BeamParticle::query()->whereKey($written->key)->count(), 'the particle row is gone');
+        $this->assertFalse(Storage::disk('local')->exists($written->key), 'the mirror file is gone');
+    }
+
+    /** A tier that cannot delete is skipped, not fatal: the deletable tiers still drop their copies. */
+    public function test_stacked_delete_skips_a_tier_that_cannot_delete(): void
+    {
+        $disk = $this->diskDriver();
+        $readOnly = new class implements StorageDriver
+        {
+            public function read(string $key): ?StorageItem
+            {
+                return null;
+            }
+
+            public function write(string $key, array $body, ?string $namespace = null): StorageItem
+            {
+                return new StorageItem($key, $body, $namespace, null);
+            }
+
+            public function list(?string $namespace = null): array
+            {
+                return [];
+            }
+
+            public function staleness(string $key, int $candidateModifiedAt): int
+            {
+                return 0;
+            }
+        };
+        $stacked = new StackedStorageDriver($disk, $readOnly);
+
+        $written = $stacked->write('kit/hero/component/skip.tsx', ['a' => 1], 'kit.skip');
+        $stacked->delete($written->key);
+
+        $this->assertNull($disk->read($written->key));
     }
 
     public function test_stacked_rejects_empty_tiers(): void

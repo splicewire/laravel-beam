@@ -27,7 +27,7 @@ use Splicewire\Beam\Schema\BeamSchemaRegistry;
  * A file-primary co-dev stack and the S3 public-disk backing (charter) are alternate ORDERINGS of this
  * same composite — declared conformance points, not separate classes.
  */
-class StackedStorageDriver implements StorageDriver
+class StackedStorageDriver implements DeletableStorageDriver
 {
     /** @var array<int, StorageDriver> */
     protected array $tiers;
@@ -64,6 +64,20 @@ class StackedStorageDriver implements StorageDriver
         }
 
         return $primary;
+    }
+
+    /**
+     * Remove the key from every tier that can delete — mirrors first, so a failure on the primary leaves
+     * the source-of-record standing rather than a row whose projection is already gone. A tier that is a
+     * plain {@see StorageDriver} is skipped.
+     */
+    public function delete(string $key): void
+    {
+        foreach (array_reverse($this->tiers) as $tier) {
+            if ($tier instanceof DeletableStorageDriver) {
+                $tier->delete($key);
+            }
+        }
     }
 
     public function list(?string $namespace = null): array
