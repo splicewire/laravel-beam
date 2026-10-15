@@ -253,8 +253,45 @@ class SdkEndpointDriftAuditTest extends TestCase
         $this->assertCount(1, $findings);
         $this->assertSame('pass', $findings[0]->finding->status->value);
         $this->assertFalse($findings[0]->finding->conclusive);
-        $this->assertStringContainsString('api/v1, api/beam-market', $findings[0]->finding->detail);
+        $this->assertStringContainsString('api/v1/login, api/v1/studio, api/beam-market/reporting', $findings[0]->finding->detail);
         $this->assertStringContainsString('3 endpoint literal(s)', $findings[0]->finding->detail);
+    }
+
+    public function test_login_and_accounts_do_not_arm_an_absent_studio_family(): void
+    {
+        $literals = [
+            ['file' => '/pkg/Login.php', 'literal' => '/api/v1/login'],
+            ['file' => '/pkg/Tokens.php', 'literal' => '/api/v1/account/tokens'],
+            ['file' => '/pkg/Ideas.php', 'literal' => '/api/v1/studio/ideas'],
+        ];
+
+        $findings = $this->audit()->suggestFor($literals, ['api/v1/login', 'api/v1/account/tokens']);
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('pass', $findings[0]->finding->status->value);
+        $this->assertFalse($findings[0]->finding->conclusive);
+        $this->assertNull($findings[0]->suggestion);
+        $this->assertStringContainsString('api/v1/studio', $findings[0]->finding->detail);
+        $this->assertStringContainsString('1 endpoint literal(s)', $findings[0]->finding->detail);
+    }
+
+    public function test_package_mount_measures_drift_only_within_its_served_family(): void
+    {
+        $literals = [
+            ['file' => '/pkg/Heartbeat.php', 'literal' => '/api/beam-market/reporting/heartbeat'],
+            ['file' => '/pkg/Usage.php', 'literal' => '/api/beam-market/reporting/usage'],
+            ['file' => '/pkg/Orders.php', 'literal' => '/api/beam-market/orders'],
+        ];
+        $routes = ['api/beam-market/reporting/heartbeat', 'api/beam-market/reporting/usages'];
+
+        $findings = $this->audit()->suggestFor($literals, $routes);
+
+        $this->assertCount(2, $findings);
+        $this->assertSame('pass', $findings[0]->finding->status->value);
+        $this->assertFalse($findings[0]->finding->conclusive);
+        $this->assertStringContainsString('api/beam-market/orders', $findings[0]->finding->detail);
+        $this->assertSame('fail', $findings[1]->finding->status->value);
+        $this->assertStringContainsString('/api/beam-market/reporting/usage ', $findings[1]->finding->detail);
     }
 
     /** The discrimination half of the slice gate: a drift inside a served prefix still Fails. */

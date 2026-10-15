@@ -211,7 +211,7 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
      * that is empty or unreachable (`api-surface-coherence` 124), which reports `Pass` and gates nothing.
      *
      * The test is deliberately the SDK's own PREFIXES rather than "did everything drift": a host that
-     * genuinely serves this API and renamed a path still serves its other endpoints under `api/v1`, so a
+     * genuinely serves this API and renamed a path still serves its other endpoints in that semantic family, so a
      * real drift — the ADR-0124 marquee case this audit exists for — stays a Fail. Only the prefixes under
      * which a host serves NONE of the SDK's endpoints are excused, and it says so in prose rather than
      * passing silently.
@@ -255,7 +255,7 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
      * Suffix candidates that stay under the literal's own first segment (`api/...`). The drift matcher's
      * suffix test is deliberately loose, but as APPLICABILITY evidence it must not count a web route:
      * the SDK's `/api/v1/login` has the suffix candidates `login` and `passkeys/login` at every host with
-     * a login page, and that alone would re-open `api/v1` at a host that serves none of it.
+     * a login page, and that alone would re-open `api/v1/login` at a host that serves none of it.
      *
      * @param  list<string>  $normalizedRoutes
      * @return list<string>
@@ -270,17 +270,25 @@ class SdkEndpointDriftAudit implements DoctorAudit, SuggestsOperations
         ));
     }
 
-    /** The two-segment root one SDK literal addresses (`api/v1`, `api/device`, ...). */
+    /**
+     * Semantic family addressed by a literal. Ordinary API mounts keep two segments (`api/device`),
+     * so serving device/code still measures a drifted device/token. Version namespaces (`vN`) and
+     * the known package namespace `beam-market` group unrelated families, so include their next
+     * segment: `api/v1/login`, `api/v1/studio`, `api/beam-market/reporting`.
+     * Exact and same-root suffix evidence still arms each literal's family independently.
+     */
     protected function prefixOf(string $literal): string
     {
-        return implode('/', array_slice(explode('/', $this->normalize($this->routeShape($literal))), 0, 2));
+        $segments = explode('/', $this->normalize($this->routeShape($literal)));
+        $namespace = $segments[1] ?? '';
+        $depth = preg_match('/^v\d+$/', $namespace) === 1 || $namespace === 'beam-market' ? 3 : 2;
+
+        return implode('/', array_slice($segments, 0, $depth));
     }
 
     /**
-     * The distinct two-segment roots the SDK addresses — `api/v1`, `api/device`, `api/beam-market` for
-     * the flagship's connector. Two segments because one (`api`) is shared by surfaces that have nothing
-     * to do with this SDK: audiostud's single `api/` route is `api/splicewire/webhook`, an INBOUND
-     * webhook, and a one-segment test would read that as "this host serves the API".
+     * Distinct semantic families addressed by the SDK; see prefixOf() for namespace depth.
+     * A shared `api` root alone is never evidence that a host serves the SDK's surface.
      *
      * @param  list<array{file: string, literal: string}>  $sdkLiterals
      * @return list<string>
