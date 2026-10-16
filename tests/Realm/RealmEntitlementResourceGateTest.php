@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Realm;
 
+use Illuminate\Auth\GenericUser;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Registry\NavMetadata;
@@ -48,6 +49,21 @@ class RealmEntitlementResourceGateTest extends TestCase
         ]);
     }
 
+    /**
+     * ADR-0230 — the realm gate decides for an AUTHENTICATED principal (the 2026-09-12 measurement was a
+     * signed-in demo-member, never a guest). A guest reads a resource only through its declared Public Read,
+     * so ResourceVisibility::readable() now refuses a null actor an undeclared resource BEFORE the realm arm
+     * is reached. The entitled/refused arms below therefore run as an in-memory authenticated principal; the
+     * entitlements it holds are still driven by holding()'s fake resolver. The guest case is recorded on its
+     * own in test_a_guest_is_refused_a_realm_resource_without_a_public_read().
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->actingAs(new GenericUser(['id' => 1, 'name' => 'Realm Principal']));
+    }
+
     private function holding(array $keys): void
     {
         $this->app->instance(EntitlementResolver::class, new FakeEntitlementResolver($keys));
@@ -91,6 +107,23 @@ class RealmEntitlementResourceGateTest extends TestCase
         $definition = $this->register('users', ['operator']);
         $this->holding([]);
 
+        $this->assertFalse($this->gate()->allowsResource($definition));
+    }
+
+    /**
+     * ADR-0230, recorded as its own arm: a GUEST (a null actor) is REFUSED a realm resource that declares no
+     * Public Read, upstream in ResourceVisibility::readable(), before the realm arm is reached — even a
+     * (fabricated) entitlement cannot admit a guest, because a guest can hold none in production and the rule
+     * binds anonymous above by authenticated. This is the rule the authenticated principal above rides past.
+     */
+    public function test_a_guest_is_refused_a_realm_resource_without_a_public_read(): void
+    {
+        $this->app['auth']->forgetGuards(); // drop the setUp principal — this arm is a true guest (null actor)
+
+        $definition = $this->register('users', ['operator']);
+        $this->holding(['os.operate']);
+
+        $this->assertNull(auth()->user());
         $this->assertFalse($this->gate()->allowsResource($definition));
     }
 

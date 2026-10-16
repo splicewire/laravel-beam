@@ -30,6 +30,18 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
         $app['config']->set('frame.middleware', []);
     }
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-0230: these endpoints read a resource's filter schema/variants for their MECHANICS, not as a
+        // guest. Authenticate the reader (frame.middleware stays []); ResourceVisibility::readable() admits a
+        // non-null actor. The guest-refused case is its own arm below, and the file's existing
+        // test_the_empty_vocabulary_is_gated_like_every_other_read_here keeps the gate-CLOSED measurement.
+        $this->actingAs((new SchemaDeclarationUser)->forceFill(['id' => 1]));
+        $this->app['request']->setUserResolver(fn () => auth()->user());
+    }
+
     private function declareResource(string $key): void
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
@@ -221,6 +233,21 @@ class ResourceFilterSchemaDeclarationTest extends TestCase
         $this->withExceptionHandling()
             ->getJson('frame/resources/nothing-declared-here/filters/schema')
             ->assertNotFound();
+    }
+
+    /**
+     * ADR-0230, recorded: a GUEST (no actor) is REFUSED a resource's filter-schema endpoint when it declares
+     * no Public Read. These are declaration fixtures, not public resources, so the answer is a 403, not a
+     * declared publicRead — the complement of the authenticated reads above.
+     */
+    public function test_a_guest_is_refused_the_schema_endpoint_without_a_public_read(): void
+    {
+        $this->declareResource('attributed-papers');
+
+        $this->app['auth']->forgetGuards();
+        $this->app['request']->setUserResolver(fn () => null);
+
+        $this->getJson('frame/resources/attributed-papers/filters/schema')->assertForbidden();
     }
 }
 

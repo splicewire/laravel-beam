@@ -274,6 +274,19 @@ class ParticleResource implements HasRegistryKey
         /** @var class-string<ResourceReadPolicy>|null */
         public ?string $readPolicy = null,
         public ?string $readBoundary = null,
+        /**
+         * @var class-string|null ADR-0230 Public Read — the Data class a guest (null actor) receives. Non-null
+         *      admits a guest (narrowed to these fields and to {@see $publicScope}'s rows); null refuses every
+         *      guest on every read path, whatever the route middleware, `readPolicy` or model policy would
+         *      answer. See {@see declaresPublicRead()}.
+         */
+        public ?string $publicRead = null,
+        /**
+         * ADR-0230 — a guest's row narrowing, applied ON TOP of {@see $scope}, resolved from the annotated
+         * class's `public static publicScope()` convention. Null means a guest reads the resource's own
+         * `scope` unchanged. Only consulted when {@see $publicRead} is declared.
+         */
+        public ?Closure $publicScope = null,
         public ?string $query = null,
         public ?string $group = null,
         public ?string $icon = null,
@@ -299,6 +312,16 @@ class ParticleResource implements HasRegistryKey
         /** @var class-string|null Frame handler create result; null uses the read Data class. */
         public ?string $createResultData = null,
     ) {}
+
+    /**
+     * ADR-0230 — does this resource declare a Public Read? A declaration admits a guest (a null actor) to a
+     * read narrowed to {@see $publicRead}'s fields and {@see $publicScope}'s rows; its absence refuses every
+     * guest on every read path. Read from the declaration, never by running a query.
+     */
+    public function declaresPublicRead(): bool
+    {
+        return $this->publicRead !== null;
+    }
 
     /**
      * Resolve this declaration's {@see $backing} to a live {@see ResourceBacking}.

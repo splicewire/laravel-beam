@@ -93,6 +93,14 @@ class ResourceVisibility
      */
     public function readable(ResourceDefinition|ParticleResource $resource, ?Authenticatable $actor): bool
     {
+        // ADR-0230: a guest reads a resource only through its declared Public Read. A null actor (a guest the
+        // route middleware let through is still a guest here) is admitted ONLY by a declared Public Read and
+        // refused an undeclared resource, whatever its policy would answer; the read pipeline then narrows the
+        // guest's rows and fields to it. A signed-in reader keeps the arms below.
+        if ($actor === null) {
+            return $this->declaresPublicRead($resource);
+        }
+
         if ($this->posture($resource) !== ModelLessReadPosture::DeclaredAbility) {
             return true;
         }
@@ -104,6 +112,20 @@ class ResourceVisibility
             // subject-free read one belongs. Refused rather than thrown: see the class docblock.
             return false;
         }
+    }
+
+    /**
+     * ADR-0230 — does this resource declare a Public Read? Read from the {@see ParticleResource} handed in,
+     * or, for a manifest-only {@see ResourceDefinition}, from its registered declaration. A definition with
+     * no registered ParticleResource declares none — the secure default, so a guest is refused.
+     */
+    private function declaresPublicRead(ResourceDefinition|ParticleResource $resource): bool
+    {
+        if ($resource instanceof ParticleResource) {
+            return $resource->declaresPublicRead();
+        }
+
+        return $this->particles->find($resource->key)?->declaresPublicRead() === true;
     }
 
     /**

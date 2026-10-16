@@ -54,6 +54,9 @@ class FilterVariantExecutionTest extends TestCase
             $table->boolean('enabled');
         });
         $this->actingAs((new User)->forceFill(['id' => 1]));
+        // ADR-0230: the filter authorize path reads the AMBIENT request()->user(); bind it to the actor so a
+        // read through FilterQuerySelection/ResourceFilters is the authenticated reader, not a guest.
+        $this->app['request']->setUserResolver(fn () => auth()->user());
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'variant-records', backing: VariantRecord::class, data: VariantRowData::class,
             frame: true, readOnly: true, ));

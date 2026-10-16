@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Particle;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Auth\GenericUser;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
@@ -31,6 +32,13 @@ class ParticleControllerScopeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // ADR-0230: these tests read the widgets for their ordering/scope MECHANICS, not as a guest, so they
+        // authenticate a reader; OpenReadPolicy then admits it. The widget scopes are actor-independent
+        // (hardcoded owner_id=1 / all-rows), so any non-null actor is fine. Manual requests built below carry
+        // the same actor. The guest-refused case is recorded on its own arm.
+        $this->actingAs(new GenericUser(['id' => 1, 'name' => 'Scope Reader']));
+        $this->app['request']->setUserResolver(fn () => auth()->user());
 
         // beam-docs-satellite 65: a central, unscoped, policy-less list answers 403 now; this fixture's
         // listing is open by declaration, which is the ruling's own repair.
@@ -63,6 +71,7 @@ class ParticleControllerScopeTest extends TestCase
         $route = new Route('GET', $uri, []);
         $route->defaults(ParticleController::RESOURCE, 'scope-widget');
         $request->setRouteResolver(fn () => $route);
+        $request->setUserResolver(fn () => auth()->user()); // ADR-0230: the authenticated reader
 
         return $request;
     }
@@ -92,6 +101,7 @@ class ParticleControllerScopeTest extends TestCase
         $route = new Route('GET', '/sorted-widgets', []);
         $route->defaults(ParticleController::RESOURCE, 'sorted-widget');
         $request->setRouteResolver(fn () => $route);
+        $request->setUserResolver(fn () => auth()->user()); // ADR-0230: the authenticated reader
 
         $data = $this->app->make(ParticleController::class)->index($request)->toResponse($request)->getData(true)['data'];
 
@@ -128,6 +138,7 @@ class ParticleControllerScopeTest extends TestCase
         $route = new Route('GET', '/weighted-widgets', []);
         $route->defaults(ParticleController::RESOURCE, 'weighted-widget');
         $request->setRouteResolver(fn () => $route);
+        $request->setUserResolver(fn () => auth()->user()); // ADR-0230: the authenticated reader
 
         $data = $this->app->make(ParticleController::class)->index($request)->toResponse($request)->getData(true)['data'];
 

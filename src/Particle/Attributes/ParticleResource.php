@@ -32,6 +32,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * in by {@see AttributedParticleDiscovery} when present (each is optional):
  *
  *   - `public static function scope(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder`  (actor via the `Auth` facade — the beam scope convention)
+     *   - `public static function publicScope(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder`  (ADR-0230: a GUEST's rows are the resource's own `scope` narrowed by THIS; absent means a guest gets the resource's own `scope`. Only consulted when `publicRead:` is declared)
  *   - `public static function operationScope(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder`  (operation population boundary; absent ⇒ full `scope`)
  *   - `public static function project(\Illuminate\Database\Eloquent\Model $model): \Spatie\LaravelData\Data`
  *   - `public static function prepare(\Illuminate\Database\Eloquent\Model $model, mixed $input, mixed $actor): void`
@@ -109,6 +110,15 @@ class ParticleResource
         /** @var class-string<ResourceReadPolicy>|null */
         public ?string $readPolicy = null,
         public ?string $readBoundary = null,
+        /**
+         * @var class-string|null ADR-0230 Public Read — the Data class a GUEST (null actor) receives, i.e.
+         *      the fields a guest may read. A resource that declares a non-null `publicRead` admits a guest
+         *      (narrowed to these fields, and to the rows a `publicScope()` convention method allows on top
+         *      of `scope`); a resource that declares NONE refuses every guest on every read path, whatever
+         *      the route middleware, `readPolicy` or model policy would otherwise answer. May name the
+         *      resource's OWN read Data class when every field it projects is public (audiostud listen-songs).
+         */
+        public ?string $publicRead = null,
         public ?string $query = null,
         public ?string $group = null,
         public ?string $icon = null,

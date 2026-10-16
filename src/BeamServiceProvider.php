@@ -94,6 +94,7 @@ use Splicewire\Beam\Doctor\ParticleCapabilityDisagreementAudit;
 use Splicewire\Beam\Doctor\ParticleIdConstraintKeyTypeAudit;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
+use Splicewire\Beam\Doctor\GuestReadablePublicReadAudit;
 use Splicewire\Beam\Doctor\ScopedReadAuthenticationAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
@@ -1931,6 +1932,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             ScopedReadAuthenticationAudit::class,
+        );
+
+        // ADR-0230 — the read-side twin of UndeclaredAffordanceAudit: counts a resource a guest can REACH
+        // that declares no Public Read, now that the read guard refuses a guest one. Warn-level and
+        // registry-side, on the same "counted until zero" schedule as the affordance audit.
+        $this->app->bind(GuestReadablePublicReadAudit::class, fn () => GuestReadablePublicReadAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            GuestReadablePublicReadAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered

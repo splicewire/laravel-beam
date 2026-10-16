@@ -38,6 +38,12 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
     {
         parent::setUp();
 
+        // ADR-0230: these endpoints read a resource's declared filter vocabulary for its MECHANICS, not as a
+        // guest. Authenticate the reader (frame.middleware stays [] on purpose); the Frame socket's
+        // ResourceVisibility::readable() then admits a non-null actor. The guest-refused case is its own arm.
+        $this->actingAs((new User)->forceFill(['id' => 1]));
+        $this->app['request']->setUserResolver(fn () => auth()->user());
+
         $registry = $this->app->make(ParticleResourceRegistry::class);
 
         $registry->register(new ParticleResource(
@@ -143,6 +149,19 @@ class DeclaredFilterVocabularyEndpointTest extends TestCase
         DataFilter::options('feed_sources', fn (?string $search = null) => []);
 
         $this->getJson('frame/resources/ticker/filters/options/feed_sources')->assertNotFound();
+    }
+
+    /**
+     * ADR-0230, recorded: a GUEST (no actingAs) is REFUSED the filter-vocabulary endpoint of a resource that
+     * declares no Public Read. feed is a filter-declaration fixture, not a public resource, so the answer is
+     * a refusal (403), not a declared publicRead.
+     */
+    public function test_a_guest_is_refused_the_vocabulary_endpoint_without_a_public_read(): void
+    {
+        $this->app['auth']->forgetGuards();
+        $this->app['request']->setUserResolver(fn () => null);
+
+        $this->getJson('frame/resources/feed/filters/schema')->assertForbidden();
     }
 }
 

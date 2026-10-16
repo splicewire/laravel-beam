@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Particle;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Auth\GenericUser;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
@@ -31,6 +32,13 @@ class ParticleListQueryTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // ADR-0230: the index/frame tests here read list-crate for its includes/sort MECHANICS, not as a
+        // guest, so they authenticate a reader; OpenReadPolicy admits it. The app request (read by the Frame
+        // handler) and the manual REST request below carry the same actor. The bare forList() tests need no
+        // actor (they do not run the read guard). The guest-refused case is recorded on its own arm.
+        $this->actingAs(new GenericUser(['id' => 1, 'name' => 'List Reader']));
+        $this->app['request']->setUserResolver(fn () => auth()->user());
 
         // beam-docs-satellite 65: a central, unscoped, policy-less list answers 403 now; this fixture's
         // listing is open by declaration, which is the ruling's own repair.
@@ -152,6 +160,7 @@ class ParticleListQueryTest extends TestCase
         $route = new Route('GET', '/list-crates', []);
         $route->defaults(ParticleController::RESOURCE, 'list-crate');
         $request->setRouteResolver(fn () => $route);
+        $request->setUserResolver(fn () => auth()->user()); // ADR-0230: the authenticated reader
 
         DB::enableQueryLog();
         $this->app->make(ParticleController::class)->index($request)->toResponse($request);

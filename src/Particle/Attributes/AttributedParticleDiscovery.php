@@ -176,6 +176,10 @@ class AttributedParticleDiscovery
             policy: $attribute->policy,
             readPolicy: $attribute->readPolicy,
             readBoundary: $attribute->readBoundary,
+            // ADR-0230 Public Read: the guest field projection the attribute carries, and the guest row
+            // narrowing resolved by convention (a `public static publicScope()` on the annotated class).
+            publicRead: $attribute->publicRead,
+            publicScope: self::conventionOn($class, 'publicScope'),
             query: $attribute->query,
             group: $attribute->group,
             icon: $attribute->icon,

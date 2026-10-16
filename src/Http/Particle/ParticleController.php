@@ -129,6 +129,11 @@ class ParticleController extends Controller
         // UX-08c: a declared read ability gates the list through a relative mount too.
         ResourceReadGuard::forApp()->inspectDeclaredAbility($resource, Gate::forUser($request->user()))->authorize();
 
+        // ADR-0230: a guest reads a resource only through its declared Public Read. The standalone path's
+        // denyUngatedRead() below refuses a guest without one, but a relative mount does not reach it, so
+        // the guest gate is asked here for both. A signed-in reader is untouched (kept to its own guard).
+        ResourceReadGuard::forApp()->inspectGuestReadFor($resource, $request->user())->authorize();
+
         // beam-docs-satellite 65: a standalone list whose read is gated by NOTHING fails closed here, on
         // read — never at the mount, because whether a host's mount is scoped is a host fact.
         if ($relativeQuery === null) {
@@ -294,6 +299,9 @@ class ParticleController extends Controller
         $resource = $this->particleResource($request);
         // UX-08c: a declared read ability refuses before the record is even looked up.
         ResourceReadGuard::forApp()->inspectDeclaredAbility($resource, Gate::forUser($request->user()))->authorize();
+        // ADR-0230: a guest reads a resource only through its declared Public Read — so the model policy's
+        // `view` below never decides a guest's read of a resource that declares none. Signed-in reader untouched.
+        ResourceReadGuard::forApp()->inspectGuestReadFor($resource, $request->user())->authorize();
         $model = $this->findParticle($resource, $this->subjectId($request, $id), $request);
         $this->authorize('view', $model);
 
@@ -776,11 +784,22 @@ class ParticleController extends Controller
      */
     protected function projectRecord(ParticleResource $resource, Model $model, ReadContext $ctx, array $filters = []): Data
     {
-        $data = $resource->project !== null
-            ? ($resource->project)($model)
-            : ($resource->data !== null
-                ? $resource->data::from($model)
-                : $this->hydrator->project($model, $ctx));
+        // ADR-0230: a guest (null actor) receives the Public Read's fields and nothing more. When the Public
+        // Read names the resource's OWN read projection — the "may be its own" case, every projected field is
+        // public (audiostud listen-songs) — the normal projection already IS the guest's and runs unchanged,
+        // including its `project()` convention. A narrower Public Read Data class is projected from the record
+        // directly. A signed-in reader always keeps the normal projection.
+        $guestPublicRead = $ctx->actor === null
+            && $resource->publicRead !== null
+            && $resource->publicRead !== $resource->data;
+
+        $data = $guestPublicRead
+            ? $resource->publicRead::from($model)
+            : ($resource->project !== null
+                ? ($resource->project)($model)
+                : ($resource->data !== null
+                    ? $resource->data::from($model)
+                    : $this->hydrator->project($model, $ctx)));
 
         return $this->contributions()->apply($resource->key, $data, $model, $ctx, $filters);
     }

@@ -87,6 +87,24 @@ class ResourceReadGuard
         return $this->inspectDeclaredAbility($resource, Gate::forUser($actor));
     }
 
+    /**
+     * ADR-0230 — the guest half, isolated so a read path that gates a SIGNED-IN reader another way (the
+     * controller's `show`, a relative-mount `index`, where the row gate is the model policy's `view`) can
+     * still refuse a guest a resource with no Public Read without changing anything for a signed-in reader.
+     * A null actor is allowed only through a declared Public Read; a non-null actor is allowed here and left
+     * to its own path's guard.
+     */
+    public function inspectGuestReadFor(ParticleResource $resource, ?Authenticatable $actor): Response
+    {
+        if ($actor !== null) {
+            return Response::allow();
+        }
+
+        return $resource->publicRead !== null
+            ? Response::allow()
+            : Response::deny("Reading [{$resource->key}] requires a declared Public Read for a guest.");
+    }
+
     private function inspect(
         ParticleResource $resource,
         Request $request,
@@ -94,6 +112,17 @@ class ResourceReadGuard
         ?Authenticatable $actor,
         ?string $mountedRealm = null,
     ): Response {
+        // ADR-0230: a guest reads a resource only through its declared Public Read. A null actor is refused a
+        // resource that declares none, overriding whatever the route middleware let through and whatever the
+        // resource's readPolicy or model policy would answer; a declared Public Read admits the guest here and
+        // the read pipeline narrows the rows and fields to it (ParticleListQuery, ParticleController::projectRecord).
+        // A signed-in reader is untouched and keeps the existing guard below.
+        if ($actor === null) {
+            return $resource->publicRead !== null
+                ? Response::allow()
+                : Response::deny("Reading [{$resource->key}] requires a declared Public Read for a guest.");
+        }
+
         $declared = $this->inspectDeclaredAbility($resource, $gate);
         if ($declared->denied()) {
             return $declared;

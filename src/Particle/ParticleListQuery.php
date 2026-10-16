@@ -21,6 +21,7 @@ class ParticleListQuery
         $request ??= request();
         $query = $this->backingQuery($resource, $filters);
         $query = $this->scoped($query, $resource, $request);
+        $query = $this->publicScoped($query, $resource, $request);
         if ($relative !== null) {
             $this->intersect($query, $relative);
         }
@@ -54,6 +55,27 @@ class ParticleListQuery
         $realm = $request->route()?->defaults['realm'] ?? null;
 
         return $resource->scope !== null ? (($resource->scope)($query, $realm) ?? $query) : $query;
+    }
+
+    /**
+     * ADR-0230 — narrow a GUEST's rows to the Public Read's `publicScope`, applied ON TOP of `scope`. Only a
+     * null actor is narrowed; a signed-in reader keeps `scope` alone. Deliberately NOT folded into
+     * {@see scoped()}: that method also feeds {@see authorizationBases()}, which the read guard and the doctor
+     * read to decide whether a resource's OWN `scope` narrows — a signal that must stay `scope`-only. No live
+     * resource declares a `publicScope` today (listen-songs' own `scope()` already yields the public rows for a
+     * guest), so this is inert until one does. The detail path ({@see ParticleController::findParticle()})
+     * narrows a guest by the resource's own `scope` plus the admission gate; extending `publicScope` to that
+     * lookup is a scoped follow-up with no live trigger.
+     */
+    public function publicScoped(Builder $query, ParticleResource $resource, Request $request): Builder
+    {
+        if ($request->user() !== null || $resource->publicScope === null) {
+            return $query;
+        }
+
+        $realm = $request->route()?->defaults['realm'] ?? null;
+
+        return ($resource->publicScope)($query, $realm) ?? $query;
     }
 
     public function intersect(Builder $query, Builder $scope): Builder

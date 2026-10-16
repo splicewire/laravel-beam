@@ -22,6 +22,7 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
  * class, each optional — add them when you need them:
  *
  *     public static function scope(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder
+ *     public static function publicScope(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder  // ADR-0230: a guest's rows on top of scope()
  *     public static function project({{ model }} $model): \Spatie\LaravelData\Data
  *     public static function prepare({{ model }} $model, mixed $input, mixed $actor): void
  *     public static function afterWrite({{ model }} $model, mixed $input): void
@@ -31,6 +32,11 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
     backing: {{ model }}::class,
     data: {{ class }}::class,
     input: {{ inputClass }}::class,
+    // ADR-0230 Public Read — declared EXPLICITLY, never silent. A guest (a null actor) is refused on every
+    // read path UNLESS this names the Data class a guest may read: `{{ class }}::class` when every field it
+    // projects is public, or a narrower Data class. Leave `null` for an authenticated-only resource — do not
+    // delete the slot: `splicewire:beam:doctor` counts a guest-reachable resource that declares none.
+    publicRead: null,
 )]
 class {{ class }} extends Data
 {

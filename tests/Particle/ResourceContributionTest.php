@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Particle;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Auth\GenericUser;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
@@ -44,6 +45,14 @@ class ResourceContributionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // ADR-0230: a guest reads a resource only through a declared Public Read. These contribution tests
+        // read contrib-crate for its MECHANICS (slices, includes, ordering) over an open fixture, not as a
+        // guest, so they authenticate a reader; OpenReadPolicy::viewAny then admits it. The guest-refused
+        // case is recorded on its own below. The app request + the manual requests built in restRow() carry
+        // the same actor so the read guard sees a non-null actor on every transport.
+        $this->actingAs(new GenericUser(['id' => 1, 'name' => 'Contribution Reader']));
+        $this->app['request']->setUserResolver(fn () => auth()->user());
 
         // beam-docs-satellite 65: a central, unscoped, policy-less list answers 403 now; this fixture's
         // listing is open by declaration, which is the ruling's own repair.
@@ -105,6 +114,7 @@ class ResourceContributionTest extends TestCase
         $route = new Route('GET', '/crates', []);
         $route->defaults(ParticleController::RESOURCE, 'contrib-crate');
         $request->setRouteResolver(fn () => $route);
+        $request->setUserResolver(fn () => auth()->user()); // ADR-0230: read as the authenticated reader
 
         $response = $this->app->make(ParticleController::class)->index($request)->toResponse($request);
 
@@ -117,6 +127,21 @@ class ResourceContributionTest extends TestCase
             $this->app->make(ParticleResourceRegistry::class)->definition('contrib-crate'),
             [],
         )[0];
+    }
+
+    /**
+     * ADR-0230, recorded: contrib-crate declares no Public Read, so a GUEST (a null actor) is refused it by
+     * the read guard regardless of OpenReadPolicy — which is why the contribution arms above authenticate.
+     */
+    public function test_a_guest_is_refused_the_contribution_resource_without_a_public_read(): void
+    {
+        $resource = $this->app->make(ParticleResourceRegistry::class)->get('contrib-crate');
+
+        $this->assertTrue(
+            \Splicewire\Beam\Authorization\ResourceReadGuard::forApp()
+                ->inspectReadFor($resource, Request::create('/crates', 'GET'), null)
+                ->denied(),
+        );
     }
 
     // ── The Frame CONTEXT BLOCK half: a contributed slice's columns must RENDER, not just ride ─────

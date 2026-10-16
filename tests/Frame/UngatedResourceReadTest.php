@@ -289,7 +289,11 @@ class UngatedResourceReadTest extends TestCase
         $this->declare(scope: fn () => throw new RuntimeException('Unavailable domain context'));
         $resource = app(ParticleResourceRegistry::class)->get('gadgets');
         $this->assertNull(ResourceReadGuard::forApp()->scoped($resource, request()));
-        $this->assertFalse(ResourceReadGuard::forApp()->inspectRead($resource, request())->allowed());
+        // ADR-0230: pass the SIGNED-IN actor (setUp actingAs) explicitly — request()->user() is null on this
+        // direct call, and the guest rule would short-circuit before the indeterminate scope probe runs. For
+        // the authenticated reader the guard still builds the scope, which throws, so the throw is REPORTED
+        // and the read still fails closed (viewAny with no policy) — the behaviour this test pins.
+        $this->assertFalse(ResourceReadGuard::forApp()->inspectReadFor($resource, request(), auth()->user())->allowed());
         Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'Unavailable domain context');
     }
 
