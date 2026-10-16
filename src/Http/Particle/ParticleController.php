@@ -304,7 +304,11 @@ class ParticleController extends Controller
         // `view` below never decides a guest's read of a resource that declares none. Signed-in reader untouched.
         ResourceReadGuard::forApp()->inspectGuestReadFor($resource, $request->user())->authorize();
         $model = $this->findParticle($resource, $this->subjectId($request, $id), $request);
-        $this->authorize('view', $model);
+        // ADR-0230: the declared Public Read and scoped lookup admit a guest.
+        // Signed-in readers still meet the model policy.
+        if ($request->user() !== null || $resource->publicRead === null) {
+            $this->authorize('view', $model);
+        }
 
         return $this->respond($resource, $model, $request);
     }
