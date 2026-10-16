@@ -12,12 +12,12 @@ class StandaloneRecordQuery
 {
     public function __construct(private Container $container) {}
 
-    public function query(): Builder
+    public function query(?string $connection = null): Builder
     {
-        $query = BeamParticle::query()->where('source_tier', SourceWriteTier::Local->value);
+        $query = BeamParticle::on($connection)->where('source_tier', SourceWriteTier::Local->value);
         foreach ($this->container->tagged(StandaloneRecordExclusion::class) as $exclusion) {
             // Intersect, rather than trusting a contributor not to widen the base with an orWhere.
-            $excluded = BeamParticle::query();
+            $excluded = BeamParticle::on($connection);
             $exclusion->excludeFrom($excluded);
             $query->whereIn($query->getModel()->getQualifiedKeyName(), $excluded->select('id'));
         }
