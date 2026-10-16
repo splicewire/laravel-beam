@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Collections;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Rushing\DataFilters\Operators\Exact;
 use Rushing\DataFilters\Operators\Partial;
@@ -64,7 +65,7 @@ class CollectionBacking implements AddressedResourceBacking, BacksModel, Declare
         $definition = $this->definition();
         $query = ($this->records ?? app(StandaloneRecordQuery::class))->query()->whereIn('schema_ref', $this->schemas()->recordRefs($definition->stem()));
         $allowedFilters = $allowedSorts = [];
-        foreach ($definition->properties() as $path => $property) {
+        foreach ($this->queryProperties($definition) as $path => $property) {
             $column = 'payload->'.str_replace('.', '->', $path);
             if (isset($property['x-filter'])) {
                 $filter = $property['x-filter'];
@@ -79,6 +80,21 @@ class CollectionBacking implements AddressedResourceBacking, BacksModel, Declare
                 $allowedSorts[] = AllowedSort::field($property['x-sort']['name'], $column);
             }
         }
+        if ($this->request->user() === null) {
+            $properties = $this->queryProperties($definition);
+            $filterNames = array_column(array_column($properties, 'x-filter'), 'name');
+            $sortNames = array_column(array_column($properties, 'x-sort'), 'name');
+            foreach (array_keys($filters) as $name) {
+                if (! in_array($name, $filterNames, true)) {
+                    throw ValidationException::withMessages(['filter' => 'Guest filters must name a Public Read field.']);
+                }
+            }
+            foreach (explode(',', (string) $this->request->query('sort', '')) as $name) {
+                if ($name !== '' && ! in_array(ltrim($name, '-'), $sortNames, true)) {
+                    throw ValidationException::withMessages(['sort' => 'Guest sort must name a Public Read field.']);
+                }
+            }
+        }
         // Keep the address outside filter[]. Use the declared data-filters operators, not a second filter grammar.
         $request = clone $this->request;
         $request->query->replace(['filter' => $filters, 'sort' => $this->request->query('sort')]);
@@ -88,6 +104,9 @@ class CollectionBacking implements AddressedResourceBacking, BacksModel, Declare
         $query = QueryBuilder::for($query, $request)->allowedFilters(...$allowedFilters)->allowedSorts(...$allowedSorts)->getEloquentBuilder();
         if (empty($query->getQuery()->orders)) {
             $sort = $definition->defaultSort();
+            if ($sort !== null && ! array_key_exists($sort['field'], $this->queryProperties($definition))) {
+                $sort = null;
+            }
             $sort === null ? $query->latest() : $query->orderBy('payload->'.str_replace('.', '->', $sort['field']), $sort['direction']);
         }
 
@@ -122,10 +141,18 @@ class CollectionBacking implements AddressedResourceBacking, BacksModel, Declare
         return array_map(fn (CollectionRecordData $record) => $record->toArray(), $records);
     }
 
+    /** ADR-0230 d3: hidden fields cannot become guest filter/sort oracles. */
+    private function queryProperties(CollectionDefinition $definition): array
+    {
+        return $this->request->user() !== null
+            ? $definition->properties()
+            : array_intersect_key($definition->properties(), array_flip($definition->publicFieldNames()));
+    }
+
     public function filterVocabulary(): FilterVocabulary
     {
         $facets = [];
-        foreach ($this->definition()->properties() as $path => $property) {
+        foreach ($this->queryProperties($this->definition()) as $path => $property) {
             $filter = $property['x-filter'] ?? null;
             $sort = $property['x-sort'] ?? null;
             if ($filter !== null) {

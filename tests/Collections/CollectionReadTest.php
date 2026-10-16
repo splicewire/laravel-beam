@@ -8,12 +8,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Mockery;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\MigrationOutcome;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\Frame\FrameServiceProvider;
-use Spatie\QueryBuilder\Exceptions\InvalidFilterQuery;
 use Splicewire\Beam\Collections\CollectionBacking;
 use Splicewire\Beam\Collections\CollectionMigrationDrain;
 use Splicewire\Beam\Collections\CollectionRead;
@@ -206,7 +206,7 @@ class CollectionReadTest extends TestCase
         $this->register();
         $request = Request::create('/?collection='.urlencode(self::STEM));
         $backing = new CollectionBacking($request, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry), app(StandaloneRecordQuery::class));
-        $this->expectException(InvalidFilterQuery::class);
+        $this->expectException(ValidationException::class);
         $backing->query(['secret' => 'guess']);
     }
 
@@ -237,6 +237,54 @@ class CollectionReadTest extends TestCase
         $this->postJson('/records'.$query, ['fields' => ['title' => 123]])->assertUnprocessable();
         $this->postJson('/frame/resources/records'.$query, ['fields' => ['title' => 123]])->assertUnprocessable();
         $this->assertDatabaseCount(Beam::table('particles'), 2);
+    }
+
+    public function test_guest_cannot_probe_hidden_fields_through_filters_sorts_or_panel(): void
+    {
+        $this->register();
+        $schema = (new RegistrySchemaTargetResolver($this->registry))->targetFor(self::STEM);
+        $schema['$id'] = self::STEM.'/2';
+        $schema['properties']['title']['x-sort']['default'] = false;
+        $schema['properties']['secret']['x-filter'] = ['name' => 'hidden', 'operator' => 'exact', 'control' => 'text'];
+        $schema['properties']['secret']['x-sort'] = ['name' => 'hidden', 'default' => true, 'direction' => 'asc'];
+        $this->registry->register($schema);
+        foreach (['a' => 'zeta', 'z' => 'alpha'] as $id => $secret) {
+            $this->insert($id);
+            DB::table(Beam::table('particles'))->where('id', $id)->update(['payload' => json_encode(['title' => $id, 'secret' => $secret, 'visible' => true])]);
+        }
+        $this->app->instance(CollectionSchemaResolver::class, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry));
+        CollectionRoutes::mount();
+        $query = '?collection='.urlencode(self::STEM);
+        foreach (['/records', '/frame/resources/records'] as $uri) {
+            foreach (['&filter[hidden]=alpha', '&filter[hidden]=gamma', '&sort=hidden', '&sort=-hidden'] as $probe) {
+                $this->getJson($uri.$query.$probe)->assertUnprocessable();
+            }
+            $this->getJson($uri.$query.'&filter[title]=a&sort=title')->assertOk()->assertJsonPath('data.0.fields.title', 'a');
+            // A private default sort is also an oracle: use the ordinary deterministic fallback.
+            $this->getJson($uri.$query)->assertOk()->assertJsonPath('data.0.fields.title', 'a');
+        }
+        $panel = $this->getJson('/frame/resources/records/filters/schema'.$query)->assertOk()->json('data.properties');
+        $this->assertArrayHasKey('title', $panel);
+        $this->assertArrayNotHasKey('hidden', $panel);
+        $this->actingAs((new User)->forceFill(['id' => 1]));
+        foreach (['/records', '/frame/resources/records'] as $uri) {
+            $this->getJson($uri.$query.'&filter[hidden]=alpha&sort=-hidden')->assertOk()->assertJsonPath('data.0.fields.title', 'z');
+        }
+        $this->assertArrayHasKey('hidden', $this->getJson('/frame/resources/records/filters/schema'.$query)->assertOk()->json('data.properties'));
+    }
+
+    public function test_malformed_stored_relations_are_absent_on_both_transports(): void
+    {
+        $this->register();
+        $this->insert('source');
+        $this->app->instance(CollectionSchemaResolver::class, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry));
+        CollectionRoutes::mount();
+        foreach ([null, 42, ['bad' => 'shape'], [null, 42, ['nested'], 'missing']] as $value) {
+            DB::table(Beam::table('particles'))->where('id', 'source')->update(['payload' => json_encode(['title' => 'source', 'visible' => true, 'related' => $value])]);
+            foreach (['/records', '/frame/resources/records'] as $uri) {
+                $this->getJson($uri.'?collection='.urlencode(self::STEM))->assertOk()->assertJsonPath('data.0.relations.related', []);
+            }
+        }
     }
 
     public function test_guest_index_counts_and_pages_one_and_ten_thousand_records(): void

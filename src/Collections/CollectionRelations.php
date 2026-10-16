@@ -4,7 +4,6 @@ namespace Splicewire\Beam\Collections;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Arr;
-use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /** One-hop expansion batches by target stem in the same realm-scoped reader. */
@@ -29,9 +28,10 @@ final class CollectionRelations
                 }
                 $value = Arr::get($record->fields, $field);
                 $ids = $relation['many'] ? $value : [$value];
-                if (! is_array($ids) || ! array_is_list($ids) || array_filter($ids, fn ($id) => ! is_string($id)) !== []) {
-                    throw ValidationException::withMessages([$field => 'A Collection relation must contain record ids.']);
-                }
+                // Historical malformed values reveal no more than an absent target.
+                $ids = is_array($ids) && array_is_list($ids)
+                    ? array_values(array_filter($ids, fn ($id) => is_string($id) && $id !== ''))
+                    : [];
                 $stem = $relation['collection'];
                 $targets[$stem] = [...($targets[$stem] ?? []), ...$ids];
                 $edges[] = [$record->id, $field, $stem, $ids, $relation['many']];

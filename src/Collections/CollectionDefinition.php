@@ -136,6 +136,12 @@ final class CollectionDefinition
         return $this->public !== null;
     }
 
+    /** Declared field paths, not filter aliases (ADR-0230 d3). */
+    public function publicFieldNames(): array
+    {
+        return $this->public['fields'] ?? [];
+    }
+
     public function publicFields(array $payload): array
     {
         $result = [];

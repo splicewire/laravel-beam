@@ -43,3 +43,9 @@ page. The EP-34 receipt measures 1k/10k HTTP indexes; a tested SQL compiler is a
 separate ticket-00 follow-up. Pending/failed transitions never become guest rows.
 Tower registration enqueues a stem-scoped eager drain after commit, including old
 current rows that have not yet been read. Its existing tenant/LLM gates remain.
+
+Guest filter and sort names are limited to the declared Public Read field paths
+(ADR-0230 d3), including when a filter has a different public alias. Hidden-field
+probes return 422, the guest panel omits them, and a hidden default sort falls
+back to the ordinary deterministic ordering. Signed-in vocabulary is unchanged.
+Malformed stored relation values resolve as absent rather than failing a read.
