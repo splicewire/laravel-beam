@@ -64,7 +64,9 @@ use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\GenerateContributedTypesCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
+use Splicewire\Beam\Console\MakeParticleBackingCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
+use Splicewire\Beam\Console\MakeParticleRelativeCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
@@ -165,9 +167,7 @@ use Splicewire\Beam\Particle\ResourceRegistryReport;
 use Splicewire\Beam\Query\HookResourceQuery;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;
-use Splicewire\Beam\Realm\CentralTenancyContext;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
-use Splicewire\Beam\Realm\Contracts\TenancyContext;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
@@ -608,13 +608,6 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // RealmDefinition::$tenancy flag. Default resolves the `tenant` realm when config('frame.tenancy')
         // is on; a satellite / differently-keyed host binds its own resolver.
         $this->app->bind(TenantResolver::class, ConfigTenantResolver::class);
-
-        // The live tenancy TOPOLOGY port (ADR-0239, host-binding-seam ticket 01): is a central/tenant
-        // split declared, is a tenant active NOW, which connection is central. `bindIf`, because the
-        // tenancy package is the superseding binder (beam-tenancy plain-binds its stancl adapter over
-        // this) and a core-only host still needs the central-shaped answers. Sibling of TenantResolver
-        // above, which answers per-REALM resolvability; this one answers the process-wide moment.
-        $this->app->bindIf(TenancyContext::class, CentralTenancyContext::class);
 
         // The realm registry is a SINGLETON (realm-architecture ticket 08 slice D): its ctor registers the
         // three imperative base realms (admin·tenant·user), and boot-time attributed-realm discovery
@@ -1744,6 +1737,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 // declaration exists before the logic does and a fresh surface is born conformance-clean.
                 MakeParticleResourceCommand::class,
                 MakeParticleOpCommand::class,
+                MakeParticleRelativeCommand::class,
+                MakeParticleBackingCommand::class,
                 // The registry's own reading surface (otb-ui-frontier-sidebar DESIGN-02, reshaped from an
                 // operator SCREEN to a command). Nav-invisibility is the registry's default — most
                 // declarations name no `section` — so nothing in-product could enumerate the vocabulary;

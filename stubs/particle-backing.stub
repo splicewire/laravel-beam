@@ -1,0 +1,24 @@
+<?php
+
+namespace {{ namespace }};
+
+{{ capabilityImports }}
+
+/**
+ * A backing for a particle resource — name it in the declaration's `backing:` slot
+ * ({{ class }}::class) and it is CONTAINER-RESOLVED PER REQUEST, never eagerly at boot, so the
+ * constructor may take real injection (a tenant connection, sub-source repositories).
+ *
+ * `ResourceBacking` itself is a method-less MARKER, deliberately: every real job is a CAPABILITY
+ * sub-interface, and this class implements exactly the ones it was generated with. Capability is
+ * the CEILING — the declaration's `creatable`/`editable`/`deletable`/`showable` flags can only
+ * narrow it, and an affordance set true against a missing capability throws at registration.
+ *
+ * If every record this backing yields is ONE Eloquent model, it MUST declare `BacksModel`
+ * (the tier rule in BacksModel's own docblock); rows spanning types or pivot rows legitimately
+ * cannot, and say so by not implementing it.
+ */
+class {{ class }} implements {{ capabilityInterfaces }}
+{
+{{ capabilityMethods }}
+}
