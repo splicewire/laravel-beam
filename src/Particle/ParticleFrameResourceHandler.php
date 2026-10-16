@@ -174,7 +174,10 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         // the form.
         $model = $this->find($definition, $id);
 
-        return $definition->editable
+        // Editable describes the resource, not the guest's permission to see its edit DTO.
+        $guest = app(Request::class)->user() === null;
+
+        return $definition->editable && ! $guest
             ? $this->projectEdit($definition, $model)
             : $this->projectRead($definition, $model);
     }
@@ -478,7 +481,15 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     {
         $resource = $this->resource($definition);
 
-        if ($resource?->project !== null) {
+        // Match REST: a guest receives the narrower Public Read DTO. When it is
+        // the normal Data class, retain the resource's custom projection.
+        $guestPublicRead = app(Request::class)->user() === null
+            && $resource?->publicRead !== null
+            && $resource->publicRead !== $resource->data;
+
+        if ($guestPublicRead) {
+            $data = $resource->publicRead::from($model);
+        } elseif ($resource?->project !== null) {
             $data = ($resource->project)($model);
         } else {
             /** @var class-string<Data> $dataClass */

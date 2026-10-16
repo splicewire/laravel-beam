@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Spatie\LaravelData\Data;
+use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Facades\Particle;
@@ -117,6 +119,46 @@ class PublicReadGuestReadTest extends TestCase
         $handler->show($definition, '2');
     }
 
+    public function test_frame_guest_detail_projects_only_the_declared_public_fields(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->data = PrivateGadgetProjection::class;
+        $resource->project = fn (Gadget $gadget): PrivateGadgetProjection => new PrivateGadgetProjection(
+            (string) $gadget->id, (int) $gadget->user_id,
+        );
+        $handler = app(ParticleFrameResourceHandler::class);
+
+        $this->assertSame(['id' => '1'], $handler->show($resource->toResourceDefinition(), '1'));
+    }
+
+    public function test_frame_guest_cannot_receive_edit_fields_from_an_editable_resource(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->editable = true;
+        $resource->editData = PrivateGadgetProjection::class;
+        $handler = app(ParticleFrameResourceHandler::class);
+
+        $this->assertSame(['id' => '1'], $handler->show($resource->toResourceDefinition(), '1'));
+    }
+
+    public function test_frame_signed_in_detail_keeps_the_normal_projection(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->data = PrivateGadgetProjection::class;
+        $resource->project = fn (Gadget $gadget): PrivateGadgetProjection => new PrivateGadgetProjection(
+            (string) $gadget->id, (int) $gadget->user_id,
+        );
+        Gate::define('view', fn (?User $actor, Gadget $record): bool => true);
+        $actor = PublicReadActor::create(['name' => 'Ada']);
+        $this->actingAs($actor);
+        $resource->readPolicy = AuthenticatedReadPolicy::class;
+        $resource->readBoundary = ParticleResource::READ_BOUNDARY_GLOBAL;
+        app(Request::class)->setUserResolver(fn () => $actor);
+        $handler = app(ParticleFrameResourceHandler::class);
+
+        $this->assertSame(['id' => '1', 'userId' => 1], $handler->show($resource->toResourceDefinition(), '1'));
+    }
+
     public function test_a_signed_in_detail_reader_keeps_the_resource_scope_not_the_guest_scope(): void
     {
         $resource = $this->declare(publicRead: GadgetData::class);
@@ -200,4 +242,9 @@ class PublicReadActor extends User
     protected $guarded = [];
 
     public $timestamps = false;
+}
+
+class PrivateGadgetProjection extends Data
+{
+    public function __construct(public string $id, public int $userId) {}
 }
