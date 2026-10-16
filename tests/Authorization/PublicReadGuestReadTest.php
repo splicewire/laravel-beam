@@ -112,11 +112,28 @@ class PublicReadGuestReadTest extends TestCase
     {
         $resource = $this->declare(publicRead: GadgetData::class);
         $resource->publicScope = fn ($query) => $query->where('user_id', 1);
-        $handler = app(ParticleFrameResourceHandler::class);
+        $handler = app(ParticleFrameResourceHandler::class)->forActor(null);
         $definition = $resource->toResourceDefinition();
         $this->assertSame('1', $handler->show($definition, '1')['id']);
         $this->expectException(ModelNotFoundException::class);
         $handler->show($definition, '2');
+    }
+
+    public function test_unbound_actor_dependent_frame_read_refuses_instead_of_guessing_guest(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('explicit actor');
+        app(ParticleFrameResourceHandler::class)->show($resource->toResourceDefinition(), '1');
+    }
+
+    public function test_unbound_public_scope_also_requires_an_explicit_actor(): void
+    {
+        $resource = $this->declare();
+        $resource->publicScope = fn ($query) => $query->where('user_id', 1);
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('explicit actor');
+        app(ParticleFrameResourceHandler::class)->show($resource->toResourceDefinition(), '1');
     }
 
     public function test_frame_guest_detail_projects_only_the_declared_public_fields(): void
@@ -126,7 +143,7 @@ class PublicReadGuestReadTest extends TestCase
         $resource->project = fn (Gadget $gadget): PrivateGadgetProjection => new PrivateGadgetProjection(
             (string) $gadget->id, (int) $gadget->user_id,
         );
-        $handler = app(ParticleFrameResourceHandler::class);
+        $handler = app(ParticleFrameResourceHandler::class)->forActor(null);
 
         $this->assertSame(['id' => '1'], $handler->show($resource->toResourceDefinition(), '1'));
     }
@@ -136,7 +153,7 @@ class PublicReadGuestReadTest extends TestCase
         $resource = $this->declare(publicRead: GadgetData::class);
         $resource->editable = true;
         $resource->editData = PrivateGadgetProjection::class;
-        $handler = app(ParticleFrameResourceHandler::class);
+        $handler = app(ParticleFrameResourceHandler::class)->forActor(null);
 
         $this->assertSame(['id' => '1'], $handler->show($resource->toResourceDefinition(), '1'));
     }
@@ -153,10 +170,36 @@ class PublicReadGuestReadTest extends TestCase
         $this->actingAs($actor);
         $resource->readPolicy = AuthenticatedReadPolicy::class;
         $resource->readBoundary = ParticleResource::READ_BOUNDARY_GLOBAL;
-        app(Request::class)->setUserResolver(fn () => $actor);
-        $handler = app(ParticleFrameResourceHandler::class);
+        app(Request::class)->setUserResolver(fn () => null);
+        $handler = app(ParticleFrameResourceHandler::class)->forActor($actor);
 
         $this->assertSame(['id' => '1', 'userId' => 1], $handler->show($resource->toResourceDefinition(), '1'));
+    }
+
+    public function test_unbound_resource_without_public_rules_keeps_legacy_read_behavior(): void
+    {
+        $resource = $this->declare();
+        $resource->readPolicy = AuthenticatedReadPolicy::class;
+        $resource->readBoundary = ParticleResource::READ_BOUNDARY_GLOBAL;
+        $actor = PublicReadActor::create(['name' => 'Ada']);
+        $this->actingAs($actor);
+        app(Request::class)->setUserResolver(fn () => $actor);
+        $this->assertSame(['id' => '1'], app(ParticleFrameResourceHandler::class)->show($resource->toResourceDefinition(), '1'));
+    }
+
+    public function test_actor_binding_clones_and_does_not_follow_an_ambient_user(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->publicScope = fn ($query, $realm) => $query->where('user_id', $realm === 'account' ? 1 : 2);
+        $actor = PublicReadActor::create(['name' => 'Ada']);
+        $this->actingAs($actor);
+        app(Request::class)->setUserResolver(fn () => $actor);
+        $original = app(ParticleFrameResourceHandler::class);
+        $guest = $original->forActor(null, 'account');
+        $this->assertNotSame($original, $guest);
+        $this->assertSame(['id' => '1'], $guest->show($resource->toResourceDefinition(), '1'));
+        $this->expectException(\LogicException::class);
+        $original->show($resource->toResourceDefinition(), '1');
     }
 
     public function test_a_signed_in_detail_reader_keeps_the_resource_scope_not_the_guest_scope(): void

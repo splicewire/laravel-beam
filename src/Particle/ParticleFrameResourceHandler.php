@@ -4,13 +4,17 @@ namespace Splicewire\Beam\Particle;
 
 use Closure;
 use Illuminate\Contracts\Auth\Access\Gate;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use Illuminate\Validation\ValidationException;
+use LogicException;
 use RuntimeException;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Schemastud\Frame\Contracts\ActorAwareFrameResourceHandler;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Data\ResourcePageData;
 use Schemastud\Frame\Registry\ResourceDefinition;
@@ -51,8 +55,41 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * Authorization rides {@see PolicyWriteGate}: permissive when the resource declares no policy (the Frame
  * route's auth/realm middleware is the gate), delegating to the declared `policy` ability otherwise.
  */
-class ParticleFrameResourceHandler implements FrameResourceHandler
+class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, FrameResourceHandler
 {
+    private bool $actorBound = false;
+
+    private ?Authenticatable $boundActor = null;
+
+    private ?string $boundRealm = null;
+
+    public function forActor(?Authenticatable $actor, ?string $realm = null): FrameResourceHandler
+    {
+        $bound = clone $this;
+        $bound->actorBound = true;
+        $bound->boundActor = $actor;
+        $bound->boundRealm = $realm;
+
+        return $bound;
+    }
+
+    protected function contextRequest(?ParticleResource $resource): Request
+    {
+        if (! $this->actorBound && ($resource?->publicRead !== null || $resource?->publicScope !== null)) {
+            throw new LogicException('This Frame resource requires an explicit actor; bind with forActor(), including null for a guest.');
+        }
+        $request = clone app(Request::class);
+        if ($this->actorBound) {
+            $request->setUserResolver(fn () => $this->boundActor);
+            $route = $request->route();
+            $route = $route !== null ? clone $route : new Route(['GET'], '/', fn () => null);
+            $route->defaults['realm'] = $this->boundRealm;
+            $request->setRouteResolver(fn () => $route);
+        }
+
+        return $request;
+    }
+
     public function __construct(
         protected SchemaTargetResolver $targets,
         protected AcceptanceGate $acceptance,
@@ -65,6 +102,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     public function index(ResourceDefinition $definition, array $params): array
     {
+        $this->contextRequest($this->resource($definition));
         // A service-backed (union) resource has no single model to query: its list is a MERGE of N
         // sub-sources fused behind a backing that only STREAMS (ADR-0156 §57-58, §83 — widen the
         // Particle to serve one, never keep a bespoke handler). Resolve the backing off the
@@ -103,7 +141,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     protected function streamedIndex(ResourceDefinition $definition): array
     {
         app(ResourceFilterDefinition::class)->definition($definition->key);
-        $request = app(Request::class);
+        $request = $this->contextRequest($this->resource($definition));
         abort_if($request->query('filterVariant') !== null, 404);
 
         // The WHOLE `filter[...]` bag, passed through opaquely — the backing owns its own query
@@ -138,11 +176,12 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      */
     protected function indexQuery(ResourceDefinition $definition): object
     {
-        return $this->listQuery->forDefinition($definition);
+        return $this->listQuery->forDefinition($definition, $this->contextRequest($this->resource($definition)));
     }
 
     public function show(ResourceDefinition $definition, string $id): array
     {
+        $this->contextRequest($this->resource($definition));
         // A stream-only backing resolves ONE record through {@see ResolvesRecord::resolve()} — a
         // payload-resolved detail (the `schemaRef` dereference seam), NOT a model edit
         // projection. A union leaves `showable` at its default (true) and is always detail-capable; a
@@ -165,7 +204,8 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
         $resource = $this->resource($definition);
         if ($resource !== null) {
-            ResourceReadGuard::forApp()->inspectRead($resource, app(Request::class))->authorize();
+            $request = $this->contextRequest($resource);
+            ResourceReadGuard::forApp()->inspectReadFor($resource, $request, $request->user())->authorize();
         }
 
         // A read-only resource has no separate edit shape — project detail through the SAME read projection
@@ -175,7 +215,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         $model = $this->find($definition, $id);
 
         // Editable describes the resource, not the guest's permission to see its edit DTO.
-        $guest = app(Request::class)->user() === null;
+        $guest = $this->contextRequest($resource)->user() === null;
 
         return $definition->editable && ! $guest
             ? $this->projectEdit($definition, $model)
@@ -191,7 +231,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      */
     protected function resolvedShow(ResourceDefinition $definition, string $id): array
     {
-        $request = app(Request::class);
+        $request = $this->contextRequest($this->resource($definition));
 
         // The union-arm discriminator now rides the same opaque bag every other capability takes,
         // rather than a positional argument only unions ever used. `source` stays a detail-route query
@@ -211,6 +251,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
     public function store(ResourceDefinition $definition, array $input): array
     {
+        $this->contextRequest($this->resource($definition));
         $this->assertWritable($definition, 'store');
 
         $modelClass = $definition->model;
@@ -218,13 +259,14 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
         $parsed = $this->parseInput($definition, $input);
         $this->prepare($definition, $model, $parsed);
-        $model = $this->writer($definition)->write($model, $this->toAttributes($parsed), auth()->user(), $this->afterHook($definition, $parsed));
+        $model = $this->writer($definition)->write($model, $this->toAttributes($parsed), $this->actorBound ? $this->boundActor : auth()->user(), $this->afterHook($definition, $parsed));
 
         return $this->projectRead($definition, $model);
     }
 
     public function update(ResourceDefinition $definition, string $id, array $input): array
     {
+        $this->contextRequest($this->resource($definition));
         $this->assertWritable($definition, 'update');
 
         $model = $this->find($definition, $id);
@@ -241,13 +283,14 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
         $parsed = $this->parseInput($definition, $input);
         $this->prepare($definition, $model, $parsed);
-        $model = $this->writer($definition)->write($model, $this->toAttributes($parsed), auth()->user(), $this->afterHook($definition, $parsed));
+        $model = $this->writer($definition)->write($model, $this->toAttributes($parsed), $this->actorBound ? $this->boundActor : auth()->user(), $this->afterHook($definition, $parsed));
 
         return $this->projectRead($definition, $model->refresh());
     }
 
     public function destroy(ResourceDefinition $definition, string $id): void
     {
+        $this->contextRequest($this->resource($definition));
         $this->assertWritable($definition, 'destroy');
 
         $this->find($definition, $id)->delete();
@@ -386,7 +429,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
         return $resource === null
             ? $query
-            : app(ParticleListQuery::class)->publicScoped($query, $resource, app(Request::class));
+            : app(ParticleListQuery::class)->publicScoped($query, $resource, $this->contextRequest($resource));
     }
 
     /**
@@ -396,7 +439,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
      */
     protected function scoped(Builder $query, ?ParticleResource $resource): Builder
     {
-        return $this->listQuery->scoped($query, $resource);
+        return $this->listQuery->scoped($query, $resource, $this->contextRequest($resource));
     }
 
     /**
@@ -406,7 +449,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     protected function writer(ResourceDefinition $definition): ParticleWriter
     {
         return new ParticleWriter(
-            new PolicyWriteGate($this->gate, $definition->policy),
+            new PolicyWriteGate($this->actorBound ? $this->gate->forUser($this->boundActor) : $this->gate, $definition->policy),
             $this->targets,
             $this->acceptance,
             $this->events,
@@ -417,7 +460,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
     {
         $resource = $this->resource($definition);
         if ($resource?->prepare !== null) {
-            ($resource->prepare)($model, $input, auth()->user());
+            ($resource->prepare)($model, $input, $this->actorBound ? $this->boundActor : auth()->user());
         }
     }
 
@@ -483,7 +526,7 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
 
         // Match REST: a guest receives the narrower Public Read DTO. When it is
         // the normal Data class, retain the resource's custom projection.
-        $guestPublicRead = app(Request::class)->user() === null
+        $guestPublicRead = $this->contextRequest($resource)->user() === null
             && $resource?->publicRead !== null
             && $resource->publicRead !== $resource->data;
 
@@ -517,13 +560,14 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
         );
 
         $resource = $this->registry->has($key) ? $this->registry->get($key) : null;
-        $filters = (array) app(Request::class)->input('filter', []);
+        $request = $this->contextRequest($resource);
+        $filters = (array) $request->input('filter', []);
 
         return $projector->apply(
             $key,
             $data,
             $model,
-            ReadContext::detail($resource?->includes ?? [], auth()->user()),
+            ReadContext::detail($resource?->includes ?? [], $this->actorBound ? $this->boundActor : auth()->user()),
             $filters,
         );
     }

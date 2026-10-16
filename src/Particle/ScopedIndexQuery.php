@@ -32,12 +32,12 @@ class ScopedIndexQuery
     }
 
     /** Build the resource's scoped and filtered list. */
-    public function forDefinition(ResourceDefinition $definition): object
+    public function forDefinition(ResourceDefinition $definition, ?Request $request = null): object
     {
         $resource = $this->resource($definition);
-        $request = app(Request::class);
+        $request ??= app(Request::class);
         if ($resource !== null) {
-            ResourceReadGuard::forApp()->inspectRead($resource, $request)->authorize();
+            ResourceReadGuard::forApp()->inspectReadFor($resource, $request, $request->user())->authorize();
         }
         $resource ??= new ParticleResource(
             key: $definition->key, backing: $definition->model, data: $definition->data, query: $definition->query,
@@ -110,9 +110,9 @@ class ScopedIndexQuery
      *
      * Null resource, or a declaration with no `scope`, returns the query untouched.
      */
-    public function scoped(Builder $query, ?ParticleResource $resource): Builder
+    public function scoped(Builder $query, ?ParticleResource $resource, ?Request $request = null): Builder
     {
-        return $resource === null ? $query : app(ParticleListQuery::class)->scoped($query, $resource, app(Request::class));
+        return $resource === null ? $query : app(ParticleListQuery::class)->scoped($query, $resource, $request ?? app(Request::class));
     }
 
     /**
