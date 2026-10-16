@@ -201,6 +201,44 @@ class UngatedResourceReadTest extends TestCase
     }
 
     /**
+     * A row scope narrows the population an entitlement authorizes; it never cancels the entitlement. 01abf93 made a
+     * declared scope stop authenticating an ungated read, but returned before the realm entitlement was asked, so a
+     * scoped twin of `tenants` refused the operators who read the whole table (launch ticket 00, 2026-10-16:
+     * laravel-beam-tenancy's TenantsSummaryIndexParityTest and TenantsSummaryProviderTest).
+     */
+    public function test_an_entitled_holder_of_a_gated_realm_reads_its_scoped_resource_through_the_scope(): void
+    {
+        config(['beam.core.realm_gates' => ['staffroom' => ['entitlement' => 'staff.read']]]);
+        app(ParticleResourceRegistry::class)->loadRealmMap(['staffroom' => ['gadgets']]);
+        Gate::define('entitlement:staff.read', fn () => true);
+        $this->declare(scope: fn ($query) => $query->where('user_id', 2));
+
+        $this->getJson('/frame/resources/gadgets')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', '2');
+        $this->getJson('/frame/resources/gadgets/summary')->assertOk()->assertJsonPath('figures.0.value', 1);
+        $this->getJson('/frame/resources/gadgets/records/1')->assertNotFound();
+    }
+
+    public function test_a_scoped_resource_still_refuses_a_caller_without_the_realm_entitlement(): void
+    {
+        config(['beam.core.realm_gates' => ['staffroom' => ['entitlement' => 'staff.read']]]);
+        app(ParticleResourceRegistry::class)->loadRealmMap(['staffroom' => ['gadgets']]);
+        Gate::define('entitlement:staff.read', fn () => false);
+        $this->declare(scope: fn ($query) => $query->where('user_id', 2));
+
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+        $this->getJson('/frame/resources/gadgets/summary')->assertForbidden();
+    }
+
+    public function test_a_scoped_resource_in_an_ungated_realm_is_still_refused(): void
+    {
+        config(['beam.core.realm_gates' => []]);
+        app(ParticleResourceRegistry::class)->loadRealmMap(['lobby' => ['gadgets']]);
+        $this->declare(scope: fn ($query) => $query->where('user_id', 2));
+
+        $this->getJson('/frame/resources/gadgets')->assertForbidden();
+    }
+
+    /**
      * A surface must not offer what the read boundary refuses: `listable()` asks this guard for a
      * policy-less model-backed resource, for the NAMED actor — the ambient user here is entitled, and a
      * guest asked about in the same request is still refused.
