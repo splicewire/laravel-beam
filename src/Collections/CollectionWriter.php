@@ -22,7 +22,7 @@ final class CollectionWriter
     public function __construct(WriteGate $gate, SchemaTargetResolver $targets, AcceptanceGate $acceptance, Dispatcher $events, CollectionPersistStage $persist)
     {
         $this->writer = new ParticleWriter($gate, $targets, $acceptance, $events, [
-            new AuthorizeStage($gate), new ValidateStage($targets, $acceptance),
+            new AuthorizeStage($gate), new CollectionValidateStage(new ValidateStage($targets, $acceptance)),
             new DedupeStage($targets), $persist, new EmitStage($events),
         ]);
     }

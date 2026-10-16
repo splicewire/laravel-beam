@@ -6,23 +6,41 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\MigrationOutcome;
+use Schemastud\DataSchemas\Contracts\SchemaRegistry;
+use Schemastud\Frame\FrameServiceProvider;
 use Spatie\QueryBuilder\Exceptions\InvalidFilterQuery;
 use Splicewire\Beam\Collections\CollectionBacking;
+use Splicewire\Beam\Collections\CollectionMigrationDrain;
 use Splicewire\Beam\Collections\CollectionRead;
 use Splicewire\Beam\Collections\CollectionRelations;
+use Splicewire\Beam\Collections\CollectionRoutes;
 use Splicewire\Beam\Collections\CollectionSchemaResolver;
 use Splicewire\Beam\Collections\StandaloneRecordQuery;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Tests\TestCase;
 
 class CollectionReadTest extends TestCase
 {
+    protected function getPackageProviders($app): array
+    {
+        return [FrameServiceProvider::class, ...parent::getPackageProviders($app)];
+    }
+
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+        $app['config']->set('app.key', str_repeat('g', 32));
+        $app['config']->set('frame.middleware', ['web']);
+    }
+
     private const STEM = 'https://example.test/articles';
 
     private DatabaseSchemaRegistry $registry;
@@ -48,10 +66,13 @@ class CollectionReadTest extends TestCase
             $t->string('source_tier')->default('local');
             $t->string('migration_status')->default('current');
             $t->json('payload');
+            $t->string('head_version')->nullable();
+            $t->json('meta')->nullable();
             $t->timestamps();
         });
         $this->registry = new DatabaseSchemaRegistry;
         $reconciler = Mockery::mock(RecordReconciler::class);
+        $reconciler->shouldReceive('currentId')->andReturnUsing(fn ($stem) => $stem.'/1');
         $reconciler->shouldReceive('reconcile')->andReturnUsing(fn ($payload, $id) => MigrationOutcome::current($id));
         $this->app->instance(RecordReconciler::class, $reconciler);
         $this->reader = new CollectionRead(new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry), app(StandaloneRecordQuery::class));
@@ -152,6 +173,7 @@ class CollectionReadTest extends TestCase
         $this->insert('private', false);
         $this->insert('transition');
         $reconciler = Mockery::mock(RecordReconciler::class);
+        $reconciler->shouldReceive('currentId')->andReturnUsing(fn ($stem) => $stem.'/1');
         $reconciler->shouldReceive('reconcile')->andReturnUsing(fn ($payload, $id) => $payload['title'] === 'transition'
             ? MigrationOutcome::pending($payload, $id) : MigrationOutcome::current($id));
         $this->app->instance(RecordReconciler::class, $reconciler);
@@ -186,5 +208,177 @@ class CollectionReadTest extends TestCase
         $backing = new CollectionBacking($request, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry), app(StandaloneRecordQuery::class));
         $this->expectException(InvalidFilterQuery::class);
         $backing->query(['secret' => 'guess']);
+    }
+
+    public function test_both_transport_writes_use_the_latest_schema_and_keep_guest_writes_refused(): void
+    {
+        $this->register();
+        $this->app->instance(SchemaRegistry::class, $this->registry);
+        $this->app->instance(SchemaTargetResolver::class, new RegistrySchemaTargetResolver($this->registry));
+        $this->app->instance(CollectionSchemaResolver::class, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry));
+        CollectionRoutes::mount();
+        $query = '?collection='.urlencode(self::STEM);
+        $body = ['fields' => ['title' => 'First', 'visible' => true]];
+        $this->postJson('/records'.$query, $body)->assertForbidden();
+        $this->postJson('/frame/resources/records'.$query, $body)->assertForbidden();
+        foreach (['create', 'update'] as $ability) {
+            Gate::define($ability, fn (?User $actor) => $actor !== null);
+        }
+        $this->actingAs((new User)->forceFill(['id' => 1]));
+        $this->register(version: 2);
+        $rest = $this->postJson('/records'.$query, $body)->assertCreated()->json('data');
+        $frame = $this->postJson('/frame/resources/records'.$query, $body)->assertSuccessful()->json('data');
+        $this->assertSame('First', $rest['fields']['title']);
+        $this->assertSame('First', $frame['fields']['title']);
+        $this->assertSame(self::STEM.'/2', $rest['schema']['$id']);
+        $this->assertSame(self::STEM.'/2', $frame['schema']['$id']);
+        $this->assertSame([self::STEM.'/2'], DB::table(Beam::table('particles'))->distinct()->pluck('schema_ref')->all());
+        $this->assertDatabaseCount(Beam::table('particles'), 2);
+        $this->postJson('/records'.$query, ['fields' => ['title' => 123]])->assertUnprocessable();
+        $this->postJson('/frame/resources/records'.$query, ['fields' => ['title' => 123]])->assertUnprocessable();
+        $this->assertDatabaseCount(Beam::table('particles'), 2);
+    }
+
+    public function test_guest_index_counts_and_pages_one_and_ten_thousand_records(): void
+    {
+        $this->register();
+        $this->app->instance(CollectionSchemaResolver::class, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry));
+        CollectionRoutes::mount();
+        foreach ([1000, 10000] as $size) {
+            DB::table(Beam::table('particles'))->delete();
+            foreach (array_chunk(range(1, $size), 200) as $chunk) {
+                $rows = [];
+                foreach ($chunk as $i) {
+                    $rows[] = ['id' => sprintf('00000000-0000-4000-8000-%012d', $i),
+                        'schema_ref' => self::STEM.'/1', 'schema_id' => self::STEM.'/1',
+                        'source_tier' => 'local', 'migration_status' => 'current',
+                        'payload' => json_encode(['title' => (string) $i, 'visible' => $i % 2 === 0, 'secret' => 'private']),
+                        'created_at' => now(), 'updated_at' => now()];
+                }
+                DB::table(Beam::table('particles'))->insert($rows);
+            }
+            $start = hrtime(true);
+            $response = $this->getJson('/records?collection='.urlencode(self::STEM).'&perPage=10')->assertOk();
+            $elapsed = (hrtime(true) - $start) / 1e6;
+            $response->assertJsonPath('total', $size / 2);
+            foreach ($response->json('data') as $record) {
+                $this->assertArrayNotHasKey('secret', $record['fields']);
+                $this->assertSame(0, (int) $record['fields']['title'] % 2);
+            }
+            fwrite(STDERR, sprintf("EP34 guest REST index rows=%d elapsed_ms=%.3f memory_peak_bytes=%d backend=sqlite current_reconciler_stub=true\n", $size, $elapsed, memory_get_peak_usage(true)));
+        }
+    }
+
+    public function test_transport_relations_batch_targets_and_hide_private_and_missing_identically(): void
+    {
+        $this->register();
+        $targetStem = 'https://example.test/targets';
+        $targetSchema = ['$id' => $targetStem.'/1', 'type' => 'object',
+            'x-beam-collection' => ['label' => 'Targets', 'nameField' => 'title'],
+            'properties' => ['title' => ['type' => 'string'], 'visible' => ['type' => 'boolean'], 'secret' => ['type' => 'string']],
+            'x-beam-public-read' => ['fields' => ['title'], 'where' => ['all' => [['field' => 'visible', 'operator' => 'equals', 'value' => true]]]]];
+        $this->registry->register($targetSchema);
+        $sourceSchema = (new RegistrySchemaTargetResolver($this->registry))->targetFor(self::STEM);
+        $sourceSchema['$id'] = self::STEM.'/2';
+        $sourceSchema['properties']['related']['x-beam-relation']['collection'] = $targetStem;
+        $this->registry->register($sourceSchema);
+        $this->insert('target', ref: $targetStem.'/1');
+        $this->insert('private', false, ref: $targetStem.'/1');
+        foreach (range(1, 12) as $i) {
+            $sourceId = sprintf('11111111-1111-4111-8111-%012d', $i);
+            $this->insert($sourceId);
+            DB::table(Beam::table('particles'))->where('id', $sourceId)->update(['payload' => json_encode(['title' => 'source-'.$i, 'visible' => true, 'related' => ['target', 'private', 'missing']])]);
+        }
+        $this->app->instance(CollectionSchemaResolver::class, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry));
+        CollectionRoutes::mount();
+        $query = '?collection='.urlencode(self::STEM);
+        foreach (['/records', '/frame/resources/records'] as $uri) {
+            DB::enableQueryLog();
+            DB::flushQueryLog();
+            $rows = $this->getJson($uri.$query)->assertOk()->json('data');
+            $targetQueries = array_filter(DB::getQueryLog(), fn ($q) => str_contains($q['query'], Beam::table('particles')) && in_array($targetStem.'/1', $q['bindings'], true));
+            DB::disableQueryLog();
+            $this->assertCount(1, $targetQueries);
+            $this->assertNotEmpty($rows);
+            foreach ($rows as $row) {
+                $this->assertSame(['target'], array_column($row['relations']['related'], 'id'));
+                $this->assertSame(['title' => 'target'], $row['relations']['related'][0]['fields']);
+            }
+        }
+        foreach (['/records/11111111-1111-4111-8111-000000000001', '/frame/resources/records/records/11111111-1111-4111-8111-000000000001'] as $uri) {
+            $this->getJson($uri.$query)->assertOk()->assertJsonCount(1, 'data.relations.related');
+        }
+        $sourceSchema['$id'] = self::STEM.'/3';
+        $sourceSchema['properties']['related']['x-beam-relation']['collection'] = 'https://example.test/unknown';
+        $this->registry->register($sourceSchema);
+        $this->getJson('/records'.$query)->assertOk()->assertJsonPath('data.0.relations.related', []);
+    }
+
+    public function test_registered_version_drain_visits_current_and_pending_local_records_only(): void
+    {
+        $this->register();
+        $this->register(version: 2);
+        $this->insert('current');
+        $this->insert('pending', status: 'pending');
+        $this->insert('shadow', tier: 'shadow');
+        $this->insert('other', ref: 'https://example.test/other/1');
+        $reconciler = Mockery::mock(RecordReconciler::class);
+        $reconciler->shouldReceive('reconcile')->andReturnUsing(fn ($payload, $id) => MigrationOutcome::current($id));
+        $reconciler->shouldReceive('reconcileEager')->twice()->withArgs(fn ($payload, $id, $stem, $llm) => in_array($payload['title'], ['current', 'pending'], true) && $stem === self::STEM && $llm === false)
+            ->andReturnUsing(fn ($payload) => MigrationOutcome::migrated($payload, self::STEM.'/2'));
+        $this->app->instance(RecordReconciler::class, $reconciler);
+        $this->app->instance(CollectionSchemaResolver::class, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry));
+        $this->assertSame(2, app(CollectionMigrationDrain::class)->run(self::STEM));
+        $this->assertSame(2, DB::table(Beam::table('particles'))->where('schema_id', self::STEM.'/2')->count());
+        $this->assertSame(self::STEM.'/1', DB::table(Beam::table('particles'))->where('id', 'shadow')->value('schema_id'));
+    }
+
+    public function test_frame_filter_panel_and_list_follow_the_addressed_latest_declaration(): void
+    {
+        $this->register();
+        $this->insert('a');
+        $this->insert('z');
+        $this->app->instance(CollectionSchemaResolver::class, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry));
+        $query = '?collection='.urlencode(self::STEM);
+        $this->getJson('/frame/resources/records/filters/schema'.$query)->assertOk()
+            ->assertJsonPath('data.properties.title.x-filter.operator', 'exact');
+        $this->getJson('/frame/resources/records'.$query)->assertOk()->assertJsonPath('data.0.fields.title', 'z');
+        $this->getJson('/frame/resources/records'.$query.'&filter[title]=a')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.fields.title', 'a');
+        $schema = (new RegistrySchemaTargetResolver($this->registry))->targetFor(self::STEM);
+        $schema['$id'] = self::STEM.'/2';
+        $schema['properties']['title']['x-sort']['direction'] = 'asc';
+        $schema['properties']['title']['x-filter']['name'] = 'heading';
+        $this->registry->register($schema);
+        $this->getJson('/frame/resources/records/filters/schema'.$query)->assertOk()->assertJsonPath('data.properties.heading.x-filter.operator', 'exact');
+        $this->getJson('/frame/resources/records'.$query)->assertOk()->assertJsonPath('data.0.fields.title', 'a');
+    }
+
+    public function test_frame_form_schema_uses_the_addressed_collections_latest_schema(): void
+    {
+        $this->register();
+        $this->app->instance(CollectionSchemaResolver::class, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry));
+        $query = '?collection='.urlencode(self::STEM);
+        $this->getJson('/frame/resources/records/schema'.$query)->assertOk()
+            ->assertJsonPath('properties.fields.$id', self::STEM.'/1');
+        $this->register(version: 2);
+        $this->getJson('/frame/resources/records/schema'.$query)->assertOk()
+            ->assertJsonPath('properties.fields.$id', self::STEM.'/2');
+        $this->getJson('/frame/resources/records/schema')->assertUnprocessable();
+    }
+
+    public function test_one_declared_resource_serves_guest_records_over_rest_and_frame(): void
+    {
+        $this->register();
+        $id = '11111111-1111-4111-8111-111111111111';
+        $this->insert($id);
+        $this->app->instance(CollectionSchemaResolver::class, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry));
+        CollectionRoutes::mount();
+        $query = '?collection='.urlencode(self::STEM);
+        $rest = $this->getJson('/records/'.$id.$query)->assertOk()->json('data');
+        $frame = $this->getJson('/frame/resources/records/records/'.$id.$query)->assertOk()->json('data');
+        $this->assertSame($rest['fields'], $frame['fields']);
+        $this->assertSame(['title' => $id], $rest['fields']);
+        $this->assertSame(self::STEM.'/1', $rest['schema']['$id']);
+        $this->getJson('/records'.$query)->assertOk()->assertJsonPath('data.0.fields.title', $id);
     }
 }

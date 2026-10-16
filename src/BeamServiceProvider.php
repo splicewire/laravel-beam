@@ -38,6 +38,7 @@ use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceActionAuthorizer;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
+use Schemastud\Frame\Contracts\ResourceSchemaResolver;
 use Schemastud\Frame\Contracts\WriteSubjectResolver;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
@@ -52,6 +53,7 @@ use Splicewire\Beam\Authorization\SeatGate;
 use Splicewire\Beam\Brand\BrandResolver;
 use Splicewire\Beam\Brand\ConfigBrandResolver;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
+use Splicewire\Beam\Collections\CollectionFormSchema;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
@@ -82,6 +84,7 @@ use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
 use Splicewire\Beam\Doctor\GlobalReadBoundaryAudit;
+use Splicewire\Beam\Doctor\GuestReadablePublicReadAudit;
 use Splicewire\Beam\Doctor\IdentifierLabelAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
@@ -94,7 +97,6 @@ use Splicewire\Beam\Doctor\ParticleCapabilityDisagreementAudit;
 use Splicewire\Beam\Doctor\ParticleIdConstraintKeyTypeAudit;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
-use Splicewire\Beam\Doctor\GuestReadablePublicReadAudit;
 use Splicewire\Beam\Doctor\ScopedReadAuthenticationAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
@@ -555,6 +557,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // exists, discoverResources() reads the cached class-strings instead of re-walking the filesystem
         // each boot; `splicewire:beam:frame:cache` writes it, `splicewire:beam:frame:clear` / `optimize:clear` remove it.
         $this->app->singleton(FrameResourceManifest::class, fn ($app) => new FrameResourceManifest($app));
+
+        $this->app->bind(
+            ResourceSchemaResolver::class,
+            CollectionFormSchema::class,
+        );
 
         // Beam supplies the default CRUD resolver. Filter capabilities are projected per resource
         // through ParticleResource::toResourceDefinition(), including a declared provider override.

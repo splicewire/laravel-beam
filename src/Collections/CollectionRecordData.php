@@ -14,5 +14,7 @@ class CollectionRecordData extends Data
         public string $schemaRef,
         public string $migrationStatus,
         public array $fields,
+        public array $schema = [],
+        public array $relations = [],
     ) {}
 }

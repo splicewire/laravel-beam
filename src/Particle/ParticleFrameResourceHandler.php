@@ -22,6 +22,7 @@ use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\Backing\EnrichesProjectedRecords;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\ResolvesRecord;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
@@ -115,10 +116,9 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
 
         $query = $this->indexQuery($definition);
 
-        return $query
-            ->get()
-            ->map(fn (Model $model) => $this->projectRead($definition, $model))
-            ->all();
+        $rows = $query->get()->map(fn (Model $model) => $this->projectRead($definition, $model))->all();
+
+        return $this->enrichProjected($definition, $rows);
     }
 
     /**
@@ -167,6 +167,16 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         }
 
         return ResourcePageData::cursor($rows, $perPage, $nextCursor)->toArray();
+    }
+
+    protected function enrichProjected(ResourceDefinition $definition, array $rows): array
+    {
+        $resource = $this->resource($definition);
+        $backing = $resource?->backing();
+
+        return $backing instanceof EnrichesProjectedRecords
+            ? $backing->enrich($rows, $this->contextRequest($resource)->user())
+            : $rows;
     }
 
     /**
@@ -218,9 +228,11 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         // Editable describes the resource, not the guest's permission to see its edit DTO.
         $guest = $this->contextRequest($resource)->user() === null;
 
-        return $definition->editable && ! $guest
+        $row = $definition->editable && ! $guest
             ? $this->projectEdit($definition, $model)
             : $this->projectRead($definition, $model);
+
+        return $this->enrichProjected($definition, [$row])[0];
     }
 
     /**

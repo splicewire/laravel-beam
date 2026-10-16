@@ -26,6 +26,7 @@ use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
+use Splicewire\Beam\Particle\Backing\EnrichesProjectedRecords;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\Backing\SuppliesParticleWriter;
@@ -154,6 +155,11 @@ class ParticleController extends Controller
 
         $page = $query->paginate($request->integer(self::PER_PAGE, $resource->perPage), ['*'], self::PAGE);
         $page->through(fn (Model $record) => $this->projectRecord($resource, $record, $ctx, $facets));
+
+        $backing = $resource->backing();
+        if ($backing instanceof EnrichesProjectedRecords) {
+            $page->setCollection(collect($backing->enrich($page->items(), $request->user())));
+        }
 
         return $this->envelope->paginated($page);
     }
@@ -772,6 +778,11 @@ class ParticleController extends Controller
 
         $ctx = ReadContext::detail($resource->includes, $request->user());
         $data = $this->projectRecord($resource, $model, $ctx, $this->facets($request));
+
+        $backing = $resource->backing();
+        if ($backing instanceof EnrichesProjectedRecords) {
+            $data = $backing->enrich([$data], $request->user())[0];
+        }
 
         return $created ? $this->envelope->created($data) : $this->envelope->item($data);
     }

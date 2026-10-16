@@ -16,7 +16,9 @@ use Schemastud\Frame\Registry\NavMetadata;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Filters\DeclaredResourceQuery;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
+use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\EloquentBacking;
+use Splicewire\Beam\Particle\Backing\FilterVocabulary;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -24,6 +26,16 @@ use Splicewire\Beam\Tests\TestCase;
 
 class ResourceFilterDefinitionTest extends TestCase
 {
+    public function test_backing_vocabulary_cannot_silently_override_data_filter_attributes(): void
+    {
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'dual-vocabulary', backing: DefinitionVocabularyBacking::class, data: DefinitionFilterData::class,
+        ));
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('backing-owned filters and Data filter attributes');
+        app(ResourceFilterDefinition::class)->definition('dual-vocabulary');
+    }
+
     public function test_inferred_declarations_resolve_the_current_scopes_model(): void
     {
         $this->app->scoped(DefinitionModelChoice::class, fn () => new DefinitionModelChoice(DefinitionModelA::class));
@@ -124,4 +136,12 @@ class DefinitionFilterData extends Data
         #[Filterable(operator: Exact::class)]
         public string $name,
     ) {}
+}
+
+class DefinitionVocabularyBacking extends DefinitionScopedBacking implements DeclaresFilterVocabulary
+{
+    public function filterVocabulary(): FilterVocabulary
+    {
+        return FilterVocabulary::of();
+    }
 }

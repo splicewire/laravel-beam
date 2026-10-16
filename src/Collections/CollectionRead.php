@@ -76,7 +76,7 @@ final class CollectionRead
         return new CollectionRecordData(
             (string) $model->getKey(), $definition->stem(),
             (string) ($model->getAttribute('schema_id') ?? $model->schema_ref),
-            $status, $actor === null ? $definition->publicFields($payload) : $payload,
+            $status, $actor === null ? $definition->publicFields($payload) : $payload, $definition->schema,
         );
     }
 }

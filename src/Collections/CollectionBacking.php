@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Collections;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -18,6 +19,7 @@ use Splicewire\Beam\Particle\Backing\BacksEloquent;
 use Splicewire\Beam\Particle\Backing\BacksModel;
 use Splicewire\Beam\Particle\Backing\DeclaredFacet;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
+use Splicewire\Beam\Particle\Backing\EnrichesProjectedRecords;
 use Splicewire\Beam\Particle\Backing\FilterVocabulary;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
@@ -28,7 +30,7 @@ use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
 
 /** A request-resolved backing, never a resource registry entry per tenant schema. */
-class CollectionBacking implements BacksModel, DeclaresFilterVocabulary, QueriesRecords, StreamsRecords, SuppliesParticleWriter, WritesRecords
+class CollectionBacking implements BacksModel, DeclaresFilterVocabulary, EnrichesProjectedRecords, QueriesRecords, StreamsRecords, SuppliesParticleWriter, WritesRecords
 {
     use BacksEloquent;
 
@@ -99,6 +101,17 @@ class CollectionBacking implements BacksModel, DeclaresFilterVocabulary, Queries
     public function writer(WriteGate $gate): ParticleWriter
     {
         return app()->makeWith(CollectionWriter::class, ['gate' => $gate])->pipeline();
+    }
+
+    public function enrich(array $records, ?Authenticatable $actor): array
+    {
+        $records = array_map(fn ($record) => $record instanceof CollectionRecordData ? $record : CollectionRecordData::from($record), $records);
+        $relations = app(CollectionRelations::class)->resolve($records, $actor);
+        foreach ($records as $record) {
+            $record->relations = $relations[$record->id] ?? [];
+        }
+
+        return array_map(fn (CollectionRecordData $record) => $record->toArray(), $records);
     }
 
     public function filterVocabulary(): FilterVocabulary

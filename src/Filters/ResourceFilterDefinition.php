@@ -52,6 +52,12 @@ class ResourceFilterDefinition
         if ($query !== null && ($ownsVocabulary || ! $queryable || $data === null)) {
             throw new \LogicException("Resource [{$key}] declares a query without an exclusive queryable Data definition.");
         }
+        if ($ownsVocabulary && $data !== null) {
+            $reflector = new FilterReflector;
+            if ($reflector->filterNames($data) !== [] || $reflector->sortNames($data) !== [] || $reflector->includeNames($data) !== []) {
+                throw new \LogicException("Resource [{$key}] declares both backing-owned filters and Data filter attributes.");
+            }
+        }
         if ($ownsVocabulary || ! $queryable || $data === null) {
             return null;
         }
