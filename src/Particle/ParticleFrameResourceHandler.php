@@ -25,6 +25,7 @@ use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\ResolvesRecord;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
+use Splicewire\Beam\Particle\Backing\SuppliesParticleWriter;
 use Splicewire\Beam\Particle\Backing\Unpaged;
 use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
@@ -448,8 +449,14 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
      */
     protected function writer(ResourceDefinition $definition): ParticleWriter
     {
+        $gate = new PolicyWriteGate($this->actorBound ? $this->gate->forUser($this->boundActor) : $this->gate, $definition->policy);
+        $backing = $this->resource($definition)?->backing();
+        if ($backing instanceof SuppliesParticleWriter) {
+            return $backing->writer($gate);
+        }
+
         return new ParticleWriter(
-            new PolicyWriteGate($this->actorBound ? $this->gate->forUser($this->boundActor) : $this->gate, $definition->policy),
+            $gate,
             $this->targets,
             $this->acceptance,
             $this->events,

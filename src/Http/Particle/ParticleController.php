@@ -28,6 +28,7 @@ use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
+use Splicewire\Beam\Particle\Backing\SuppliesParticleWriter;
 use Splicewire\Beam\Particle\Backing\WritesRecords;
 use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
@@ -537,7 +538,12 @@ class ParticleController extends Controller
             $attributes = $this->withoutStructuralColumns($request, $attributes);
         }
 
-        return $this->writer->write($model, $attributes, $actor, $this->afterHook($resource, $input));
+        $backing = $resource->backing();
+        $writer = $backing instanceof SuppliesParticleWriter
+            ? $backing->writer($this->writer->gate())
+            : $this->writer;
+
+        return $writer->write($model, $attributes, $actor, $this->afterHook($resource, $input));
     }
 
     /**

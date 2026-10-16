@@ -13,11 +13,15 @@ use Splicewire\Beam\Concerns\Deduplicates;
 use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Particle\Backing\EloquentBacking;
+use Splicewire\Beam\Particle\Backing\SuppliesParticleWriter;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Tests\TestCase;
+use Splicewire\Beam\Write\Contracts\WriteGate;
+use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\WriteNotAuthorized;
 
 /** One writable declaration, exercised through Frame and REST using the shipped writer chain. */
@@ -63,6 +67,29 @@ class ParticleWriteResultTest extends TestCase
         $this->app->make(ParticleResourceRegistry::class)->register($this->resource);
         Particle::mount('frame-write-records', 'frame-write-records')->only(['store', 'update']);
         Event::fake([BeamParticlePersisted::class]);
+    }
+
+    public function test_both_transports_use_a_backings_writer_and_preserve_the_gate(): void
+    {
+        // Re-register via the constructor: runtime declarations own their backing identity.
+        $resource = new ParticleResource(key: 'supplied-records', backing: SupplyingWriteBacking::class, data: FrameWriteData::class, input: FrameWriteInput::class, label: 'Supplied records', policy: 'frame-write');
+        $this->app->make(ParticleResourceRegistry::class)->register($resource);
+        Particle::mount('supplied-records', 'supplied-records')->only(['store']);
+        SupplyingWriteBacking::$calls = 0;
+        $frame = $this->app->make(ParticleFrameResourceHandler::class)->store($resource->toResourceDefinition(), ['email' => 'frame@example.test']);
+        $rest = $this->postJson('/supplied-records', ['email' => 'rest@example.test'])->assertCreated()->json('data');
+        $this->assertSame('frame@example.test', $frame['email']);
+        $this->assertSame('rest@example.test', $rest['email']);
+        $this->assertSame(2, SupplyingWriteBacking::$calls);
+        $this->allowWrites = false;
+        try {
+            $this->app->make(ParticleFrameResourceHandler::class)->store($resource->toResourceDefinition(), ['email' => 'denied-frame@example.test']);
+            $this->fail('The supplied writer bypassed the Frame gate.');
+        } catch (WriteNotAuthorized) {
+            $this->assertDatabaseCount('frame_write_records', 2);
+        }
+        $this->postJson('/supplied-records', ['email' => 'denied-rest@example.test'])->assertForbidden();
+        $this->assertDatabaseCount('frame_write_records', 2);
     }
 
     public function test_frame_create_returns_the_persisted_identity_when_dedupe_ignores_a_repeat(): void
@@ -187,4 +214,21 @@ class FrameWriteData extends BeamData
 class FrameWriteInput extends BeamData
 {
     public function __construct(public string $email) {}
+}
+
+class SupplyingWriteBacking extends EloquentBacking implements SuppliesParticleWriter
+{
+    public static int $calls = 0;
+
+    public function __construct()
+    {
+        parent::__construct(FrameWriteRecord::class);
+    }
+
+    public function writer(WriteGate $gate): ParticleWriter
+    {
+        self::$calls++;
+
+        return app()->makeWith(ParticleWriter::class, ['gate' => $gate]);
+    }
 }

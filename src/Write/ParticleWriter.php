@@ -80,6 +80,12 @@ class ParticleWriter
         private ?array $stages = null,
     ) {}
 
+    /** Preserve this writer's authorization when a backing decorates its persistence stages. */
+    public function gate(): WriteGate
+    {
+        return $this->gate;
+    }
+
     /**
      * Write `$payload` to `$target`, returning the persisted model.
      *
