@@ -21,7 +21,7 @@ use Splicewire\Beam\Realm\Contracts\TenancyContext;
  * in test harnesses whose single sqlite connection is named `testing`, where a literal fallback
  * would degrade every probe to a self-describing pass.
  */
-final class CentralTenancyContext implements TenancyContext
+class CentralTenancyContext implements TenancyContext
 {
     public function isMultiTenant(): bool
     {
