@@ -7,9 +7,11 @@ use Rushing\DataFilters\Query\ResourceQuery;
 use Rushing\DataFilters\Reflection\FilterReflector;
 use Rushing\DataFilters\Registry\ResourceDefinition;
 use Schemastud\Frame\Contracts\ResourceRegistry;
+use Splicewire\Beam\Particle\Backing\AddressedResourceBacking;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
+use Splicewire\Beam\Particle\Backing\ResourceAddress;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
@@ -52,7 +54,7 @@ class ResourceFilterDefinition
         if ($query !== null && ($ownsVocabulary || ! $queryable || $data === null)) {
             throw new \LogicException("Resource [{$key}] declares a query without an exclusive queryable Data definition.");
         }
-        if ($ownsVocabulary && $data !== null) {
+        if ($ownsVocabulary && $queryable && $data !== null) {
             $reflector = new FilterReflector;
             if ($reflector->filterNames($data) !== [] || $reflector->sortNames($data) !== [] || $reflector->includeNames($data) !== []) {
                 throw new \LogicException("Resource [{$key}] declares both backing-owned filters and Data filter attributes.");
@@ -88,7 +90,13 @@ class ResourceFilterDefinition
     {
         $definition = $this->definition($resource->key);
         if ((new BackingResolver)->hasCapability($resource->backing, DeclaresFilterVocabulary::class)) {
-            return ! $resource->backing()->filterVocabulary()->isEmpty();
+            $backing = $resource->backing();
+            if ($backing instanceof AddressedResourceBacking
+                && ResourceAddress::resolve($backing, request(), required: false) === null) {
+                return true; // Structural capability: no tenant address has been selected for inspection.
+            }
+
+            return ! $backing->filterVocabulary()->isEmpty();
         }
         if ($definition === null) {
             return false;

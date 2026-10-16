@@ -5,7 +5,6 @@ namespace Splicewire\Beam\Collections;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Rushing\DataFilters\Operators\Exact;
 use Rushing\DataFilters\Operators\Partial;
@@ -15,6 +14,7 @@ use Rushing\DataFilters\Operators\Set;
 use Spatie\QueryBuilder\AllowedSort;
 use Spatie\QueryBuilder\QueryBuilder;
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Particle\Backing\AddressedResourceBacking;
 use Splicewire\Beam\Particle\Backing\BacksEloquent;
 use Splicewire\Beam\Particle\Backing\BacksModel;
 use Splicewire\Beam\Particle\Backing\DeclaredFacet;
@@ -22,6 +22,7 @@ use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\EnrichesProjectedRecords;
 use Splicewire\Beam\Particle\Backing\FilterVocabulary;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
+use Splicewire\Beam\Particle\Backing\ResourceAddress;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\Backing\SuppliesParticleWriter;
 use Splicewire\Beam\Particle\Backing\WritableRecord;
@@ -30,20 +31,27 @@ use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
 
 /** A request-resolved backing, never a resource registry entry per tenant schema. */
-class CollectionBacking implements BacksModel, DeclaresFilterVocabulary, EnrichesProjectedRecords, QueriesRecords, StreamsRecords, SuppliesParticleWriter, WritesRecords
+class CollectionBacking implements AddressedResourceBacking, BacksModel, DeclaresFilterVocabulary, EnrichesProjectedRecords, QueriesRecords, StreamsRecords, SuppliesParticleWriter, WritesRecords
 {
     use BacksEloquent;
 
-    public function __construct(private Request $request, private CollectionSchemaResolver $schemas, private StandaloneRecordQuery $records) {}
+    public function __construct(private Request $request, private ?CollectionSchemaResolver $schemas = null, private ?StandaloneRecordQuery $records = null) {}
+
+    private function schemas(): CollectionSchemaResolver
+    {
+        return $this->schemas ?? app(CollectionSchemaResolver::class);
+    }
 
     public function definition(): CollectionDefinition
     {
-        $stem = $this->request->query('collection');
-        if (! is_string($stem) || $stem === '') {
-            throw ValidationException::withMessages(['collection' => 'The collection query parameter is required.']);
-        }
+        $address = ResourceAddress::resolve($this, $this->request);
 
-        return $this->schemas->resolve($stem);
+        return $this->schemas()->resolve($address->collection);
+    }
+
+    public function addressData(): string
+    {
+        return CollectionAddressData::class;
     }
 
     public function modelClass(): string
@@ -54,7 +62,7 @@ class CollectionBacking implements BacksModel, DeclaresFilterVocabulary, Enriche
     public function query(array $filters): Builder
     {
         $definition = $this->definition();
-        $query = $this->records->query()->whereIn('schema_ref', $this->schemas->recordRefs($definition->stem()));
+        $query = ($this->records ?? app(StandaloneRecordQuery::class))->query()->whereIn('schema_ref', $this->schemas()->recordRefs($definition->stem()));
         $allowedFilters = $allowedSorts = [];
         foreach ($definition->properties() as $path => $property) {
             $column = 'payload->'.str_replace('.', '->', $path);

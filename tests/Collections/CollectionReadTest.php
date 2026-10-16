@@ -353,6 +353,16 @@ class CollectionReadTest extends TestCase
         $this->getJson('/frame/resources/records'.$query)->assertOk()->assertJsonPath('data.0.fields.title', 'a');
     }
 
+    public function test_the_declared_address_is_required_on_every_runtime_read_surface(): void
+    {
+        CollectionRoutes::mount();
+        foreach (['/records', '/records/11111111-1111-4111-8111-111111111111',
+            '/frame/resources/records', '/frame/resources/records/schema',
+            '/frame/resources/records/filters/schema'] as $uri) {
+            $this->getJson($uri)->assertUnprocessable()->assertJsonValidationErrors('collection');
+        }
+    }
+
     public function test_frame_form_schema_uses_the_addressed_collections_latest_schema(): void
     {
         $this->register();
