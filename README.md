@@ -1,26 +1,24 @@
 # laravel-beam
 
-The **app-substrate** rung of the schemastud stack — the runtime an application
-stands on **with or without an editor**.
+The **app substrate** of the beam family: declaration-driven runtime (particles), storage,
+registries, doctor/surgeon content, and the host-binding defaults — the package a Beam host stands
+on with or without an editor.
 
-```
-seam  ←  frame  ←  splice        (editor / UI tooling rungs)
-                    │
-                    ▼
-                  beam                (app substrate — this package)
-```
+Start here, in order:
 
-`beam` is the future home of the generic, editor-agnostic runtime pieces:
+- [`AGENTS.md`](AGENTS.md) — self-ID, instructions, where records live;
+- [`docs/agents/particle-doctrine.md`](docs/agents/particle-doctrine.md) — every boundary-crossing
+  shape is a declared Data class; the three legal sites; the make commands;
+- [`docs/agents/host-bindings.md`](docs/agents/host-bindings.md) — how defaults ship and hosts
+  override (the two lanes);
+- [`GLOSSARY.md`](GLOSSARY.md) and [`docs/adr/`](docs/adr/) — the names and the rulings.
 
-- the generic model traits — `SchemaRecord` / `PersistsSchemaRecord` (ticket 07),
-  media traits (ticket 08);
-- the host-hook registries — webhook / sitemap / doctor.
+## Layering (ADR-0156)
 
-## Layering law (ADR-0082)
-
-`frame → beam`, **never** `beam → frame`. `beam` boots headless; nothing in it
-may reference the editor rung. This is enforced by the boot smoke test, which
-registers **only** `BeamServiceProvider` and asserts the frame provider is absent.
+`beam` **requires** `schemastud/laravel-frame` and the schema belt — the old "frame → beam, never
+beam → frame" law (ADR-0082) is retired; this README stated it long after 0156 flipped it, which is
+exactly the docs-rot the 2026-10-16 truth sweep removed. `beam` still boots headless: requiring the
+contract tier is not mounting an editor.
 
 ## Not a `Beam` model
 
