@@ -26,3 +26,9 @@ with none, records sort newest first. Unknown/malformed keyword members, unknown
 property paths, unsupported operators and multiple defaults are errors.
 
 Approved by orch-lead 2026-10-16 20:28Z against ADR-0235 decisions 1–8.
+
+The standalone query always excludes shadow tiers. Optional owning packages tag a
+`StandaloneRecordExclusion` contributor; its query is intersected with the local
+population. Beam UX contributes every entry `particle_id`, including trashed owners.
+Without Beam UX installed there is no entry-body ownership contributor; Beam does
+not depend on, inspect, or guess an optional package's tables.
