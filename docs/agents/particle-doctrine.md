@@ -32,6 +32,12 @@ Don't hand-roll: `splicewire:beam:make:particle-resource` and `splicewire:beam:m
 emit the attribute with every SHAPE slot filled (`input:`, `output:`, `ability:`, and on an op `affordance:` — a default-valued slot such as `method:` or `signed:` is deliberately omitted, because an omission and a decision must not be spelled the same), the classes those slots name, and the
 `Particle::mount()` / `Particle::ops()` mount line to paste into the host's route file.
 
+**A registered schema is not a fourth site.** A JSON Schema a tenant registers at runtime never declares a
+resource. It may type one member of a Data class declared at one of the three sites: a Record's fields, or a
+Hosted site's Page Fields. The request names the schema, every write validates the member against its latest
+version, and every read serves the member beside the schema. One declared resource serves every registered
+Collection's Records. Decision: ADR-0235.
+
 ## Where an operation renders
 
 An op that declares `affordance: 'action'` (or `new ActionAffordance(label: …)`) is drawn by frame on its
@@ -118,8 +124,9 @@ backing implements the ones it genuinely has:
   to have a FilterPanel: a list of `DeclaredFacet`s (name, operator, control, options source or inline
   domain, sortable flag) projected to the same `x-filter`/`x-sort` dialect data-filters reflects off a
   `#[Filterable]` Data class, so `@schemastud/facets` is one client over one schema. It declares the
-  vocabulary only — `records()` still applies it — and it belongs to a backing WITHOUT `QueriesRecords`:
-  a queryable backing's vocabulary is its filter Data class, and one carrying both is reported by
+  vocabulary only — `records()` still applies it — and it belongs to a backing WITHOUT `QueriesRecords`,
+  or to a queryable one whose rows have no filter Data class (a registered Collection's, ADR-0235). Any other
+  queryable backing's vocabulary is its filter Data class, and one carrying both is reported by
   `particle.capability-disagreement` as two vocabularies. Frame's filter provider serves this declaration
   and rejects a competing data-filters query under the same key. Saved-view validation uses the same
   declared vocabulary without executing the backing. A non-Frame particle list can compose its query

@@ -44,6 +44,10 @@ learned about.
    against. A backing carrying both is reported by `ResourceRegistryReport` /
    `particle.capability-disagreement` as two vocabularies for one resource: advisory, never refused,
    because a backing may be mid-migration.
+   *Amended by ADR-0235 decision 4 (2026-10-16): a backing whose rows have no filter Data class, such as the one that
+   serves a registered Collection's Records, declares its vocabulary even though it queries. Saved filters validate
+   against that declaration, and the report counts two vocabularies only when a filter Data class or a data-filters
+   registration sits beside it.*
 4. **`filterable` keeps its meaning** — "the index rides the data-filters builder" — so a declaring
    backing declares `filterable: false`. `particle.filterable-promise` lists declaring keys in their own
    bucket with the repair that keeps their panel (the flag), because its generic repair (register a
