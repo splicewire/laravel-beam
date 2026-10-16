@@ -4,11 +4,14 @@ namespace Splicewire\Beam\Tests\Collections;
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\MigrationOutcome;
+use Spatie\QueryBuilder\Exceptions\InvalidFilterQuery;
+use Splicewire\Beam\Collections\CollectionBacking;
 use Splicewire\Beam\Collections\CollectionRead;
 use Splicewire\Beam\Collections\CollectionRelations;
 use Splicewire\Beam\Collections\CollectionSchemaResolver;
@@ -54,13 +57,13 @@ class CollectionReadTest extends TestCase
         $this->reader = new CollectionRead(new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry), app(StandaloneRecordQuery::class));
     }
 
-    private function register(bool $public = true, int $version = 1): void
+    private function register(bool $public = true, int $version = 1, bool $publicRelation = true): void
     {
         $schema = ['$id' => self::STEM.'/'.$version, 'type' => 'object',
             'x-beam-collection' => ['label' => 'Articles', 'nameField' => 'title'],
-            'properties' => ['title' => ['type' => 'string'], 'secret' => ['type' => 'string'], 'visible' => ['type' => 'boolean'], 'related' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-beam-relation' => ['collection' => self::STEM]]]];
+            'properties' => ['title' => ['type' => 'string', 'x-filter' => ['name' => 'title', 'operator' => 'exact', 'control' => 'text'], 'x-sort' => ['name' => 'title', 'default' => true, 'direction' => 'desc']], 'secret' => ['type' => 'string'], 'visible' => ['type' => 'boolean'], 'related' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-beam-relation' => ['collection' => self::STEM]]]];
         if ($public) {
-            $schema['x-beam-public-read'] = ['fields' => ['title', 'related'], 'where' => ['all' => [['field' => 'visible', 'operator' => 'equals', 'value' => true]]]];
+            $schema['x-beam-public-read'] = ['fields' => $publicRelation ? ['title', 'related'] : ['title'], 'where' => ['all' => [['field' => 'visible', 'operator' => 'equals', 'value' => true]]]];
         }
         $this->registry->register($schema);
     }
@@ -133,10 +136,55 @@ class CollectionReadTest extends TestCase
 
     public function test_a_relation_not_in_public_fields_is_not_traversed(): void
     {
-        $this->register();
+        $this->register(publicRelation: false);
         $this->insert('source');
+        $this->insert('target');
+        DB::table(Beam::table('particles'))->where('id', 'source')->update(['payload' => json_encode(['title' => 'source', 'visible' => true, 'related' => ['target']])]);
         $source = $this->reader->find(self::STEM, 'source', null);
         $relations = new CollectionRelations(new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry), $this->reader);
         $this->assertSame(['source' => []], $relations->resolve([$source], null));
+    }
+
+    public function test_guest_query_scope_intersects_and_excludes_a_new_pending_transition(): void
+    {
+        $this->register();
+        $this->insert('public');
+        $this->insert('private', false);
+        $this->insert('transition');
+        $reconciler = Mockery::mock(RecordReconciler::class);
+        $reconciler->shouldReceive('reconcile')->andReturnUsing(fn ($payload, $id) => $payload['title'] === 'transition'
+            ? MigrationOutcome::pending($payload, $id) : MigrationOutcome::current($id));
+        $this->app->instance(RecordReconciler::class, $reconciler);
+        $definition = (new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry))->resolve(self::STEM);
+        $base = app(StandaloneRecordQuery::class)->query()->where('id', '!=', 'private');
+        $scoped = $this->reader->publicScope($base, $definition);
+        $this->assertSame(['public'], $scoped->pluck('id')->all());
+        $this->assertDatabaseHas(Beam::table('particles'), ['id' => 'transition', 'migration_status' => 'pending']);
+        $this->assertSame(1, $scoped->count());
+    }
+
+    public function test_backing_uses_declared_address_filters_and_default_order(): void
+    {
+        $this->register();
+        $this->insert('a');
+        $this->insert('z');
+        $this->insert('other', ref: self::STEM.'/other/1');
+        $request = Request::create('/?collection='.urlencode(self::STEM));
+        $backing = new CollectionBacking($request, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry), app(StandaloneRecordQuery::class));
+        $this->assertSame(['z', 'a'], $backing->query([])->pluck('id')->all());
+        $this->assertSame(['a'], $backing->query(['title' => 'a'])->pluck('id')->all());
+        $this->assertSame(['title'], $backing->filterVocabulary()->filterNames());
+        $this->assertSame(['title'], $backing->filterVocabulary()->sortNames());
+        $this->assertNull($backing->resolveForWrite('other', []));
+        $this->assertSame(self::STEM.'/1', $backing->newRecord()->model()->schema_ref);
+    }
+
+    public function test_backing_rejects_an_undeclared_filter(): void
+    {
+        $this->register();
+        $request = Request::create('/?collection='.urlencode(self::STEM));
+        $backing = new CollectionBacking($request, new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry), app(StandaloneRecordQuery::class));
+        $this->expectException(InvalidFilterQuery::class);
+        $backing->query(['secret' => 'guess']);
     }
 }

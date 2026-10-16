@@ -95,6 +95,12 @@ final class CollectionDefinition
         }
     }
 
+    /** @return array<string, array<string, mixed>> Declared nested property paths. */
+    public function properties(): array
+    {
+        return $this->properties;
+    }
+
     public function stem(): string
     {
         return SchemaId::from($this->schema['$id'])->stem();

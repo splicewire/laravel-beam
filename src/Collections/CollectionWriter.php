@@ -27,6 +27,11 @@ final class CollectionWriter
         ]);
     }
 
+    public function pipeline(): ParticleWriter
+    {
+        return $this->writer;
+    }
+
     public function write(BeamParticle $model, array $payload, mixed $actor, ?Closure $after = null): BeamParticle
     {
         return $this->writer->write($model, $payload, $actor, $after);

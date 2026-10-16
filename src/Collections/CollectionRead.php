@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Collections;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Builder;
 use Rushing\Versioning\MigrationStatus;
 use Splicewire\Beam\Models\BeamParticle;
 
@@ -39,6 +40,28 @@ final class CollectionRead
         }
 
         return $result;
+    }
+
+    /**
+     * One evaluator for list/count/detail. Reconciliation may turn a current row pending,
+     * so evaluate after hydration, then intersect rather than replacing the caller's scope.
+     * This deliberately scans the collection; measured scaling belongs in the EP-34 proof.
+     */
+    public function publicScope(Builder $query, CollectionDefinition $definition): Builder
+    {
+        if (! $definition->hasPublicRead()) {
+            return $query->whereRaw('1 = 0');
+        }
+        $ids = [];
+        (clone $query)->reorder()->chunkById(200, function ($models) use ($definition, &$ids): void {
+            foreach ($models as $model) {
+                if ($this->project($definition, $model, null) !== null) {
+                    $ids[] = $model->getKey();
+                }
+            }
+        });
+
+        return $query->whereKey($ids);
     }
 
     public function project(CollectionDefinition $definition, BeamParticle $model, ?Authenticatable $actor): ?CollectionRecordData
