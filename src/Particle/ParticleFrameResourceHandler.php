@@ -379,7 +379,11 @@ class ParticleFrameResourceHandler implements FrameResourceHandler
             $query->with($includes);
         }
 
-        return $this->scoped($query, $resource);
+        $query = $this->scoped($query, $resource);
+
+        return $resource === null
+            ? $query
+            : app(ParticleListQuery::class)->publicScoped($query, $resource, app(Request::class));
     }
 
     /**

@@ -630,6 +630,10 @@ class ParticleController extends Controller
         //
         // The BASE query stays here: only this path can have a bound relative, and reading one needs the
         // Request the subject port deliberately refuses.
+        // ADR-0230 / EP-34: addressing an id (including through a relation) must not bypass
+        // the same guest population boundary used by the list endpoint.
+        $query = app(ParticleListQuery::class)->publicScoped($query, $resource, $request ?? app(Request::class));
+
         return (new ResourceRecordLookup)->within($resource, $query, $id);
     }
 

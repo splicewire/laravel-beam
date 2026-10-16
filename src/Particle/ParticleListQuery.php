@@ -61,11 +61,9 @@ class ParticleListQuery
      * ADR-0230 — narrow a GUEST's rows to the Public Read's `publicScope`, applied ON TOP of `scope`. Only a
      * null actor is narrowed; a signed-in reader keeps `scope` alone. Deliberately NOT folded into
      * {@see scoped()}: that method also feeds {@see authorizationBases()}, which the read guard and the doctor
-     * read to decide whether a resource's OWN `scope` narrows — a signal that must stay `scope`-only. No live
-     * resource declares a `publicScope` today (listen-songs' own `scope()` already yields the public rows for a
-     * guest), so this is inert until one does. The detail path ({@see ParticleController::findParticle()})
-     * narrows a guest by the resource's own `scope` plus the admission gate; extending `publicScope` to that
-     * lookup is a scoped follow-up with no live trigger.
+     * read to decide whether a resource's OWN `scope` narrows — a signal that must stay `scope`-only.
+     * Detail and relation reads use this same guest population boundary (EP-34). A signed-in
+     * reader keeps the ordinary resource scope; the public scope never widens that scope.
      */
     public function publicScoped(Builder $query, ParticleResource $resource, Request $request): Builder
     {

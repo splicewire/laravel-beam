@@ -2,15 +2,19 @@
 
 namespace Splicewire\Beam\Tests\Authorization;
 
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceVisibility;
+use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\Fixtures\ReadGuard\Gadget;
@@ -75,6 +79,56 @@ class PublicReadGuestReadTest extends TestCase
             ->name('gadgets.index');
     }
 
+    public function test_a_guest_cannot_bypass_the_public_scope_by_addressing_a_record_id(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->publicScope = fn ($query) => $query->where('user_id', 1);
+        Gate::define('view', fn (?User $actor, Gadget $record): bool => true);
+        Route::get('gadgets/{id}', [ParticleController::class, 'show'])
+            ->defaults(ParticleController::RESOURCE, 'gadgets');
+
+        $this->getJson('/gadgets/1')->assertOk();
+        $this->getJson('/gadgets/2')->assertNotFound();
+    }
+
+    public function test_a_guest_cannot_reach_a_private_record_through_a_relative_mount(): void
+    {
+        $parent = PublicReadActor::create(['name' => 'Collection owner']);
+        Gadget::whereKey(2)->update(['user_id' => $parent->id]);
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->publicScope = fn ($query) => $query->where('gadgets.id', 1);
+        Gate::define('view', fn (?User $actor, Gadget $record): bool => true);
+        Particle::relative('owners', PublicReadActor::class, via: 'gadgets', routes: function (): void {
+            Particle::mount('gadgets', 'gadgets')->only(['show']);
+        }, options: ['binding' => 'owner']);
+
+        $this->getJson('/owners/1/gadgets/1')->assertOk();
+        $this->getJson('/owners/1/gadgets/2')->assertNotFound();
+    }
+
+    public function test_frame_detail_cannot_bypass_the_guest_public_scope(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->publicScope = fn ($query) => $query->where('user_id', 1);
+        $handler = app(ParticleFrameResourceHandler::class);
+        $definition = $resource->toResourceDefinition();
+        $this->assertSame('1', $handler->show($definition, '1')['id']);
+        $this->expectException(ModelNotFoundException::class);
+        $handler->show($definition, '2');
+    }
+
+    public function test_a_signed_in_detail_reader_keeps_the_resource_scope_not_the_guest_scope(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->publicScope = fn ($query) => $query->where('user_id', 1);
+        Gate::define('view', fn (?User $actor, Gadget $record): bool => true);
+        Route::get('gadgets/{id}', [ParticleController::class, 'show'])
+            ->defaults(ParticleController::RESOURCE, 'gadgets');
+
+        $this->actingAs(PublicReadActor::create(['name' => 'Ada']));
+        $this->getJson('/gadgets/2')->assertOk();
+    }
+
     public function test_a_guest_index_is_refused_without_a_public_read(): void
     {
         $this->declare(publicRead: null);
@@ -136,6 +190,11 @@ class PublicReadGuestReadTest extends TestCase
 
 class PublicReadActor extends User
 {
+    public function gadgets(): HasMany
+    {
+        return $this->hasMany(Gadget::class, 'user_id');
+    }
+
     protected $table = 'public_read_actors';
 
     protected $guarded = [];
