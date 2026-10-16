@@ -12,3 +12,8 @@ file is the index for readers. Wire-shape vocabulary (particle, SHAPE slots, aff
   answers per-realm resolvability). ADR-0239.
 - **TenantResolver** — the per-realm tenant-resolvability port (deployment-shape switch keyed by
   realm), re-homed from the retired `RealmDefinition::$tenancy` flag. Realm-architecture ticket 08.
+- **Host-binding lanes** — how a family package ships a default and how anything overrides it:
+  container lane (`bindIf` default / plain `bind()` supersession behind a posture / `extend()`
+  decorator — order-independent) and config lane (null-guarded write / `packageBooted` timing —
+  order-sensitive). The doctrine, with exemplars by cite:
+  [`docs/agents/host-bindings.md`](docs/agents/host-bindings.md).
