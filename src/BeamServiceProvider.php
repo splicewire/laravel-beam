@@ -67,6 +67,7 @@ use Splicewire\Beam\Console\HouseStyleCommand;
 use Splicewire\Beam\Console\MakeParticleBackingCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
 use Splicewire\Beam\Console\MakeParticleRelativeCommand;
+use Splicewire\Beam\Console\MakeWorkflowCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
@@ -1739,6 +1740,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 MakeParticleOpCommand::class,
                 MakeParticleRelativeCommand::class,
                 MakeParticleBackingCommand::class,
+                MakeWorkflowCommand::class,
                 // The registry's own reading surface (otb-ui-frontier-sidebar DESIGN-02, reshaped from an
                 // operator SCREEN to a command). Nav-invisibility is the registry's default — most
                 // declarations name no `section` — so nothing in-product could enumerate the vocabulary;

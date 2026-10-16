@@ -103,6 +103,38 @@ class RelativeAndBackingGeneratorTest extends TestCase
         $this->assertTrue($reflection->implementsInterface(\Splicewire\Beam\Particle\Backing\WritesRecords::class));
     }
 
+    public function test_the_workflow_generator_emits_the_constant_class_and_both_handlers(): void
+    {
+        $this->artisan('splicewire:beam:make:workflow', [
+            'name' => 'ListingTriageWorkflow',
+            '--initial' => 'incoming',
+        ])->assertSuccessful();
+
+        $workflow = $this->read('app/Workflows/ListingTriageWorkflow.php');
+        $gate = $this->read('app/Workflows/ListingTriage/ListingTriageGate.php');
+        $effect = $this->read('app/Workflows/ListingTriage/ListingTriageRecorder.php');
+
+        // One spelling: the constants live on the class, the net references them.
+        $this->assertStringContainsString("public const LINEAGE_KEY = 'listing-triage';", $workflow);
+        $this->assertStringContainsString("public const GATE_GUARD = 'listing-triage.gate';", $workflow);
+        $this->assertStringContainsString("'initial' => ['incoming'],", $workflow);
+        $this->assertStringContainsString("'guard' => self::GATE_GUARD,", $workflow);
+        $this->assertStringContainsString("'effects' => [self::RECORD_EFFECT],", $workflow);
+
+        // Handlers carry the faithful invokable signatures.
+        $this->assertStringContainsString('public function __invoke(object $subject): bool|string', $gate);
+        $this->assertStringContainsString('public function __invoke(WorkflowTransitioned $event, array $params): void', $effect);
+
+        // Nothing re-emits over your edits: the rerun refuses on the existing primary and the
+        // hand-edited companion survives (the chassis's reported-and-skipped rule).
+        \Illuminate\Support\Facades\File::put($this->host.'/app/Workflows/ListingTriage/ListingTriageGate.php', '<?php // edited');
+        $this->artisan('splicewire:beam:make:workflow', [
+            'name' => 'ListingTriageWorkflow',
+            '--initial' => 'incoming',
+        ])->assertFailed();
+        $this->assertSame('<?php // edited', $this->read('app/Workflows/ListingTriage/ListingTriageGate.php'));
+    }
+
     public function test_the_stream_flag_swaps_the_read_capability(): void
     {
         $this->artisan('splicewire:beam:make:particle-backing', [

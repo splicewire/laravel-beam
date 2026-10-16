@@ -1,0 +1,66 @@
+<?php
+
+namespace {{ namespace }};
+
+use Splicewire\Beam\Workflows\Blueprint\WorkflowBlueprint;
+
+/**
+ * The `{{ key }}` workflow definition — the one class the key constants live in, so the four
+ * declaration sites (this blueprint, the provider's guard/effect catalog entries, the registrar's
+ * type→lineage binding, the model's `workflowType()`) reference ONE spelling instead of four
+ * (scaffold-family ticket 02; the worked exemplar is beam-market's `ListingReviewWorkflow`).
+ *
+ * A blueprint is DATA over symfony/workflow (places, an initial marking, transitions) that
+ * `DefinitionBuilder` turns into the real Definition. Two rules the exemplars already paid for:
+ *
+ *   - a `MarkingSubject` carries a SINGLE-place marking, so a `from` ARRAY on one transition means
+ *     "these places simultaneously", never "either" — declare the same transition name once PER
+ *     from-place instead (see ListingReviewWorkflow's three takedown triggers);
+ *   - a guard is a registered catalog entry, never an inline branch in the calling path — the
+ *     generated `{{ gateClass }}` is where that policy lives.
+ *
+ * The starter net below is deliberately minimal: {{ initial }} → in_review → approved | rejected,
+ * one guarded approval, one recording effect. Reshape freely; the constants are the contract.
+ */
+class {{ class }}
+{
+    public const LINEAGE_KEY = '{{ key }}';
+
+    public const TYPE_KEY = '{{ key }}';
+
+    public const GATE_GUARD = '{{ key }}.gate';
+
+    public const RECORD_EFFECT = '{{ key }}.record';
+
+    public static function blueprint(): WorkflowBlueprint
+    {
+        return WorkflowBlueprint::fromArray([
+            'name' => self::LINEAGE_KEY,
+            'places' => [
+                '{{ initial }}',
+                'in_review',
+                'approved',
+                'rejected',
+            ],
+            'initial' => ['{{ initial }}'],
+            'transitions' => [
+                ['name' => 'submit', 'from' => '{{ initial }}', 'to' => 'in_review'],
+                [
+                    'name' => 'approve',
+                    'from' => 'in_review',
+                    'to' => 'approved',
+                    'guard' => self::GATE_GUARD,
+                    'effects' => [self::RECORD_EFFECT],
+                    'metadata' => ['effect_params' => [self::RECORD_EFFECT => ['approved' => true]]],
+                ],
+                [
+                    'name' => 'reject',
+                    'from' => 'in_review',
+                    'to' => 'rejected',
+                    'effects' => [self::RECORD_EFFECT],
+                    'metadata' => ['effect_params' => [self::RECORD_EFFECT => ['approved' => false]]],
+                ],
+            ],
+        ]);
+    }
+}
