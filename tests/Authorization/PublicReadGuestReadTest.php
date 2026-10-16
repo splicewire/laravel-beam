@@ -93,6 +93,32 @@ class PublicReadGuestReadTest extends TestCase
         $this->getJson('/gadgets/2')->assertNotFound();
     }
 
+    public function test_public_guest_admission_does_not_bypass_the_signed_in_model_policy(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->publicScope = fn ($query) => $query->where('user_id', 1);
+        Gate::define('view', fn (?User $actor, Gadget $record): bool => false);
+        Route::get('gadgets/{id}', [ParticleController::class, 'show'])
+            ->defaults(ParticleController::RESOURCE, 'gadgets');
+
+        $this->getJson('/gadgets/1')->assertOk();
+        $this->getJson('/gadgets/2')->assertNotFound();
+        $this->actingAs(PublicReadActor::create(['name' => 'Ada']));
+        $this->getJson('/gadgets/1')->assertForbidden();
+        Gate::define('view', fn (?User $actor, Gadget $record): bool => true);
+        $this->getJson('/gadgets/2')->assertOk();
+    }
+
+    public function test_guest_show_without_public_read_stays_refused_even_with_an_allowing_policy(): void
+    {
+        $this->declare();
+        Gate::define('view', fn (?User $actor, Gadget $record): bool => true);
+        Route::get('gadgets/{id}', [ParticleController::class, 'show'])
+            ->defaults(ParticleController::RESOURCE, 'gadgets');
+
+        $this->getJson('/gadgets/1')->assertForbidden();
+    }
+
     public function test_a_guest_cannot_reach_a_private_record_through_a_relative_mount(): void
     {
         $parent = PublicReadActor::create(['name' => 'Collection owner']);
