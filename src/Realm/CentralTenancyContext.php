@@ -7,7 +7,7 @@ use Splicewire\Beam\Realm\Contracts\TenancyContext;
 
 /**
  * The core default for {@see TenancyContext}: the answers a host gives when no tenancy package is
- * installed, plus the config-derivable half when one is merely configured (ADR-0236).
+ * installed, plus the config-derivable half when one is merely configured (ADR-0239).
  *
  * `isActive()`/`currentTenant()` are hard false/null here — beam core stays tenancy-agnostic and
  * never probes for a `tenant()` helper (reintroducing the `function_exists` guard inside the default

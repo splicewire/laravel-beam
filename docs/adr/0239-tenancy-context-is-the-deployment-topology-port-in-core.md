@@ -1,4 +1,4 @@
-# 0236 — TenancyContext is the deployment-topology port, homed in core
+# 0239 — TenancyContext is the deployment-topology port, homed in core
 
 Status: accepted (2026-10-16, owner; host-binding-seam ticket 01, grilled from
 architecture-pass-20261016 theme T2 / finding B6-1)

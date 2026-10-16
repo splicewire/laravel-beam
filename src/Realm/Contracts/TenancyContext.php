@@ -4,7 +4,7 @@ namespace Splicewire\Beam\Realm\Contracts;
 
 /**
  * The port answering the live tenancy TOPOLOGY: is this deployment running a central/tenant split,
- * is a tenant initialized right now, and which configured connection is central (ADR-0236,
+ * is a tenant initialized right now, and which configured connection is central (ADR-0239,
  * host-binding-seam ticket 01).
  *
  * Exists because the question had no owner below the packages that needed it, so it was answered by

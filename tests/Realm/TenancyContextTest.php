@@ -11,7 +11,7 @@ use Splicewire\Beam\Realm\CentralTenancyContext;
 use Splicewire\Beam\Realm\Contracts\TenancyContext;
 
 /**
- * The TenancyContext port's core default (ADR-0236, host-binding-seam ticket 01), tested at the
+ * The TenancyContext port's core default (ADR-0239, host-binding-seam ticket 01), tested at the
  * interface: resolve the port, read the topology answers, swap the binding. Boots core the same
  * minimal way as {@see \Splicewire\Beam\Tests\CentralConnectionAliasTest} — the claim is that CORE
  * alone answers, unaided by any tenancy package.

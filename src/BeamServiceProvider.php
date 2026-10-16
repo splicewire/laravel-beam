@@ -609,7 +609,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // is on; a satellite / differently-keyed host binds its own resolver.
         $this->app->bind(TenantResolver::class, ConfigTenantResolver::class);
 
-        // The live tenancy TOPOLOGY port (ADR-0236, host-binding-seam ticket 01): is a central/tenant
+        // The live tenancy TOPOLOGY port (ADR-0239, host-binding-seam ticket 01): is a central/tenant
         // split declared, is a tenant active NOW, which connection is central. `bindIf`, because the
         // tenancy package is the superseding binder (beam-tenancy plain-binds its stancl adapter over
         // this) and a core-only host still needs the central-shaped answers. Sibling of TenantResolver
