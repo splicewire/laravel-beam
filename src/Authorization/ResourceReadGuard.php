@@ -183,7 +183,9 @@ class ResourceReadGuard
         if ($scoped !== false) {
             // A narrowed population is a boundary, not caller authority. Preserve explicit resource/model
             // policies and Gate::before, but never let a WHERE clause authenticate an otherwise ungated read.
-            if ($policyRequiresViewAny || $this->declaredReadAbility($resource) !== null) {
+            // A hard realm entitlement is authority too: the scope narrows what it authorized, never cancels it.
+            if ($policyRequiresViewAny || $this->declaredReadAbility($resource) !== null
+                || app(RealmEntitlementResourceGate::class)->entitledThroughRealm($resource->key, $gate, $mountedRealm)) {
                 return Response::allow();
             }
 
