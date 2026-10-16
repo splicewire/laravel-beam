@@ -2,7 +2,6 @@
 
 namespace Splicewire\Beam\Webhooks;
 
-use Illuminate\Http\Request;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
@@ -16,7 +15,7 @@ class HookFrameResourceHandler extends ParticleFrameResourceHandler
 
         return app(CreateHookSubscription::class)->create(
             HookInputData::validateAndCreate($input),
-            app(Request::class),
+            $this->contextRequest($this->resource($definition)),
         )->toArray();
     }
 }
