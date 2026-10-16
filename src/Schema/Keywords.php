@@ -36,6 +36,14 @@ class Keywords
      */
     public const Dedupe = 'x-beam-dedupe';
 
+    public const Collection = 'x-beam-collection';
+
+    public const PublicRead = 'x-beam-public-read';
+
+    public const Unique = 'x-beam-unique';
+
+    public const Relation = 'x-beam-relation';
+
     /**
      * Every `x-` keyword this package owns / reads.
      *
@@ -43,6 +51,6 @@ class Keywords
      */
     public static function owned(): array
     {
-        return [self::Dedupe];
+        return [self::Dedupe, self::Collection, self::PublicRead, self::Unique, self::Relation];
     }
 }
