@@ -1,0 +1,20 @@
+<?php
+
+namespace {{ namespace }};
+
+use Splicewire\Beam\Workflows\Events\WorkflowTransitioned;
+
+/**
+ * {{ purpose }}
+ *
+ * An effect is an INVOKABLE registered in the TransitionEffectRegistry catalog, fired after the
+ * marking moves; `$params` is the transition's declared `effect_params` slice for this key. Keep it
+ * idempotent — a replayed transition event must not double-apply.
+ */
+class {{ class }}
+{
+    public function __invoke(WorkflowTransitioned $event, array $params): void
+    {
+        // $event->subject moved; record the durable consequence here.
+    }
+}

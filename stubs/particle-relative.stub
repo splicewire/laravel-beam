@@ -1,0 +1,36 @@
+<?php
+
+namespace {{ namespace }};
+
+use {{ namespacedModel }};
+use Splicewire\Beam\Particle\Attributes\ParticleRelative;
+
+/**
+ * The `{{ child }}` relative of the `{{ of }}` particle resource — the declared parent→child edge
+ * (api-surface-coherence ticket 50: the edge gets a CLASS, the declaration site ticket 49 lacked).
+ *
+ * Every slot below is a decision, emitted explicitly so an omission can never be read as one:
+ *
+ *   - `child:` / `of:`  the child key and the PARENT RESOURCE KEY the edge hangs off;
+ *   - `model:`          the child rows' Eloquent model;
+ *   - `via:`            the relationship METHOD on the parent model this edge traverses — derived
+ *                       from the child key by the generator, but a rename on the parent model is
+ *                       exactly the drift this explicit slot makes visible.
+ *
+ * The attribute DECLARES; serving it rides a mount. Two spellings, same body:
+ *
+ *     // the convenience spelling, when the parent is particle-mounted:
+ *     Particle::mount('{{ parentUri }}', '{{ of }}')->relatives([{{ class }}::class]);
+ *
+ *     // the general form — a parent resource key need not be particle-mounted at all
+ *     // (hand-written CRUD routes still have relatives); see ParticleMountManager::relatives().
+ */
+#[ParticleRelative(
+    child: '{{ child }}',
+    of: '{{ of }}',
+    model: {{ model }}::class,
+    via: '{{ via }}',
+)]
+class {{ class }}
+{
+}

@@ -67,6 +67,9 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\GenerateContributedTypesCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
+use Splicewire\Beam\Console\MakeParticleRelativeCommand;
+use Splicewire\Beam\Console\MakeParticleBackingCommand;
+use Splicewire\Beam\Console\MakeWorkflowCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
@@ -651,14 +654,20 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->singleton(NavSectionRegistry::class, fn () => new NavSectionRegistry);
 
         // The per-realm presentation-override registry (RDU-03) — the overlay layer behind the `?realm`
-        // seam. A SINGLETON hydrated from `frame.realm_resource_overrides` at resolution (the default
-        // config ships EMPTY, so it is INERT — identity projection in every realm — until RDU-05 seeds
-        // real overlays). Beam's ParticleResourceRegistry applies it when it projects a declaration for a
-        // realm; frame never sees it (the realm concept lives entirely in beam). A host may also register
-        // overlays imperatively via `->override($key, $realm, new RealmResourceOverride(...))`.
+        // seam. A SINGLETON hydrated at resolution from `beam.core.realm_resource_overrides` — the key
+        // moved HOME to its reader (owner ruling 2026-10-18, architecture-pass A4-C5: frame shipped the
+        // key but never read it; beam owns realm presentation, so beam ships it). Unset, the read falls
+        // back to the retired `frame.realm_resource_overrides` spelling so hosts that still set it
+        // (flagship, www — migration nominated in launch 00) stay green; the fallback retires when the
+        // last host migrates. Ships EMPTY/unset, so it is INERT — identity projection in every realm —
+        // until a host seeds real overlays. Beam's ParticleResourceRegistry applies it when it projects
+        // a declaration for a realm; frame never sees it (the realm concept lives entirely in beam). A
+        // host may also register overlays imperatively via
+        // `->override($key, $realm, new RealmResourceOverride(...))`.
         $this->app->singleton(RealmResourceRegistry::class, fn ($app) => (new RealmResourceRegistry(
             $app->make(RealmRegistry::class),
-        ))->loadConfig((array) config('frame.realm_resource_overrides', [])));
+        ))->loadConfig((array) (config('beam.core.realm_resource_overrides')
+            ?? config('frame.realm_resource_overrides', []))));
 
         // The generic particle REST surface (promoted from splicewire-app, ADR-0116). The two declaration
         // registries are container singletons so the `Particle::mount()` / `Particle::ops()`
@@ -1752,6 +1761,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 // declaration exists before the logic does and a fresh surface is born conformance-clean.
                 MakeParticleResourceCommand::class,
                 MakeParticleOpCommand::class,
+                // …and the scaffold-family additions (tickets 01/02): the relative + backing halves
+                // of a resource, and the beam-workflows definition set — same chassis, same rule
+                // (slots emitted filled, wiring printed off the emitted constants).
+                MakeParticleRelativeCommand::class,
+                MakeParticleBackingCommand::class,
+                MakeWorkflowCommand::class,
                 // The registry's own reading surface (otb-ui-frontier-sidebar DESIGN-02, reshaped from an
                 // operator SCREEN to a command). Nav-invisibility is the registry's default — most
                 // declarations name no `section` — so nothing in-product could enumerate the vocabulary;

@@ -62,7 +62,7 @@ class RealmResourceOverride
 
     /**
      * Build an overlay from a config fragment — the `['<field>' => <value>]` map under
-     * `frame.realm_resource_overrides.<realm>.<key>`. Unknown keys are ignored (forward-compatible);
+     * `beam.core.realm_resource_overrides.<realm>.<key>`. Unknown keys are ignored (forward-compatible);
      * only the known presentation fields are read.
      *
      * @param  array<string, mixed>  $fields

@@ -1,0 +1,19 @@
+<?php
+
+namespace {{ namespace }};
+
+/**
+ * {{ purpose }}
+ *
+ * A guard is an INVOKABLE registered in the GuardRegistry catalog — `true` enables the transition,
+ * a string is the refusal reason shown where the transition was attempted. Policy lives HERE,
+ * never as an inline branch in the calling path (the exemplar rule beam-market's
+ * `AutomatedTrustCheck` states on itself).
+ */
+class {{ class }}
+{
+    public function __invoke(object $subject): bool|string
+    {
+        return 'Not decided yet: implement '.self::class.'.';
+    }
+}
