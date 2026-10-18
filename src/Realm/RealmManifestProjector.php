@@ -103,7 +103,7 @@ class RealmManifestProjector
             // Ticket 14: fold any additive satellite/capability overlays onto THIS realm's descriptor,
             // PHP-side, before it is appended (i.e. before the manifest emits). Only realms the registry
             // ships reach here, so an overlay never manufactures a realm.
-            $manifest[] = $this->applyOverlays($key, $descriptor, $subject === self::NO_CENTRAL_PRINCIPAL ? null : $subject);
+            $manifest[] = $this->applyOverlays($key, $descriptor, $subject);
         }
 
         return $manifest;
@@ -132,8 +132,11 @@ class RealmManifestProjector
             // (2) entitlement-gated capabilities — appended present-but-locked when the principal is
             //     unentitled (same soft-lock shape as a soft-gated realm), unlocked when entitled.
             foreach ($overlay->capabilities as $capability) {
+                // A realm with no principal (a seat without a central user, for a central realm) holds nothing: its
+                // capabilities stay locked, never asked of null, which would mean the request's scope.
                 $entitled = $capability->entitlement === null
-                    || $this->entitlements->allows($capability->entitlement, $principal);
+                    || ($principal !== self::NO_CENTRAL_PRINCIPAL
+                        && $this->entitlements->allows($capability->entitlement, $principal));
 
                 $descriptor['capabilities'][] = $capability->project($entitled);
             }
@@ -168,16 +171,19 @@ class RealmManifestProjector
 
     /**
      * The central principal behind `$principal`. A tenant seat in stancl's `Syncable` shape (beam-tenancy's
-     * `TenantUser`) names its central model and shares its global id, so the central user is that model's row with
-     * that id. The host's central user model must query the central connection (both hosts pin
-     * `$connection = 'central'`). A seat whose central row is missing resolves to {@see NO_CENTRAL_PRINCIPAL}. Any
-     * other principal (a central user, a scope, a guest) is already its own central principal.
+     * `TenantUser`) names its central model and its global identifier, and the central user is found exactly as
+     * stancl's own sync listener finds it: `getCentralModelName()::where(seat key NAME, seat key VALUE)`. The shape is
+     * matched in full (all three lookup methods), so laravel-beam takes no stancl dependency yet mirrors the contract.
+     * The host's central user model must query the central connection (both hosts pin `$connection = 'central'`).
+     * A seat whose central row is missing resolves to {@see NO_CENTRAL_PRINCIPAL}. Any other principal (a central
+     * user, a scope, null, a guest) is already its own central principal.
      */
     private function centralPrincipal(mixed $principal): mixed
     {
         if (! is_object($principal)
             || ! method_exists($principal, 'getCentralModelName')
-            || ! method_exists($principal, 'getGlobalIdentifierKey')) {
+            || ! method_exists($principal, 'getGlobalIdentifierKey')
+            || ! method_exists($principal, 'getGlobalIdentifierKeyName')) {
             return $principal;
         }
 
@@ -186,12 +192,9 @@ class RealmManifestProjector
             return self::NO_CENTRAL_PRINCIPAL;
         }
 
-        $central = new $class;
-        $keyName = method_exists($central, 'getGlobalIdentifierKeyName')
-            ? $central->getGlobalIdentifierKeyName()
-            : $central->getKeyName();
-
-        return $class::query()->where($keyName, $principal->getGlobalIdentifierKey())->first() ?? self::NO_CENTRAL_PRINCIPAL;
+        return $class::query()
+            ->where($principal->getGlobalIdentifierKeyName(), $principal->getGlobalIdentifierKey())
+            ->first() ?? self::NO_CENTRAL_PRINCIPAL;
     }
 
     /** A humanized fallback title when the gate config declares none (RealmDefinition carries no title). */

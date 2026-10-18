@@ -7,6 +7,8 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Schema;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Splicewire\Beam\Realm\RealmManifestProjector;
+use Splicewire\Beam\Realm\RealmOverlay;
+use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -25,11 +27,16 @@ class RealmGatePrincipalTest extends TestCase
 
         Schema::create('gate_principal_central_users', function (Blueprint $table): void {
             $table->string('id')->primary();
+            $table->string('global_id');
             $table->string('email');
         });
         GatePrincipalCentralUser::query()->insert([
-            ['id' => 'owner', 'email' => 'owner@example.test'],
-            ['id' => 'member', 'email' => 'member@example.test'],
+            ['id' => 'owner', 'global_id' => 'owner', 'email' => 'owner@example.test'],
+            ['id' => 'member', 'global_id' => 'member', 'email' => 'member@example.test'],
+            // A global key that is NOT the primary key: the owner is `c-77` by key and `g-1` globally, while the row
+            // whose PRIMARY key is `g-1` is somebody else (a member).
+            ['id' => 'c-77', 'global_id' => 'g-1', 'email' => 'owner@example.test'],
+            ['id' => 'g-1', 'global_id' => 'g-other', 'email' => 'member@example.test'],
         ]);
 
         // The installer-default owner's operator reach is CENTRAL; `tenant-pro` is held by seats only.
@@ -38,9 +45,11 @@ class RealmGatePrincipalTest extends TestCase
             public function entitlementsFor(mixed $principal): array
             {
                 return match (true) {
-                    $principal instanceof GatePrincipalCentralUser && $principal->getKey() === 'owner' => ['os.operate'],
+                    $principal instanceof GatePrincipalCentralUser && $principal->email === 'owner@example.test' => ['os.operate'],
                     $principal instanceof GatePrincipalSeat && $principal->getKey() === 'seat-grants-operate' => ['tenant-pro', 'os.operate'],
                     $principal instanceof GatePrincipalSeat => ['tenant-pro'],
+                    // null is "the request's scope" (a host resolves it per request): here, the seat's tenant.
+                    $principal === null => ['tenant-pro'],
                     default => [],
                 };
             }
@@ -61,6 +70,38 @@ class RealmGatePrincipalTest extends TestCase
     private function seat(string $id): GatePrincipalSeat
     {
         return (new GatePrincipalSeat)->forceFill(['id' => $id]);
+    }
+
+    public function test_the_central_user_is_found_by_the_seats_own_global_key_name_not_the_central_primary_key(): void
+    {
+        // As stancl's Syncable listener queries: getCentralModelName()::where(seat key NAME, seat key VALUE).
+        $seat = (new GatePrincipalSeat)->forceFill(['id' => 'seat-x', 'global_id' => 'g-1']);
+        $seat->globalKeyName = 'global_id';
+
+        $this->assertArrayHasKey('operator', $this->project($seat));
+    }
+
+    public function test_a_principal_without_the_full_syncable_shape_is_asked_itself(): void
+    {
+        $partial = (new GatePrincipalPartialSeat)->forceFill(['id' => 'owner']);
+
+        $this->assertArrayNotHasKey('operator', $this->project($partial));
+    }
+
+    public function test_a_central_realms_overlay_capability_stays_locked_for_a_seat_with_no_central_user(): void
+    {
+        // The operator realm UNGATED, so it projects; its overlay capability needs `tenant-pro`, which the SEAT holds.
+        // The seat has no central row, so the realm has no principal, and no capability may unlock from the seat.
+        config(['beam.core.realm_gates' => []]);
+        $this->app->make(RealmOverlayRegistry::class)->register(RealmOverlay::make(
+            realmKey: 'operator',
+            overlay: ['overlay' => '1.0.0', 'actions' => []],
+            capabilities: [['key' => 'ops.pro', 'entitlement' => 'tenant-pro', 'upsell' => ['cta' => 'Upgrade']]],
+        ));
+
+        $capability = collect($this->project($this->seat('nobody'))['operator']['capabilities'])->firstWhere('key', 'ops.pro');
+
+        $this->assertTrue($capability['locked']);
     }
 
     public function test_the_owners_seat_sees_the_central_operator_realm_through_its_central_user(): void
@@ -138,6 +179,8 @@ class GatePrincipalCentralUser extends User
  */
 class GatePrincipalSeat extends User
 {
+    public string $globalKeyName = 'id';
+
     public $incrementing = false;
 
     protected $keyType = 'string';
@@ -156,6 +199,26 @@ class GatePrincipalSeat extends User
 
     public function getGlobalIdentifierKeyName(): string
     {
-        return 'id';
+        return $this->globalKeyName;
+    }
+}
+
+/** Two of the three Syncable lookup methods only: not a seat, so it is asked as itself. */
+class GatePrincipalPartialSeat extends User
+{
+    public $incrementing = false;
+
+    protected $keyType = 'string';
+
+    protected $guarded = [];
+
+    public function getCentralModelName(): string
+    {
+        return GatePrincipalCentralUser::class;
+    }
+
+    public function getGlobalIdentifierKey(): mixed
+    {
+        return $this->getKey();
     }
 }
