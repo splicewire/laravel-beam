@@ -90,6 +90,20 @@ class FilterQuerySelection
     public function validate(string $target, array $parameters): array
     {
         app(ResourceFilters::class)->authorize($target);
+
+        return $this->validateParameters($target, $parameters);
+    }
+
+    /** Saved declarations may read a Particle resource without mounting its Frame UI. */
+    public function validateParticle(string $target, array $parameters): array
+    {
+        app(ResourceFilters::class)->authorizeParticle($this->particles->get($target));
+
+        return $this->validateParameters($target, $parameters);
+    }
+
+    private function validateParameters(string $target, array $parameters): array
+    {
         Validator::make(['queryParameters' => $parameters], [
             'queryParameters' => ['array:filter,sort,include,limit,filterVariant'],
             'queryParameters.filter' => ['sometimes', 'array'],
