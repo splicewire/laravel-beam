@@ -142,6 +142,17 @@ class ModelLessReadGateTest extends TestCase
         $this->assertTrue($this->app->make(RealmEntitlementResourceGate::class)->allowsResource($definition));
     }
 
+    public function test_a_streamed_index_honours_its_model_less_declared_ability(): void
+    {
+        $this->getJson('/frame/resources/gated-feed')->assertForbidden();
+
+        $this->actingAs($this->denied());
+        $this->getJson('/frame/resources/gated-feed')->assertForbidden();
+
+        $this->actingAs($this->allowed());
+        $this->getJson('/frame/resources/gated-feed')->assertOk();
+    }
+
     /**
      * The declared refusal is asked BEFORE the realm arms, so a resource in an ungated realm — the permit
      * arm that returns early — cannot skip it.

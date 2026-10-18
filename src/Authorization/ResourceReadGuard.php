@@ -78,13 +78,14 @@ class ResourceReadGuard
      * declares an ability string as its `policy` is read-gated by it on top of its model's policy: the resource is a
      * narrower view than the model, as the beam-ux diagnostics are over the entries model every member reads. A
      * class-string `policy` (the model-backed idiom, `UserPolicy::class`) is a policy, never an ability, and asked as one
-     * it would refuse everyone; a model-less declaration's `policy` is already its read gate elsewhere.
+     * it would refuse everyone. A model-less declaration uses this same ability string as its read gate; every handler
+     * path must ask it again after the socket admission rather than treating the missing model as a missing decision.
      */
     public function declaredReadAbility(ParticleResource $resource): ?string
     {
         $ability = (string) $resource->policy;
 
-        if ($ability === '' || class_exists($ability) || $this->policyBound($resource) === null) {
+        if ($ability === '' || class_exists($ability)) {
             return null;
         }
 
