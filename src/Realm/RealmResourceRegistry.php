@@ -19,7 +19,7 @@ use Schemastud\Frame\Registry\ResourceDefinition;
  * Holds {@see RealmResourceOverride}s keyed by `(realm, key)` and, given a base {@see ResourceDefinition}
  * and a target realm, returns the base with the applicable overlay merged in ({@see apply()}). It ships
  * INERT: with no overlay registered for a `(realm, key)`, {@see apply()} returns the base UNCHANGED, so a
- * simple spin-up (empty `frame.realm_resource_overrides`) sees no behavior change at all — every realm
+ * simple spin-up (empty `beam.core.realm_resource_overrides`) sees no behavior change at all — every realm
  * gets the identical projection.
  *
  * ## Resolution follows `RealmRegistry::effective()`/stack order
@@ -62,7 +62,7 @@ class RealmResourceRegistry implements Gated, Registry
     }
 
     /**
-     * Hydrate the registry from the `frame.realm_resource_overrides` config shape
+     * Hydrate the registry from the `beam.core.realm_resource_overrides` config shape
      * `['<realm>' => ['<key>' => ['<field>' => <value>]]]`. Additive — merges onto whatever is already
      * registered (last-wins per `(realm, key)`). The default config ships EMPTY, so this is a no-op until
      * a host (RDU-05) seeds real overlays.

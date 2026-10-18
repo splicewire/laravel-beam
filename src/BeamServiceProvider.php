@@ -38,6 +38,7 @@ use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceActionAuthorizer;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
+use Schemastud\Frame\Contracts\ResourceSchemaResolver;
 use Schemastud\Frame\Contracts\WriteSubjectResolver;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
@@ -52,6 +53,7 @@ use Splicewire\Beam\Authorization\SeatGate;
 use Splicewire\Beam\Brand\BrandResolver;
 use Splicewire\Beam\Brand\ConfigBrandResolver;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
+use Splicewire\Beam\Collections\CollectionFormSchema;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
@@ -64,10 +66,7 @@ use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\GenerateContributedTypesCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
-use Splicewire\Beam\Console\MakeParticleBackingCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
-use Splicewire\Beam\Console\MakeParticleRelativeCommand;
-use Splicewire\Beam\Console\MakeWorkflowCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
@@ -85,6 +84,7 @@ use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
 use Splicewire\Beam\Doctor\GlobalReadBoundaryAudit;
+use Splicewire\Beam\Doctor\GuestReadablePublicReadAudit;
 use Splicewire\Beam\Doctor\IdentifierLabelAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
@@ -168,7 +168,9 @@ use Splicewire\Beam\Particle\ResourceRegistryReport;
 use Splicewire\Beam\Query\HookResourceQuery;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\PayloadParticleReader;
+use Splicewire\Beam\Realm\CentralTenancyContext;
 use Splicewire\Beam\Realm\ConfigTenantResolver;
+use Splicewire\Beam\Realm\Contracts\TenancyContext;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
@@ -556,6 +558,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // each boot; `splicewire:beam:frame:cache` writes it, `splicewire:beam:frame:clear` / `optimize:clear` remove it.
         $this->app->singleton(FrameResourceManifest::class, fn ($app) => new FrameResourceManifest($app));
 
+        $this->app->bind(
+            ResourceSchemaResolver::class,
+            CollectionFormSchema::class,
+        );
+
         // Beam supplies the default CRUD resolver. Filter capabilities are projected per resource
         // through ParticleResource::toResourceDefinition(), including a declared provider override.
         $this->app->bind(
@@ -610,6 +617,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // is on; a satellite / differently-keyed host binds its own resolver.
         $this->app->bind(TenantResolver::class, ConfigTenantResolver::class);
 
+        // The live tenancy TOPOLOGY port (ADR-0239, host-binding-seam ticket 01): is a central/tenant
+        // split declared, is a tenant active NOW, which connection is central. `bindIf`, because the
+        // tenancy package is the superseding binder (beam-tenancy plain-binds its stancl adapter over
+        // this) and a core-only host still needs the central-shaped answers. Sibling of TenantResolver
+        // above, which answers per-REALM resolvability; this one answers the process-wide moment.
+        $this->app->bindIf(TenancyContext::class, CentralTenancyContext::class);
+
         // The realm registry is a SINGLETON (realm-architecture ticket 08 slice D): its ctor registers the
         // three imperative base realms (admin·tenant·user), and boot-time attributed-realm discovery
         // (packageBooted) augments THAT instance additively — so a resolved registry carries both the base
@@ -637,14 +651,20 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->singleton(NavSectionRegistry::class, fn () => new NavSectionRegistry);
 
         // The per-realm presentation-override registry (RDU-03) — the overlay layer behind the `?realm`
-        // seam. A SINGLETON hydrated from `frame.realm_resource_overrides` at resolution (the default
-        // config ships EMPTY, so it is INERT — identity projection in every realm — until RDU-05 seeds
-        // real overlays). Beam's ParticleResourceRegistry applies it when it projects a declaration for a
-        // realm; frame never sees it (the realm concept lives entirely in beam). A host may also register
-        // overlays imperatively via `->override($key, $realm, new RealmResourceOverride(...))`.
+        // seam. A SINGLETON hydrated at resolution from `beam.core.realm_resource_overrides` — the key
+        // moved HOME to its reader (owner ruling 2026-10-18, architecture-pass A4-C5: frame shipped the
+        // key but never read it; beam owns realm presentation, so beam ships it). Unset, the read falls
+        // back to the retired `frame.realm_resource_overrides` spelling so hosts that still set it
+        // (flagship, www — migration nominated in launch 00) stay green; the fallback retires when the
+        // last host migrates. Ships EMPTY/unset, so it is INERT — identity projection in every realm —
+        // until a host seeds real overlays. Beam's ParticleResourceRegistry applies it when it projects
+        // a declaration for a realm; frame never sees it (the realm concept lives entirely in beam). A
+        // host may also register overlays imperatively via
+        // `->override($key, $realm, new RealmResourceOverride(...))`.
         $this->app->singleton(RealmResourceRegistry::class, fn ($app) => (new RealmResourceRegistry(
             $app->make(RealmRegistry::class),
-        ))->loadConfig((array) config('frame.realm_resource_overrides', [])));
+        ))->loadConfig((array) (config('beam.core.realm_resource_overrides')
+            ?? config('frame.realm_resource_overrides', []))));
 
         // The generic particle REST surface (promoted from splicewire-app, ADR-0116). The two declaration
         // registries are container singletons so the `Particle::mount()` / `Particle::ops()`
@@ -1738,9 +1758,6 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 // declaration exists before the logic does and a fresh surface is born conformance-clean.
                 MakeParticleResourceCommand::class,
                 MakeParticleOpCommand::class,
-                MakeParticleRelativeCommand::class,
-                MakeParticleBackingCommand::class,
-                MakeWorkflowCommand::class,
                 // The registry's own reading surface (otb-ui-frontier-sidebar DESIGN-02, reshaped from an
                 // operator SCREEN to a command). Nav-invisibility is the registry's default — most
                 // declarations name no `section` — so nothing in-product could enumerate the vocabulary;
@@ -1928,6 +1945,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->make(BeamDoctorManifest::class)->register(
             'splicewire/laravel-beam',
             ScopedReadAuthenticationAudit::class,
+        );
+
+        // ADR-0230 — the read-side twin of UndeclaredAffordanceAudit: counts a resource a guest can REACH
+        // that declares no Public Read, now that the read guard refuses a guest one. Warn-level and
+        // registry-side, on the same "counted until zero" schedule as the affordance audit.
+        $this->app->bind(GuestReadablePublicReadAudit::class, fn () => GuestReadablePublicReadAudit::forApp());
+        $this->app->make(BeamDoctorManifest::class)->register(
+            'splicewire/laravel-beam',
+            GuestReadablePublicReadAudit::class,
         );
 
         // particle-doctrine-followups #12: the client-runtime contract check. Advisory, and registered

@@ -173,6 +173,26 @@ return [
     ],
 
     /*
+    | Per-realm resource presentation overrides (RDU-03) — moved home from `frame.realm_resource_overrides`
+    | (owner ruling 2026-10-18, architecture-pass A4-C5: frame shipped the key but never read it; this
+    | package's RealmResourceRegistry is the reader, so this package ships it). A realm may PRESENT the
+    | same resource differently — label, group, form, layout, a read-only gate — WITHOUT the declaration
+    | ever naming a realm (declarations stay realm-agnostic; frame stays agnostic and is handed the
+    | finished ResourceDefinition).
+    |
+    | Shape: ['<realm>' => ['<resource-key>' => ['<presentation-field>' => <value>]]].
+    | Only PRESENTATION fields overlay (label, group, icon, section, navOrder, routeName, form, layout,
+    | editData, policy, query, readOnly, deletable, editable, showable) — runtime fields
+    | (model/data/hooks) never vary by realm. A non-null field overlays the base; an absent field inherits.
+    |
+    | Deliberately UNSET here: while this key is absent the provider falls back to the retired
+    | `frame.realm_resource_overrides` spelling, so hosts that still set the old key keep working until
+    | their migration lands. Setting this key (even to []) supersedes the old spelling entirely.
+    |
+    | 'realm_resource_overrides' => [],
+    */
+
+    /*
     | Realm entitlement gates (Frame OS ticket 08, ADR-0013 §4/§5). The RealmDefinition DTO carries no
     | gating (it is a shared schemastud shape); realm→entitlement gating rides HERE, keyed by realm key,
     | and is read by the RealmManifestProjector. Each entry: [ 'entitlement' => key, 'mode' => 'hard'|'soft',
