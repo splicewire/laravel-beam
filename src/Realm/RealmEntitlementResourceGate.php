@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate as GateFacade;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Http\Controllers\FrameManifestController;
+use Schemastud\Frame\Http\Controllers\FrameResourceSummaryController;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceVisibility;
@@ -127,9 +128,11 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
         $mountedRealm = request()->route('realm');
         $mountedRealm = is_string($mountedRealm) && $mountedRealm !== '' ? $mountedRealm : null;
 
-        $visible = $this->isManifestRequest()
-            ? $this->visibility->listable($definition, $actor, $mountedRealm)
-            : $this->visibility->readable($definition, $actor);
+        $visible = match (true) {
+            $this->isManifestRequest() => $this->visibility->listable($definition, $actor, $mountedRealm),
+            $this->isSummaryRequest() => $this->readBoundaryAdmits($definition, $actor, $mountedRealm),
+            default => $this->visibility->readable($definition, $actor),
+        };
 
         if (! $visible) {
             return false;
@@ -179,6 +182,26 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
 
         return $route instanceof Route
             && is_a($route->getControllerClass(), FrameManifestController::class, true);
+    }
+
+    /** A custom summary provider is a read path too; ask the declaration before resolving the provider. */
+    private function isSummaryRequest(): bool
+    {
+        $route = request()->route();
+
+        return $route instanceof Route
+            && is_a($route->getControllerClass(), FrameResourceSummaryController::class, true);
+    }
+
+    private function readBoundaryAdmits(
+        ResourceDefinition $definition,
+        ?Authenticatable $actor,
+        ?string $mountedRealm,
+    ): bool {
+        $resource = $this->particles->find($definition->key);
+
+        return $resource === null
+            || ResourceReadGuard::forApp()->inspectReadFor($resource, request(), $actor, $mountedRealm)->allowed();
     }
 
     /** A copy whose reach and declared-read gates are bound to one explicit actor, including a guest. */

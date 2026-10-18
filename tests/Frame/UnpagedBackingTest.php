@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Pagination\Cursor;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Schemastud\Frame\FrameServiceProvider;
+use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\Backing\Unpaged;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -44,10 +45,12 @@ class UnpagedBackingTest extends TestCase
         $registry->register(new ParticleResource(
             key: 'whole', backing: WholeFeed::class, data: WidgetGateData::class,
             label: 'Whole', readOnly: true, showable: false,
+            readPolicy: AuthenticatedReadPolicy::class,
         ));
         $registry->register(new ParticleResource(
             key: 'paged', backing: PagedFeed::class, data: WidgetGateData::class,
             label: 'Paged', readOnly: true,
+            readPolicy: AuthenticatedReadPolicy::class,
         ));
 
         $this->actingAs((new User)->forceFill(['id' => 1]));

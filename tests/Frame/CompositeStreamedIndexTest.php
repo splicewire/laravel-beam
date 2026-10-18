@@ -6,6 +6,7 @@ use Illuminate\Foundation\Auth\User;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Particle\Backing\CompositeBacking;
@@ -151,5 +152,6 @@ class CompositeStreamedIndexTest extends TestCase
     data: ArmRowData::class,
     label: 'Composite probe',
     readOnly: true,
+    readPolicy: AuthenticatedReadPolicy::class,
 )]
 class CompositeProbeResource extends ArmRowData {}

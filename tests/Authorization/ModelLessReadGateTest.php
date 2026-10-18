@@ -2,18 +2,28 @@
 
 namespace Splicewire\Beam\Tests\Authorization;
 
+use Illuminate\Auth\Access\Response;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Http\Request;
 use Illuminate\Pagination\CursorPaginator as Paginator;
 use Illuminate\Support\Facades\Gate;
 use Rushing\DataFilters\Facades\DataFilter;
+use Schemastud\Frame\Contracts\ResourceSummaryProvider;
+use Schemastud\Frame\Data\SummaryFigureData;
+use Schemastud\Frame\Data\SummaryResponseData;
 use Schemastud\Frame\FrameServiceProvider;
+use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ModelLessReadPosture;
+use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Particle\Backing\DeclaredFacet;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
 use Splicewire\Beam\Particle\Backing\FilterVocabulary;
+use Splicewire\Beam\Particle\Backing\ResolvedRecord;
+use Splicewire\Beam\Particle\Backing\ResolvesRecord;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -72,6 +82,16 @@ class ModelLessReadGateTest extends TestCase
                 showable: false,
             ));
         }
+
+        $registry->register(new ParticleResource(
+            key: 'policy-feed',
+            backing: PolicyFeedBacking::class,
+            data: WidgetGateData::class,
+            frame: true,
+            readOnly: true,
+            readPolicy: FixtureActorReadPolicy::class,
+            summaryProvider: FixtureFeedSummary::class,
+        ));
 
         Gate::define('feed.read', fn (User $user): bool => $user->getAuthIdentifier() === 7);
         // A write-shaped ability: its callback demands a subject a subject-free read cannot hand it.
@@ -184,6 +204,33 @@ class ModelLessReadGateTest extends TestCase
         $this->assertTrue($this->app->make(RealmEntitlementResourceGate::class)->allowsResource($definition));
     }
 
+    public function test_a_streamed_index_asks_the_resource_read_policy_before_reading_the_backing(): void
+    {
+        $this->actingAs($this->denied());
+        $this->getJson('/frame/resources/policy-feed')->assertForbidden();
+
+        $this->actingAs($this->allowed());
+        $this->getJson('/frame/resources/policy-feed')->assertOk();
+    }
+
+    public function test_a_streamed_detail_asks_the_resource_read_policy_before_resolving_the_record(): void
+    {
+        $this->actingAs($this->denied());
+        $this->getJson('/frame/resources/policy-feed/records/1')->assertForbidden();
+
+        $this->actingAs($this->allowed());
+        $this->getJson('/frame/resources/policy-feed/records/1')->assertOk()->assertJsonPath('data.id', 1);
+    }
+
+    public function test_a_custom_summary_asks_the_resource_read_policy_before_invoking_the_provider(): void
+    {
+        $this->actingAs($this->denied());
+        $this->getJson('/frame/resources/policy-feed/summary')->assertForbidden();
+
+        $this->actingAs($this->allowed());
+        $this->getJson('/frame/resources/policy-feed/summary')->assertOk()->assertJsonPath('key', 'policy-feed');
+    }
+
     // ---- the filter sub-surface ------------------------------------------------------------------
 
     public function test_the_filter_vocabulary_of_a_model_less_resource_honours_its_declared_ability(): void
@@ -267,5 +314,41 @@ class DeclaringGatedFeedBacking implements DeclaresFilterVocabulary, StreamsReco
     public function filterVocabulary(): FilterVocabulary
     {
         return FilterVocabulary::of(DeclaredFacet::set('source', options: 'gated_feed_sources'));
+    }
+}
+
+class PolicyFeedBacking implements ResolvesRecord, StreamsRecords
+{
+    public function records(array $filters, ?string $cursor, int $perPage): CursorPaginator
+    {
+        return new Paginator([new WidgetGateData(1, 'Visible only after admission')], $perPage);
+    }
+
+    public function resolve(string $id, array $filters): ?ResolvedRecord
+    {
+        return $id === '1' ? new ResolvedRecord(new WidgetGateData(1, 'Visible only after admission')) : null;
+    }
+}
+
+class FixtureActorReadPolicy implements ResourceReadPolicy
+{
+    public function inspect(?Authenticatable $actor, ParticleResource $resource, Request $request): Response
+    {
+        return $actor?->getAuthIdentifier() === 7
+            ? Response::allow()
+            : Response::deny('Fixture actor is not admitted.');
+    }
+}
+
+class FixtureFeedSummary implements ResourceSummaryProvider
+{
+    public function summary(ResourceDefinition $resource): ?SummaryResponseData
+    {
+        return new SummaryResponseData(
+            key: $resource->key,
+            label: 'Policy feed',
+            icon: null,
+            figures: [new SummaryFigureData(key: 'total', label: 'Rows', value: 1)],
+        );
     }
 }

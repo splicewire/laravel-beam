@@ -165,7 +165,11 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
     protected function streamedIndex(ResourceDefinition $definition): array
     {
         app(ResourceFilterDefinition::class)->definition($definition->key);
-        $request = $this->contextRequest($this->resource($definition));
+        $resource = $this->resource($definition);
+        $request = $this->contextRequest($resource);
+        if ($resource !== null) {
+            ResourceReadGuard::forApp()->inspectReadFor($resource, $request, $request->user())->authorize();
+        }
         abort_if($request->query('filterVariant') !== null, 404);
 
         // The WHOLE `filter[...]` bag, passed through opaquely — the backing owns its own query
@@ -267,7 +271,11 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
      */
     protected function resolvedShow(ResourceDefinition $definition, string $id): array
     {
-        $request = $this->contextRequest($this->resource($definition));
+        $resource = $this->resource($definition);
+        $request = $this->contextRequest($resource);
+        if ($resource !== null) {
+            ResourceReadGuard::forApp()->inspectReadFor($resource, $request, $request->user())->authorize();
+        }
 
         // The union-arm discriminator now rides the same opaque bag every other capability takes,
         // rather than a positional argument only unions ever used. `source` stays a detail-route query

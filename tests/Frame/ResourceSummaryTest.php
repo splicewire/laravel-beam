@@ -90,7 +90,7 @@ class ResourceSummaryTest extends TestCase
         // Streams-only: a composite has no builder to count through.
         $registry->register(new ParticleResource(
             key: 'streamed', backing: ProbeComposite::class, data: ArmRowData::class,
-            frame: true, readOnly: true, label: 'Streamed',
+            frame: true, readOnly: true, label: 'Streamed', readPolicy: AuthenticatedReadPolicy::class,
         ));
 
         // Realm-VARYING: the scope closure READS its second argument, so the same declaration answers a
