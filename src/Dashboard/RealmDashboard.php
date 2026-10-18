@@ -40,14 +40,25 @@ final class RealmDashboard
      * The Gate ability a dashboard declares in a realm that gates NOTHING — a non-central realm with no
      * `beam.core.realm_gates.{realm}.entitlement`.
      *
-     * Such a realm admits every authenticated principal to every resource in it, so the honest ceiling for
-     * its dashboard is the same: any authenticated actor. That is the posture an UNDECLARED `policy:` has —
-     * but written down as a declared ability, so `ModelLessReadGateAudit` reads a decision rather than an
-     * omission. beam-ux defines the ability as "a principal is present"; a host that wants a narrower door
-     * redefines it from its own provider, which boots later and wins. The dashboard's SECOND gate is per
-     * row: the backing keeps only the resources `ResourceVisibility::listable()` admits the actor to.
+     * A realm-specific suffix is mandatory: tenant and site dashboards carry team data while the user
+     * dashboard carries the actor's own projection, so one global "authenticated" ability cannot be the
+     * authority for all three. beam-ux defines the kit realms and denies unknown ones; a host defines a
+     * custom realm's named ability explicitly. The dashboard's SECOND gate is per row: the backing keeps
+     * only the resources `ResourceVisibility::listable()` admits the actor to.
      */
     public const OPEN_ABILITY = 'realm-dashboard.view';
+
+    /**
+     * The realm-specific ability for a dashboard whose realm declares no harder entitlement.
+     *
+     * One shared ability cannot distinguish a tenant work surface from a user's own surface. Keeping
+     * the realm in the ability lets beam-ux make the tenant and site doors membership-aware while the
+     * user door remains actor-scoped, and makes an unknown realm deny unless its host defines it.
+     */
+    public static function openAbilityFor(string $realm): string
+    {
+        return self::OPEN_ABILITY.'.'.$realm;
+    }
 
     public static function keyFor(string $realm): string
     {
@@ -71,6 +82,6 @@ final class RealmDashboard
      */
     public static function abilityFor(string $realm, RealmRegistry $realms): string
     {
-        return RealmGateAbility::for($realm, $realms) ?? self::OPEN_ABILITY;
+        return RealmGateAbility::for($realm, $realms) ?? self::openAbilityFor($realm);
     }
 }
