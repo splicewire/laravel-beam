@@ -7,9 +7,7 @@ use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Routing\Router;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
-use Schemastud\Frame\Http\Controllers\FrameResourceController;
-use Schemastud\Frame\Http\Controllers\FrameResourceFiltersController;
-use Schemastud\Frame\Http\Controllers\FrameResourceSummaryController;
+use Schemastud\Frame\Http\Controllers\ServesResourceSocket;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -134,14 +132,11 @@ class ScopedReadAuthenticationAudit implements DoctorAudit
             return false;
         }
 
-        foreach ([
-            FrameResourceController::class,
-            FrameResourceFiltersController::class,
-            FrameResourceSummaryController::class,
-        ] as $socket) {
-            if (is_a($controller, $socket, true)) {
-                return true;
-            }
+        // The socket family is recognized through frame's own ServesResourceSocket marker (A4-C4),
+        // not a hand-maintained class list — a new socket controller is audited the moment frame
+        // declares it.
+        if (is_a($controller, ServesResourceSocket::class, true)) {
+            return true;
         }
 
         return false;
