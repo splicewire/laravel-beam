@@ -67,6 +67,9 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\GenerateContributedTypesCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
+use Splicewire\Beam\Console\MakeParticleRelativeCommand;
+use Splicewire\Beam\Console\MakeParticleBackingCommand;
+use Splicewire\Beam\Console\MakeWorkflowCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
@@ -1758,6 +1761,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 // declaration exists before the logic does and a fresh surface is born conformance-clean.
                 MakeParticleResourceCommand::class,
                 MakeParticleOpCommand::class,
+                // …and the scaffold-family additions (tickets 01/02): the relative + backing halves
+                // of a resource, and the beam-workflows definition set — same chassis, same rule
+                // (slots emitted filled, wiring printed off the emitted constants).
+                MakeParticleRelativeCommand::class,
+                MakeParticleBackingCommand::class,
+                MakeWorkflowCommand::class,
                 // The registry's own reading surface (otb-ui-frontier-sidebar DESIGN-02, reshaped from an
                 // operator SCREEN to a command). Nav-invisibility is the registry's default — most
                 // declarations name no `section` — so nothing in-product could enumerate the vocabulary;

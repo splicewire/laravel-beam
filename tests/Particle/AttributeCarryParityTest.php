@@ -228,6 +228,7 @@ class CarryFixtureOp
     schemaRef: 'carry/fixture',
     createResultData: CarryFixtureOutput::class,
     filterable: true,
+    publicRead: 'carry-public-read',
 )]
 class CarryFixtureResource
 {
