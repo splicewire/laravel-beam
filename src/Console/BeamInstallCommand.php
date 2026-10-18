@@ -74,6 +74,7 @@ class BeamInstallCommand extends Command
         {--modules= : Comma list of optional beam modules to install (name substrings); empty ⇒ core only}
         {--own-tables= : Comma list of colliding migration stems beam should own (run first); empty ⇒ own none. Default: all}
         {--travel= : Shift every migration THIS RUN publishes by a relative amount ("-1 year", "+2 days"), keeping their order. Governs fresh/reset databases only; absolute dates are refused}
+        {--schema-authority= : The origin that serves this host\'s schemas (writes SCHEMA_BASE_URI to .env). "false" opts out of versioned $ids; unset ⇒ asked interactively when the schema belt is installed and the authority is undeclared}
         {--skip-preflight : Skip the convergence preflight and let migrate meet any shape conflict one table at a time}
         {--no-seed : Skip the package-registered seed pass (splicewire:beam:seed) at the end of the install}';
 
@@ -134,6 +135,19 @@ class BeamInstallCommand extends Command
             default: 'db,file',
         ));
 
+        // The schema AUTHORITY (owner-ruled 2026-10-18, launch 00 21:52Z): versioned `$id`s are
+        // write-once, so there is deliberately NO package default — but a fresh host hitting
+        // MissingSchemaBaseUri at its first Studio request is the symptom this question prevents at
+        // the root. Install may suggest THIS HOST'S OWN origin (derived from app.url — never a
+        // vendor's), and only asks while the belt is installed and the authority is undeclared
+        // (`false` is a declared opt-out, not an absence). The explicit option always wins.
+        $authority = $this->option('schema-authority')
+            ?? ($interactive && $this->schemaAuthorityUndeclared() ? text(
+                label: 'Schema authority (SCHEMA_BASE_URI)',
+                default: rtrim((string) config('app.url'), '/').'/schemas',
+                hint: 'The origin that SERVES this host\'s schemas — $ids are write-once. Enter "false" to opt out of versioned $ids.',
+            ) : null);
+
         // 2. Apply the answers to runtime config BEFORE any publish/migrate, so this same run's migrations
         //    (which resolve every table through Beam::table()) land under the chosen prefix, and a
         //    file-only schema store provisions no beam_schemas.
@@ -145,6 +159,9 @@ class BeamInstallCommand extends Command
         }
         if ($tenancy !== null) {
             config(['beam.core.tenancy' => $tenancy]);
+        }
+        if ($authority !== null && $authority !== '') {
+            config(['data-schemas.base_uri' => strtolower($authority) === 'false' ? false : $authority]);
         }
 
         // 3. Which optional modules? Core (order 0) is always installed; the rest are selectable.
@@ -187,6 +204,7 @@ class BeamInstallCommand extends Command
         }
 
         $this->persistConfig($prefix, $sources, $tenancy);
+        $this->persistSchemaAuthority($authority);
 
         // App-owned Data classes also have a disk projection; OpenAPI only generates in memory.
         $schemasGenerated = $this->generateSchemaArtifacts();
@@ -260,6 +278,55 @@ class BeamInstallCommand extends Command
      * Resolve one answer: the option value if given (scriptable), else the prompt when interactive, else
      * null (⇒ leave config as-is). An option is honoured even when empty (`--prefix=` means "no prefix").
      */
+    /**
+     * The schema-authority question is LIVE only while the schema belt is installed here and
+     * `data-schemas.base_uri` is truly undeclared — `false` is a DECLARED opt-out and never re-asked.
+     */
+    private function schemaAuthorityUndeclared(): bool
+    {
+        return interface_exists(\Schemastud\DataSchemas\Contracts\SchemaIdentity::class)
+            && config('data-schemas.base_uri') === null;
+    }
+
+    /**
+     * Persist the answered authority as the host's own `.env` line — the exact line
+     * MissingSchemaBaseUri names when it refuses (and renders as 503). Machine-local by design, like
+     * the pinned node binary: an `$id` authority is the HOST'S property, so it is written where the
+     * host declares itself, never into a package default. Replaces an existing SCHEMA_BASE_URI line,
+     * appends otherwise; with no answer, nudges once if the question is still live.
+     */
+    private function persistSchemaAuthority(?string $value): void
+    {
+        if ($value === null || $value === '') {
+            if ($this->schemaAuthorityUndeclared()) {
+                $this->components->info(
+                    'Schema authority undeclared — versioned-$id generation will answer 503 naming the fix. '
+                    .'Set SCHEMA_BASE_URI in .env (or rerun with --schema-authority=…; "false" opts out).',
+                );
+            }
+
+            return;
+        }
+
+        $path = $this->laravel->basePath('.env');
+
+        if (! file_exists($path)) {
+            $this->warn("splicewire:beam:install — no .env at {$path}; add SCHEMA_BASE_URI={$value} yourself.");
+
+            return;
+        }
+
+        $env = file_get_contents($path);
+        $line = 'SCHEMA_BASE_URI='.$value;
+
+        $env = preg_match('/^SCHEMA_BASE_URI=.*$/m', $env)
+            ? preg_replace('/^SCHEMA_BASE_URI=.*$/m', $line, $env)
+            : rtrim($env, "\n")."\n".$line."\n";
+
+        file_put_contents($path, $env);
+        $this->components->info("Schema authority persisted: {$line}");
+    }
+
     private function answer(string $option, bool $interactive, callable $prompt): ?string
     {
         $value = $this->option($option);
