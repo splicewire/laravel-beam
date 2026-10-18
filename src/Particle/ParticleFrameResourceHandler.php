@@ -65,6 +65,17 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
 
     private ?string $boundRealm = null;
 
+    private ?Request $boundRequest = null;
+
+    /** A server-side consumer supplies its own saved query, retaining the visitor's request context. */
+    public function forRequest(Request $request, ?string $realm = null): self
+    {
+        $bound = $this->forActor($request->user(), $realm);
+        $bound->boundRequest = clone $request;
+
+        return $bound;
+    }
+
     public function forActor(?Authenticatable $actor, ?string $realm = null): FrameResourceHandler
     {
         $bound = clone $this;
@@ -80,7 +91,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         if (! $this->actorBound && ($resource?->publicRead !== null || $resource?->publicScope !== null)) {
             throw new LogicException('This Frame resource requires an explicit actor; bind with forActor(), including null for a guest.');
         }
-        $request = clone app(Request::class);
+        $request = clone ($this->boundRequest ?? app(Request::class));
         if ($this->actorBound) {
             $request->setUserResolver(fn () => $this->boundActor);
             $route = $request->route();

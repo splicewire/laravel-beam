@@ -228,6 +228,28 @@ class PublicReadGuestReadTest extends TestCase
         $original->show($resource->toResourceDefinition(), '1');
     }
 
+    public function test_request_bound_read_uses_the_visitor_and_realm_without_mutating_the_ambient_request(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->publicScope = fn ($query, $realm) => $query->where('user_id', $realm === 'tenant-a' ? 1 : 2);
+        $resource->data = PrivateGadgetProjection::class;
+        $resource->project = fn (Gadget $gadget) => new PrivateGadgetProjection((string) $gadget->id, $gadget->user_id);
+        $author = PublicReadActor::create(['name' => 'Author']);
+        $ambient = app(Request::class);
+        $ambient->setUserResolver(fn () => $author);
+        $visitor = Request::create('/page');
+        $visitor->setUserResolver(fn () => null);
+        $handler = app(ParticleFrameResourceHandler::class);
+        $a = $handler->forRequest($visitor, 'tenant-a');
+        $b = $handler->forRequest($visitor, 'tenant-b');
+
+        $this->assertSame([['id' => '1']], $a->index($resource->toResourceDefinition(), []));
+        $this->assertSame([['id' => '2']], $b->index($resource->toResourceDefinition(), []));
+        $this->assertSame($author, $ambient->user());
+        $this->assertNull($visitor->route());
+        $this->assertNotSame($handler, $a);
+    }
+
     public function test_a_signed_in_detail_reader_keeps_the_resource_scope_not_the_guest_scope(): void
     {
         $resource = $this->declare(publicRead: GadgetData::class);
