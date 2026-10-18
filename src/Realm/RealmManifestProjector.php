@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Realm;
 
 use Illuminate\Contracts\Auth\Access\Authorizable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Ia\RealmProfiles;
@@ -37,9 +38,18 @@ use Splicewire\Beam\Ia\RealmProfiles;
  *
  * Inert by default: an empty `realm_gates` gates nothing, so every realm projects unlocked and an existing
  * host is byte-for-byte.
+ *
+ * Each realm's gate is asked of the principal THAT REALM belongs to (L3 ticket 10a, orch-lead 13:20Z). Hosts read realms
+ * inside the tenant boundary, where the request's principal is the user's tenant SEAT. A central realm
+ * (`RealmDefinition::$central`, the operator preset) belongs to the central user behind that seat, whose reach is
+ * granted centrally, so asking the seat omitted Operator for a fresh Tower's owner. Every other realm stays on the
+ * principal as given, so tenant admission never widens to the central user's grants.
  */
 class RealmManifestProjector
 {
+    /** A tenant seat whose central user cannot be found: it belongs to no central principal, so no central gate admits. */
+    private const NO_CENTRAL_PRINCIPAL = "\0no-central-principal";
+
     private RealmOverlayRegistry $overlays;
 
     public function __construct(
@@ -66,7 +76,11 @@ class RealmManifestProjector
             // The realm profile's gate (ux-walkthrough M1), else the deprecated `realm_gates` alias entry.
             $gate = $profiles->gate($key);
 
-            $entitled = $gate === null || $this->admits((string) ($gate['entitlement'] ?? ''), $principal);
+            // The principal this realm belongs to. A seat whose central user cannot be found has none (fail closed);
+            // a null principal stays null, which the resolver reads as "the request's scope", as before.
+            $subject = $realm->central ? $this->centralPrincipal($principal) : $principal;
+            $entitled = $gate === null
+                || ($subject !== self::NO_CENTRAL_PRINCIPAL && $this->admits((string) ($gate['entitlement'] ?? ''), $subject));
 
             $mode = $gate['mode'] ?? 'hard';
 
@@ -89,7 +103,7 @@ class RealmManifestProjector
             // Ticket 14: fold any additive satellite/capability overlays onto THIS realm's descriptor,
             // PHP-side, before it is appended (i.e. before the manifest emits). Only realms the registry
             // ships reach here, so an overlay never manufactures a realm.
-            $manifest[] = $this->applyOverlays($key, $descriptor, $principal);
+            $manifest[] = $this->applyOverlays($key, $descriptor, $subject === self::NO_CENTRAL_PRINCIPAL ? null : $subject);
         }
 
         return $manifest;
@@ -150,6 +164,34 @@ class RealmManifestProjector
         }
 
         return $this->entitlements->allows($entitlement, $principal) || $gate->allows($ability);
+    }
+
+    /**
+     * The central principal behind `$principal`. A tenant seat in stancl's `Syncable` shape (beam-tenancy's
+     * `TenantUser`) names its central model and shares its global id, so the central user is that model's row with
+     * that id. The host's central user model must query the central connection (both hosts pin
+     * `$connection = 'central'`). A seat whose central row is missing resolves to {@see NO_CENTRAL_PRINCIPAL}. Any
+     * other principal (a central user, a scope, a guest) is already its own central principal.
+     */
+    private function centralPrincipal(mixed $principal): mixed
+    {
+        if (! is_object($principal)
+            || ! method_exists($principal, 'getCentralModelName')
+            || ! method_exists($principal, 'getGlobalIdentifierKey')) {
+            return $principal;
+        }
+
+        $class = $principal->getCentralModelName();
+        if (! is_string($class) || ! is_subclass_of($class, Model::class)) {
+            return self::NO_CENTRAL_PRINCIPAL;
+        }
+
+        $central = new $class;
+        $keyName = method_exists($central, 'getGlobalIdentifierKeyName')
+            ? $central->getGlobalIdentifierKeyName()
+            : $central->getKeyName();
+
+        return $class::query()->where($keyName, $principal->getGlobalIdentifierKey())->first() ?? self::NO_CENTRAL_PRINCIPAL;
     }
 
     /** A humanized fallback title when the gate config declares none (RealmDefinition carries no title). */
