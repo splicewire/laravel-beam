@@ -132,6 +132,18 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         return $this->enrichProjected($definition, $rows);
     }
 
+    /** Bounded server-side window through the same guard, query, projection and batch enrichment. */
+    public function indexWindow(ResourceDefinition $definition, int $limit, int $offset = 0): array
+    {
+        if ($limit < 1 || $limit > 101 || $offset < 0 || $this->streamsOnly($definition)) {
+            throw new LogicException('A binding window requires a queryable resource and a bounded positive limit.');
+        }
+        $rows = $this->indexQuery($definition)->offset($offset)->limit($limit)->get()
+            ->map(fn (Model $model) => $this->projectRead($definition, $model))->all();
+
+        return $this->enrichProjected($definition, $rows);
+    }
+
     /**
      * The list for a resource whose backing only {@see StreamsRecords}: take the request's opaque
      * `filter[…]` bag + cursor/per_page, hand them to the backing, and project
