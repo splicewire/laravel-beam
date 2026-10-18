@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Data;
 
+use Schemastud\DataSchemas\Attributes\Title;
 use Illuminate\Database\Eloquent\Builder;
 use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Collections\CollectionBacking;
@@ -17,6 +18,7 @@ use Splicewire\Beam\Schema\SchemaId;
 #[ParticleResource(key: 'records', backing: CollectionBacking::class, input: CollectionInputData::class,
     label: 'Records', readPolicy: AuthenticatedReadPolicy::class,
     publicRead: PublicRecordData::class, editData: RecordData::class)]
+#[Title('Record')]
 class RecordData extends CollectionRecordData
 {
     public static function fromModel(BeamParticle $model): self
