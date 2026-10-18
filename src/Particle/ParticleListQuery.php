@@ -4,14 +4,18 @@ namespace Splicewire\Beam\Particle;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Rushing\DataFilters\Reflection\FilterReflector;
+use Schemastud\DataSchemas\Generators\Generator;
+use Splicewire\Beam\Collections\CollectionBacking;
 use Splicewire\Beam\Filters\FilterQuerySelection;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContribution;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
+use Splicewire\Beam\Read\ReadContext;
 
 /** Composes one declaration's backing, row boundaries and query controls for every list transport. */
 class ParticleListQuery
@@ -19,6 +23,10 @@ class ParticleListQuery
     public function forList(ParticleResource $resource, array $filters = [], ?Request $request = null, ?Builder $relative = null): Builder
     {
         $request ??= request();
+        $context = ReadContext::fromRequest($request);
+        if ($context?->publicProjection && $context->actor !== null && $context->resource === $resource->key) {
+            $this->assertPublicQuery($resource, $filters, $request);
+        }
         $query = $this->backingQuery($resource, $filters);
         $query = $this->scoped($query, $resource, $request);
         $query = $this->publicScoped($query, $resource, $request);
@@ -34,6 +42,29 @@ class ParticleListQuery
         $this->withContributedIncludes($query, $resource, $filters);
 
         return empty($query->getQuery()->orders) ? $this->ordered($query, $resource) : $query;
+    }
+
+    /** A denied reader's public floor must not turn private fields into query oracles. */
+    private function assertPublicQuery(ParticleResource $resource, array $filters, Request $request): void
+    {
+        if ($resource->backing() instanceof CollectionBacking) {
+            // The schema owner validates its dynamic, actor-narrowed vocabulary in query().
+            return;
+        }
+        $schema = app(Generator::class)->forResponse()
+            ->generate(new \ReflectionClass($resource->publicRead));
+        $fields = array_keys($schema['properties'] ?? []);
+        foreach (array_keys($filters) as $name) {
+            if (! in_array($name, $fields, true)) {
+                throw ValidationException::withMessages(['filter' => 'Public projection filters must name a Public Read field.']);
+            }
+        }
+        $sorts = $request->query('sort', '');
+        foreach (is_array($sorts) ? $sorts : explode(',', (string) $sorts) as $name) {
+            if ($name !== '' && (! is_string($name) || ! in_array(ltrim($name, '-'), $fields, true))) {
+                throw ValidationException::withMessages(['sort' => 'Public projection sorts must name a Public Read field.']);
+            }
+        }
     }
 
     /** Bases examined before user controls or mechanical intersections can look like authorization. */
@@ -67,7 +98,7 @@ class ParticleListQuery
      */
     public function publicScoped(Builder $query, ParticleResource $resource, Request $request): Builder
     {
-        if ($request->user() !== null || $resource->publicScope === null) {
+        if (! ReadContext::projectsPublic($request, $resource->key) || $resource->publicScope === null) {
             return $query;
         }
 

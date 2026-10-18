@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Collections;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Arr;
+use Splicewire\Beam\Read\ReadContext;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /** One-hop expansion batches by target stem in the same realm-scoped reader. */
@@ -17,7 +18,7 @@ final class CollectionRelations
      * @param  list<CollectionRecordData>  $records
      * @return array<string, array<string, CollectionRecordData|list<CollectionRecordData>|null>>
      */
-    public function resolve(array $records, ?Authenticatable $actor): array
+    public function resolve(array $records, ?Authenticatable $actor, ?ReadContext $context = null): array
     {
         $edges = $targets = $result = [];
         foreach ($records as $record) {
@@ -41,7 +42,7 @@ final class CollectionRelations
         foreach ($targets as $stem => $ids) {
             // This resolves the target's latest declaration and applies its own public rules.
             try {
-                $resolved[$stem] = $this->reader->many($stem, array_values(array_unique($ids)), $actor);
+                $resolved[$stem] = $this->reader->many($stem, array_values(array_unique($ids)), $actor, $context?->publicProjection ?? false);
             } catch (NotFoundHttpException) {
                 // Missing/unmarked targets reveal no more than an absent record.
                 $resolved[$stem] = [];

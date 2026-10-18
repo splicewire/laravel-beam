@@ -23,17 +23,17 @@ final class CollectionRead
      * @param  list<string>  $ids
      * @return array<string, CollectionRecordData>
      */
-    public function many(string $stem, array $ids, ?Authenticatable $actor): array
+    public function many(string $stem, array $ids, ?Authenticatable $actor, bool $publicProjection = false): array
     {
         $definition = $this->schemas->resolve($stem);
-        if ($ids === [] || ($actor === null && ! $definition->hasPublicRead())) {
+        if ($ids === [] || (($actor === null || $publicProjection) && ! $definition->hasPublicRead())) {
             return [];
         }
         $models = $this->records->query()->whereIn('schema_ref', $this->schemas->recordRefs($stem))->whereKey(array_values(array_unique($ids)))->get();
         $result = [];
         foreach ($models as $model) {
             // Eloquent retrieved invokes the existing cheap reconcile-on-read seam first.
-            $record = $this->project($definition, $model, $actor);
+            $record = $this->project($definition, $model, $actor, $publicProjection);
             if ($record !== null) {
                 $result[$record->id] = $record;
             }
@@ -64,19 +64,20 @@ final class CollectionRead
         return $query->whereKey($ids);
     }
 
-    public function project(CollectionDefinition $definition, BeamParticle $model, ?Authenticatable $actor): ?CollectionRecordData
+    public function project(CollectionDefinition $definition, BeamParticle $model, ?Authenticatable $actor, bool $publicProjection = false): ?CollectionRecordData
     {
         $payload = (array) $model->payload;
         $status = $model->getAttribute('migration_status');
         $status = $status instanceof MigrationStatus ? $status->value : (string) $status;
-        if ($actor === null && ($status !== MigrationStatus::Current->value || ! $definition->guestMatches($payload))) {
+        $publicProjection = $publicProjection || $actor === null;
+        if ($publicProjection && ($status !== MigrationStatus::Current->value || ! $definition->guestMatches($payload))) {
             return null;
         }
 
         return new CollectionRecordData(
             (string) $model->getKey(), $definition->stem(),
             (string) ($model->getAttribute('schema_id') ?? $model->schema_ref),
-            $status, $actor === null ? $definition->publicFields($payload) : $payload, $definition->schema,
+            $status, $publicProjection ? $definition->publicFields($payload) : $payload, $definition->schema,
         );
     }
 }

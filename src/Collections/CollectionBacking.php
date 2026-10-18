@@ -28,6 +28,7 @@ use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\Backing\SuppliesParticleWriter;
 use Splicewire\Beam\Particle\Backing\WritableRecord;
 use Splicewire\Beam\Particle\Backing\WritesRecords;
+use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
 
@@ -80,7 +81,7 @@ class CollectionBacking implements AddressedResourceBacking, BacksModel, Declare
                 $allowedSorts[] = AllowedSort::field($property['x-sort']['name'], $column);
             }
         }
-        if ($this->request->user() === null) {
+        if (ReadContext::projectsPublic($this->request)) {
             $properties = $this->queryProperties($definition);
             $filterNames = array_column(array_column($properties, 'x-filter'), 'name');
             $sortNames = array_column(array_column($properties, 'x-sort'), 'name');
@@ -133,7 +134,7 @@ class CollectionBacking implements AddressedResourceBacking, BacksModel, Declare
     public function enrich(array $records, ?Authenticatable $actor): array
     {
         $records = array_map(fn ($record) => $record instanceof CollectionRecordData ? $record : CollectionRecordData::from($record), $records);
-        $relations = app(CollectionRelations::class)->resolve($records, $actor);
+        $relations = app(CollectionRelations::class)->resolve($records, $actor, ReadContext::fromRequest($this->request));
         foreach ($records as $record) {
             $record->relations = $relations[$record->id] ?? [];
         }
@@ -144,7 +145,7 @@ class CollectionBacking implements AddressedResourceBacking, BacksModel, Declare
     /** ADR-0230 d3: hidden fields cannot become guest filter/sort oracles. */
     private function queryProperties(CollectionDefinition $definition): array
     {
-        return $this->request->user() !== null
+        return ! ReadContext::projectsPublic($this->request)
             ? $definition->properties()
             : array_intersect_key($definition->properties(), array_flip($definition->publicFieldNames()));
     }

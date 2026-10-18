@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Read;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Http\Request;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 
 /**
@@ -31,7 +32,25 @@ class ReadContext
         public Cardinality $cardinality = Cardinality::One,
         public ?Authenticatable $actor = null,
         public ?int $version = null,
+        public bool $publicProjection = false,
+        public ?string $resource = null,
     ) {}
+
+    /** Internal request metadata, never query input. The actor remains the actual visitor. */
+    public static function fromRequest(Request $request): ?self
+    {
+        $context = $request->attributes->get(self::class);
+
+        return $context instanceof self && $context->actor === $request->user() ? $context : null;
+    }
+
+    public static function projectsPublic(Request $request, ?string $resource = null): bool
+    {
+        $context = self::fromRequest($request);
+
+        return $request->user() === null || ($context?->publicProjection === true
+            && ($resource === null || $context->resource === $resource));
+    }
 
     /**
      * A detail (single-record) read.

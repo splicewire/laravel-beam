@@ -568,7 +568,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
 
         // Match REST: a guest receives the narrower Public Read DTO. When it is
         // the normal Data class, retain the resource's custom projection.
-        $guestPublicRead = $this->contextRequest($resource)->user() === null
+        $guestPublicRead = ReadContext::projectsPublic($this->contextRequest($resource), $resource?->key)
             && $resource?->publicRead !== null
             && $resource->publicRead !== $resource->data;
 
@@ -580,6 +580,12 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
             /** @var class-string<Data> $dataClass */
             $dataClass = $definition->data;
             $data = $dataClass::from($model);
+        }
+
+        $context = ReadContext::fromRequest($this->contextRequest($resource));
+        if ($context?->publicProjection && $context->actor !== null) {
+            // An actor-sensitive contribution must not widen a denied reader's public projection.
+            return $this->withId($data->toArray(), $model);
         }
 
         return $this->withId($this->contributed($definition->key, $data, $model)->toArray(), $model);

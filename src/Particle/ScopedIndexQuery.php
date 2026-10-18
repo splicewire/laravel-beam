@@ -37,7 +37,7 @@ class ScopedIndexQuery
         $resource = $this->resource($definition);
         $request ??= app(Request::class);
         if ($resource !== null) {
-            ResourceReadGuard::forApp()->inspectReadFor($resource, $request, $request->user())->authorize();
+            ResourceReadGuard::forApp()->authorizeReadContext($resource, $request);
         }
         $resource ??= new ParticleResource(
             key: $definition->key, backing: $definition->model, data: $definition->data, query: $definition->query,

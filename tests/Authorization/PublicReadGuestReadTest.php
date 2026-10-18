@@ -2,6 +2,9 @@
 
 namespace Splicewire\Beam\Tests\Authorization;
 
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Schema\Blueprint;
@@ -13,6 +16,7 @@ use Illuminate\Support\Facades\Schema;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
+use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Http\Particle\ParticleController;
@@ -79,6 +83,38 @@ class PublicReadGuestReadTest extends TestCase
         Route::get('gadgets', [ParticleController::class, 'index'])
             ->defaults(ParticleController::RESOURCE, 'gadgets')
             ->name('gadgets.index');
+    }
+
+    public function test_public_floor_retains_the_visitor_and_realm_after_a_real_denial_only(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->readPolicy = PublicFloorPolicy::class;
+        $resource->readBoundary = ParticleResource::READ_BOUNDARY_GLOBAL;
+        $resource->publicScope = fn ($query, $realm) => $query->where('user_id', $realm === 'tenant-b' ? 2 : 1);
+        $visitor = (new PublicReadActor)->forceFill(['id' => 7]);
+        $request = Request::create('/');
+        $request->setUserResolver(fn () => $visitor);
+        $guard = new ResourceReadGuard;
+        $context = $guard->bindReadContext($resource, $request);
+        $this->assertTrue($context->publicProjection);
+        $this->assertSame($visitor, $context->actor);
+        $this->assertSame($visitor, $request->user());
+        foreach (['tenant-a' => '1', 'tenant-b' => '2'] as $realm => $expected) {
+            $signed = app(ParticleFrameResourceHandler::class)->forRequest($request, $realm)->indexWindow($resource->toResourceDefinition(), 10);
+            $guest = Request::create('/');
+            $guest->setUserResolver(fn () => null);
+            $public = app(ParticleFrameResourceHandler::class)->forRequest($guest, $realm)->indexWindow($resource->toResourceDefinition(), 10);
+            $this->assertSame($public, $signed);
+            $this->assertSame([$expected], array_column($signed, 'id'));
+        }
+        $allowed = (new PublicReadActor)->forceFill(['id' => 8]);
+        $request->setUserResolver(fn () => $allowed);
+        $this->assertFalse($guard->bindReadContext($resource, $request)->publicProjection);
+        $this->assertCount(2, app(ParticleFrameResourceHandler::class)->forRequest($request, 'tenant-a')->indexWindow($resource->toResourceDefinition(), 10));
+        $resource->publicRead = null;
+        $request->setUserResolver(fn () => $visitor);
+        $this->expectException(AuthorizationException::class);
+        $guard->bindReadContext($resource, $request);
     }
 
     public function test_a_guest_cannot_bypass_the_public_scope_by_addressing_a_record_id(): void
@@ -338,4 +374,12 @@ class PublicReadActor extends User
 class PrivateGadgetProjection extends Data
 {
     public function __construct(public string $id, public int $userId) {}
+}
+
+class PublicFloorPolicy implements ResourceReadPolicy
+{
+    public function inspect(?Authenticatable $actor, ParticleResource $resource, Request $request): Response
+    {
+        return $actor?->getAuthIdentifier() === 8 ? Response::allow() : Response::deny();
+    }
 }

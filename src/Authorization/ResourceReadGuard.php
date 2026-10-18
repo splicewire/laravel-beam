@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Gate;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
 use Splicewire\Beam\Surface\RuntimeCorroborator;
 use Throwable;
@@ -22,6 +23,30 @@ use Throwable;
 /** Reads policy, tenancy, declaration-derived row boundaries and hard realm entitlements without executing the query. */
 class ResourceReadGuard
 {
+    /** ADR-0230: opt into the public floor only after inspecting this visitor's actual read. */
+    public function bindReadContext(ParticleResource $resource, Request $request): ReadContext
+    {
+        $verdict = $this->inspectReadFor($resource, $request, $request->user());
+        if ($verdict->denied() && $resource->publicRead === null) {
+            $verdict->authorize();
+        }
+        $context = new ReadContext(actor: $request->user(),
+            publicProjection: $request->user() === null || $verdict->denied(), resource: $resource->key);
+        $request->attributes->set(ReadContext::class, $context);
+
+        return $context;
+    }
+
+    public function authorizeReadContext(ParticleResource $resource, Request $request): void
+    {
+        $verdict = $this->inspectReadFor($resource, $request, $request->user());
+        if ($verdict->denied() && $resource->publicRead !== null
+            && ReadContext::projectsPublic($request, $resource->key)) {
+            return;
+        }
+        $verdict->authorize();
+    }
+
     public static function forApp(): self
     {
         return new self;
