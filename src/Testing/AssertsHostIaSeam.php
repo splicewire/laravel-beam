@@ -623,7 +623,8 @@ trait AssertsHostIaSeam
     /**
      * T7a, closure (server half): per realm × principal, every nav routeName names a leaf (`nav-orphan`); every
      * non-parameterised list|detail|widget leaf has a nav home (`no-home`, judged per principal and collapsed to the
-     * realm when no principal seats it); no leaf or nav node has an empty label (`empty-label`). "hrefs are minted" is
+     * realm when no principal seats it; a create leaf is homed at its seated list); no leaf or nav node has an empty label
+     * (`empty-label`). "hrefs are minted" is
      * T6's `'href' =>` over the host's navigation source. A leaf cannot yet be declared `unseated`, so every homeless
      * place is listed until APP-15/APP-16/APP-21 seat or un-emit it.
      */
@@ -657,7 +658,8 @@ trait AssertsHostIaSeam
                 }
                 foreach ($leaves as $routeName => $leaf) {
                     if (in_array($leaf['mounts'] ?? null, ['list', 'detail', 'widget'], true)
-                        && ! str_contains((string) ($leaf['path'] ?? ''), ':') && ! isset($seated[$routeName])) {
+                        && ! str_contains((string) ($leaf['path'] ?? ''), ':') && ! isset($seated[$routeName])
+                        && ! $this->hostIaCreateHomedAtList($routeName, $seated)) {
                         $homeless[$routeName][] = $principal;
                     }
                     $resource = $leaf['resource'] ?? null;
@@ -724,6 +726,17 @@ trait AssertsHostIaSeam
         }
 
         return $out;
+    }
+
+    /**
+     * A declared create leaf (`<stem>.create`) is reached from its list's "New", so a seated `<stem>.index` is its nav home
+     * (app-walkthrough APP-16 D8): APP-2 lets the create leaf outrank `:id`, and it needs no rail row of its own.
+     *
+     * @param  array<string, true>  $seated
+     */
+    private function hostIaCreateHomedAtList(string $routeName, array $seated): bool
+    {
+        return str_ends_with($routeName, '.create') && isset($seated[substr($routeName, 0, -strlen('.create')).'.index']);
     }
 
     /** @return array<string, array<string, mixed>> the manifest's leaves by routeName */

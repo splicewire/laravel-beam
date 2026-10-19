@@ -100,6 +100,27 @@ class AssertsHostIaClosureTest extends TestCase
         ], $this->sortedKeys($this->hostIaT7()));
     }
 
+    /**
+     * A declared create leaf is reached from its list ("New"), so its home is the seated `<stem>.index` (app-walkthrough
+     * APP-16 D8, lead 21:35Z). One whose list the principal does not seat stays homeless for that principal.
+     */
+    public function test_t7a_homes_a_create_leaf_at_its_seated_list(): void
+    {
+        foreach (['tenant owner', 'tenant member'] as $key) {
+            $this->manifests[$key]['routeContext'][] = ['routeName' => 'posts.create', 'path' => 'posts/new', 'mounts' => 'widget', 'resource' => 'posts'];
+            $this->manifests[$key]['routeContext'][] = ['routeName' => 'drafts.create', 'path' => 'drafts/new', 'mounts' => 'widget', 'resource' => 'drafts'];
+        }
+
+        $this->assertSame([
+            'T7a tenant empty-label leaf drafts.create',
+            'T7a tenant empty-label leaf drafts.index',
+            'T7a tenant member no-home drafts.create',
+            'T7a tenant member no-home drafts.index',
+            'T7a tenant no-home audit.index',
+            'T7a tenant owner nav-orphan ghost.index',
+        ], $this->sortedKeys($this->hostIaT7()));
+    }
+
     public function test_t8_names_a_refused_seat_and_an_open_omission_per_principal(): void
     {
         $this->assertSame([
