@@ -5,12 +5,16 @@ namespace Splicewire\Beam\Tests\Frame;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RoutingRoute;
+use Illuminate\Support\Facades\Route;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Schemastud\Frame\Contracts\ResourceAccessGate as FrameResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\FrameServiceProvider;
+use Schemastud\Frame\Http\Controllers\FrameResourceController;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
+use Spatie\LaravelData\Data;
+use Splicewire\Beam\Authorization\FrameSocketRoute;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -158,4 +162,43 @@ class FrameResourcesIndexMembershipTest extends TestCase
             $port->all(),
         ), 'the user-realm access projection does not add a manifest or nav leaf');
     }
+
+    public function test_a_typed_user_resource_is_served_on_its_mounted_user_socket_but_not_another_realm_or_as_guest(): void
+    {
+        $this->actingAs(new GenericUser(['id' => 17, 'name' => 'User Realm Principal']));
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'user-library-socket-probe',
+            backing: BeamSchema::class,
+            data: UserLibrarySocketProbeData::class,
+            label: '',
+        ), ['user']);
+
+        Route::prefix('user/frame/resources')->group(function (): void {
+            Route::get('{resource}/schema', [FrameResourceController::class, 'schema'])->defaults('realm', 'user');
+        });
+        Route::prefix('tenant/frame/resources')->group(function (): void {
+            Route::get('{resource}/schema', [FrameResourceController::class, 'schema'])->defaults('realm', 'tenant');
+        });
+
+        $this->getJson('user/frame/resources/user-library-socket-probe/schema')->assertOk();
+        $this->assertTrue(app(ParticleResourceRegistryAdapter::class)->has('user-library-socket-probe'));
+        $this->assertSame('user-library-socket-probe', app(ParticleResourceRegistryAdapter::class)->find('user-library-socket-probe')?->key);
+        $this->assertTrue(app(ResourceRegistry::class)->has('user-library-socket-probe'));
+        $this->assertSame('user-library-socket-probe', app(ResourceRegistry::class)->find('user-library-socket-probe')?->key);
+        $this->getJson('tenant/frame/resources/user-library-socket-probe/schema')->assertForbidden();
+        $this->app['auth']->forgetGuards();
+        $this->getJson('user/frame/resources/user-library-socket-probe/schema')->assertForbidden();
+
+        $route = Route::getRoutes()->match(Request::create('/user/frame/resources/user-library-socket-probe/schema'));
+        $request = Request::create('/user/frame/resources/user-library-socket-probe/schema');
+        $route->bind($request);
+        $request->setRouteResolver(static fn () => $route);
+        $this->assertSame('user', $route->defaults['realm'], 'realm context belongs in the route default, not in the resource segment');
+        $this->assertTrue(FrameSocketRoute::serves($request), 'the concrete Frame controller marks this as a resource socket');
+    }
+}
+
+class UserLibrarySocketProbeData extends Data
+{
+    public function __construct(public string $value) {}
 }
