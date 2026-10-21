@@ -11,12 +11,15 @@ use Rushing\Popcorn\Registries\RegistryIndex;
 use Schemastud\Frame\Contracts\ResourceAccessGate as FrameResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\FrameServiceProvider;
+use Schemastud\Frame\Http\Controllers\FrameManifestController;
 use Schemastud\Frame\Http\Controllers\FrameResourceController;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Authorization\FrameSocketRoute;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Models\BeamSchema;
+use Splicewire\Beam\Particle\Backing\ResourceBacking;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
@@ -196,7 +199,60 @@ class FrameResourcesIndexMembershipTest extends TestCase
         $this->assertSame('user', $route->defaults['realm'], 'realm context belongs in the route default, not in the resource segment');
         $this->assertTrue(FrameSocketRoute::serves($request), 'the concrete Frame controller marks this as a resource socket');
     }
+
+    public function test_a_realm_manifest_projects_typed_unframed_resources_without_creating_navigation(): void
+    {
+        $this->actingAs(new GenericUser(['id' => 18, 'name' => 'User Realm Principal']));
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'user-library-manifest-probe',
+            backing: UserLibraryManifestProbeBacking::class,
+            data: UserLibrarySocketProbeData::class,
+            label: '',
+            readOnly: true,
+            readPolicy: AuthenticatedReadPolicy::class,
+        ), ['user']);
+
+        Route::get('ticket17/frame/user/manifest', FrameManifestController::class)
+            ->defaults('realm', 'user');
+        Route::get('ticket17/frame/operator/manifest', FrameManifestController::class)
+            ->defaults('realm', 'operator');
+        Route::get('ticket17/frame/non-manifest-catalog', static fn () => response()->json(
+            collect(app(ParticleResourceRegistryAdapter::class)->all())->pluck('key')->all(),
+        ));
+
+        $userManifest = $this->getJson('/ticket17/frame/user/manifest')->assertOk()->json();
+
+        $this->assertContains(
+            'user-library-manifest-probe',
+            collect($userManifest['resources'])->pluck('key')->all(),
+            'a user-realm manifest exposes the typed resource to its authorized caller',
+        );
+        $this->assertArrayNotHasKey('nav', $userManifest, 'a resource declaration does not manufacture a navigation leaf');
+
+        $operatorManifest = $this->getJson('/ticket17/frame/operator/manifest')->assertOk()->json();
+        $this->assertNotContains(
+            'user-library-manifest-probe',
+            collect($operatorManifest['resources'])->pluck('key')->all(),
+            'a different realm cannot enumerate the user resource',
+        );
+
+        $this->assertNotContains(
+            'user-library-manifest-probe',
+            $this->getJson('/ticket17/frame/non-manifest-catalog')->assertOk()->json(),
+            'an incidental registry enumeration remains presentation-only',
+        );
+
+        $this->app['auth']->forgetGuards();
+        $guestManifest = $this->getJson('/ticket17/frame/user/manifest')->assertOk()->json();
+        $this->assertNotContains(
+            'user-library-manifest-probe',
+            collect($guestManifest['resources'])->pluck('key')->all(),
+            'an authenticated-read declaration is not listed to a guest',
+        );
+    }
 }
+
+class UserLibraryManifestProbeBacking implements ResourceBacking {}
 
 class UserLibrarySocketProbeData extends Data
 {

@@ -2,11 +2,13 @@
 
 namespace Splicewire\Beam\Frame;
 
+use Illuminate\Routing\Route;
 use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Contracts\ResourceRegistry;
+use Schemastud\Frame\Http\Controllers\FrameManifestController;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -38,8 +40,9 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *   declarations. `resolve()` hands back what is stored, exactly as it does when beam's own registry is
  *   read directly; two objects answering one key must not disagree about what is under it.
  * - The **port** half is the PROJECTION — `get()`/`find()` resolve typed declarations through `definition()`;
- *   `all()` remains Frame's presentation/manifest projection through `definitions()`. The direct access
- *   projection and navigation enumeration are deliberately separate.
+ *   `all()` uses the current realm's typed access population only while Frame builds a realm manifest;
+ *   incidental enumeration and navigation remain the presentation-only `definitions()` projection.
+ *   Direct access projection and navigation enumeration are deliberately separate.
  *
  * So this class declares **no `#[IsRegistry]`**. It owns no keyspace: every entry it can answer for is
  * already addressable at `beam.particle.resources`, and a second root over the same entries would be
@@ -145,7 +148,15 @@ class ParticleResourceRegistryAdapter implements Gated, ResourceRegistry
      */
     public function all(): array
     {
-        // This is intentionally the presentation projection, not the complete typed access population.
-        return $this->registry->definitions();
+        // A mounted realm is part of the manifest's route contract. Include typed, unpresented resources
+        // in that realm so Frame can discover them; FrameManifestController's ResourceAccessGate still
+        // filters by the current actor. Unscoped manifests retain the presentation-only catalog.
+        $route = request()->route();
+        $isManifest = $route instanceof Route
+            && is_a($route->getControllerClass(), FrameManifestController::class, true);
+        $realm = $isManifest ? $route->parameter('realm') : null;
+        $realm = is_string($realm) && $realm !== '' ? $realm : null;
+
+        return $this->registry->accessDefinitions($realm);
     }
 }

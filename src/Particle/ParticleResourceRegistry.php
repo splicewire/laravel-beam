@@ -665,6 +665,40 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
     }
 
     /**
+     * Project the typed resources a realm-scoped Frame manifest may consider for access.
+     *
+     * A realm-scoped resource manifest is not a navigation tree: typed resources without presentation
+     * metadata still need to be discoverable to the Frame client, while their declarations must not
+     * manufacture a nav leaf. The manifest controller applies the actor's {@see ResourceAccessGate}
+     * decision after this realm-membership projection. With no mounted realm, preserve the historical
+     * presentation-only manifest so an unscoped route cannot accidentally advertise every user resource.
+     *
+     * @return list<ResourceDefinition>
+     */
+    public function accessDefinitions(?string $realm = null): array
+    {
+        $projection = [];
+
+        foreach ($this->all() as $resource) {
+            if (! is_string($resource->data) || $resource->data === '') {
+                continue;
+            }
+
+            if ($realm === null) {
+                if (! $resource->isFramed()) {
+                    continue;
+                }
+            } elseif (! in_array($realm, $this->realmsFor($resource->key), true)) {
+                continue;
+            }
+
+            $projection[] = $this->project($resource, $realm);
+        }
+
+        return $projection;
+    }
+
+    /**
      * The realm(s) a key belongs to: its own explicit {@see register()} membership if it named any,
      * else whatever {@see loadRealmMap()} says for it (today's config-driven mechanism).
      *
