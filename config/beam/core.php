@@ -445,6 +445,12 @@ return [
     | the recorded figures deliberately have none (ruling 4).
     */
     'install' => [
+        // The publish tags whose config file `splicewire:beam:install` publishes into this host, or ['*'] for all.
+        // By default none is: an unpublished package config reads the package's own file (mergeConfigFrom), so a
+        // key the package adds later reaches this host too. Publish one only to customize it; once published, it
+        // is this host's file and install never overwrites it without --force.
+        'publish_config' => [],
+
         'desired_state' => [
             // R5. Site-realm paths that must resolve to a published entry for a GUEST. A host serving
             // no docs sets this to [] and the requirement reports "nothing probed" rather than a warn.

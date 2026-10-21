@@ -295,6 +295,39 @@ class BeamInstallTest extends TestCase
     }
 
     /**
+     * Launch row qitem-20261020231629-618c821d: install publishes a package config only on the host's opt-in, so a fresh
+     * host reads the package's own file exactly as a long-installed host that never had the copy does.
+     */
+    public function test_a_package_config_is_not_published_unless_the_host_opts_in(): void
+    {
+        $this->artisan('splicewire:beam:install', ['--no-interaction' => true])
+            ->expectsOutputToContain("config beam/core.php: not published; the package's defaults apply")
+            ->assertExitCode(0);
+
+        $this->assertFileDoesNotExist(base_path('config/beam/core.php'));
+        // The value comes from the package's own file, through mergeConfigFrom.
+        $this->assertSame((require __DIR__.'/../../config/beam/core.php')['table_prefix'], config('beam.core.table_prefix'));
+    }
+
+    public function test_a_host_that_opts_in_still_gets_its_copy(): void
+    {
+        config(['beam.core.install.publish_config' => ['beam-config']]);
+
+        $this->artisan('splicewire:beam:install', ['--no-interaction' => true])->assertExitCode(0);
+
+        $this->assertFileExists(base_path('config/beam/core.php'));
+    }
+
+    public function test_a_run_with_answers_publishes_the_core_file_it_persists_them_into(): void
+    {
+        // Persisting answers is safe-unless-force (see the hand-edited-file test below), so the run that writes them passes it.
+        $this->artisan('splicewire:beam:install', ['--prefix' => 'acme_', '--force' => true, '--no-interaction' => true])->assertExitCode(0);
+
+        $this->assertFileExists(base_path('config/beam/core.php'));
+        $this->assertStringContainsString("'acme_'", File::get(base_path('config/beam/core.php')));
+    }
+
+    /**
      * `--modules` filters WHICH optional packages install; core (order 0) always runs. An empty value
      * installs core only — the leanest retrofit.
      */

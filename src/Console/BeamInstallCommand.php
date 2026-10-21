@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Rushing\SchemaConvergence\ConvergentTable;
+use Schemastud\DataSchemas\Contracts\SchemaIdentity;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\ConvergencePreflight;
@@ -178,7 +179,7 @@ class BeamInstallCommand extends Command
         //    afterwards would move the claimed file straight back off its winning stamp. Travel places
         //    the block; ownership then spends its tick against whatever the block now looks like.
         $before = $travel === null ? [] : MigrationTravel::snapshot($this->laravel->databasePath('migrations'));
-        $this->publishSteps($runSteps, $publishGuard, $publisher);
+        $this->publishSteps($runSteps, $publishGuard, $publisher, $prefix !== null || $sources !== null || $tenancy !== null);
         $this->applyTravel($travel, $before);
         $this->resolveTableOwnership($interactive);
 
@@ -284,7 +285,7 @@ class BeamInstallCommand extends Command
      */
     private function schemaAuthorityUndeclared(): bool
     {
-        return interface_exists(\Schemastud\DataSchemas\Contracts\SchemaIdentity::class)
+        return interface_exists(SchemaIdentity::class)
             && config('data-schemas.base_uri') === null;
     }
 
@@ -412,8 +413,12 @@ class BeamInstallCommand extends Command
         array $steps,
         MigrationPublishGuard $publishGuard,
         SelectedVendorPublisher $publisher,
+        bool $persistsAnswers = false,
     ): void {
         $force = (bool) $this->option('force');
+        $configRoot = rtrim(config_path(), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        // `persistConfig()` writes this run's answers into core's own file, so a run with answers needs it published.
+        $answersFile = config_path('beam/core.php');
 
         foreach ($steps as $step) {
             $this->line("splicewire:beam:install → {$step->package}");
@@ -429,9 +434,36 @@ class BeamInstallCommand extends Command
                     $this->line("  ↳ migration {$identity}: already published or applied; skipped");
                 }
 
-                $publisher->publish($this->laravel, $tag, $selection['paths'], $force);
+                $paths = [];
+                foreach ($selection['paths'] as $source => $destination) {
+                    if (str_starts_with($destination, $configRoot)
+                        && ! $this->configPublishOptedIn($tag)
+                        && ! ($persistsAnswers && $destination === $answersFile)) {
+                        $this->line('  ↳ config '.substr($destination, strlen($configRoot)).": not published; the package's defaults apply (opt in: beam.core.install.publish_config)");
+
+                        continue;
+                    }
+
+                    $paths[$source] = $destination;
+                }
+
+                $publisher->publish($this->laravel, $tag, $paths, $force);
             }
         }
+    }
+
+    /**
+     * A package's config file is published only when the host opts in for its tag (launch row
+     * qitem-20261020231629-618c821d). A published copy byte-identical to the package's defaults freezes them: a nested
+     * key the package adds later is shadowed by the copy (mergeConfigFrom merges only the top level), so a fresh
+     * install would drift from every long-installed host that never had the copy and reads the package file.
+     * `beam.core.install.publish_config` lists the tags whose config this host wants as its own file, or `['*']`.
+     */
+    private function configPublishOptedIn(string $tag): bool
+    {
+        $declared = (array) config('beam.core.install.publish_config', []);
+
+        return in_array('*', $declared, true) || in_array($tag, $declared, true);
     }
 
     /**
