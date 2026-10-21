@@ -361,8 +361,9 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
      * @param  mixed  $entry  the declaration when `$key` is a key; the `list<string>` of realms when
      *                        `$key` is the declaration itself (the historical two-argument call).
      *                        Realms empty/absent ⇒ falls back to {@see loadRealmMap()}'s bulk map for
-     *                        this key (today's `config('frame.realms')` membership); irrelevant for a
-     *                        REST-only (non-framed) resource.
+     *                        this key (today's `config('frame.realms')` membership). Membership remains
+     *                        an access boundary for typed, unpresented resources; it is irrelevant only
+     *                        to DTO-less operation declarations, which have no Frame read projection.
      */
     public function register(RegistryKey|string|ParticleResource $key, mixed $entry = null, ?string $by = null, ?string $ability = null): static
     {
