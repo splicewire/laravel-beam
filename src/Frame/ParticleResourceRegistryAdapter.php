@@ -19,7 +19,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * one-line-per-method forwarder that lets both shapes exist without either compromising.
  *
  * No storage, no logic, no state of its own — every call passes straight through to
- * {@see ParticleResourceRegistry::hasFramedResource()}/{@see ParticleResourceRegistry::definition()}/
+ * {@see ParticleResourceRegistry::hasReadableResource()}/{@see ParticleResourceRegistry::definition()}/
  * {@see ParticleResourceRegistry::definitions()}. Replaces the retired `AdminResourceRegistry`, which
  * carried its OWN parallel `$declarations` store (the thing that made a resource need registering twice —
  * once here, once there); this adapter carries nothing.
@@ -37,8 +37,9 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * - The **kernel** half is the STORE — `beam.particle.resources`, whose entries are `ParticleResource`
  *   declarations. `resolve()` hands back what is stored, exactly as it does when beam's own registry is
  *   read directly; two objects answering one key must not disagree about what is under it.
- * - The **port** half is the PROJECTION — `get()`/`find()`/`all()` run each stored declaration through
- *   `definition()`/`definitions()`, which is where the realm seam and the framed/REST-only filter live.
+ * - The **port** half is the PROJECTION — `get()`/`find()` resolve typed declarations through `definition()`;
+ *   `all()` remains Frame's presentation/manifest projection through `definitions()`. The direct access
+ *   projection and navigation enumeration are deliberately separate.
  *
  * So this class declares **no `#[IsRegistry]`**. It owns no keyspace: every entry it can answer for is
  * already addressable at `beam.particle.resources`, and a second root over the same entries would be
@@ -61,22 +62,23 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * itself as a member from `BeamServiceProvider` — which is why the `alias()` that used to sit under
  * this class's `singleton()` is gone.
  *
- * **Nothing about the projection moved, and it must not.** The index ROUTES; this class PROJECTS. A
- * REST-only particle resource is still `has() === false` here and `true` through {@see unfiltered()},
- * read directly or through the index, and `FrameResourcesIndexMembershipTest` pins both paths.
+ * **The projection separates typed availability from presentation.** The index ROUTES; this class
+ * PROJECTS. A DTO-less operation subject is still `has() === false` here and `true` through
+ * {@see unfiltered()}, read directly or through the index. A typed resource may resolve without gaining
+ * navigation metadata; `FrameResourcesIndexMembershipTest` pins both paths.
  */
 class ParticleResourceRegistryAdapter implements Gated, ResourceRegistry
 {
     public function __construct(private ParticleResourceRegistry $registry) {}
 
     /**
-     * Whether `$key` is a FRAMED resource — narrower than the kernel's `has()` on purpose, and
-     * unchanged: a REST-only particle resource exists in the store and has no frame projection, so the
-     * port must answer `false` for it. Read `unfiltered()->has()` for the store's own answer.
+     * Whether `$key` has a typed read declaration that can be projected as a Frame resource. A DTO-less
+     * operation subject exists in the store but has no Frame resource projection; navigation metadata is
+     * not required for direct access.
      */
     public function has(RegistryKey|string $key): bool
     {
-        return $this->registry->hasFramedResource((string) $key);
+        return $this->registry->hasReadableResource((string) $key);
     }
 
     public function register(RegistryKey|string $key, mixed $entry = null, ?string $by = null, ?string $ability = null): static
@@ -127,13 +129,13 @@ class ParticleResourceRegistryAdapter implements Gated, ResourceRegistry
 
     /**
      * The nullable twin the port gained with the kernel (registry-kernel 38). `definition()` throws
-     * `InvalidArgumentException` for BOTH an unknown key and a REST-only resource, and `get()` keeps
+     * `InvalidArgumentException` for BOTH an unknown key and a DTO-less operation subject, and `get()` keeps
      * that unchanged; this half answers `null` for either, which is what a caller holding a key it took
      * off a URL wants.
      */
     public function find(string $key): ?ResourceDefinition
     {
-        return $this->registry->hasFramedResource($key)
+        return $this->registry->hasReadableResource($key)
             ? $this->registry->definition($key)
             : null;
     }
@@ -143,6 +145,7 @@ class ParticleResourceRegistryAdapter implements Gated, ResourceRegistry
      */
     public function all(): array
     {
+        // This is intentionally the presentation projection, not the complete typed access population.
         return $this->registry->definitions();
     }
 }

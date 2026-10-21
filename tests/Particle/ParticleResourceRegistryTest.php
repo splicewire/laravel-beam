@@ -19,7 +19,8 @@ use Splicewire\Beam\Tests\TestCase;
  * time via {@see ParticleResourceRuntime::toResourceDefinition()}. Discovery is unified onto
  * `#[ParticleResource]` (RDU-07 removed the legacy dual-read); a source-backed (union) resource — which
  * the model-required attribute can't express — registers imperatively via {@see ParticleResourceRegistry::registerDefinition()}.
- * A framed resource appears in the manifest exactly as before; a REST-only one does not — no behavior change.
+ * Presentation remains label-gated, while an unlabeled typed resource can be resolved through the direct
+ * Frame access projection without being enumerated as a manifest/navigation resource.
  *
  * The merge (retired the parallel `AdminResourceRegistry`) split this class' single `get()`/`all()` pair
  * into a REST tier ({@see ParticleResourceRegistry::get()} — returns the {@see ParticleResourceRuntime}
@@ -206,21 +207,20 @@ class ParticleResourceRegistryTest extends TestCase
         $this->assertSame(WidgetGateData::class, $def->data);
     }
 
-    public function test_a_rest_only_particle_resource_does_not_appear_in_the_manifest(): void
+    public function test_an_unlabeled_typed_particle_resource_is_accessible_but_does_not_appear_in_the_manifest(): void
     {
         $registry = new ParticleResourceRegistry;
-        // A label-less #[ParticleResource] is REST-only (not framed) — it has no Frame projection.
+        // A label-less #[ParticleResource] is not a navigation/manifest entry, but its declared read Data
+        // still gives it a direct Frame resource projection.
         $registry->registerClass(FixtureRestOnlyParticleResource::class);
 
-        $this->assertFalse($registry->hasFramedResource('rest-only'), 'a REST-only resource is not a manifest resource');
-        $this->assertSame([], $registry->definitions(), 'and it never appears in the served manifest');
-
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('REST-only');
-        $registry->definition('rest-only');
+        $this->assertFalse($registry->hasFramedResource('rest-only'), 'it is not a presentation resource');
+        $this->assertTrue($registry->hasReadableResource('rest-only'), 'its typed read remains addressable');
+        $this->assertSame([], $registry->definitions(), 'it never appears in the served manifest');
+        $this->assertSame('rest-only', $registry->definition('rest-only')->key);
     }
 
-    public function test_a_framed_resource_appears_in_the_manifest_and_a_rest_only_one_does_not(): void
+    public function test_a_framed_resource_appears_in_the_manifest_and_an_unlabeled_typed_one_does_not(): void
     {
         $registry = new ParticleResourceRegistry;
         $registry->registerClass(FixtureFramedParticleResource::class);
@@ -306,16 +306,16 @@ class ParticleResourceRegistryTest extends TestCase
     }
 
     /**
-     * ⚠️ Membership is NOT the manifest. `definitions()` skips non-framed resources because a manifest is a
-     * nav/editor surface; the host's CRUD gate confines keys that need not be framed at all. Filtering here
-     * the way `definitions()` does would silently 404 every REST-only member of a realm.
+     * ⚠️ Membership is NOT the manifest. `definitions()` skips unpresented resources because a manifest is a
+     * nav/editor surface; the host's CRUD gate confines keys that need not be presented at all. Filtering
+     * here the way `definitions()` does would silently 404 every typed member of a realm.
      */
-    public function test_keys_for_realm_includes_rest_only_resources_that_no_manifest_would_carry(): void
+    public function test_keys_for_realm_includes_typed_resources_that_no_manifest_would_carry(): void
     {
         $registry = new ParticleResourceRegistry;
         $registry->loadRealmMap(['tenant' => ['widgets']]);
 
-        // No label ⇒ not framed ⇒ absent from definitions(), but still a member of the realm.
+        // No label ⇒ not in the presentation projection, but still a typed member of the realm.
         $registry->register($this->declaration('widgets', framed: false));
 
         $this->assertSame([], array_map(fn ($d) => $d->key, $registry->definitions('tenant')));

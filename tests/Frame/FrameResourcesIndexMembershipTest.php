@@ -2,8 +2,12 @@
 
 namespace Splicewire\Beam\Tests\Frame;
 
+use Illuminate\Auth\GenericUser;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route as RoutingRoute;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\RegistryIndex;
+use Schemastud\Frame\Contracts\ResourceAccessGate as FrameResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
@@ -70,29 +74,28 @@ class FrameResourcesIndexMembershipTest extends TestCase
     }
 
     /**
-     * The one thing ticket 77 forbids flattening: the port is a PROJECTION and is deliberately narrower
-     * than the store it forwards to. A REST-only particle resource genuinely exists at
-     * `beam.particle.resources` and has no frame projection, so `has()` is `false` and
-     * `unfiltered()->has()` is `true` — through the adapter, and unchanged through the index.
+     * A DTO-less operation subject genuinely exists at `beam.particle.resources` but has no typed Frame
+     * resource projection, so `has()` is `false` and `unfiltered()->has()` is `true` — through the adapter,
+     * and unchanged through the index.
      */
     public function test_the_projection_stays_narrower_than_the_store_through_the_index(): void
     {
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
-            key: 'rest-only-probe',
+            key: 'operation-only-probe',
             backing: BeamSchema::class,
             label: '',
         ));
 
         $adapter = app(ParticleResourceRegistryAdapter::class);
 
-        $this->assertFalse($adapter->has('rest-only-probe'));
-        $this->assertTrue($adapter->unfiltered()->has('rest-only-probe'));
+        $this->assertFalse($adapter->has('operation-only-probe'));
+        $this->assertTrue($adapter->unfiltered()->has('operation-only-probe'));
 
         $port = app(ResourceRegistry::class);
 
-        $this->assertFalse($port->has('rest-only-probe'));
-        $this->assertNull($port->find('rest-only-probe'));
-        $this->assertTrue($port->unfiltered()->has('rest-only-probe'));
+        $this->assertFalse($port->has('operation-only-probe'));
+        $this->assertNull($port->find('operation-only-probe'));
+        $this->assertTrue($port->unfiltered()->has('operation-only-probe'));
     }
 
     public function test_a_framed_resource_routes_through_the_index_to_beams_projection(): void
@@ -112,5 +115,47 @@ class FrameResourcesIndexMembershipTest extends TestCase
             fn ($definition): string => $definition->key,
             $port->all(),
         ));
+    }
+
+    public function test_an_unlabeled_typed_user_resource_is_directly_accessible_but_not_listed_for_presentation(): void
+    {
+        $this->actingAs(new GenericUser(['id' => 17, 'name' => 'User Realm Principal']));
+
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'user-library-probe',
+            backing: BeamSchema::class,
+            data: 'Acme\\Data\\UserLibraryProbeData',
+            label: '',
+        ), ['user']);
+
+        $adapter = app(ParticleResourceRegistryAdapter::class);
+        $port = app(ResourceRegistry::class);
+        $definition = $adapter->find('user-library-probe');
+
+        $this->assertTrue($adapter->has('user-library-probe'));
+        $this->assertSame('user-library-probe', $adapter->get('user-library-probe')->key);
+        $this->assertSame('user-library-probe', $definition?->key);
+        $this->assertTrue($port->has('user-library-probe'));
+        $this->assertSame('user-library-probe', $port->get('user-library-probe')->key);
+        $this->assertSame('user-library-probe', $port->find('user-library-probe')?->key);
+        $this->assertFalse($this->app->make(ParticleResourceRegistry::class)->hasFramedResource('user-library-probe'));
+        $this->assertSame(['user'], $this->app->make(ParticleResourceRegistry::class)->realmsFor('user-library-probe'));
+
+        $route = new RoutingRoute(['GET'], '/frame/resources/{resource}', static fn () => null);
+        $request = Request::create('/frame/resources/user-library-probe');
+        $route->bind($request);
+        $route->setParameter('realm', 'user');
+        $request->setRouteResolver(static fn () => $route);
+        $this->app->instance('request', $request);
+        $gate = $this->app->make(FrameResourceAccessGate::class);
+        $this->assertTrue($gate->allowsResource($definition));
+
+        $route->setParameter('realm', 'tenant');
+        $this->assertFalse($gate->allowsResource($definition), 'another realm cannot borrow user membership');
+
+        $this->assertNotContains('user-library-probe', array_map(
+            fn ($item): string => $item->key,
+            $port->all(),
+        ), 'the user-realm access projection does not add a manifest or nav leaf');
     }
 }

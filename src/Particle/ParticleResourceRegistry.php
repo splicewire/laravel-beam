@@ -38,18 +38,20 @@ use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
  * The container-singleton registry of {@see ParticleResource} declarations, keyed by resource key — the
  * ONE registry serving both consumers that used to be two separate classes:
  *
- *   - the **REST tier**: {@see ParticleController} resolves a declaration here at request time
- *     ({@see get()}/{@see has()}, unchanged signatures — every existing caller of this registry keeps
- *     working exactly as before);
- *   - **Frame's manifest port**: {@see definition()}/{@see definitions()} project a stored declaration
- *     into a {@see ResourceDefinition}, realm-membership-filtered and overlay-applied. These are
+ *   - the **declaration tier**: {@see ParticleController} resolves a declaration here at request time
+ *     ({@see get()}/{@see has()});
+ *   - **Frame's resource access projection**: {@see definition()} projects a typed declaration into a
+ *     {@see ResourceDefinition}, with realm overlays applied; a caller can address the resource without
+ *     giving it a presentation seat;
+ *   - **Frame's manifest projection**: {@see definitions()} enumerates presentation-eligible resources,
+ *     realm-membership-filtered and overlay-applied. These are
  *     DIFFERENTLY NAMED from Frame's `ResourceRegistry::get()`/`all()` on purpose — this class cannot
  *     implement that port directly (PHP has no overloading; `get(): ParticleResource` and a hypothetical
  *     `get(): ResourceDefinition` can't coexist on one class), so a genuinely stateless one-method-per-line
  *     forwarder ({@see ParticleResourceRegistryAdapter}) sits behind the port and calls
  *     straight through to these.
  *
- * Was two registries: this one (REST-only, no realm concept) and the retired `AdminResourceRegistry`
+ * Was two registries: this one (resource declarations) and the retired `AdminResourceRegistry`
  * (Frame's port implementation, its OWN parallel `$declarations` store, requiring every Frame-manifest
  * resource to be registered TWICE — once here, once there). Merging them means one `register()` call
  * is enough for both transports.
@@ -341,9 +343,10 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
     // ── Registration — gains the realm axis ─────────────────────────────────────────────────────────
 
     /**
-     * Register a {@see ParticleResource} DECLARATION — the canonical stored form, servable over BOTH REST
-     * ({@see get()}) and, when {@see ParticleResource::isFramed()}, Frame's manifest ({@see definitions()}).
-     * Last-wins by key.
+     * Register a {@see ParticleResource} DECLARATION — the canonical stored form, addressable through
+     * {@see get()} and, when it has a read Data shape, Frame's direct resource projection
+     * ({@see definition()}). Presentation eligibility ({@see ParticleResource::isFramed()}) separately
+     * controls enumeration in Frame's manifest ({@see definitions()}). Last-wins by key.
      *
      * ## Two spellings, one method (registry-kernel ticket 53)
      *
@@ -580,8 +583,20 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
     // ── Frame's manifest projection — differently named from ResourceRegistry::get()/all() on purpose ──
 
     /**
-     * Whether `$key` is a framed (Frame-manifest-eligible) resource — false for an unknown key AND for a
-     * REST-only (non-framed) {@see ParticleResource} (acceptance #4: it has no Frame projection).
+     * Whether `$key` has a declared read Data shape that can be projected through Frame.
+     * Presentation eligibility is separate: {@see ParticleResource::isFramed()} controls navigation, not
+     * whether an authorized caller can address the typed resource.
+     */
+    public function hasReadableResource(string $key): bool
+    {
+        return ($resource = $this->lookup($key)) !== null
+            && is_string($resource->data)
+            && $resource->data !== '';
+    }
+
+    /**
+     * Whether `$key` is eligible for Frame presentation — false for an unknown key and for a typed
+     * resource that has no navigation metadata.
      */
     public function hasFramedResource(string $key): bool
     {
@@ -595,8 +610,9 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
     }
 
     /**
-     * Project ONE stored declaration into frame's {@see ResourceDefinition} for the given realm (default:
-     * the identity/realm-agnostic projection). Recomputed at each call — the realm seam is live, not frozen.
+     * Project ONE typed declaration into Frame's {@see ResourceDefinition} for the given realm (default:
+     * the identity/realm-agnostic projection). Presentation metadata is carried separately on the
+     * definition. Recomputed at each call — the realm seam is live, not frozen.
      */
     public function definition(string $key, ?string $realm = null): ResourceDefinition
     {
@@ -604,9 +620,9 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
             "No frame resource registered for key [{$key}]."
         );
 
-        if (! $resource->isFramed()) {
+        if (! is_string($resource->data) || $resource->data === '') {
             throw new InvalidArgumentException(
-                "Resource [{$key}] is a REST-only particle resource; it has no Frame manifest projection."
+                "Resource [{$key}] has no read Data declaration; it has no Frame resource projection."
             );
         }
 
@@ -630,6 +646,9 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
         foreach ($this->all() as $resource) {
             $key = $resource->key;
 
+            // This is the served manifest/presentation projection. Addressable typed resources are
+            // resolved one-at-a-time by definition(); enumerating them here would give every
+            // registered resource a navigation/manifest seat.
             if (! $resource->isFramed()) {
                 continue;
             }
