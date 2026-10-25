@@ -10,13 +10,15 @@ use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaId;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
-/** Resolve within one container scope; registrations and registry/tenant identity invalidate reuse. */
+/** Transient host dependencies with scope-local memoization by registry identity and revision. */
 final class CollectionSchemaResolver
 {
-    /** @var array<string, CollectionDefinition> */
-    private array $definitions = [];
+    private CollectionResolutionScope $scope;
 
-    public function __construct(private SchemaTargetResolver $targets, private SchemaRegistry $registry) {}
+    public function __construct(private SchemaTargetResolver $targets, private SchemaRegistry $registry, ?CollectionResolutionScope $scope = null)
+    {
+        $this->scope = $scope ?? new CollectionResolutionScope;
+    }
 
     public function resolve(string $stem): CollectionDefinition
     {
@@ -30,8 +32,8 @@ final class CollectionSchemaResolver
             && $this->registry instanceof \Splicewire\Beam\Schema\Contracts\SchemaRegistryCacheVersion
             ? $this->registry->cacheVersion() : null;
         $key = $version === null ? null : $stem.'|'.$version;
-        if ($key !== null && isset($this->definitions[$key])) {
-            return $this->definitions[$key];
+        if ($key !== null && ($cached = $this->scope->get($this->registry, $key)) !== null) {
+            return $cached;
         }
         $schema = $this->targets->targetFor($stem);
         if (! array_key_exists('x-beam-collection', $schema)) {
@@ -40,7 +42,7 @@ final class CollectionSchemaResolver
 
         $definition = new CollectionDefinition($schema);
         if ($key !== null) {
-            $this->definitions[$key] = $definition;
+            $this->scope->put($this->registry, $key, $definition);
         }
 
         return $definition;

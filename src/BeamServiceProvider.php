@@ -54,7 +54,7 @@ use Splicewire\Beam\Brand\BrandResolver;
 use Splicewire\Beam\Brand\ConfigBrandResolver;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Collections\CollectionFormSchema;
-use Splicewire\Beam\Collections\CollectionSchemaResolver;
+use Splicewire\Beam\Collections\CollectionResolutionScope;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
@@ -439,7 +439,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // package's, so its system-vs-tenant TargetSchemaResolver + LLM-armed adapter win.
 
         $this->app->scoped(SchemaRegistryRevision::class);
-        $this->app->scoped(CollectionSchemaResolver::class);
+        $this->app->scoped(CollectionResolutionScope::class);
 
         // The default target resolver: pure registry-latest, no host policy.
         $this->app->bind(

@@ -88,6 +88,26 @@ class CollectionSchemaResolverTest extends TestCase
         $this->assertCount($reads * 2, \Illuminate\Support\Facades\DB::getQueryLog());
     }
 
+    public function test_rebinding_the_host_registry_and_target_does_not_reuse_captured_dependencies(): void
+    {
+        $stem = 'https://example.test/schemas/article';
+        $this->registry->register($this->schema($stem, 1));
+        $this->app->instance(\Schemastud\DataSchemas\Contracts\SchemaRegistry::class, $this->registry);
+        $this->app->instance(\Splicewire\Beam\Schema\Contracts\SchemaTargetResolver::class, new RegistrySchemaTargetResolver($this->registry));
+        $this->app->forgetScopedInstances();
+        $first = $this->app->make(CollectionSchemaResolver::class);
+        $this->assertSame('Articles v1', $first->resolve($stem)->label());
+
+        $replacement = new DatabaseSchemaRegistry;
+        $replacement->register($this->schema($stem, 2));
+        $this->app->instance(\Schemastud\DataSchemas\Contracts\SchemaRegistry::class, $replacement);
+        $this->app->instance(\Splicewire\Beam\Schema\Contracts\SchemaTargetResolver::class, new RegistrySchemaTargetResolver($replacement));
+
+        $next = $this->app->make(CollectionSchemaResolver::class);
+        $this->assertNotSame($first, $next);
+        $this->assertSame('Articles v2', $next->resolve($stem)->label());
+    }
+
     public function test_registration_through_another_registry_instance_invalidates_the_scope(): void
     {
         $stem = 'https://example.test/schemas/article';
