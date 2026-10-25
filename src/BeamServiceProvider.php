@@ -54,6 +54,7 @@ use Splicewire\Beam\Brand\BrandResolver;
 use Splicewire\Beam\Brand\ConfigBrandResolver;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Collections\CollectionFormSchema;
+use Splicewire\Beam\Collections\CollectionSchemaResolver;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
@@ -184,6 +185,7 @@ use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
+use Splicewire\Beam\Schema\SchemaRegistryRevision;
 use Splicewire\Beam\Schema\SchemaSources;
 use Splicewire\Beam\Seed\BeamSeedManifest;
 use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
@@ -436,8 +438,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // splicewire-app) OVERRIDES both bindings — its app providers register after the
         // package's, so its system-vs-tenant TargetSchemaResolver + LLM-armed adapter win.
 
-        $this->app->scoped(\Splicewire\Beam\Schema\SchemaRegistryRevision::class);
-        $this->app->scoped(\Splicewire\Beam\Collections\CollectionSchemaResolver::class);
+        $this->app->scoped(SchemaRegistryRevision::class);
+        $this->app->scoped(CollectionSchemaResolver::class);
 
         // The default target resolver: pure registry-latest, no host policy.
         $this->app->bind(
