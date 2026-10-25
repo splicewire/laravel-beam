@@ -49,7 +49,7 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
  * (`Splicewire\Tower\Schema\SchemaVersionResolver` — a tower class, not beam's), and
  * {@see SchemaLadderMigrator}) is untouched.
  */
-class BeamSchemaRegistry implements EnumeratesVersions, SchemaRegistry
+class BeamSchemaRegistry implements Contracts\SchemaRegistryCacheVersion, EnumeratesVersions, SchemaRegistry
 {
     /**
      * @param  array<int, string>  $sources  the ordered source keys, e.g. `['db','file']`. READ order.
@@ -98,6 +98,7 @@ class BeamSchemaRegistry implements EnumeratesVersions, SchemaRegistry
         }
 
         $this->tierFor($source)->register($schema);
+        app(SchemaRegistryRevision::class)->changed();
     }
 
     /**
@@ -116,6 +117,29 @@ class BeamSchemaRegistry implements EnumeratesVersions, SchemaRegistry
         }
 
         return $this->sources[0];
+    }
+
+    public function cacheVersion(): ?string
+    {
+        $tiers = [];
+        foreach ($this->sources as $source) {
+            $tier = $this->tierFor($source);
+            if ($tier instanceof Contracts\SchemaRegistryCacheVersion) {
+                $version = $tier->cacheVersion();
+                if ($version === null) {
+                    return null;
+                }
+                $tiers[$source] = $version;
+            } elseif ($tier instanceof \Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry) {
+                // Code artifacts are fixed within a scope; registerIn() advances the revision.
+                $tiers[$source] = 'filesystem';
+            } else {
+                // A custom mutable tier has not promised an observable revision.
+                return null;
+            }
+        }
+
+        return json_encode([spl_object_id($this), $tiers, app(SchemaRegistryRevision::class)->version()], JSON_THROW_ON_ERROR);
     }
 
     /**

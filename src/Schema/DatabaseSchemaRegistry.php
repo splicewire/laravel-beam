@@ -31,7 +31,7 @@ use Splicewire\Beam\Models\BeamSchema;
  *  - a DIFFERENT fingerprint throws {@see SchemaRegistryConflict} — a changed
  *    shape requires a new `$id`/version.
  */
-class DatabaseSchemaRegistry implements EnumeratesVersions, SchemaRegistry
+class DatabaseSchemaRegistry implements Contracts\SchemaRegistryCacheVersion, EnumeratesVersions, SchemaRegistry
 {
     protected string $table;
 
@@ -73,6 +73,7 @@ class DatabaseSchemaRegistry implements EnumeratesVersions, SchemaRegistry
             'fingerprint' => $incoming,
             'artifact' => $schema,
         ]);
+        app(SchemaRegistryRevision::class)->changed();
 
         // Publish one event only for a newly persisted Collection version. Hosts such as Tower can
         // enqueue their own after-commit drain without teaching this registry about host jobs; an
@@ -80,6 +81,20 @@ class DatabaseSchemaRegistry implements EnumeratesVersions, SchemaRegistry
         if (array_key_exists('x-beam-collection', $schema)) {
             event(new CollectionSchemaRegistered(SchemaId::from($id)->stem()));
         }
+    }
+
+    public function cacheVersion(): ?string
+    {
+        $connection = $this->query()->getConnection();
+
+        // A transaction may roll back a newly registered version. Keep reads inside it fresh.
+        if ($connection->transactionLevel() > 0) {
+            return null;
+        }
+
+        return json_encode([spl_object_id($connection), $connection->getName(), $connection->getDatabaseName(),
+            $connection->getTablePrefix(), $connection->getConfig('search_path'), $connection->getConfig('schema'),
+            $this->table, app(SchemaRegistryRevision::class)->version()], JSON_THROW_ON_ERROR);
     }
 
     public function get(string $id): ?array

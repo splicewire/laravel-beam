@@ -436,6 +436,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // splicewire-app) OVERRIDES both bindings — its app providers register after the
         // package's, so its system-vs-tenant TargetSchemaResolver + LLM-armed adapter win.
 
+        $this->app->scoped(\Splicewire\Beam\Schema\SchemaRegistryRevision::class);
+        $this->app->scoped(\Splicewire\Beam\Collections\CollectionSchemaResolver::class);
+
         // The default target resolver: pure registry-latest, no host policy.
         $this->app->bind(
             SchemaTargetResolver::class,
