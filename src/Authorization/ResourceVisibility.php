@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Authorization;
 use ArgumentCountError;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Http\Request;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Doctor\ModelLessReadGateAudit;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
@@ -91,8 +92,12 @@ class ResourceVisibility
      * May `$actor` READ this resource? Refuses only a model-less resource whose declared ability the actor
      * does not hold — see the class docblock for why every other arm answers true here.
      */
-    public function readable(ResourceDefinition|ParticleResource $resource, ?Authenticatable $actor): bool
-    {
+    public function readable(
+        ResourceDefinition|ParticleResource $resource,
+        ?Authenticatable $actor,
+        ?string $mountedRealm = null,
+        ?Request $request = null,
+    ): bool {
         // ADR-0230: a guest reads a resource only through its declared Public Read. A null actor (a guest the
         // route middleware let through is still a guest here) is admitted ONLY by a declared Public Read and
         // refused an undeclared resource, whatever its policy would answer; the read pipeline then narrows the
@@ -106,7 +111,14 @@ class ResourceVisibility
         }
 
         try {
-            return $this->gate->forUser($actor)->allows($this->policyOf($resource));
+            $particle = $resource instanceof ParticleResource
+                ? $resource
+                : $this->particles->find($resource->key);
+            $ability = $particle !== null
+                ? app(ResourceReadGuard::class)->declaredReadAbility($particle, $mountedRealm, $request ?? request())
+                : $this->policyOf($resource);
+
+            return $ability !== null && $this->gate->forUser($actor)->allows($ability);
         } catch (ArgumentCountError|TypeError) {
             // An ability whose callback demands a subject — a write-shaped ability declared where a
             // subject-free read one belongs. Refused rather than thrown: see the class docblock.
@@ -162,7 +174,7 @@ class ResourceVisibility
         ?string $mountedRealm = null,
     ): bool {
         if ($definition->model === null) {
-            return $actor !== null && $this->readable($definition, $actor);
+            return $actor !== null && $this->readable($definition, $actor, $mountedRealm, request());
         }
 
         $resource = $this->particles->find($definition->key);

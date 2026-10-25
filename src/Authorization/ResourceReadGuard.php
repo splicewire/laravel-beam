@@ -12,6 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Splicewire\Beam\Frame\ParticleResourceActions;
+use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -81,7 +83,7 @@ class ResourceReadGuard
      * it would refuse everyone. A model-less declaration uses this same ability string as its read gate; every handler
      * path must ask it again after the socket admission rather than treating the missing model as a missing decision.
      */
-    public function declaredReadAbility(ParticleResource $resource): ?string
+    public function declaredReadAbility(ParticleResource $resource, ?string $realm = null, ?Request $request = null): ?string
     {
         $ability = (string) $resource->policy;
 
@@ -89,16 +91,31 @@ class ResourceReadGuard
             return null;
         }
 
-        return $ability;
+        $defaults = ($request?->route() instanceof Route) ? $request->route()->defaults : [];
+        $realm ??= is_string($defaults[ParticleOperationController::REALM] ?? null)
+            ? $defaults[ParticleOperationController::REALM]
+            : (is_string($defaults['realm'] ?? null) ? $defaults['realm'] : null);
+        $routeOverrides = $defaults[ParticleOperationController::ABILITY_OVERRIDES] ?? null;
+
+        return app(ParticleResourceActions::class)->effectiveResourceReadAbility(
+            $resource->key,
+            $ability,
+            $realm,
+            is_array($routeOverrides) ? $routeOverrides : null,
+        );
     }
 
     /**
      * Does the actor hold the declared read ability, when one is declared? Every read path asks this, through
      * {@see inspect()} or directly: the list, the detail, the filters and {@see ResourceVisibility::listable()}.
      */
-    public function inspectDeclaredAbility(ParticleResource $resource, GateContract $gate): Response
-    {
-        $ability = $this->declaredReadAbility($resource);
+    public function inspectDeclaredAbility(
+        ParticleResource $resource,
+        GateContract $gate,
+        ?Request $request = null,
+        ?string $realm = null,
+    ): Response {
+        $ability = $this->declaredReadAbility($resource, $realm, $request ?? app(Request::class));
 
         if ($ability === null || $gate->allows($ability)) {
             return Response::allow();
@@ -108,9 +125,13 @@ class ResourceReadGuard
     }
 
     /** {@see inspectDeclaredAbility()} for a named actor (a null actor is a guest). */
-    public function inspectDeclaredAbilityFor(ParticleResource $resource, ?Authenticatable $actor): Response
-    {
-        return $this->inspectDeclaredAbility($resource, Gate::forUser($actor));
+    public function inspectDeclaredAbilityFor(
+        ParticleResource $resource,
+        ?Authenticatable $actor,
+        ?Request $request = null,
+        ?string $realm = null,
+    ): Response {
+        return $this->inspectDeclaredAbility($resource, Gate::forUser($actor), $request, $realm);
     }
 
     /**
@@ -149,7 +170,7 @@ class ResourceReadGuard
                 : Response::deny("Reading [{$resource->key}] requires a declared Public Read for a guest.");
         }
 
-        $declared = $this->inspectDeclaredAbility($resource, $gate);
+        $declared = $this->inspectDeclaredAbility($resource, $gate, $request, $mountedRealm);
         if ($declared->denied()) {
             return $declared;
         }

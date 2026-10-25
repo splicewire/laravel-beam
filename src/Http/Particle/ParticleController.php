@@ -129,7 +129,7 @@ class ParticleController extends Controller
         $relativeQuery = $this->relativeBaseQuery($request);
 
         // UX-08c: a declared read ability gates the list through a relative mount too.
-        ResourceReadGuard::forApp()->inspectDeclaredAbility($resource, Gate::forUser($request->user()))->authorize();
+        ResourceReadGuard::forApp()->inspectDeclaredAbility($resource, Gate::forUser($request->user()), $request)->authorize();
 
         // ADR-0230: a guest reads a resource only through its declared Public Read. The standalone path's
         // denyUngatedRead() below refuses a guest without one, but a relative mount does not reach it, so
@@ -305,7 +305,7 @@ class ParticleController extends Controller
     {
         $resource = $this->particleResource($request);
         // UX-08c: a declared read ability refuses before the record is even looked up.
-        ResourceReadGuard::forApp()->inspectDeclaredAbility($resource, Gate::forUser($request->user()))->authorize();
+        ResourceReadGuard::forApp()->inspectDeclaredAbility($resource, Gate::forUser($request->user()), $request)->authorize();
         // ADR-0230: a guest reads a resource only through its declared Public Read — so the model policy's
         // `view` below never decides a guest's read of a resource that declares none. Signed-in reader untouched.
         ResourceReadGuard::forApp()->inspectGuestReadFor($resource, $request->user())->authorize();

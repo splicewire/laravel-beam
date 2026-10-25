@@ -130,6 +130,10 @@ class ParticleMounter
                 $route->defaults(ParticleOperationController::REALM, $options['realm']);
             }
 
+            if (is_array($options['abilityOverrides'] ?? null)) {
+                $route->defaults(ParticleOperationController::ABILITY_OVERRIDES, $options['abilityOverrides']);
+            }
+
             return $route;
         };
 

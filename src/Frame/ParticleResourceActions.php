@@ -110,6 +110,22 @@ class ParticleResourceActions
             : $ability;
     }
 
+    /** Apply the mounted tenant realm's declared map to a resource read policy. */
+    public function effectiveResourceReadAbility(
+        string $resourceKey,
+        string $ability,
+        ?string $realm = null,
+        ?array $routeOverrides = null,
+    ): string {
+        if ($realm !== 'tenant') {
+            return $ability;
+        }
+
+        $overrides = $routeOverrides ?? $this->overridesForResource($resourceKey, $realm);
+
+        return is_string($overrides[$ability] ?? null) ? $overrides[$ability] : $ability;
+    }
+
     /**
      * Where the op renders, from its subject's coordinates; null when frame has no placement for it.
      *
@@ -170,5 +186,24 @@ class ParticleResourceActions
         }
 
         return $routes[''] ?? null;
+    }
+
+    /** @return array<string, string> */
+    protected function overridesForResource(string $resourceKey, string $realm): array
+    {
+        foreach ($this->router->getRoutes()->getRoutes() as $route) {
+            if (($route->defaults[ParticleOperationController::RESOURCE] ?? null) !== $resourceKey
+                || ($route->defaults[ParticleOperationController::REALM] ?? null) !== $realm) {
+                continue;
+            }
+
+            $overrides = $route->defaults[ParticleOperationController::ABILITY_OVERRIDES] ?? null;
+
+            if (is_array($overrides)) {
+                return $overrides;
+            }
+        }
+
+        return [];
     }
 }
