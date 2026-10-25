@@ -184,6 +184,47 @@ class ParticleResourceActionsTest extends TestCase
         $this->assertSame('/api/vaults/reload', $legacy['reload']->url);
     }
 
+    public function test_action_visibility_uses_the_ability_of_the_selected_tenant_mount(): void
+    {
+        $this->op('reload', NoSubject::class, 'action', ability: 'ux.author', input: false);
+        Particle::ops('api/vaults', 'vaults', 'reload', ['name' => 'vaults.reload']);
+        Particle::ops('tenant/vaults', 'vaults', 'reload', [
+            'realm' => 'tenant',
+            'name' => 'tenant.vaults.reload',
+            'abilityOverrides' => ['ux.author' => 'site.edit'],
+        ]);
+
+        Gate::define('entitlement:ux.author', fn ($user): bool => $user instanceof ActionOwner);
+        Gate::define('entitlement:site.edit', fn ($user): bool => $user instanceof ActionMember);
+
+        $owner = new ActionOwner;
+        $member = new ActionMember;
+        $resource = $this->app->make(ParticleResourceRegistry::class)->get('vaults');
+        $tenantDefinition = $resource->toResourceDefinition('tenant');
+        $operatorDefinition = $resource->toResourceDefinition('operator');
+        $action = $tenantDefinition->action('reload');
+        $authorizer = $this->app->make(ResourceActionAuthorizer::class);
+
+        $request = request();
+        $tenantManifestRoute = new \Illuminate\Routing\Route(['GET'], '/tenant/frame/manifest', fn () => null);
+        $tenantManifestRoute->defaults('realm', 'tenant');
+        $request->setRouteResolver(fn () => $tenantManifestRoute);
+
+        $this->actingAs($owner);
+        $this->assertFalse($authorizer->allows($tenantDefinition, $action), 'Central ux.author alone must not authorize tenant actions.');
+
+        $this->actingAs($member);
+        $this->assertTrue($authorizer->allows($tenantDefinition, $action), 'Tenant site.edit alone authorizes the tenant mount.');
+
+        $operatorRoute = new \Illuminate\Routing\Route(['GET'], '/operator/frame/manifest', fn () => null);
+        $operatorRoute->defaults('realm', 'operator');
+        $request->setRouteResolver(fn () => $operatorRoute);
+
+        $this->assertFalse($authorizer->allows($operatorDefinition, $operatorDefinition->action('reload')));
+        $this->actingAs($owner);
+        $this->assertTrue($authorizer->allows($operatorDefinition, $operatorDefinition->action('reload')));
+    }
+
     public function test_false_undeclared_parent_subject_and_unmounted_ops_project_nothing(): void
     {
         $this->op('declared-off', NoSubject::class, false);

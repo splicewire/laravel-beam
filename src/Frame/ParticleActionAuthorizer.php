@@ -77,7 +77,13 @@ class ParticleActionAuthorizer implements ResourceActionAuthorizer
             $subject = is_object($actor) && $this->yieldsActor($operation) ? $actor : null;
         }
 
-        return app(AbilityResolver::class)->allows($actor, $operation->ability, $subject);
+        $realm = request()->route()?->defaults['realm'] ?? null;
+        $ability = app(ParticleResourceActions::class)->effectiveAbility(
+            $operation,
+            is_string($realm) ? $realm : null,
+        );
+
+        return app(AbilityResolver::class)->allows($actor, $ability, $subject);
     }
 
     protected function yieldsActor(ParticleOperation $operation): bool

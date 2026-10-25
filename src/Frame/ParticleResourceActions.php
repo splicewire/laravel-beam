@@ -94,6 +94,22 @@ class ParticleResourceActions
         );
     }
 
+    /** The ability enforced by the selected mount, including its tenant-only authorization mapping. */
+    public function effectiveAbility(ParticleOperation $operation, ?string $realm = null): string|false|null
+    {
+        $ability = $operation->ability;
+
+        if (! is_string($ability) || $realm !== 'tenant') {
+            return $ability;
+        }
+
+        $overrides = $this->route($operation, $realm)?->defaults[ParticleOperationController::ABILITY_OVERRIDES] ?? [];
+
+        return is_array($overrides) && is_string($overrides[$ability] ?? null)
+            ? $overrides[$ability]
+            : $ability;
+    }
+
     /**
      * Where the op renders, from its subject's coordinates; null when frame has no placement for it.
      *
