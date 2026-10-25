@@ -73,6 +73,13 @@ class DatabaseSchemaRegistry implements EnumeratesVersions, SchemaRegistry
             'fingerprint' => $incoming,
             'artifact' => $schema,
         ]);
+
+        // Publish one event only for a newly persisted Collection version. Hosts such as Tower can
+        // enqueue their own after-commit drain without teaching this registry about host jobs; an
+        // idempotent re-publish returned above and does not drain twice.
+        if (array_key_exists('x-beam-collection', $schema)) {
+            event(new CollectionSchemaRegistered(SchemaId::from($id)->stem()));
+        }
     }
 
     public function get(string $id): ?array

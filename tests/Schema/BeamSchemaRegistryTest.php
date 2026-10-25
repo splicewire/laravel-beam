@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Schema;
 
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use Schemastud\DataSchemas\Contracts\EnumeratesVersions;
@@ -11,6 +12,7 @@ use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Schema\BeamSchemaRegistry;
+use Splicewire\Beam\Schema\CollectionSchemaRegistered;
 use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -137,6 +139,24 @@ class BeamSchemaRegistryTest extends TestCase
         // It landed in the DB tier (first source), NOT on disk.
         $this->assertTrue((new DatabaseSchemaRegistry)->has($id), 'register() must write to the first source (db).');
         $this->assertFalse((new FilesystemSchemaRegistry($this->frozenDir))->has($id), 'register() must NOT write to a later source (file).');
+    }
+
+    public function test_new_collection_registration_publishes_its_unversioned_stem(): void
+    {
+        $this->createDbTier();
+        Event::fake();
+        $schema = $this->schema(self::STEM.'/collections/articles/2', 'collection');
+        $schema['x-beam-collection'] = ['label' => 'Articles', 'nameField' => 'title'];
+
+        $registry = new DatabaseSchemaRegistry;
+        $registry->register($schema);
+        $registry->register($schema); // An idempotent re-publish must not schedule a second drain.
+
+        Event::assertDispatched(CollectionSchemaRegistered::class, fn ($event) =>
+            $event->stem === self::STEM.'/collections/articles'
+        );
+        $registry->register($this->schema(self::STEM.'/ordinary/1', 'ordinary'));
+        Event::assertDispatchedTimes(CollectionSchemaRegistered::class, 1);
     }
 
     public function test_write_once_immutability_preserved(): void
