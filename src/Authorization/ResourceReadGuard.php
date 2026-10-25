@@ -13,6 +13,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Splicewire\Beam\Frame\ParticleResourceActions;
+use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\ParticleListQuery;
@@ -96,6 +97,13 @@ class ResourceReadGuard
             ? $defaults[ParticleOperationController::REALM]
             : (is_string($defaults['realm'] ?? null) ? $defaults['realm'] : null);
         $routeOverrides = $defaults[ParticleOperationController::ABILITY_OVERRIDES] ?? null;
+        if (($defaults[ParticleController::RESOURCE] ?? null) === $resource->key
+            && ($defaults[ParticleOperationController::REALM] ?? null) === 'tenant'
+            && ! is_array($routeOverrides)) {
+            // A matched tenant CRUD route's own empty map is authoritative too; never
+            // borrow an editor route's map merely because it was registered first.
+            $routeOverrides = [];
+        }
 
         return app(ParticleResourceActions::class)->effectiveResourceReadAbility(
             $resource->key,

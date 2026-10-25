@@ -6,7 +6,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Schema;
 use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceVisibility;
@@ -19,6 +21,7 @@ use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Particle\Subject\NoSubject;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -38,6 +41,11 @@ class RealmScopedResourceReadAbilityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        Schema::create('vaults', function (Blueprint $table): void {
+            $table->id();
+        });
+        RealmVault::query()->create();
 
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'realm-vaults',
@@ -101,6 +109,34 @@ class RealmScopedResourceReadAbilityTest extends TestCase
         $this->assertTrue($centralRead->allowed(), $centralRead->message() ?? '');
     }
 
+    public function test_rest_reads_use_only_the_matched_tenant_mounts_author_override(): void
+    {
+        $router = app('router');
+        $mounter = app(ParticleMounter::class);
+        $mounter->resource($router, 'tenant-mapped/realm-vaults', 'realm-vaults', [
+            'only' => ['index'],
+            'realm' => 'tenant',
+            'abilityOverrides' => ['ux.author' => 'site.edit'],
+        ]);
+        $mounter->resource($router, 'tenant-strict/realm-vaults', 'realm-vaults', [
+            'only' => ['index'],
+            'realm' => 'tenant',
+        ]);
+
+        $strictRoute = collect($router->getRoutes()->getRoutes())->first(
+            fn (Route $route): bool => $route->uri() === 'tenant-strict/realm-vaults',
+        );
+        $strictRequest = Request::create('/tenant-strict/realm-vaults', 'GET');
+        $strictRequest->setRouteResolver(fn () => $strictRoute);
+        $this->assertSame('ux.author', app(ResourceReadGuard::class)->declaredReadAbility(
+            app(ParticleResourceRegistry::class)->get('realm-vaults'), request: $strictRequest,
+        ));
+
+        $this->actingAs(new RealmSiteEditor)->getJson('/tenant-mapped/realm-vaults')->assertOk();
+        $this->actingAs(new RealmSiteEditor)->getJson('/tenant-strict/realm-vaults')->assertForbidden();
+        $this->actingAs(new RealmCentralAuthor)->getJson('/tenant-strict/realm-vaults')->assertOk();
+    }
+
     private function requestForRealm(string $realm, array $query = []): Request
     {
         $request = Request::create('/frame/resources/realm-vaults', 'GET', $query);
@@ -115,6 +151,8 @@ class RealmScopedResourceReadAbilityTest extends TestCase
 class RealmVault extends \Illuminate\Database\Eloquent\Model
 {
     protected $table = 'vaults';
+
+    public $timestamps = false;
 }
 
 class RealmVaultData extends \Spatie\LaravelData\Data

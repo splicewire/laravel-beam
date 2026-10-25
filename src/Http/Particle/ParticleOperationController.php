@@ -149,8 +149,12 @@ class ParticleOperationController extends Controller
                 ? null
                 : ($operation->abilityModel ?? $model);
 
+            $routeRealm = is_string($defaults[static::REALM] ?? null) ? $defaults[static::REALM] : null;
+            $routeOverrides = $routeRealm === 'tenant' && is_array($defaults[static::ABILITY_OVERRIDES] ?? null)
+                ? $defaults[static::ABILITY_OVERRIDES]
+                : ($routeRealm === 'tenant' ? [] : null);
             $ability = app(\Splicewire\Beam\Frame\ParticleResourceActions::class)
-                ->effectiveAbility($operation, is_string($defaults[static::REALM] ?? null) ? $defaults[static::REALM] : null);
+                ->effectiveAbility($operation, $routeRealm, $routeOverrides);
 
             if ($this->abilities->denies($this->actor->actor(), $ability, $subject)) {
                 throw new AuthorizationException;

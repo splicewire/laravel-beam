@@ -146,6 +146,47 @@ class HttpTransportAbilityTest extends TestCase
         $this->actingAs($centralAuthor)->postJson('/untagged/gadgets/1/tune')->assertOk();
     }
 
+    public function test_each_tenant_mount_uses_only_its_own_author_override(): void
+    {
+        $this->mountAuthorScopedOperation('tenant-editor/gadgets', [
+            'name' => 'tenant.editor.tune',
+            'realm' => 'tenant',
+            'abilityOverrides' => ['ux.author' => 'site.edit'],
+        ]);
+        $this->mountAuthorScopedOperation('tenant-strict/gadgets', [
+            'name' => 'tenant.strict.tune',
+            'realm' => 'tenant',
+        ]);
+
+        $centralAuthor = new ScopedAbilityUser;
+        $centralAuthor->uxAuthor = true;
+        $tenantEditor = new ScopedAbilityUser;
+        $tenantEditor->siteEdit = true;
+
+        $this->actingAs($tenantEditor)->postJson('/tenant-editor/gadgets/1/tune')->assertOk();
+        $this->actingAs($tenantEditor)->postJson('/tenant-strict/gadgets/1/tune')->assertForbidden();
+        $this->actingAs($centralAuthor)->postJson('/tenant-strict/gadgets/1/tune')->assertOk();
+    }
+
+    public function test_tenant_override_cannot_remap_an_ability_other_than_ux_author(): void
+    {
+        Gate::define('entitlement:tune', fn ($user): bool => $user instanceof ScopedAbilityUser && $user->uxAuthor);
+        $operation = $this->op(name: 'generic', ability: 'tune', abilityModel: false);
+        $this->app->make(ParticleOperationRegistry::class)->register($operation);
+        Particle::ops('tenant-generic/gadgets', 'gadgets', 'generic', [
+            'realm' => 'tenant',
+            'abilityOverrides' => ['tune' => 'site.edit'],
+        ]);
+
+        $tenantEditor = new ScopedAbilityUser;
+        $tenantEditor->siteEdit = true;
+        $centralAuthor = new ScopedAbilityUser;
+        $centralAuthor->uxAuthor = true;
+
+        $this->actingAs($tenantEditor)->postJson('/tenant-generic/gadgets/1/generic')->assertForbidden();
+        $this->actingAs($centralAuthor)->postJson('/tenant-generic/gadgets/1/generic')->assertOk();
+    }
+
     // ── The actor arrives through the port, not ambient auth ─────────────────────────────────────────
 
     public function test_the_decision_follows_the_actor_port_rather_than_the_ambient_guard_user(): void

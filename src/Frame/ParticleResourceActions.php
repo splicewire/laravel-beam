@@ -94,16 +94,21 @@ class ParticleResourceActions
         );
     }
 
-    /** The ability enforced by the selected mount, including its tenant-only authorization mapping. */
-    public function effectiveAbility(ParticleOperation $operation, ?string $realm = null): string|false|null
+    /** The ability enforced by the matched mount, including its narrow tenant author mapping. */
+    public function effectiveAbility(
+        ParticleOperation $operation,
+        ?string $realm = null,
+        ?array $routeOverrides = null,
+    ): string|false|null
     {
         $ability = $operation->ability;
 
-        if (! is_string($ability) || $realm !== 'tenant') {
+        if (! is_string($ability) || $ability !== 'ux.author' || $realm !== 'tenant') {
             return $ability;
         }
 
-        $overrides = $this->route($operation, $realm)?->defaults[ParticleOperationController::ABILITY_OVERRIDES] ?? [];
+        $overrides = $routeOverrides
+            ?? ($this->route($operation, $realm)?->defaults[ParticleOperationController::ABILITY_OVERRIDES] ?? []);
 
         return is_array($overrides) && is_string($overrides[$ability] ?? null)
             ? $overrides[$ability]
@@ -123,7 +128,9 @@ class ParticleResourceActions
 
         $overrides = $routeOverrides ?? $this->overridesForResource($resourceKey, $realm);
 
-        return is_string($overrides[$ability] ?? null) ? $overrides[$ability] : $ability;
+        return $ability === 'ux.author' && is_string($overrides['ux.author'] ?? null)
+            ? $overrides['ux.author']
+            : $ability;
     }
 
     /**
