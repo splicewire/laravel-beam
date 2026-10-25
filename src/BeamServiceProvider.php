@@ -2438,7 +2438,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
     /**
      * Mount POST /beam/intake/{schema} onto {@see PublicIntakeController}, with the configured throttle
-     * and — when enabled — the opt-in honeypot. The `{schema}` param is a schema stem/ref, so it may
+     * and — when enabled, as the publishable config ships it — the honeypot. The `{schema}` param is a schema stem/ref, so it may
      * contain slashes.
      */
     protected function registerIntakeRoute(): void

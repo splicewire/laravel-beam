@@ -9,9 +9,9 @@ use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Opt-in bot-defense middleware for the public intake door (beam-write-pipeline ticket 04), **default
- * off** — a host adds it (or flips `beam.intake.honeypot.enabled`) deliberately; it is never silently
- * imposed.
+ * Bot-defense middleware for the public intake door (beam-write-pipeline ticket 04), **on** in the publishable
+ * config (`beam.core.intake.honeypot.enabled`; EP-07d). It is safe on by default because it refuses only a FILLED
+ * honeypot field: a client that never sends the field, or sends it empty, passes untouched.
  *
  * A honeypot is a form field a human never fills but a naive bot does. When the configured field is
  * present, the request is silently accepted — a 201 indistinguishable from a real submission — and the

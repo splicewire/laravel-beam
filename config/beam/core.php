@@ -69,9 +69,12 @@ return [
         // A schema that resolves but is absent here is refused (403) by the deny-default gate.
         'public_schemas' => [],
 
-        // Opt-in honeypot bot defence, default OFF — never silently imposed.
+        // Honeypot bot defence, ON in this publishable config: the door refuses (with a silent 201, persisting nothing)
+        // only a request whose honeypot field is FILLED. An absent or empty field passes, so a client that never sends it
+        // is unaffected. Page forms (laravel-beam-ux's IntakeForm) always send it. A host that published this file keeps
+        // its own value, and `beam:doctor` warns where page forms are offered with it off.
         'honeypot' => [
-            'enabled' => false,
+            'enabled' => true,
             'field' => 'website',
         ],
 

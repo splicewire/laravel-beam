@@ -183,6 +183,23 @@ class PublicIntakeRouteTest extends TestCase
         $this->assertDatabaseCount(Beam::table('submissions'), 0);
     }
 
+    public function test_with_the_honeypot_on_an_absent_or_empty_field_still_submits(): void
+    {
+        // Why the honeypot is safe on by default (EP-07d): it refuses only a FILLED field.
+        $this->postJson('beam/intake/contact', ['title' => 'No field', 'body' => 'b', 'summary' => null])->assertStatus(201);
+        $this->postJson('beam/intake/contact', ['title' => 'Empty field', 'body' => 'b', 'summary' => null, 'website' => ''])->assertStatus(201);
+
+        $this->assertDatabaseCount(Beam::table('submissions'), 2);
+    }
+
+    public function test_the_publishable_config_ships_the_honeypot_on(): void
+    {
+        $config = require dirname(__DIR__, 2).'/config/beam/core.php';
+
+        $this->assertTrue($config['intake']['honeypot']['enabled']);
+        $this->assertSame('website', $config['intake']['honeypot']['field']);
+    }
+
     public function test_an_invalid_payload_is_rejected_with_422(): void
     {
         $response = $this->postJson('beam/intake/contact', ['body' => 'no title']);
