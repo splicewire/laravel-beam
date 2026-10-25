@@ -2,11 +2,11 @@
 
 namespace Splicewire\Beam\Tests\Doctor;
 
-use Symfony\Component\Finder\Finder;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
+use Symfony\Component\Finder\Finder;
 
 /**
  * docs-walkthrough DOC-11(c), DOCS-09: a doctor check name is a CLASS CONSTANT, so a docs page that quotes a

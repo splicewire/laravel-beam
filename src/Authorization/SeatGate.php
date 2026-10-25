@@ -277,8 +277,7 @@ class SeatGate
         SeatGateResolution $resolution,
         ?Authenticatable $actor,
         ?string $realm = null,
-    ): bool
-    {
+    ): bool {
         $definition = $resolution->resource;
         if ($definition === null || ! $this->visibility->readable($definition, $actor)) {
             return false;

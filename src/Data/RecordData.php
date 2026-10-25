@@ -2,8 +2,8 @@
 
 namespace Splicewire\Beam\Data;
 
-use Schemastud\DataSchemas\Attributes\Title;
 use Illuminate\Database\Eloquent\Builder;
+use Schemastud\DataSchemas\Attributes\Title;
 use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Collections\CollectionBacking;
 use Splicewire\Beam\Collections\CollectionInputData;

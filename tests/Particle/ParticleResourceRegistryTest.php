@@ -411,5 +411,4 @@ class FixtureStreamOnlyBacking implements StreamsRecords
     {
         return new CursorPaginator([], $perPage);
     }
-
 }

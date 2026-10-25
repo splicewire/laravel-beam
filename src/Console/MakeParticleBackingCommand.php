@@ -2,8 +2,6 @@
 
 namespace Splicewire\Beam\Console;
 
-use Illuminate\Support\Str;
-
 /**
  * `splicewire:beam:make:particle-backing` — mints a `ResourceBacking` with exactly the capability
  * sub-interfaces asked for (scaffold-family ticket 01). The port is a method-less MARKER by design

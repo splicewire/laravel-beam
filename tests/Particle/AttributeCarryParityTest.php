@@ -3,7 +3,6 @@
 namespace Splicewire\Beam\Tests\Particle;
 
 use ReflectionClass;
-use ReflectionNamedType;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
@@ -230,15 +229,11 @@ class CarryFixtureOp
     filterable: true,
     publicRead: 'carry-public-read',
 )]
-class CarryFixtureResource
-{
-}
+class CarryFixtureResource {}
 
 // ── Minimal valid occupants for every class-string slot ──────────────────────────────────────────
 
-class CarryFixtureModel extends \Illuminate\Database\Eloquent\Model
-{
-}
+class CarryFixtureModel extends \Illuminate\Database\Eloquent\Model {}
 
 class CarryFixtureInput extends \Spatie\LaravelData\Data
 {
@@ -279,14 +274,8 @@ class CarryFixturePolicy implements \Splicewire\Beam\Authorization\ResourceReadP
     }
 }
 
-class CarryFixtureQuery
-{
-}
+class CarryFixtureQuery {}
 
-class CarryFixtureHandler
-{
-}
+class CarryFixtureHandler {}
 
-class CarryFixtureProvider
-{
-}
+class CarryFixtureProvider {}

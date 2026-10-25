@@ -139,6 +139,7 @@ final class UngatedWrites
 
         return 'Closure '.(str_starts_with($file, $base) ? substr($file, strlen($base)) : $file).':'.$handler->getStartLine();
     }
+
     /**
      * The route's middleware names. `gatherMiddleware()` builds and caches the controller, so it is dropped again
      * unless the route already held one (the care ResourceMountMap::commonMiddleware takes).
