@@ -6,6 +6,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Splicewire\Beam\Collections\CollectionSchemaResolver;
+use Splicewire\Beam\Collections\CollectionSchemaCatalog;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
@@ -102,5 +103,31 @@ class CollectionSchemaResolverTest extends TestCase
     {
         $this->expectException(ValidationException::class);
         $this->resolver()->resolve('article');
+    }
+
+    public function test_catalog_lists_only_latest_registered_collection_versions(): void
+    {
+        $articles = 'https://example.test/schemas/article';
+        $people = 'https://example.test/schemas/people';
+        $this->registry->register($this->schema($articles, 1));
+        $this->registry->register($this->schema($articles, 2));
+        $this->registry->register($this->schema($people, 1));
+        $this->registry->register($this->schema('https://example.test/schemas/plain', 1, marked: false));
+
+        $catalog = new CollectionSchemaCatalog($this->registry);
+
+        $this->assertSame([
+            ['stem' => $articles, 'label' => 'Articles v2'],
+            ['stem' => $people, 'label' => 'Articles v1'],
+        ], $catalog->addresses());
+    }
+
+    public function test_catalog_does_not_expose_an_older_collection_after_latest_version_loses_marker(): void
+    {
+        $stem = 'https://example.test/schemas/article';
+        $this->registry->register($this->schema($stem, 1));
+        $this->registry->register($this->schema($stem, 2, marked: false));
+
+        $this->assertSame([], (new CollectionSchemaCatalog($this->registry))->addresses());
     }
 }
