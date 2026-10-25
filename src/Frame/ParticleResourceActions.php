@@ -39,7 +39,7 @@ use Splicewire\Beam\Particle\Subject\SubjectResolvers;
  */
 class ParticleResourceActions
 {
-    /** @var array<string, Route>|null `resource.name` ⇒ the first route mounting it */
+    /** @var array<string, array<string, Route>>|null `resource.name` ⇒ realm (empty string is neutral) ⇒ first route */
     protected ?array $routes = null;
 
     protected int $indexedRouteCount = 0;
@@ -52,12 +52,12 @@ class ParticleResourceActions
     /**
      * @return list<ResourceActionDefinition>
      */
-    public function for(string $resourceKey): array
+    public function for(string $resourceKey, ?string $realm = null): array
     {
         $actions = [];
 
         foreach ($this->operations->forResource($resourceKey) as $operation) {
-            $action = $this->project($operation);
+            $action = $this->project($operation, $realm);
 
             if ($action !== null) {
                 $actions[] = $action;
@@ -67,7 +67,7 @@ class ParticleResourceActions
         return $actions;
     }
 
-    public function project(ParticleOperation $operation): ?ResourceActionDefinition
+    public function project(ParticleOperation $operation, ?string $realm = null): ?ResourceActionDefinition
     {
         $affordance = $operation->actionAffordance();
 
@@ -76,7 +76,7 @@ class ParticleResourceActions
         }
 
         $scope = $this->scope($operation);
-        $route = $this->route($operation);
+        $route = $this->route($operation, $realm);
 
         if ($scope === null || $route === null || ! $this->fillable($route, $scope)) {
             return null;
@@ -124,7 +124,7 @@ class ParticleResourceActions
             : $parameters === [];
     }
 
-    protected function route(ParticleOperation $operation): ?Route
+    protected function route(ParticleOperation $operation, ?string $realm): ?Route
     {
         $all = $this->router->getRoutes()->getRoutes();
 
@@ -140,11 +140,19 @@ class ParticleResourceActions
                 $name = $route->defaults[ParticleOperationController::NAME] ?? null;
 
                 if (is_string($resource) && is_string($name)) {
-                    $this->routes["{$resource}.{$name}"] ??= $route;
+                    $mountedRealm = $route->defaults[ParticleOperationController::REALM] ?? null;
+                    $realmKey = is_string($mountedRealm) ? $mountedRealm : '';
+                    $this->routes["{$resource}.{$name}"][$realmKey] ??= $route;
                 }
             }
         }
 
-        return $this->routes[$operation->key()] ?? null;
+        $routes = $this->routes[$operation->key()] ?? [];
+
+        if ($realm !== null && isset($routes[$realm])) {
+            return $routes[$realm];
+        }
+
+        return $routes[''] ?? null;
     }
 }

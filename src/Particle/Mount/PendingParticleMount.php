@@ -98,6 +98,14 @@ class PendingParticleMount
         return $this;
     }
 
+    /** Tag this resource and its mounted operations as belonging to a Frame realm. */
+    public function inRealm(string $realm): static
+    {
+        $this->options['realm'] = $realm;
+
+        return $this;
+    }
+
     /** Constrain `{id}` — `'uuid'` is the only understood value; `null` leaves it unconstrained. */
     public function idConstraint(?string $constraint): static
     {
@@ -215,7 +223,13 @@ class PendingParticleMount
                 $options['names'] = $this->options['names'];
             }
 
-            $this->mounter->ops($this->router, $this->uri, $this->resourceKey, $ops, $options);
+            $this->mounter->ops(
+                $this->router,
+                $this->uri,
+                $this->resourceKey,
+                $ops,
+                array_replace($this->options, $options),
+            );
         }
 
         // AFTER the resource's own CRUD and ops, which is the order the hand-written spelling produced:

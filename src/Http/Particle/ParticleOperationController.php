@@ -54,6 +54,12 @@ class ParticleOperationController extends Controller
 
     public const NAME = '_particle_op_name';
 
+    /** Optional realm identity stamped by a multi-realm mount. */
+    public const REALM = '_particle_frame_realm';
+
+    /** Optional mount-local map from a declared ability to the ability this route enforces. */
+    public const ABILITY_OVERRIDES = '_particle_ability_overrides';
+
     /**
      * The framework's own parameter on a {@see OperationKind::Task}: run the job queued (default) or inline.
      * Spelled here once and read everywhere through {@see OperationKind::frameworkParameters()}, so the
@@ -143,7 +149,16 @@ class ParticleOperationController extends Controller
                 ? null
                 : ($operation->abilityModel ?? $model);
 
-            if ($this->abilities->denies($this->actor->actor(), $operation->ability, $subject)) {
+            $ability = $operation->ability;
+            $overrides = $defaults[static::ABILITY_OVERRIDES] ?? [];
+
+            if (($defaults[static::REALM] ?? null) === 'tenant'
+                && is_array($overrides)
+                && is_string($overrides[$ability] ?? null)) {
+                $ability = $overrides[$ability];
+            }
+
+            if ($this->abilities->denies($this->actor->actor(), $ability, $subject)) {
                 throw new AuthorizationException;
             }
         }

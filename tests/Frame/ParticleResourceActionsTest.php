@@ -149,6 +149,41 @@ class ParticleResourceActionsTest extends TestCase
         $this->assertSame('Splicewire.Beam.Tests.Frame.ActionReloadInputData', $wire['actions'][0]['input']);
     }
 
+    public function test_actions_select_exact_realm_mount_without_leaking_a_different_realms_route(): void
+    {
+        $this->op('reload', NoSubject::class, new ActionAffordance(label: 'Reload vault'));
+
+        Particle::ops('operator/vaults', 'vaults', 'reload', ['realm' => 'operator', 'name' => 'operator.reload']);
+        Particle::ops('tenant/vaults', 'vaults', 'reload', ['realm' => 'tenant', 'name' => 'tenant.reload']);
+
+        $resource = $this->app->make(ParticleResourceRegistry::class)->get('vaults');
+        $operator = collect($resource->toResourceDefinition('operator')->actions)->keyBy('key');
+        $tenant = collect($resource->toResourceDefinition('tenant')->actions)->keyBy('key');
+        $other = $resource->toResourceDefinition('guest')->actions;
+
+        $this->assertSame('/operator/vaults/reload', $operator['reload']->url);
+        $this->assertSame('/tenant/vaults/reload', $tenant['reload']->url);
+        $this->assertSame([], $other, 'A route tagged for another realm must not be projected.');
+        $this->assertCount(1, $tenant, 'The same operation mounted in two realms projects only once.');
+    }
+
+    public function test_realm_projection_falls_back_to_a_neutral_legacy_mount(): void
+    {
+        $this->op('reload', NoSubject::class, new ActionAffordance(label: 'Reload vault'));
+
+        Particle::ops('api/vaults', 'vaults', 'reload', ['name' => 'vaults.reload']);
+        Particle::ops('tenant/vaults', 'vaults', 'reload', ['realm' => 'tenant', 'name' => 'tenant.reload']);
+
+        $resource = $this->app->make(ParticleResourceRegistry::class)->get('vaults');
+        $tenant = collect($resource->toResourceDefinition('tenant')->actions)->keyBy('key');
+        $operator = collect($resource->toResourceDefinition('operator')->actions)->keyBy('key');
+        $legacy = collect($resource->toResourceDefinition()->actions)->keyBy('key');
+
+        $this->assertSame('/tenant/vaults/reload', $tenant['reload']->url);
+        $this->assertSame('/api/vaults/reload', $operator['reload']->url);
+        $this->assertSame('/api/vaults/reload', $legacy['reload']->url);
+    }
+
     public function test_false_undeclared_parent_subject_and_unmounted_ops_project_nothing(): void
     {
         $this->op('declared-off', NoSubject::class, false);

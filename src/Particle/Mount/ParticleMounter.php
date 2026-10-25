@@ -121,10 +121,16 @@ class ParticleMounter
             return $idConstraint === 'uuid' ? $route->whereUuid('id') : $route;
         };
 
-        $stamp = function (RouteInstance $route, string $verb) use ($resourceKey, $name): RouteInstance {
-            return $route
+        $stamp = function (RouteInstance $route, string $verb) use ($resourceKey, $name, $options): RouteInstance {
+            $route
                 ->defaults(ParticleController::RESOURCE, $resourceKey)
                 ->name("{$name}.{$verb}");
+
+            if (is_string($options['realm'] ?? null)) {
+                $route->defaults(ParticleOperationController::REALM, $options['realm']);
+            }
+
+            return $route;
         };
 
         // The per-resource hook-event catalog, mounted AUTOMATICALLY at this exposure
@@ -267,6 +273,14 @@ class ParticleMounter
             ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
             ->defaults(ParticleOperationController::NAME, $op)
             ->name($name);
+
+        if (is_string($options['realm'] ?? null)) {
+            $route->defaults(ParticleOperationController::REALM, $options['realm']);
+        }
+
+        if (is_array($options['abilityOverrides'] ?? null)) {
+            $route->defaults(ParticleOperationController::ABILITY_OVERRIDES, $options['abilityOverrides']);
+        }
 
         // Only `Uuid` is enforced — {@see IdConstraint} states why `Ulid`/`Int` are declared-but-inert.
         // Apply it only when this mount emits `{id}`.

@@ -386,9 +386,8 @@ class ParticleResource implements HasRegistryKey
      * modelled") in the browser, while the declaration's `modelClass()` still reaches the one reader
      * that needs it. `ParticleResourceRegistryTest` pins both halves.
      *
-     * @param  string|null  $realm  ACCEPTED but IGNORED for now (RDU-01) — the projection is identical for
-     *                              every realm. The param exists so later issues (realm-addressable
-     *                              projection) can vary the contract without changing this signature.
+     * @param  string|null  $realm  The Frame realm requesting this projection; used to select the matching
+     *                              mounted operation URLs while preserving neutral legacy routes.
      */
     public function toResourceDefinition(?string $realm = null): ResourceDefinition
     {
@@ -432,17 +431,17 @@ class ParticleResource implements HasRegistryKey
             // ADR-0223): an op declaring `affordance:` whose subject frame can place and which this host
             // mounted. Read off the operation registry and the router rather than declared here, because the
             // op is the declaration — a second list on the resource would be a second place to say it.
-            actions: $this->frameActions(),
+            actions: $this->frameActions($realm),
         );
     }
 
     /** @return list<ResourceActionDefinition> */
-    protected function frameActions(): array
+    protected function frameActions(?string $realm): array
     {
         if (! function_exists('app') || ! app()->bound(ParticleOperationRegistry::class)) {
             return [];
         }
 
-        return app(ParticleResourceActions::class)->for($this->key);
+        return app(ParticleResourceActions::class)->for($this->key, $realm);
     }
 }

@@ -120,6 +120,32 @@ class HttpTransportAbilityTest extends TestCase
         $this->postJson('/gadgets/1/forge')->assertOk();
     }
 
+    public function test_tenant_mount_can_substitute_its_declared_author_ability_without_changing_central_routes(): void
+    {
+        $this->mountAuthorScopedOperation('central/gadgets', ['name' => 'central.tune']);
+        $this->mountAuthorScopedOperation('tenant/gadgets', [
+            'name' => 'tenant.tune',
+            'realm' => 'tenant',
+            'abilityOverrides' => ['ux.author' => 'site.edit'],
+        ]);
+        Particle::ops('untagged/gadgets', 'gadgets', 'tune', [
+            'name' => 'untagged.tune',
+            'abilityOverrides' => ['ux.author' => 'site.edit'],
+        ]);
+
+        $centralAuthor = new ScopedAbilityUser;
+        $centralAuthor->uxAuthor = true;
+        $tenantEditor = new ScopedAbilityUser;
+        $tenantEditor->siteEdit = true;
+
+        $this->actingAs($centralAuthor)->postJson('/tenant/gadgets/1/tune')->assertForbidden();
+        $this->actingAs($tenantEditor)->postJson('/central/gadgets/1/tune')->assertForbidden();
+        $this->actingAs($centralAuthor)->postJson('/central/gadgets/1/tune')->assertOk();
+        $this->actingAs($tenantEditor)->postJson('/tenant/gadgets/1/tune')->assertOk();
+        $this->actingAs($tenantEditor)->postJson('/untagged/gadgets/1/tune')->assertForbidden();
+        $this->actingAs($centralAuthor)->postJson('/untagged/gadgets/1/tune')->assertOk();
+    }
+
     // ── The actor arrives through the port, not ambient auth ─────────────────────────────────────────
 
     public function test_the_decision_follows_the_actor_port_rather_than_the_ambient_guard_user(): void
@@ -218,6 +244,19 @@ class HttpTransportAbilityTest extends TestCase
 
         Particle::ops('gadgets', 'gadgets', $operation->name);
     }
+
+    private function mountAuthorScopedOperation(string $uri, array $options): void
+    {
+        $operation = $this->op(ability: 'ux.author', abilityModel: false);
+        $registry = $this->app->make(ParticleOperationRegistry::class);
+        if (! $registry->has('gadgets', $operation->name)) {
+            $registry->register($operation);
+        }
+        Particle::ops($uri, 'gadgets', $operation->name, $options);
+
+        Gate::define('entitlement:ux.author', fn ($user): bool => $user instanceof ScopedAbilityUser && $user->uxAuthor);
+        Gate::define('entitlement:site.edit', fn ($user): bool => $user instanceof ScopedAbilityUser && $user->siteEdit);
+    }
 }
 
 class Gadget extends Model
@@ -237,6 +276,15 @@ class PlainUser extends User
 class PrivilegedUser extends User
 {
     protected $table = 'users';
+}
+
+class ScopedAbilityUser extends User
+{
+    protected $table = 'users';
+
+    public bool $uxAuthor = false;
+
+    public bool $siteEdit = false;
 }
 
 /** A port answering a FIXED actor — what a transport with no ambient user (MCP over stdio) binds. */
