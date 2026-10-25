@@ -66,11 +66,11 @@ use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\GenerateContributedTypesCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
+use Splicewire\Beam\Console\MakeParticleBackingCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
 use Splicewire\Beam\Console\MakeParticleRelativeCommand;
-use Splicewire\Beam\Console\MakeParticleBackingCommand;
-use Splicewire\Beam\Console\MakeWorkflowCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
+use Splicewire\Beam\Console\MakeWorkflowCommand;
 use Splicewire\Beam\Console\ParticleResourcesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
@@ -1258,20 +1258,18 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $app->make(ParticleResourceRegistry::class),
             $app->make(ParticleOperationRegistry::class),
         ));
-        // The wire-name burn-down, same population and same reason: a declared slot is a registered
-        // value. Sibling of the write-map meter — that one asks whether a DTO declared how it maps onto
-        // COLUMNS, this one asks whether it declared what a client must SEND, which is the published
-        // half. api-surface-coherence 100.
-        // ⚠️ The host's OWN mapper config is passed in, and the audit reports only where a configured
-        // mapper would REWRITE a property name. That is the whole rule: an identity mapping means the
-        // property name IS the published key and there is nothing to declare. Without it the audit
-        // reported 232 rows at the flagship, 212 of them correct camelCase read properties under
-        // `output => null`, and its suggestion would have renamed all 212 on the wire.
+        // The wire-name burn-down reads particle declaration registries plus non-particle controller
+        // method attributes (`RequestFromData`, `ResponseFromData`, `StreamsFromData`). Sibling of the
+        // write-map meter — that one asks whether a DTO declared how it maps onto COLUMNS, this one asks
+        // whether it declared what a client must SEND or receives, which is the published half.
+        // api-surface-coherence 100. The host's OWN mapper config is passed in; identity mappings remain
+        // quiet, while a configured mapper that rewrites a property name makes the contract host-owned.
         $this->app->bind(WireNameDeclarationAudit::class, fn ($app) => WireNameDeclarationAudit::forRegistries(
             $app->make(ParticleResourceRegistry::class),
             $app->make(ParticleOperationRegistry::class),
             input: config('data.name_mapping_strategy.input'),
             output: config('data.name_mapping_strategy.output'),
+            router: $app->make(Router::class),
         ));
         $this->app->bind(DocblockTierAudit::class, function ($app) {
             $root = $app->basePath();

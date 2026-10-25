@@ -2,11 +2,16 @@
 
 namespace Splicewire\Beam\Surgeon;
 
+use Illuminate\Routing\Router;
 use Illuminate\Support\Str;
 use ReflectionClass;
+use ReflectionMethod;
 use ReflectionProperty;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
+use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
+use Rushing\LaravelDataSchemasScribe\Attributes\StreamsFromData;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\MapOutputName;
@@ -107,21 +112,24 @@ class WireNameDeclarationAudit implements DoctorAudit
     }
 
     /**
-     * The estate population: every Data class named in a DECLARED slot — a resource's `data:`,
-     * `input:`, `editData:` and `createResultData:`, and an operation's `input:` and `output:`.
+     * The estate population: every Data class named in a particle's DECLARED slot — a resource's `data:`,
+     * `input:`, `editData:` and `createResultData:`, and an operation's `input:` and `output:` — plus the
+     * method attributes that declare non-particle request, response and stream payloads.
      *
      * That is exactly the particle doctrine's own scope ("every boundary-crossing data shape is a
      * declared Data class"), which is what makes the population defensible rather than arbitrary: a
      * class nobody declared is not on a wire, so its casing is a style question and not a contract.
      *
      * Reads the REGISTRIES rather than scanning source, for the same reason
-     * {@see UndeclaredWriteMapAudit} does — the slot is a registered value, not a syntactic one.
+     * {@see UndeclaredWriteMapAudit} does — a particle slot is a registered value, not a syntactic one.
+     * The other legal declaration site is the host's route table: only routed controller methods contribute.
      */
     public static function forRegistries(
         ParticleResourceRegistry $resources,
         ParticleOperationRegistry $operations,
         ?string $input = null,
         ?string $output = null,
+        ?Router $router = null,
     ): self {
         /** @var array<class-string, array{input?: true, output?: true}> $classes */
         $classes = [];
@@ -151,10 +159,64 @@ class WireNameDeclarationAudit implements DoctorAudit
             $add($operation->input ?? null, 'input');
         }
 
+        if ($router !== null) {
+            foreach ($router->getRoutes() as $route) {
+                $action = $route->getActionName();
+
+                if (! is_string($action) || ! str_contains($action, '@')) {
+                    continue;
+                }
+
+                [$controller, $method] = explode('@', $action, 2);
+
+                try {
+                    if (! class_exists($controller) || ! method_exists($controller, $method)) {
+                        continue;
+                    }
+
+                    $reflection = new ReflectionMethod($controller, $method);
+                } catch (Throwable) {
+                    // A stale host action is a host fact; it must not take this advisory audit down.
+                    continue;
+                }
+
+                foreach ($reflection->getAttributes(RequestFromData::class) as $attribute) {
+                    self::addAttributeClasses($classes, $attribute->getArguments(), 'input');
+                }
+
+                foreach ($reflection->getAttributes(ResponseFromData::class) as $attribute) {
+                    self::addAttributeClasses($classes, $attribute->getArguments(), 'output');
+                }
+
+                foreach ($reflection->getAttributes(StreamsFromData::class) as $attribute) {
+                    self::addAttributeClasses($classes, $attribute->getArguments(), 'output', 1);
+                }
+            }
+        }
+
         return new self(array_map(
             static fn (array $axes): array => array_keys($axes),
             $classes,
         ), $input, $output);
+    }
+
+    /**
+     * Add a declared class-string or class-list to the matching wire axis. Reflection retains positional
+     * and named arguments under different keys, both of which are legal PHP attribute syntax.
+     *
+     * @param  array<class-string, array{input?: true, output?: true}>  $classes
+     * @param  array<int|string, mixed>  $arguments
+     */
+    private static function addAttributeClasses(array &$classes, array $arguments, string $axis, int $position = 0): void
+    {
+        $declared = $arguments['dataClass'] ?? $arguments[$position] ?? null;
+        $declared = is_array($declared) ? $declared : [$declared];
+
+        foreach ($declared as $class) {
+            if (is_string($class) && $class !== '') {
+                $classes[$class][$axis] = true;
+            }
+        }
     }
 
     /**
