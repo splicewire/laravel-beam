@@ -53,7 +53,7 @@ class SchemaIdTest extends TestCase
      * The shape 8 of the estate's 9 declaring roots actually use (ticket 113). The old
      * strip-to-first-slash implementation answered `schemas/content/cell` here.
      */
-    public function test_extracts_the_name_under_a_PATH_shaped_authority(): void
+    public function test_extracts_the_name_under_a_pat_h_shaped_authority(): void
     {
         $id = SchemaId::from('https://app.splicewire.com/schemas/content/cell/2');
 
@@ -85,7 +85,6 @@ class SchemaIdTest extends TestCase
         $this->assertSame('content/article', $id->name(false));
         $this->assertSame('content/article', $id->name(''));
     }
-
 
     public function test_derives_a_sibling_at_a_different_version_preserving_the_stem(): void
     {

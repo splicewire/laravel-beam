@@ -160,8 +160,7 @@ class ResourceVisibility
         ResourceDefinition $definition,
         ?Authenticatable $actor,
         ?string $mountedRealm = null,
-    ): bool
-    {
+    ): bool {
         if ($definition->model === null) {
             return $actor !== null && $this->readable($definition, $actor);
         }
@@ -195,8 +194,7 @@ class ResourceVisibility
         ResourceDefinition $definition,
         ?Authenticatable $actor,
         ?string $mountedRealm = null,
-    ): bool
-    {
+    ): bool {
         $resource = $this->particles->find($definition->key);
 
         if ($resource === null) {

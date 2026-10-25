@@ -72,7 +72,7 @@ class RelativeAndBackingGeneratorTest extends TestCase
         // Derived but EMITTED: the relationship method is a decision.
         $this->assertStringContainsString("via: 'verses',", $emitted);
         // Both mount spellings travel in the docblock.
-        $this->assertStringContainsString("->relatives([VerseRelative::class])", $emitted);
+        $this->assertStringContainsString('->relatives([VerseRelative::class])', $emitted);
         $this->assertStringContainsString('ParticleMountManager::relatives()', $emitted);
     }
 
@@ -127,7 +127,7 @@ class RelativeAndBackingGeneratorTest extends TestCase
 
         // Nothing re-emits over your edits: the rerun refuses on the existing primary and the
         // hand-edited companion survives (the chassis's reported-and-skipped rule).
-        \Illuminate\Support\Facades\File::put($this->host.'/app/Workflows/ListingTriage/ListingTriageGate.php', '<?php // edited');
+        File::put($this->host.'/app/Workflows/ListingTriage/ListingTriageGate.php', '<?php // edited');
         $this->artisan('splicewire:beam:make:workflow', [
             'name' => 'ListingTriageWorkflow',
             '--initial' => 'incoming',

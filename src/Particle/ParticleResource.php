@@ -276,9 +276,9 @@ class ParticleResource implements HasRegistryKey
         public ?string $readBoundary = null,
         /**
          * @var class-string|null ADR-0230 Public Read — the Data class a guest (null actor) receives. Non-null
-         *      admits a guest (narrowed to these fields and to {@see $publicScope}'s rows); null refuses every
-         *      guest on every read path, whatever the route middleware, `readPolicy` or model policy would
-         *      answer. See {@see declaresPublicRead()}.
+         *                        admits a guest (narrowed to these fields and to {@see $publicScope}'s rows); null refuses every
+         *                        guest on every read path, whatever the route middleware, `readPolicy` or model policy would
+         *                        answer. See {@see declaresPublicRead()}.
          */
         public ?string $publicRead = null,
         /**

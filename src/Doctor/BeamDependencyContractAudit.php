@@ -22,9 +22,13 @@ class BeamDependencyContractAudit
 {
     /** The check names this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
     public const CHECK_MARQUEE_DECLARED = 'marquee site-mode gate wired';
+
     public const CHECK_FIRST_PARTY_CLOSURE = 'first-party closure declared in repositories';
+
     public const CHECK_LOCK_PATH_FREE = 'lock path-free';
+
     public const CHECK_REPOS_GIT_RESOLVED = 'repos git-resolved';
+
     public const CHECK_STABILITY = 'stability configured';
 
     /**

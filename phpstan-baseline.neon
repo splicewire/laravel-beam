@@ -1,0 +1,3997 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Access to an undefined property Spatie\\Activitylog\\Contracts\\Activity\:\:\$causer_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Activity/ActivityEntry.php
+
+		-
+			message: '#^Access to an undefined property Spatie\\Activitylog\\Contracts\\Activity\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Activity/ActivityEntry.php
+
+		-
+			message: '#^Access to an undefined property Spatie\\Activitylog\\Contracts\\Activity\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Activity/ActivityEntry.php
+
+		-
+			message: '#^Access to an undefined property Spatie\\Activitylog\\Contracts\\Activity\:\:\$log_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Activity/ActivityEntry.php
+
+		-
+			message: '#^Access to an undefined property Spatie\\Activitylog\\Contracts\\Activity\:\:\$subject_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Activity/ActivityEntry.php
+
+		-
+			message: '#^Access to an undefined property Spatie\\Activitylog\\Contracts\\Activity\:\:\$subject_type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Activity/ActivityEntry.php
+
+		-
+			message: '#^Unable to resolve the template type TKey in call to function collect$#'
+			identifier: argument.templateType
+			count: 1
+			path: src/Activity/ActivityEntry.php
+
+		-
+			message: '#^Unable to resolve the template type TValue in call to function collect$#'
+			identifier: argument.templateType
+			count: 1
+			path: src/Activity/ActivityEntry.php
+
+		-
+			message: '#^Unsafe usage of new static\(\)\.$#'
+			identifier: new.static
+			count: 1
+			path: src/Activity/ActivityEntry.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Activity\\ActivityRecorder\:\:history\(\) should return list\<Splicewire\\Beam\\Activity\\ActivityEntry\> but returns array\<int, Splicewire\\Beam\\Activity\\ActivityEntry\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Activity/ActivityRecorder.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Authorization\\BeamSchemaPolicy\:\:\$defaultModelClass has no type specified\.$#'
+			identifier: missingType.property
+			count: 1
+			path: src/Authorization/BeamSchemaPolicy.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Authorization\\GitRepoPolicy\:\:\$defaultModelClass has no type specified\.$#'
+			identifier: missingType.property
+			count: 1
+			path: src/Authorization/GitRepoPolicy.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Authorization\\RowAuthorization\:\:apply\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Authorization/RowAuthorization.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Authorization\\RowAuthorization\:\:apply\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Authorization/RowAuthorization.php
+
+		-
+			message: '#^Cannot access offset ''config'' on Illuminate\\Contracts\\Foundation\\Application\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 1
+			path: src/BeamServiceProvider.php
+
+		-
+			message: '#^Instanceof between Schemastud\\Frame\\Authorization\\DenyingResourceActionAuthorizer and Schemastud\\Frame\\Authorization\\DenyingResourceActionAuthorizer will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/BeamServiceProvider.php
+
+		-
+			message: '#^Instanceof between Schemastud\\Frame\\Authorization\\OpenResourceAccessGate and Schemastud\\Frame\\Authorization\\OpenResourceAccessGate will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/BeamServiceProvider.php
+
+		-
+			message: '#^Parameter \#1 \$paths of class Splicewire\\Beam\\Doctor\\UnrehearsableStubAudit constructor expects list\<string\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/BeamServiceProvider.php
+
+		-
+			message: '#^Parameter \#1 \$paths of class Splicewire\\Beam\\Events\\BeamEventRegistrar constructor expects list\<string\>, array\<mixed, mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/BeamServiceProvider.php
+
+		-
+			message: '#^Parameter \#2 \$classes of class Splicewire\\Beam\\Events\\BeamEventRegistrar constructor expects list\<class\-string\>, array\<mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/BeamServiceProvider.php
+
+		-
+			message: '#^Parameter \$paths of class Rushing\\Popcorn\\Registries\\Registrars\\AttributeRegistrar constructor expects list\<string\>, array\<mixed, mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/BeamServiceProvider.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Capabilities\\CapabilityRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Capabilities/CapabilityRegistry.php
+
+		-
+			message: '#^Call to function is_array\(\) with list\<class\-string\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Codegen/DeclaredParticleTypes.php
+
+		-
+			message: '#^Instanceof between Splicewire\\Beam\\Particle\\ParticleOperation and Splicewire\\Beam\\Particle\\ParticleOperation will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Codegen/DeclaredParticleTypes.php
+
+		-
+			message: '#^Instanceof between Splicewire\\Beam\\Particle\\ParticleResource and Splicewire\\Beam\\Particle\\ParticleResource will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Codegen/DeclaredParticleTypes.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Codegen\\DeclaredParticleTypes\:\:declared\(\) should return array\<class\-string, list\<string\>\> but returns array\<string, non\-empty\-list\<string\>\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Codegen/DeclaredParticleTypes.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Codegen/DeclaredParticleTypes.php
+
+		-
+			message: '#^Parameter \#3 \$location of method Splicewire\\Beam\\Codegen\\DeclaredParticleTypes\:\:emittedName\(\) expects list\<string\>\|null, array\<mixed, mixed\>\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Codegen/DeclaredParticleTypes.php
+
+		-
+			message: '#^Offset ''methods'' on array\{path\: string, methods\: list\<string\>, returns\?\: string, returnsMany\?\: bool, returnsBody\?\: bool, streams\?\: list\<string\>\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Codegen/RouteManifestModelSource.php
+
+		-
+			message: '#^Parameter \#2 \$manifest of method Splicewire\\Beam\\Codegen\\RouteManifestModelSource\:\:addRealm\(\) expects array\<string, array\{path\: string, methods\: list\<string\>, returns\?\: string, returnsMany\?\: bool, returnsBody\?\: bool, streams\?\: list\<string\>\}\>, array\<string, array\{path\: string, methods\: list\<string\>, visibility\: string, returns\?\: string, returnsMany\?\: bool, returnsBody\?\: bool, streams\?\: array\<string, list\<string\>\>, unresolved\?\: bool\}\> given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Codegen/RouteManifestModelSource.php
+
+		-
+			message: '#^Class Saloon\\Contracts\\Body\\HasBody not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SaloonConnectorGenerator.php
+
+		-
+			message: '#^Class Saloon\\Enums\\Method not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SaloonConnectorGenerator.php
+
+		-
+			message: '#^Class Saloon\\Http\\Connector not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SaloonConnectorGenerator.php
+
+		-
+			message: '#^Class Saloon\\Http\\Request not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SaloonConnectorGenerator.php
+
+		-
+			message: '#^Class Saloon\\Http\\Response not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SaloonConnectorGenerator.php
+
+		-
+			message: '#^Class Saloon\\Traits\\Body\\HasJsonBody not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SaloonConnectorGenerator.php
+
+		-
+			message: '#^Class Saloon\\Contracts\\Body\\HasBody not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SplicewireClientGenerator.php
+
+		-
+			message: '#^Class Saloon\\Data\\MultipartValue not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/Codegen/SplicewireClientGenerator.php
+
+		-
+			message: '#^Class Saloon\\Enums\\Method not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SplicewireClientGenerator.php
+
+		-
+			message: '#^Class Saloon\\Http\\Request not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SplicewireClientGenerator.php
+
+		-
+			message: '#^Class Saloon\\Traits\\Body\\HasJsonBody not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SplicewireClientGenerator.php
+
+		-
+			message: '#^Class Saloon\\Traits\\Body\\HasMultipartBody not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: src/Codegen/SplicewireClientGenerator.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Codegen\\TsClientGenerator\:\:typedEntries\(\) has parameter \$map with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Codegen/TsClientGenerator.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Codegen\\TsClientGenerator\:\:typedEntries\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Codegen/TsClientGenerator.php
+
+		-
+			message: '#^Parameter \#1 \$map of method Splicewire\\Beam\\Codegen\\TsClientGenerator\:\:streamEntries\(\) expects array\<string, array\{path\: string, methods\: list\<string\>, streams\?\: array\<string, list\<string\>\>\}\>, array\<string, array\<string, mixed\>\> given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Codegen/TsClientGenerator.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method Splicewire\\Beam\\Codegen\\TsClientGenerator\:\:renderRoutes\(\) expects array\<string, array\{path\: string, methods\: list\<string\>\}\>, array\<string, array\<string, mixed\>\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Codegen/TsClientGenerator.php
+
+		-
+			message: '#^Parameter \#1 \$typed of method Splicewire\\Beam\\Codegen\\TsClientGenerator\:\:disambiguateRealmDomains\(\) expects list\<array\<string, mixed\>\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Codegen/TsClientGenerator.php
+
+		-
+			message: '#^Parameter \#2 \$admin of method Splicewire\\Beam\\Codegen\\TsClientGenerator\:\:renderRoutes\(\) expects array\<string, array\{path\: string, methods\: list\<string\>\}\>, array\<string, array\<string, mixed\>\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Codegen/TsClientGenerator.php
+
+		-
+			message: '#^Access to an undefined property Spatie\\LaravelData\\Data\:\:\$collection\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Collections/CollectionBacking.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionBacking\:\:enrich\(\) has parameter \$records with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionBacking.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionBacking\:\:enrich\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionBacking.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionBacking\:\:query\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Collections/CollectionBacking.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionBacking\:\:queryProperties\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionBacking.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionBacking\:\:records\(\) return type with generic interface Illuminate\\Contracts\\Pagination\\CursorPaginator does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Collections/CollectionBacking.php
+
+		-
+			message: '#^Match expression does not handle remaining value\: mixed$#'
+			identifier: match.unhandled
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:__construct\(\) has parameter \$schema with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:collectProperties\(\) has parameter \$schema with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:defaultSort\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:guestMatches\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:matches\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:matches\(\) has parameter \$rule with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:object\(\) has parameter \$keys with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:object\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:publicFieldNames\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:publicFields\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:publicFields\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:relations\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionDefinition\:\:uniqueFields\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Collections\\CollectionDefinition\:\:\$collection type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Collections\\CollectionDefinition\:\:\$properties type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Collections\\CollectionDefinition\:\:\$public type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Collections\\CollectionDefinition\:\:\$relations type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Collections\\CollectionDefinition\:\:\$sort type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Collections\\CollectionDefinition\:\:\$unique type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionDefinition.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionFormSchema\:\:schema\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionFormSchema.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionInputData\:\:toModelAttributes\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionInputData.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:migratePayloadEager\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Collections/CollectionMigrationDrain.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamParticle\:\:\$payload\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Collections/CollectionRead.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamParticle\:\:\$schema_ref\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Collections/CollectionRead.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionRead\:\:publicScope\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Collections/CollectionRead.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionRead\:\:publicScope\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Collections/CollectionRead.php
+
+		-
+			message: '#^Parameter \#2 \$model of method Splicewire\\Beam\\Collections\\CollectionRead\:\:project\(\) expects Splicewire\\Beam\\Models\\BeamParticle, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Collections/CollectionRead.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionRecordData\:\:__construct\(\) has parameter \$relations with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionRecordData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionRecordData\:\:__construct\(\) has parameter \$schema with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionRecordData.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>publicProjection" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Collections/CollectionRelations.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionUniqueWrite\:\:run\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionUniqueWrite.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionWriter\:\:write\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Collections/CollectionWriter.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\CollectionWriter\:\:write\(\) should return Splicewire\\Beam\\Models\\BeamParticle but returns Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Collections/CollectionWriter.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamParticle\:\:\$schema_ref\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Collections/PublicRecordData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\StandaloneRecordExclusion\:\:excludeFrom\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Collections/StandaloneRecordExclusion.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Collections\\StandaloneRecordQuery\:\:query\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Collections/StandaloneRecordQuery.php
+
+		-
+			message: '#^Trait Splicewire\\Beam\\Concerns\\HasMetaAttribute is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Concerns/HasMetaAttribute.php
+
+		-
+			message: '#^Argument of an invalid type list\<string\>\|false supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Cannot access offset ''router'' on Illuminate\\Contracts\\Foundation\\Application\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<Rushing\\Doctor\\Finding\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\BeamDependencyContractAudit\)\: list\<Rushing\\Doctor\\Finding\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\BeamManifestAudit\)\: Rushing\\Doctor\\Finding given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\DashboardTierAudit\)\: list\<Rushing\\Doctor\\Finding\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\EventCatalogPrefixAudit\)\: list\<Rushing\\Doctor\\Finding\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\FrameManifestAudit\)\: Rushing\\Doctor\\Finding given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\IntakeDoorAudit\)\: list\<Rushing\\Doctor\\Finding\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\MarqueeGateAudit\)\: Rushing\\Doctor\\Finding given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\McpIsolationAudit\)\: Rushing\\Doctor\\Finding given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\ModelLessReadGateAudit\)\: list\<Rushing\\Doctor\\Finding\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\NavSectionAudienceAudit\)\: list\<Rushing\\Doctor\\Finding\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\ParticleRouteResourceAudit\)\: list\<Rushing\\Doctor\\Finding\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\ParticleSlotCollisionAudit\)\: list\<Rushing\\Doctor\\Finding\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\RelativeEdgeIntegrityAudit\)\: list\<Rushing\\Doctor\\Finding\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\SchemaDoorAudit\)\: list\<Rushing\\Doctor\\Finding\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\SchemaRoundTripAudit\)\: Rushing\\Doctor\\Finding given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\SitemapReadinessAudit\)\: Rushing\\Doctor\\Finding given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Parameter \#3 \$run of method Splicewire\\Beam\\Console\\BeamDoctorCommand\:\:guarded\(\) expects callable\(object\)\: \(list\<Rushing\\Doctor\\Finding\>\|Rushing\\Doctor\\Finding\), Closure\(Splicewire\\Beam\\Doctor\\SurgeonWiringAudit\)\: Rushing\\Doctor\\Finding given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamDoctorCommand.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Console\\BeamInstallCommand\:\:answer\(\) should return string\|null but returns array\|bool\|float\|int\|string\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Console/BeamInstallCommand.php
+
+		-
+			message: '#^Parameter \#1 \$csv of method Splicewire\\Beam\\Console\\BeamInstallCommand\:\:parseList\(\) expects string, array\|bool\|float\|int\|string given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Console/BeamInstallCommand.php
+
+		-
+			message: '#^Parameter \#1 \$string of function rtrim expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamInstallCommand.php
+
+		-
+			message: '#^Parameter \#1 \$string of function strtolower expects string, array\|bool\|float\|int\|string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamInstallCommand.php
+
+		-
+			message: '#^Parameter \#1 \$value of method Splicewire\\Beam\\Console\\BeamInstallCommand\:\:persistSchemaAuthority\(\) expects string\|null, array\|bool\|float\|int\|string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamInstallCommand.php
+
+		-
+			message: '#^Parameter \#1 \$value of static method Splicewire\\Beam\\Install\\MigrationTravel\:\:parse\(\) expects string\|null, array\|bool\|float\|int\|string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamInstallCommand.php
+
+		-
+			message: '#^Parameter \#2 \$subject of function preg_match expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamInstallCommand.php
+
+		-
+			message: '#^Parameter \#3 \$subject of function preg_replace expects array\<float\|int\|string\>\|string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/BeamInstallCommand.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Console\\ConvergencePreflightCommand\:\:json\(\) has parameter \$stubs with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Console/ConvergencePreflightCommand.php
+
+		-
+			message: '#^Parameter \#1 \$found of method Splicewire\\Beam\\Console\\ConvergencePreflightCommand\:\:exitCode\(\) expects list\<Splicewire\\Beam\\Install\\RehearsedMigration\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/ConvergencePreflightCommand.php
+
+		-
+			message: '#^Cannot cast array\|bool\|float\|int\|non\-empty\-string to string\.$#'
+			identifier: cast.string
+			count: 1
+			path: src/Console/DocblockCommand.php
+
+		-
+			message: '#^Parameter \#1 \$refs of method Rushing\\Surgeon\\Docblock\\DocblockDerefOperation\:\:plan\(\) expects list\<array\{file\: string, relativePath\?\: string, line\?\: int, span\: array\{int, int\}, old\: string, new\: string\}\>, non\-empty\-list\<array\<string, mixed\>\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/DocblockCommand.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Console\\HouseStyleCommand\:\:check\(\) has parameter \$fixable with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Console/HouseStyleCommand.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Console\\HouseStyleCommand\:\:fix\(\) has parameter \$fixable with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Console/HouseStyleCommand.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Console\\MakeParticleBackingCommand\:\:handle\(\) should return bool\|null but returns int\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Console/MakeParticleBackingCommand.php
+
+		-
+			message: '#^Cannot cast array\|bool\|float\|int\|string\|null to string\.$#'
+			identifier: cast.string
+			count: 3
+			path: src/Console/MakeParticleOpCommand.php
+
+		-
+			message: '#^Return type \(int\) of method Splicewire\\Beam\\Console\\MakeParticleOpCommand\:\:handle\(\) should be compatible with return type \(bool\|null\) of method Illuminate\\Console\\GeneratorCommand\:\:handle\(\)$#'
+			identifier: method.childReturnType
+			count: 1
+			path: src/Console/MakeParticleOpCommand.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Console\\MakeParticleRelativeCommand\:\:handle\(\) should return bool\|null but returns int\.$#'
+			identifier: return.type
+			count: 3
+			path: src/Console/MakeParticleRelativeCommand.php
+
+		-
+			message: '#^Return type \(int\) of method Splicewire\\Beam\\Console\\MakeParticleResourceCommand\:\:handle\(\) should be compatible with return type \(bool\|null\) of method Illuminate\\Console\\GeneratorCommand\:\:handle\(\)$#'
+			identifier: method.childReturnType
+			count: 1
+			path: src/Console/MakeParticleResourceCommand.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Console\\MakeWorkflowCommand\:\:handle\(\) should return bool\|null but returns int\.$#'
+			identifier: return.type
+			count: 2
+			path: src/Console/MakeWorkflowCommand.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Console\\ParticleGeneratorCommand\:\:qualifyModel\(\) should return class\-string but returns string\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Console/ParticleGeneratorCommand.php
+
+		-
+			message: '#^Cannot cast non\-empty\-array\|float\|int\<min, \-1\>\|int\<1, max\>\|string\|true to string\.$#'
+			identifier: cast.string
+			count: 1
+			path: src/Console/RegistryConformanceCommand.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Console\\UndeclaredSurfaceCommand\:\:tally\(\) should return list\<array\{string, int\}\> but returns non\-empty\-list\<array\{int\|string\|null, int\<0, max\>\|null\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Console/UndeclaredSurfaceCommand.php
+
+		-
+			message: '#^Parameter \#1 \$rows of method Splicewire\\Beam\\Console\\UndeclaredSurfaceCommand\:\:countBy\(\) expects list\<array\<string, mixed\>\>, array\<mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Console/UndeclaredSurfaceCommand.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<class\-string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Console/VerifyDeclaredTypesCommand.php
+
+		-
+			message: '#^Offset ''href'' on array\{title\: string, href\: string, icon\?\: string, routeName\?\: string, navOrder\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Dashboard/RailLeaves.php
+
+		-
+			message: '#^Offset ''routeName'' on \*NEVER\* on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Dashboard/RailLeaves.php
+
+		-
+			message: '#^Offset ''title'' on array\{title\: string, href\: string, icon\?\: string, routeName\?\: string, navOrder\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Dashboard/RailLeaves.php
+
+		-
+			message: '#^Variable \$seat in PHPDoc tag @var does not match any variable in the foreach loop\: \$keys, \$key$#'
+			identifier: varTag.differentVariable
+			count: 1
+			path: src/Dashboard/RailLeaves.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\BeamData\:\:toResponseArray\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Data/BeamData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamSchema\:\:\$artifact\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/BeamSchemaData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamSchema\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/BeamSchemaData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamSchema\:\:\$fingerprint\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/BeamSchemaData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamSchema\:\:\$schema_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/BeamSchemaData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamSchema\:\:\$version\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/BeamSchemaData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\BeamSchemaData\:\:__construct\(\) has parameter \$artifact with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Data/BeamSchemaData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\BeamSchemaData\:\:scope\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Data/BeamSchemaData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\BeamSchemaData\:\:scope\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Data/BeamSchemaData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\BeamSchemaInputData\:\:rules\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Data/BeamSchemaInputData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\GitRepo\:\:\$branch\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/GitRepoData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\GitRepo\:\:\$checked_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/GitRepoData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\GitRepo\:\:\$head_sha\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/GitRepoData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\GitRepo\:\:\$root_path\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/GitRepoData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\GitRepoData\:\:scope\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Data/GitRepoData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\GitRepoData\:\:scope\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Data/GitRepoData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\Hook\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/HookData.php
+
+		-
+			message: '#^Parameter \$events of class Splicewire\\Beam\\Data\\HookInputData constructor expects list\<string\>\|null, array\<int, string\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Data/HookInputData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamParticle\:\:\$migration_status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/RecordData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamParticle\:\:\$payload\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/RecordData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamParticle\:\:\$schema_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/RecordData.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamParticle\:\:\$schema_ref\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Data/RecordData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\RecordData\:\:publicScope\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Data/RecordData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\RecordData\:\:publicScope\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Data/RecordData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\ResponseBody\:\:paginated\(\) has parameter \$paginator with generic interface Illuminate\\Contracts\\Pagination\\LengthAwarePaginator but does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Data/ResponseBody.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Data\\ResponseBody\:\:toResponseArray\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Data/ResponseBody.php
+
+		-
+			message: '#^Unsafe usage of new static\(\)\.$#'
+			identifier: new.static
+			count: 2
+			path: src/Data/ResponseBody.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Discovery\\Http\\ResourceDiscoveryController\:\:index\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: src/Discovery/Http/ResourceDiscoveryController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>routes" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Discovery/Http/ResourceDiscoveryController.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Discovery/ResourceDiscoveryAutoMounter.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Discovery/ResourceMountMap.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<mixed\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Discovery/ResourceMountMap.php
+
+		-
+			message: '#^Unable to resolve the template type T in call to function array_values$#'
+			identifier: argument.templateType
+			count: 1
+			path: src/Discovery/ResourceMountMap.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Doctor\\BeamDoctorManifest implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Doctor/BeamDoctorManifest.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\BeamDoctorManifest\:\:matches\(\) should return array\<string, mixed\> but returns list\<Rushing\\Doctor\\DoctorRegistration\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Doctor/BeamDoctorManifest.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<Rushing\\Doctor\\DoctorRegistration\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Doctor/BeamDoctorManifest.php
+
+		-
+			message: '#^Parameter \#2 \$audit of class Rushing\\Doctor\\DoctorRegistration constructor expects class\-string\<Rushing\\Doctor\\DoctorAudit\>, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Doctor/BeamDoctorManifest.php
+
+		-
+			message: '#^Return type \(array\<string, mixed\>\) of method Splicewire\\Beam\\Doctor\\BeamDoctorManifest\:\:matches\(\) should be compatible with return type \(list\<mixed\>\) of method Rushing\\Popcorn\\Registries\\Registry\<mixed\>\:\:matches\(\)$#'
+			identifier: method.childReturnType
+			count: 1
+			path: src/Doctor/BeamDoctorManifest.php
+
+		-
+			message: '#^Parameter \#2 \$globs of method Splicewire\\Beam\\Doctor\\Support\\FamilyTailwindScan\:\:matched\(\) expects list\<string\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Doctor/FamilySourceCoverageAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\FamilyTokenContractAudit\:\:cssGraph\(\) has parameter \$seen with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/FamilyTokenContractAudit.php
+
+		-
+			message: '#^Offset 1 might not exist on array\{0\: string, 1\?\: string, 2\?\: string, 3\?\: string\}\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/Doctor/FamilyTokenContractAudit.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Doctor/FamilyTokenContractAudit.php
+
+		-
+			message: '#^Parameter \#2 \$globs of method Splicewire\\Beam\\Doctor\\Support\\FamilyTailwindScan\:\:matched\(\) expects list\<string\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Doctor/FamilyTokenContractAudit.php
+
+		-
+			message: '#^Call to function class_exists\(\) with ''Schemastud\\\\Frame…'' will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: src/Doctor/FrameManifestAudit.php
+
+		-
+			message: '#^Parameter \#1 \$middleware of static method Splicewire\\Beam\\Surface\\RuntimeCorroborator\:\:middlewareMatches\(\) expects list\<string\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Doctor/GuestReadablePublicReadAudit.php
+
+		-
+			message: '#^Instanceof between Illuminate\\Routing\\Router and Illuminate\\Routing\\Router will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Doctor/IntakeDoorAudit.php
+
+		-
+			message: '#^Instanceof between Schemastud\\DataSchemas\\Lifecycle\\FilesystemSchemaRegistry and Schemastud\\DataSchemas\\Contracts\\SchemaRegistry will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Doctor/IntakeDoorAudit.php
+
+		-
+			message: '#^Instanceof between Splicewire\\Beam\\Schema\\Contracts\\SchemaTargetResolver and Splicewire\\Beam\\Schema\\Contracts\\SchemaTargetResolver will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Doctor/IntakeDoorAudit.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Doctor/KeyTypeConformanceAudit.php
+
+		-
+			message: '#^Parameter \#2 \$uuidTables of class Splicewire\\Beam\\Doctor\\KeyTypeConformanceAudit constructor expects list\<string\>\|null, array\<mixed, mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Doctor/KeyTypeConformanceAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\LedgerAheadOfRepositoryAudit\:\:readLedger\(\) should return list\<string\>\|null but returns array\<mixed\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Doctor/LedgerAheadOfRepositoryAudit.php
+
+		-
+			message: '#^Call to function is_string\(\) with class\-string\<Splicewire\\Beam\\Doctor\\Support\\MarketingCopySource\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Doctor/MarketingSampleAudit.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<\(int\|string\)\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Doctor/MarketingSampleAudit.php
+
+		-
+			message: '#^Parameter \#1 \$objectOrClass of class ReflectionClass constructor expects class\-string\<T of object\>\|T of object, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Doctor/MarketingSampleAudit.php
+
+		-
+			message: '#^Parameter \#2 \$imports of method Splicewire\\Beam\\Doctor\\MarketingSampleAudit\:\:instantiate\(\) expects array\<string, class\-string\>, array\<string, string\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Doctor/MarketingSampleAudit.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between list\<array\{int, string, int\}\|string\> and false will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Doctor/MarketingSampleAudit.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Doctor/ParticleRouteResourceAudit.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Doctor/ParticleSlotCollisionAudit.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Doctor/RegistryConformanceAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\RegistryConformanceAudit\:\:attributeOf\(\) return type with generic class ReflectionAttribute does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Doctor/RegistryConformanceAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\RegistryConformanceAudit\:\:instantiate\(\) has parameter \$attribute with generic class ReflectionAttribute but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Doctor/RegistryConformanceAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\RegistryConformanceAudit\:\:writtenArguments\(\) has parameter \$attribute with generic class ReflectionAttribute but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Doctor/RegistryConformanceAudit.php
+
+		-
+			message: '#^Parameter \#1 \$arg of method Splicewire\\Beam\\Doctor\\RegistryConformanceAudit\:\:classStringArg\(\) expects PhpParser\\Node\\Arg\|null, PhpParser\\Node\\Arg\|PhpParser\\Node\\ArgPlaceholder\|PhpParser\\Node\\VariadicPlaceholder\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Doctor/RegistryConformanceAudit.php
+
+		-
+			message: '#^Parameter \#1 \$objectOrClass of class ReflectionClass constructor expects class\-string\<T of object\>\|T of object, string given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/Doctor/RegistryConformanceAudit.php
+
+		-
+			message: '#^Right side of \|\| is always false\.$#'
+			identifier: booleanOr.rightAlwaysFalse
+			count: 1
+			path: src/Doctor/RegistryConformanceAudit.php
+
+		-
+			message: '#^Ternary operator condition is always false\.$#'
+			identifier: ternary.alwaysFalse
+			count: 1
+			path: src/Doctor/RegistryConformanceAudit.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>root" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Doctor/RegistryConformanceAudit.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Rushing\\Popcorn\\Registries\\IsRegistry\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Doctor/RegistryConformanceAudit.php
+
+		-
+			message: '#^Call to an undefined method object\:\:ids\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Doctor/SchemaDoorAudit.php
+
+		-
+			message: '#^Instanceof between Illuminate\\Routing\\Router and Illuminate\\Routing\\Router will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 2
+			path: src/Doctor/SchemaDoorAudit.php
+
+		-
+			message: '#^Instanceof between Schemastud\\DataSchemas\\Lifecycle\\ServedSchemaChain and Schemastud\\DataSchemas\\Contracts\\ServedSchemaRegistry will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Doctor/SchemaDoorAudit.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between object and null will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Doctor/SchemaDoorAudit.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Doctor\\Support\\FacadeConformanceScope implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Doctor/Support/FacadeConformanceScope.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Doctor/Support/FacadeConformanceScope.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\FacadeReferenceScanner\:\:aliasesFor\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 2
+			path: src/Doctor/Support/FacadeReferenceScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\FacadeReferenceScanner\:\:nextSignificant\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 1
+			path: src/Doctor/Support/FacadeReferenceScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\FacadeReferenceScanner\:\:tokenize\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 3
+			path: src/Doctor/Support/FacadeReferenceScanner.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\Support\\FamilyTailwindScan\:\:sources\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/Support/FamilyTailwindScan.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 2
+			path: src/Doctor/Support/FamilyTailwindScan.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<Splicewire\\Beam\\Doctor\\Support\\MigrationTableRef\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe access to private constant Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:FOREIGN_ID_METHODS through static\:\:\.$#'
+			identifier: staticClassAccess.privateConstant
+			count: 1
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:afterBalancedParens\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 1
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:firstArgument\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 2
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:hasNoArguments\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 1
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:literalArgument\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 1
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:namesClass\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 2
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:resolveArgument\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 3
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:significantAfter\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 2
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:significantAt\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 7
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:significantBefore\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 1
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:sorted\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 3
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:staticCalls\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 3
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:stringValue\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 5
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:text\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 4
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\MigrationTableScanner\:\:tokenize\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 2
+			path: src/Doctor/Support/MigrationTableScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\SchemaCreateScanner\:\:afterBalancedParens\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 1
+			path: src/Doctor/Support/SchemaCreateScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\SchemaCreateScanner\:\:isSchemaName\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 1
+			path: src/Doctor/Support/SchemaCreateScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\SchemaCreateScanner\:\:significantAfter\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 2
+			path: src/Doctor/Support/SchemaCreateScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\SchemaCreateScanner\:\:significantAt\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 5
+			path: src/Doctor/Support/SchemaCreateScanner.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\SchemaCreateScanner\:\:tokenize\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 1
+			path: src/Doctor/Support/SchemaCreateScanner.php
+
+		-
+			message: '#^Dead catch \- ReflectionException is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
+			count: 1
+			path: src/Doctor/Support/SchemaKeyIndex.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\Support\\SchemaKeyIndex\:\:traitsOf\(\) has parameter \$reflection with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Doctor/Support/SchemaKeyIndex.php
+
+		-
+			message: '#^Offset ''foreignId''\|''foreignUlid''\|''foreignUuid'' on array\{uuid\: ''uuid'', foreignUuid\: ''uuid'', ulid\: ''ulid'', foreignUlid\: ''ulid'', unsignedBigInteger\: ''int'', bigInteger\: ''int'', unsignedInteger\: ''int'', integer\: ''int'', \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Doctor/Support/SchemaKeyIndex.php
+
+		-
+			message: '#^Offset 2 on array\{array\{string, int\<\-1, max\>\}, array\{'''', int\<\-1, max\>\}, array\{string, int\<\-1, max\>\}, array\{string, int\<\-1, max\>\}\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Doctor/Support/SchemaKeyIndex.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Doctor/Support/SchemaKeyIndex.php
+
+		-
+			message: '#^Unsafe call to private method Splicewire\\Beam\\Doctor\\Support\\SchemaKeyIndex\:\:traitsOf\(\) through static\:\:\.$#'
+			identifier: staticClassAccess.privateMethod
+			count: 1
+			path: src/Doctor/Support/SchemaKeyIndex.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Doctor/Support/StubMigrationsAudit.php
+
+		-
+			message: '#^Trait Splicewire\\Beam\\Doctor\\Testing\\AssertsStubMigrations is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Doctor/Testing/AssertsStubMigrations.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Doctor/UndeclaredInputAudit.php
+
+		-
+			message: '#^Parameter \#1 \$paths of class Splicewire\\Beam\\Doctor\\UnrehearsableStubAudit constructor expects list\<string\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Doctor/UnrehearsableStubAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:clearDetail\(\) has parameter \$published with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:clearDetail\(\) has parameter \$templates with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:headline\(\) has parameter \$published with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:headline\(\) has parameter \$templates with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:pairings\(\) has parameter \$published with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:pairings\(\) has parameter \$templates with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:reachFinding\(\) has parameter \$published with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:reachFinding\(\) has parameter \$templates with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:rehearse\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:skipNote\(\) has parameter \$published with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:skipNote\(\) has parameter \$templates with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Parameter \#2 \$migrationPaths of class Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit constructor expects list\<string\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:\$populated type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Doctor\\UnverifiedOnPopulatedTableAudit\:\:\$unreadableRows type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Doctor/UnverifiedOnPopulatedTableAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Enums\\Modality\:\:roles\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Enums/Modality.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<Splicewire\\Beam\\Events\\BeamEvent\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Events/BeamEvent.php
+
+		-
+			message: '#^Parameter \#1 \$key of method Rushing\\Popcorn\\Registries\\Registry\<TEntry\>\:\:register\(\) expects Rushing\\Popcorn\\Registries\\RegistryKey\|string, Splicewire\\Beam\\Events\\EventType given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Events/BeamEventRegistrar.php
+
+		-
+			message: '#^Parameter \#2 \$entry of method Rushing\\Popcorn\\Registries\\Registry\<TEntry\>\:\:register\(\) expects TEntry, null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Events/BeamEventRegistrar.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Events\\EventTypeRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Events/EventTypeRegistry.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 2
+			path: src/Events/EventTypeRegistry.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between class\-string and '''' will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Events/EventTypeRegistry.php
+
+		-
+			message: '#^Parameter \#1 \$key of method Rushing\\Popcorn\\Registries\\Registry\<TEntry\>\:\:register\(\) expects Rushing\\Popcorn\\Registries\\RegistryKey\|string, Splicewire\\Beam\\Events\\EventType given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Events/HookEventRegistrar.php
+
+		-
+			message: '#^Parameter \#2 \$entry of method Rushing\\Popcorn\\Registries\\Registry\<TEntry\>\:\:register\(\) expects TEntry, null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Events/HookEventRegistrar.php
+
+		-
+			message: '#^Parameter \#1 \$key of method Rushing\\Popcorn\\Registries\\Registry\<TEntry\>\:\:register\(\) expects Rushing\\Popcorn\\Registries\\RegistryKey\|string, Splicewire\\Beam\\Events\\EventType given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Events/ParticlePersistedEventRegistrar.php
+
+		-
+			message: '#^Parameter \#2 \$entry of method Rushing\\Popcorn\\Registries\\Registry\<TEntry\>\:\:register\(\) expects TEntry, null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Events/ParticlePersistedEventRegistrar.php
+
+		-
+			message: '#^Call to function is_object\(\) with Schemastud\\Frame\\Registry\\ResourceDefinition will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Events/ResourceKeyOracle.php
+
+		-
+			message: '#^Call to function property_exists\(\) with Schemastud\\Frame\\Registry\\ResourceDefinition and ''key'' will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Events/ResourceKeyOracle.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 2
+			path: src/Events/ResourceKeyOracle.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Facades\\Beam has PHPDoc tag @method for method write\(\) parameter \#2 \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Facades/Beam.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Facades\\Particle has PHPDoc tag @method for method ops\(\) parameter \#3 \$ops with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Facades/Particle.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Facades\\Particle has PHPDoc tag @method for method ops\(\) parameter \#4 \$options with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Facades/Particle.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Facades\\Particle has PHPDoc tag @method for method relative\(\) parameter \#5 \$options with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Facades/Particle.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Facades\\Particle has PHPDoc tag @method for method relatives\(\) parameter \#2 \$relatives with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Facades/Particle.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\Data\\SavedFilterEditData\:\:rules\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/Data/SavedFilterEditData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\Data\\SavedFilterInputData\:\:rules\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/Data/SavedFilterInputData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\FilterQuerySelection\:\:applyTo\(\) has parameter \$base with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Filters/FilterQuerySelection.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\FilterQuerySelection\:\:applyTo\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Filters/FilterQuerySelection.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\FilterQuerySelection\:\:validate\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/FilterQuerySelection.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\FilterQuerySelection\:\:validateParameters\(\) has parameter \$parameters with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/FilterQuerySelection.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\FilterQuerySelection\:\:validateParameters\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/FilterQuerySelection.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\FilterQuerySelection\:\:validateParticle\(\) has parameter \$parameters with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/FilterQuerySelection.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\FilterQuerySelection\:\:validateParticle\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/FilterQuerySelection.php
+
+		-
+			message: '#^Parameter \#2 \$scope of method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:intersect\(\) expects Illuminate\\Database\\Eloquent\\Builder, Illuminate\\Contracts\\Database\\Eloquent\\Builder given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Filters/FilterQuerySelection.php
+
+		-
+			message: '#^Call to an undefined method Splicewire\\Beam\\Particle\\Backing\\ResourceBacking\:\:filterVocabulary\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Filters/ResourceFilterDefinition.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>data" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Filters/ResourceFilterDefinition.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>query" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Filters/ResourceFilterDefinition.php
+
+		-
+			message: '#^Call to an undefined method Splicewire\\Beam\\Particle\\Backing\\ResourceBacking\:\:filterVocabulary\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Filters/ResourceFilters.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\ResourceFilters\:\:schemaFor\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/ResourceFilters.php
+
+		-
+			message: '#^Parameter \#1 \$data of class Schemastud\\Frame\\Data\\FilterOptionsResponseData constructor expects list\<Schemastud\\Frame\\Data\\FilterOptionData\>, array\<Schemastud\\Frame\\Data\\FilterOptionData\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Filters/ResourceFilters.php
+
+		-
+			message: '#^Access to an undefined property Rushing\\DataFilters\\SavedFilters\\SavedFilter\:\:\$owner_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Filters/SavedFilterPolicy.php
+
+		-
+			message: '#^Access to an undefined property Rushing\\DataFilters\\SavedFilters\\SavedFilter\:\:\$owner_type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Filters/SavedFilterPolicy.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\SavedFilterResourceHandler\:\:index\(\) has parameter \$params with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/SavedFilterResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\SavedFilterResourceHandler\:\:store\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/SavedFilterResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\SavedFilterResourceHandler\:\:update\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/SavedFilterResourceHandler.php
+
+		-
+			message: '#^Access to an undefined property Rushing\\DataFilters\\SavedFilters\\SavedFilter\:\:\$owner_id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Filters/SavedFilterService.php
+
+		-
+			message: '#^Access to an undefined property Rushing\\DataFilters\\SavedFilters\\SavedFilter\:\:\$owner_type\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Filters/SavedFilterService.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\SavedFilterService\:\:find\(\) should return Rushing\\DataFilters\\SavedFilters\\SavedFilter but returns Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Filters/SavedFilterService.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\SavedFilterService\:\:queryParameters\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/SavedFilterService.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\SavedFilterService\:\:store\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/SavedFilterService.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\SavedFilterService\:\:update\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/SavedFilterService.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\SavedFilterService\:\:validateTarget\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Filters/SavedFilterService.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\SavedFilterService\:\:visible\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Filters/SavedFilterService.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Filters\\SavedFilterService\:\:visibleQuery\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Filters/SavedFilterService.php
+
+		-
+			message: '#^Parameter \$input of class Schemastud\\Frame\\Registry\\ResourceActionDefinition constructor expects class\-string\<Spatie\\LaravelData\\Data\>\|null, class\-string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Frame/ParticleResourceActions.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>value" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Frame/ParticleResourceActions.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Http\\ArrayResponseEnvelope\:\:paginated\(\) has parameter \$paginator with generic interface Illuminate\\Contracts\\Pagination\\LengthAwarePaginator but does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Http/ArrayResponseEnvelope.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Http\\Contracts\\ResponseEnvelope\:\:paginated\(\) has parameter \$paginator with generic interface Illuminate\\Contracts\\Pagination\\LengthAwarePaginator but does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Http/Contracts/ResponseEnvelope.php
+
+		-
+			message: '#^Parameter \#1 \$callback of static method Closure\:\:fromCallable\(\) expects callable\(\)\: mixed, array\{class\-string, ''via''\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Particle/ParticleController.php
+
+		-
+			message: '#^Parameter \#1 \$records of method Splicewire\\Beam\\Http\\Contracts\\ResponseEnvelope\:\:streamed\(\) expects list\<mixed\>, array\<mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Particle/ParticleController.php
+
+		-
+			message: '#^Parameter \#1 \$records of method Splicewire\\Beam\\Particle\\Backing\\EnrichesProjectedRecords\:\:enrich\(\) expects list\<array\|Spatie\\LaravelData\\Data\>, array\<int, Spatie\\LaravelData\\Data\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Particle/ParticleController.php
+
+		-
+			message: '#^Closure invoked with 2 parameters, 1 required\.$#'
+			identifier: arguments.count
+			count: 1
+			path: src/Http/Particle/ParticleOperationController.php
+
+		-
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 1
+			path: src/Http/Particle/ParticleOperationController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Routing\\Route\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Particle/ParticleOperationController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>defaults" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Particle/ParticleOperationController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$schema_ref\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/PublicIntakeController.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamSubmission\:\:\$meta\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/PublicIntakeController.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Http\\PublicIntakeController\:\:schemaRef\(\) has parameter \$schema with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Http/PublicIntakeController.php
+
+		-
+			message: '#^Parameter \#1 \$publicSchemas of class Splicewire\\Beam\\Intake\\PublicIntakeWriteGate constructor expects list\<string\>, array\<mixed, mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/PublicIntakeController.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Http\\ResponseBodyEnvelope\:\:paginated\(\) has parameter \$paginator with generic interface Illuminate\\Contracts\\Pagination\\LengthAwarePaginator but does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Http/ResponseBodyEnvelope.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Ia\\RealmProfiles\:\:for\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Ia/RealmProfiles.php
+
+		-
+			message: '#^Call to function is_array\(\) with list\<string\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Install/BeamInstallManifest.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Install\\BeamInstallManifest implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Install/BeamInstallManifest.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Install\\BeamInstallManifest\:\:matches\(\) should return array\<string, mixed\> but returns list\<Splicewire\\Beam\\Install\\InstallStep\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Install/BeamInstallManifest.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Install\\BeamInstallManifest\:\:register\(\) has parameter \$commands with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Install/BeamInstallManifest.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<Splicewire\\Beam\\Install\\InstallStep\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Install/BeamInstallManifest.php
+
+		-
+			message: '#^Parameter \#6 \$commands of class Splicewire\\Beam\\Install\\InstallStep constructor expects list\<string\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Install/BeamInstallManifest.php
+
+		-
+			message: '#^Return type \(array\<string, mixed\>\) of method Splicewire\\Beam\\Install\\BeamInstallManifest\:\:matches\(\) should be compatible with return type \(list\<mixed\>\) of method Rushing\\Popcorn\\Registries\\Registry\<mixed\>\:\:matches\(\)$#'
+			identifier: method.childReturnType
+			count: 1
+			path: src/Install/BeamInstallManifest.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Install\\ConvergencePreflight\:\:ledger\(\) should return list\<string\>\|null but returns array\<mixed\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Install/ConvergencePreflight.php
+
+		-
+			message: '#^Parameter \#1 \$paths of class Splicewire\\Beam\\Install\\ConvergencePreflight constructor expects list\<string\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Install/ConvergencePreflight.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Install\\MigrationFiles\:\:pathsFor\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Install/MigrationFiles.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Migrations\\Migration\:\:up\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Install/MigrationRehearsal.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between DateTimeImmutable and false will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Install/MigrationTravel.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Install\\RehearsedMigration\:\:changes\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Install/RehearsedMigration.php
+
+		-
+			message: '#^Cannot access offset ''events'' on Illuminate\\Contracts\\Foundation\\Application\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 1
+			path: src/Install/SelectedVendorPublisher.php
+
+		-
+			message: '#^Parameter \#1 \$paths of class Splicewire\\Beam\\Install\\TableOwnershipResolver constructor expects list\<string\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Install/TableOwnershipResolver.php
+
+		-
+			message: '#^Parameter \#1 \.\.\.\$arg1 of function min expects non\-empty\-array, list\<string\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Install/TableOwnershipResolver.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamSchema\:\:\$schema_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/BeamSchema.php
+
+		-
+			message: '#^Trait Splicewire\\Beam\\Models\\HasStatuses is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Models/HasStatuses.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Models\\Hook\:\:owner\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\MorphTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Models/Hook.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Models\\Hook\:\:subject\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\MorphTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Models/Hook.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Nav\\NavSectionRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Nav/NavSectionRegistry.php
+
+		-
+			message: '#^Call to function in_array\(\) with arguments ''navigate''\|''toast'', array\{''toast'', ''navigate''\} and true will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Particle/ActionAffordance.php
+
+		-
+			message: '#^Parameter \#1 \$callback of static method Closure\:\:fromCallable\(\) expects callable\(\)\: mixed, array\{class\-string, string\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Attributes/AttributedParticleDiscovery.php
+
+		-
+			message: '#^Parameter \#1 \$paths of method Rushing\\Popcorn\\Discovery\\AttributedClassScanner\:\:scan\(\) expects array\<int, string\>, array\<int\<0, max\>\|string, string\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Attributes/UngatedWriteDeclarations.php
+
+		-
+			message: '#^Parameter \#1 \$model of class Splicewire\\Beam\\Particle\\Backing\\EloquentBacking constructor expects class\-string\<Illuminate\\Database\\Eloquent\\Model\>, class\-string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Backing/BackingResolver.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Backing\\CollectionBacking\:\:records\(\) return type with generic class Illuminate\\Pagination\\CursorPaginator does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/Backing/CollectionBacking.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Backing\\CompositeBacking\:\:records\(\) return type with generic interface Illuminate\\Contracts\\Pagination\\CursorPaginator does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/Backing/CompositeBacking.php
+
+		-
+			message: '#^Parameter \#1 \$arms of method Splicewire\\Beam\\Particle\\Backing\\Merge\\MergeStrategy\:\:merge\(\) expects array\<string, Splicewire\\Beam\\Particle\\Backing\\StreamsRecords\>, array\<string, Splicewire\\Beam\\Particle\\Backing\\ResourceBacking\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Backing/CompositeBacking.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between class\-string and '''' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/Particle/Backing/DataResourceIndex.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Backing\\EloquentBacking\:\:query\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/Backing/EloquentBacking.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Backing\\EloquentBacking\:\:records\(\) return type with generic interface Illuminate\\Contracts\\Pagination\\CursorPaginator does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/Backing/EloquentBacking.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Backing\\EnrichesProjectedRecords\:\:enrich\(\) has parameter \$records with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Backing/EnrichesProjectedRecords.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Backing\\EnrichesProjectedRecords\:\:enrich\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Backing/EnrichesProjectedRecords.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Particle\\Backing\\Merge\\CompositeCursorPaginator extends generic class Illuminate\\Pagination\\CursorPaginator but does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/Backing/Merge/CompositeCursorPaginator.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Backing\\Merge\\MergeStrategy\:\:merge\(\) return type with generic interface Illuminate\\Contracts\\Pagination\\CursorPaginator does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/Backing/Merge/MergeStrategy.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Contracts\\Pagination\\CursorPaginator\:\:getCursorForItem\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Particle/Backing/Merge/OrderedMergeStrategy.php
+
+		-
+			message: '#^Instanceof between Splicewire\\Beam\\Particle\\Backing\\StreamsRecords and Splicewire\\Beam\\Particle\\Backing\\StreamsRecords will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Particle/Backing/Merge/OrderedMergeStrategy.php
+
+		-
+			message: '#^Parameter \#1 \$model of method Splicewire\\Beam\\Particle\\Backing\\ModelResourceIndex\:\:keysFor\(\) expects class\-string, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Backing/ModelResourceIndex.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Backing\\QueriesRecords\:\:query\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/Backing/QueriesRecords.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Backing\\StreamsRecords\:\:records\(\) return type with generic interface Illuminate\\Contracts\\Pagination\\CursorPaginator does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/Backing/StreamsRecords.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Particle\\CompositeEmitter\:\:\$emitters \(list\<Splicewire\\Beam\\Particle\\Emitter\>\) does not accept array\<int\<0, max\>\|string, Splicewire\\Beam\\Particle\\Emitter\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: src/Particle/CompositeEmitter.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Contribution\\ContributionProjector\:\:staticIncludes\(\) should return list\<string\> but returns list\<Closure\|string\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Particle/Contribution/ContributionProjector.php
+
+		-
+			message: '#^Parameter \#1 \$array of function array_unique expects an array of values castable to string, array\<Closure\|string\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Contribution/ContributionProjector.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Particle/Contribution/ResourceContribution.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Particle\\Contribution\\ResourceContributionRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/Contribution/ResourceContributionRegistry.php
+
+		-
+			message: '#^Parameter \#2 \$entry of method Rushing\\Popcorn\\Registries\\BasicRegistry\<Splicewire\\Beam\\Particle\\Contribution\\ResourceContribution\>\:\:register\(\) expects Splicewire\\Beam\\Particle\\Contribution\\ResourceContribution, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Contribution/ResourceContributionRegistry.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Particle/Delivery/DeliveryResolvers.php
+
+		-
+			message: '#^Trait Splicewire\\Beam\\Particle\\Fixtures\\HasParticleFixtures is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Particle/Fixtures/HasParticleFixtures.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\ParticleMountManager\:\:hookEvents\(\) has parameter \$middleware with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/ParticleMountManager.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\ParticleMountManager\:\:ops\(\) has parameter \$ops with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/ParticleMountManager.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\ParticleMountManager\:\:ops\(\) has parameter \$options with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/ParticleMountManager.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\ParticleMountManager\:\:relative\(\) has parameter \$options with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/ParticleMountManager.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Routing\\Route\:\:beam\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\ParticleMounter\:\:op\(\) has parameter \$options with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\ParticleMounter\:\:ops\(\) has parameter \$ops with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\ParticleMounter\:\:ops\(\) has parameter \$options with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\ParticleMounter\:\:relative\(\) has parameter \$options with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\ParticleMounter\:\:resource\(\) has parameter \$options with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\ParticleMounter\:\:resourceHookEvents\(\) has parameter \$middleware with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Parameter \#1 \$objectOrClass of class ReflectionClass constructor expects class\-string\<T of object\>\|T of object, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Parameter \#2 \$child of method Splicewire\\Beam\\Particle\\ParticleRelativeRegistry\:\:get\(\) expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Particle\\Mount\\ParticleMounter\:\:\$bindingClaims \(array\<string, class\-string\>\) does not accept array\<string, string\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type ReflectionAttribute\<Splicewire\\Beam\\Particle\\Attributes\\ParticleOp\>\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>idConstraint" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>value" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Particle/Mount/ParticleMounter.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\PendingParticleMount\:\:only\(\) has parameter \$verbs with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/PendingParticleMount.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\PendingParticleMount\:\:ops\(\) has parameter \$ops with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/PendingParticleMount.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Mount\\PendingParticleMount\:\:ops\(\) has parameter \$options with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/PendingParticleMount.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Particle\\Mount\\PendingParticleMount\:\:\$ops \(array\<int, array\{array, array\}\>\) does not accept non\-empty\-array\<int, array\{array\|true, array\}\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: src/Particle/Mount/PendingParticleMount.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Particle\\Mount\\PendingParticleMount\:\:\$ops type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/PendingParticleMount.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Particle\\Mount\\PendingParticleMount\:\:\$options type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/Mount/PendingParticleMount.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between array and true will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Particle/Mount/PendingParticleMount.php
+
+		-
+			message: '#^Access to an undefined property Schemastud\\Frame\\Contracts\\FrameResourceHandler\:\:\$boundRequest\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Call to an undefined method object\:\:get\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Call to an undefined method object\:\:offset\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Cannot call static method validateAndCreate\(\) on class\-string\|false\.$#'
+			identifier: staticMethod.nonObject
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:enrichProjected\(\) has parameter \$rows with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:enrichProjected\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:forRequest\(\) should return Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler but returns Schemastud\\Frame\\Contracts\\FrameResourceHandler\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:index\(\) has parameter \$params with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:indexWindow\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:parseInput\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:projectEdit\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:projectRead\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:query\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:scoped\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:scoped\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:store\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:update\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:withId\(\) has parameter \$row with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler\:\:withId\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Parameter \#1 \$model of static method Splicewire\\Beam\\Routing\\RecordKey\:\:assertValidFor\(\) expects class\-string\<Illuminate\\Database\\Eloquent\\Model\>, class\-string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Parameter \#1 \$records of method Splicewire\\Beam\\Particle\\Backing\\EnrichesProjectedRecords\:\:enrich\(\) expects list\<array\|Spatie\\LaravelData\\Data\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Parameter \#1 \$rows of static method Schemastud\\Frame\\Data\\ResourcePageData\:\:cursor\(\) expects list\<array\<string, mixed\>\>, array\<array\<mixed\>\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Parameter \#1 \$rows of static method Schemastud\\Frame\\Data\\ResourcePageData\:\:offset\(\) expects list\<array\<string, mixed\>\>, array\<array\<mixed\>\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>includes" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Particle/ParticleFrameResourceHandler.php
+
+		-
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:assertPublicQuery\(\) has parameter \$filters with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:authorizationBases\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:backingQuery\(\) has parameter \$filters with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:backingQuery\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:forList\(\) has parameter \$filters with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:forList\(\) has parameter \$relative with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:forList\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:intersect\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:intersect\(\) has parameter \$scope with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:intersect\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:ordered\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:ordered\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:publicScoped\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:publicScoped\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:scoped\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:scoped\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleListQuery\:\:withContributedIncludes\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleListQuery.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Particle\\ParticleOperationRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleOperationRegistry.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Particle\\ParticleOperationRegistry\:\:\$entries with generic class Rushing\\Popcorn\\Registries\\BasicRegistry does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleOperationRegistry.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Particle\\ParticleRelativeRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleRelativeRegistry.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Particle\\ParticleRelativeRegistry\:\:\$entries with generic class Rushing\\Popcorn\\Registries\\BasicRegistry does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleRelativeRegistry.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleResource\:\:__construct\(\) has parameter \$operationScope with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleResource.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleResource\:\:__construct\(\) has parameter \$scope with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleResource.php
+
+		-
+			message: '#^Parameter \$createResultData of class Schemastud\\Frame\\Registry\\ResourceDefinition constructor expects class\-string\<Spatie\\LaravelData\\Data\>\|null, class\-string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/ParticleResource.php
+
+		-
+			message: '#^Parameter \$form of class Schemastud\\Frame\\Registry\\ResourceDefinition constructor expects ''bare''\|''enriched'', string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/ParticleResource.php
+
+		-
+			message: '#^Parameter \$layout of class Schemastud\\Frame\\Registry\\ResourceDefinition constructor expects ''master\-detail''\|''single''\|''subnav''\|null, string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/ParticleResource.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Particle\\ParticleResourceRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleResourceRegistry.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ParticleResourceRegistry\:\:registerRealms\(\) has parameter \$realms with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Particle/ParticleResourceRegistry.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Particle\\ParticleResourceRegistry\:\:\$entries with generic class Rushing\\Popcorn\\Registries\\BasicRegistry does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ParticleResourceRegistry.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Particle\\ParticleResourceRegistry\:\:\$realms \(array\<string, list\<string\>\>\) does not accept non\-empty\-array\<string, array\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: src/Particle/ParticleResourceRegistry.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between class\-string and '''' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/Particle/ParticleResourceRegistry.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between class\-string and '''' will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: src/Particle/ParticleResourceRegistry.php
+
+		-
+			message: '#^Parameter \#1 \$model of static method Splicewire\\Beam\\Routing\\RecordKey\:\:assertValidFor\(\) expects class\-string\<Illuminate\\Database\\Eloquent\\Model\>, class\-string given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Particle/ParticleWriteSubjectResolver.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\Registry\\ResourceRegistryBacking\:\:records\(\) return type with generic interface Illuminate\\Contracts\\Pagination\\CursorPaginator does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/Registry/ResourceRegistryBacking.php
+
+		-
+			message: '#^Parameter \$data of class Schemastud\\Frame\\Registry\\ResourceDefinition constructor expects class\-string, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Registry/ResourceRegistryBacking.php
+
+		-
+			message: '#^Parameter \$form of class Schemastud\\Frame\\Registry\\ResourceDefinition constructor expects ''bare''\|''enriched'', string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Registry/ResourceRegistryBacking.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>value" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Particle/Registry/ResourceRegistryBacking.php
+
+		-
+			message: '#^Parameter \$handler of class Splicewire\\Beam\\Particle\\ResourceRegistryRow constructor expects class\-string\|null, string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/ResourceRegistryReport.php
+
+		-
+			message: '#^Parameter \$model of class Splicewire\\Beam\\Particle\\ResourceRegistryRow constructor expects class\-string\|null, string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/ResourceRegistryReport.php
+
+		-
+			message: '#^Call to an undefined method object\:\:setEagerLoads\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Particle/ScopedIndexQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ScopedIndexQuery\:\:scoped\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ScopedIndexQuery.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Particle\\ScopedIndexQuery\:\:scoped\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Particle/ScopedIndexQuery.php
+
+		-
+			message: '#^Parameter \#1 \$model of static method Splicewire\\Beam\\Routing\\RecordKey\:\:assertValidFor\(\) expects class\-string\<Illuminate\\Database\\Eloquent\\Model\>, class\-string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Particle/Subject/RecordSubject.php
+
+		-
+			message: '#^Call to function is_a\(\) with arguments class\-string\<Splicewire\\Beam\\Particle\\Subject\\ResolvesOperationSubject\>, ''Splicewire\\\\Beam\\\\Particle\\\\Subject\\\\ResolvesOperationSubject'' and true will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Particle/Subject/SubjectResolvers.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Read\\Contracts\\ParticleHydrator\:\:hydrate\(\) has parameter \$source with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Read/Contracts/ParticleHydrator.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Read\\PayloadParticleReader\:\:hydrate\(\) has parameter \$source with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Read/PayloadParticleReader.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Read\\SourcedParticleHydrator\:\:hydrate\(\) has parameter \$source with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Read/SourcedParticleHydrator.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<array\<string, mixed\>\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Realm/RealmOverlay.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Realm\\RealmOverlayRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Realm/RealmOverlayRegistry.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Realm\\RealmRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Realm/RealmRegistry.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Realm\\RealmRegistry\:\:\$entries with generic class Rushing\\Popcorn\\Registries\\BasicRegistry does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Realm/RealmRegistry.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\<string, array\<string, mixed\>\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Realm/RealmResourceRegistry.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\<string, mixed\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Realm/RealmResourceRegistry.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Realm\\RealmResourceRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Realm/RealmResourceRegistry.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>stack" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Realm/RealmResourceRegistry.php
+
+		-
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 1
+			path: src/Routing/BeamRouteProxy.php
+
+		-
+			message: '#^Parameter \#1 \$model of method Illuminate\\Database\\Eloquent\\ModelNotFoundException\<Illuminate\\Database\\Eloquent\\Model\>\:\:setModel\(\) expects class\-string\<Illuminate\\Database\\Eloquent\\Model\>, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Routing/RecordKey.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Routing/RouteReturnType.php
+
+		-
+			message: '#^Instanceof between Schemastud\\DataSchemas\\Contracts\\SchemaRegistry and Schemastud\\DataSchemas\\Contracts\\SchemaRegistry will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Schema/BeamSchemaRegistry.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Schema\\BeamSchemaRegistry\:\:registerIn\(\) has parameter \$schema with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Schema/BeamSchemaRegistry.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$artifact\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/DatabaseSchemaRegistry.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$fingerprint\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Schema/DatabaseSchemaRegistry.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Schema\\DatabaseSchemaRegistry\:\:query\(\) return type with generic class Illuminate\\Database\\Eloquent\\Builder does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Schema/DatabaseSchemaRegistry.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Schema\\IdentifierLabels\:\:referenced\(\) has parameter \$class with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Schema/IdentifierLabels.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<class\-string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Schema/IdentifierLabels.php
+
+		-
+			message: '#^Variable \$resource in PHPDoc tag @var does not match any variable in the foreach loop\: \$class$#'
+			identifier: varTag.differentVariable
+			count: 1
+			path: src/Schema/IdentifierLabels.php
+
+		-
+			message: '#^Call to an undefined method Rushing\\Popcorn\\Registries\\Registry\<mixed\>\:\:all\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Schema/SchemaBindingIndex.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Schema\\SchemaBindingIndex\:\:dataClassFor\(\) should return class\-string\<Spatie\\LaravelData\\Data\>\|null but returns class\-string\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Schema/SchemaBindingIndex.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between class\-string and '''' will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Schema/SchemaBindingIndex.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Schema\\SchemaLadderMigrator\:\:objectsIn\(\) has parameter \$found with generic class SplObjectStorage but does not specify its types\: TObject, TData$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Schema/SchemaLadderMigrator.php
+
+		-
+			message: '#^Parameter \#1 \$objectOrClass of class ReflectionClass constructor expects class\-string\<T of object\>\|T of object, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Schema/SchemaLadderMigrator.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Schema\\SchemaSources implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Schema/SchemaSources.php
+
+		-
+			message: '#^Instanceof between Closure and Closure will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Schema/SchemaSources.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Schema\\SchemaSources\:\:matches\(\) should return array\<string, mixed\> but returns list\<Closure\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Schema/SchemaSources.php
+
+		-
+			message: '#^Return type \(array\<string, mixed\>\) of method Splicewire\\Beam\\Schema\\SchemaSources\:\:matches\(\) should be compatible with return type \(list\<mixed\>\) of method Rushing\\Popcorn\\Registries\\Registry\<mixed\>\:\:matches\(\)$#'
+			identifier: method.childReturnType
+			count: 1
+			path: src/Schema/SchemaSources.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Seed\\BeamSeedManifest implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Seed/BeamSeedManifest.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Seed\\BeamSeedManifest\:\:matches\(\) should return array\<string, mixed\> but returns list\<Splicewire\\Beam\\Seed\\SeedStep\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Seed/BeamSeedManifest.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<Splicewire\\Beam\\Seed\\SeedStep\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Seed/BeamSeedManifest.php
+
+		-
+			message: '#^Parameter \#2 \$seeder of class Splicewire\\Beam\\Seed\\SeedStep constructor expects class\-string, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Seed/BeamSeedManifest.php
+
+		-
+			message: '#^Return type \(array\<string, mixed\>\) of method Splicewire\\Beam\\Seed\\BeamSeedManifest\:\:matches\(\) should be compatible with return type \(list\<mixed\>\) of method Rushing\\Popcorn\\Registries\\Registry\<mixed\>\:\:matches\(\)$#'
+			identifier: method.childReturnType
+			count: 1
+			path: src/Seed/BeamSeedManifest.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Source/ParticleRouteManifestSource.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Source\\ParticleRouteManifestSource\:\:readMethods\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Source/ParticleRouteManifestSource.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Source\\ParticleRouteManifestSource\:\:toArray\(\) should return array\<string, array\{path\: string, methods\: list\<string\>, visibility\: string, returns\?\: string, returnsMany\?\: bool, returnsBody\?\: bool, streams\?\: array\<string, list\<string\>\>, unresolved\?\: bool\}\> but returns array\<array\{path\: string, methods\: array, returns\: string, returnsMany\?\: true\}\|array\{path\: string, methods\: array, streams\: non\-empty\-array\<string, list\<string\>\>\}\|array\{path\: string, methods\: array, unresolved\: true\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Source/ParticleRouteManifestSource.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Source\\RouteManifestSourceRegistry extends generic class Rushing\\Popcorn\\Laravel\\Registries\\ConfigRegistry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Source/RouteManifestSourceRegistry.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Source/SourceGrant.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\GitRepo\:\:\$checked_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Storage/GitRepoRegistrar.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\GitRepo\:\:\$root_path\.$#'
+			identifier: property.notFound
+			count: 4
+			path: src/Storage/GitRepoRegistrar.php
+
+		-
+			message: '#^Argument of an invalid type list\<string\>\|false supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Storage/GitRepoRegistrar.php
+
+		-
+			message: '#^Parameter \#1 \$array of function array_filter expects array, list\<string\>\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Storage/GitRepoRegistrar.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamParticle\:\:\$meta\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Storage/ParticleStorageDriver.php
+
+		-
+			message: '#^Access to an undefined property Splicewire\\Beam\\Models\\BeamParticle\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Storage/ParticleStorageDriver.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Storage\\StackedStorageDriver\:\:\$tiers \(array\<int, Splicewire\\Beam\\Storage\\StorageDriver\>\) does not accept array\<int\|string, Splicewire\\Beam\\Storage\\StorageDriver\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: src/Storage/StackedStorageDriver.php
+
+		-
+			message: '#^Unsafe usage of new static\(\)\.$#'
+			identifier: new.static
+			count: 1
+			path: src/Storage/StackedStorageDriver.php
+
+		-
+			message: '#^Call to an undefined method object\:\:count\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Summary/BeamResourceSummaryProvider.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Surface\\GroupRegistry implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surface/GroupRegistry.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surface\\GroupRegistry\:\:ancestry\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surface/GroupRegistry.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Surface\\GroupRegistry\:\:\$noiseSegments type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surface/GroupRegistry.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Surface/RuntimeCorroborator.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Surface/RuntimeCorroborator.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Surgeon\\AuditScanPaths implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/AuditScanPaths.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Surgeon/BareParticleMountAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\CentralPinRelationIdentityAudit\:\:schemas\(\) should return list\<string\> but returns array\<string\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Surgeon/CentralPinRelationIdentityAudit.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Surgeon/CentralPinRelationIdentityAudit.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Surgeon\\CentralPinRelationIdentityAudit\:\:\$schemaCache \(list\<string\>\|null\) does not accept array\<string\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: src/Surgeon/CentralPinRelationIdentityAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\ComposedTableConfigAudit\:\:parse\(\) should return list\<PhpParser\\Node\>\|null but returns array\<PhpParser\\Node\\Stmt\>\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Surgeon/ComposedTableConfigAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\DeclarationDocblockAudit\:\:nextMeaningful\(\) has parameter \$tokens with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/DeclarationDocblockAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\DeclarationDocblockAudit\:\:readAttribute\(\) has parameter \$tokens with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/DeclarationDocblockAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\DeclarationDocblockAudit\:\:readBody\(\) has parameter \$tokens with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/DeclarationDocblockAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\DeclarationDocblockAudit\:\:readCaseValue\(\) has parameter \$tokens with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/DeclarationDocblockAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\DeclarationDocblockAudit\:\:readName\(\) has parameter \$tokens with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/DeclarationDocblockAudit.php
+
+		-
+			message: '#^Offset 2 might not exist on array\{0\: array\{string, int\<\-1, max\>\}, 1\: array\{non\-falsy\-string, int\<\-1, max\>\}, 2\?\: array\{non\-falsy\-string, int\<\-1, max\>\}, 3\?\: array\{non\-falsy\-string, int\<\-1, max\>\}\}\.$#'
+			identifier: offsetAccess.notFound
+			count: 2
+			path: src/Surgeon/DocblockTierAudit.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between non\-falsy\-string and '''' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/Surgeon/DocblockTierAudit.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Surgeon/DuplicateRouteNameAudit.php
+
+		-
+			message: '#^Parameter \#1 \$value of function count expects array\|Countable, Illuminate\\Routing\\RouteCollectionInterface given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/DuplicateRouteNameAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\EnvelopeCopyAudit\:\:parse\(\) should return list\<PhpParser\\Node\>\|null but returns array\<PhpParser\\Node\\Stmt\>\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Surgeon/EnvelopeCopyAudit.php
+
+		-
+			message: '#^Property PhpParser\\Node\\Stmt\\Namespace_\:\:\$stmts \(array\<PhpParser\\Node\\Stmt\>\) on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.property
+			count: 1
+			path: src/Surgeon/EnvelopeCopyAudit.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between PhpParser\\Node\\ArrayItem and null will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Surgeon/InertiaPropShapeAudit.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Surgeon/InstallDesiredStateAudit.php
+
+		-
+			message: '#^Parameter \#1 \$value of function count expects array\|Countable, Illuminate\\Routing\\RouteCollectionInterface given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/InstallDesiredStateAudit.php
+
+		-
+			message: '#^Parameter \#1 \$class of static method Splicewire\\Beam\\Particle\\Attributes\\AttributedParticleDiscovery\:\:resourceFromAttribute\(\) expects class\-string, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/ListedResourceDisplacementAudit.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Surgeon/MacroDeclaredSurfaceAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\ModelSurfaceCoverageAudit\:\:excludedModels\(\) should return list\<class\-string\> but returns list\<string\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Surgeon/ModelSurfaceCoverageAudit.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Embed\\Models\\Thread not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/Surgeon/MorphAliasCoverageAudit.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Threads\\Models\\Thread not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/Surgeon/MorphAliasCoverageAudit.php
+
+		-
+			message: '#^Class Splicewire\\Knowledge\\Complying\\Concept\\Models\\Concept not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/Surgeon/MorphAliasCoverageAudit.php
+
+		-
+			message: '#^Class Splicewire\\Knowledge\\Complying\\Concept\\Models\\ConceptStatus not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/Surgeon/MorphAliasCoverageAudit.php
+
+		-
+			message: '#^Class Splicewire\\Knowledge\\Complying\\Concept\\Models\\ConceptSynonym not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/Surgeon/MorphAliasCoverageAudit.php
+
+		-
+			message: '#^Class Splicewire\\Knowledge\\Complying\\Models\\Rule not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/Surgeon/MorphAliasCoverageAudit.php
+
+		-
+			message: '#^Access to an undefined property PhpParser\\Node\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Access to an undefined property PhpParser\\Node\\Expr\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Access to an undefined property PhpParser\\Node\\Expr\\Error\|PhpParser\\Node\\Expr\\Variable\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Call to an undefined method PhpParser\\Node\:\:getArgs\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Call to an undefined method PhpParser\\Node\:\:isFirstClassCallable\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\MorphTokenBypassAudit\:\:arrayPairs\(\) has parameter \$nodes with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\MorphTokenBypassAudit\:\:arrayPairs\(\) has parameter \$seen with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\MorphTokenBypassAudit\:\:isBackedEnum\(\) has parameter \$nodes with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\MorphTokenBypassAudit\:\:isBackedEnumValue\(\) has parameter \$nodes with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\MorphTokenBypassAudit\:\:precedingValues\(\) has parameter \$nodes with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Parameter \#1 \$array \(array\<PhpParser\\Node\\ArrayItem\>\) to function array_filter does not contain falsy values, the array will always stay the same\.$#'
+			identifier: arrayFilter.same
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Parameter \#1 \$code of method PhpParser\\Parser\:\:parse\(\) expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between PhpParser\\Node\\ArrayItem and null will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Surgeon/MorphTokenBypassAudit.php
+
+		-
+			message: '#^Access to an undefined property PhpParser\\Node\\Arg\|PhpParser\\Node\\ArgPlaceholder\|PhpParser\\Node\\VariadicPlaceholder\:\:\$value\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Surgeon/ParticleControllerRedundancyAudit.php
+
+		-
+			message: '#^Instanceof between Splicewire\\Beam\\Particle\\ParticleResource and Splicewire\\Beam\\Particle\\ParticleResource will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Surgeon/ParticleControllerRedundancyAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\ParticleControllerRedundancyAudit\:\:importsOf\(\) should return array\<string, class\-string\> but returns array\<string, string\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Surgeon/ParticleControllerRedundancyAudit.php
+
+		-
+			message: '#^Offset 0 on non\-empty\-list\<string\> on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Surgeon/ParticleControllerRedundancyAudit.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 2
+			path: src/Surgeon/ParticleControllerRedundancyAudit.php
+
+		-
+			message: '#^Instanceof between Splicewire\\Beam\\Particle\\ParticleOperation and Splicewire\\Beam\\Particle\\ParticleOperation will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: src/Surgeon/ParticleOperationBypassAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\ParticleOperationBypassAudit\:\:importsOf\(\) should return array\<string, class\-string\> but returns array\<string, string\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Surgeon/ParticleOperationBypassAudit.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 2
+			path: src/Surgeon/ParticleOperationBypassAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\ParticleWriteBypassAudit\:\:parse\(\) should return list\<PhpParser\\Node\>\|null but returns array\<PhpParser\\Node\\Stmt\>\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Surgeon/ParticleWriteBypassAudit.php
+
+		-
+			message: '#^Parameter \#1 \$args of method Splicewire\\Beam\\Surgeon\\ParticleWriteBypassAudit\:\:firstArgIsWriterClass\(\) expects list\<PhpParser\\Node\\Arg\>, array\<PhpParser\\Node\\Arg\> given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Surgeon/ParticleWriteBypassAudit.php
+
+		-
+			message: '#^Call to an undefined method object\:\:getSchemaPath\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Surgeon/SchemaProjectionDriftAudit.php
+
+		-
+			message: '#^Call to function is_string\(\) with class\-string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Surgeon/SchemaProjectionDriftAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\SchemaProjectionDriftAudit\:\:underAny\(\) has parameter \$paths with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/SchemaProjectionDriftAudit.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Surgeon/SdkEndpointDriftAudit.php
+
+		-
+			message: '#^Parameter \#1 \$report of method Splicewire\\Beam\\Surgeon\\SdkHookMigrationAudit\:\:suggestFor\(\) expects array\{candidates\?\: list\<array\{functionName\: string, routeName\: string, apiFile\: string, hookModule\: string, edits\: list\<array\{file\: string, old\: string, new\: string\}\>\}\>, exceptions\?\: list\<array\{functionName\: string, routeName\: string, apiFile\: string, reason\: string\}\>\}, array\{candidates\: list\<array\<string, mixed\>\>, exceptions\: list\<array\<string, mixed\>\>\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/SdkHookMigrationAudit.php
+
+		-
+			message: '#^Parameter \$excludeDirNames of class Splicewire\\Beam\\Surgeon\\SdkHookMigrationAudit constructor expects list\<string\>, array\<mixed, mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/SdkHookMigrationAudit.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Surgeon/SdkReturnsCoverageAudit.php
+
+		-
+			message: '#^Method PhpParser\\NodeVisitorAbstract@anonymous/Surgeon/SdkReturnsCoverageAudit\.php\:1045\:\:enterNode\(\) never returns PhpParser\\Node so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Surgeon/SdkReturnsCoverageAudit.php
+
+		-
+			message: '#^Method PhpParser\\NodeVisitorAbstract@anonymous/Surgeon/SdkReturnsCoverageAudit\.php\:1045\:\:enterNode\(\) never returns array\<PhpParser\\Node\> so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Surgeon/SdkReturnsCoverageAudit.php
+
+		-
+			message: '#^Method PhpParser\\NodeVisitorAbstract@anonymous/Surgeon/SdkReturnsCoverageAudit\.php\:1095\:\:enterNode\(\) never returns PhpParser\\Node so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Surgeon/SdkReturnsCoverageAudit.php
+
+		-
+			message: '#^Method PhpParser\\NodeVisitorAbstract@anonymous/Surgeon/SdkReturnsCoverageAudit\.php\:1095\:\:enterNode\(\) never returns array\<PhpParser\\Node\> so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Surgeon/SdkReturnsCoverageAudit.php
+
+		-
+			message: '#^Method PhpParser\\NodeVisitorAbstract@anonymous/Surgeon/SdkReturnsCoverageAudit\.php\:1135\:\:enterNode\(\) never returns PhpParser\\Node so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Surgeon/SdkReturnsCoverageAudit.php
+
+		-
+			message: '#^Method PhpParser\\NodeVisitorAbstract@anonymous/Surgeon/SdkReturnsCoverageAudit\.php\:1135\:\:enterNode\(\) never returns array\<PhpParser\\Node\> so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Surgeon/SdkReturnsCoverageAudit.php
+
+		-
+			message: '#^Parameter \#1 \$stmts of method Splicewire\\Beam\\Surgeon\\SdkReturnsCoverageAudit\:\:collectRouteStatements\(\) expects list\<PhpParser\\Node\\Stmt\>, array\<PhpParser\\Node\\Stmt\> given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/Surgeon/SdkReturnsCoverageAudit.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between mixed and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/Surgeon/SdkReturnsCoverageAudit.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Surgeon/SdkReturnsHandlerAgreementAudit.php
+
+		-
+			message: '#^Call to an undefined method PhpParser\\Node\\Expr\|PhpParser\\Node\\Name\|PhpParser\\Node\\Stmt\\Class_\:\:toString\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Surgeon/SdkReturnsHandlerAgreementAudit.php
+
+		-
+			message: '#^Method PhpParser\\NodeVisitorAbstract@anonymous/Surgeon/SdkReturnsHandlerAgreementAudit\.php\:660\:\:enterNode\(\) never returns PhpParser\\Node so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Surgeon/SdkReturnsHandlerAgreementAudit.php
+
+		-
+			message: '#^Method PhpParser\\NodeVisitorAbstract@anonymous/Surgeon/SdkReturnsHandlerAgreementAudit\.php\:660\:\:enterNode\(\) never returns array\<PhpParser\\Node\> so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Surgeon/SdkReturnsHandlerAgreementAudit.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between PhpParser\\Node\\ArrayItem and null will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Surgeon/SdkReturnsHandlerAgreementAudit.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Surgeon/SdkReturnsTypeScriptResolutionAudit.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between non\-empty\-list\<string\> and array\{\} will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Surgeon/SdkReturnsTypeScriptResolutionAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\SupersededDeclarationAudit\:\:sweep\(\) has parameter \$registry with generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/SupersededDeclarationAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\TablePrefixBypassAudit\:\:parse\(\) should return list\<PhpParser\\Node\>\|null but returns array\<PhpParser\\Node\\Stmt\>\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Surgeon/TablePrefixBypassAudit.php
+
+		-
+			message: '#^Variable \$property in PHPDoc tag @var does not match any variable in the foreach loop\: \$prop$#'
+			identifier: varTag.differentVariable
+			count: 1
+			path: src/Surgeon/TablePrefixBypassAudit.php
+
+		-
+			message: '#^Dead catch \- Throwable is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
+			count: 1
+			path: src/Surgeon/TypeScriptShortNameCollisionAudit.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between non\-empty\-string and '''' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/Surgeon/TypeScriptShortNameCollisionAudit.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Surgeon/UndeclaredSurfaceAudit.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 2
+			path: src/Surgeon/UndeclaredSurfaceAudit.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between class\-string and '''' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 2
+			path: src/Surgeon/UndeclaredWriteMapAudit.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between class\-string and '''' will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Surgeon/UndeclaredWriteMapAudit.php
+
+		-
+			message: '#^Dead catch \- Throwable is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:classStringArg\(\) has parameter \$imports with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:hasArrayConstructorParam\(\) has parameter \$class with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:hasArrayState\(\) has parameter \$class with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:hasExternalStoreConstructor\(\) has parameter \$class with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:isBoundUnderOwnContract\(\) has parameter \$abstract with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:isBoundUnderOwnContract\(\) has parameter \$concrete with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:isPositionThreeLadder\(\) has parameter \$abstract with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:isPositionThreeLadder\(\) has parameter \$concrete with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:publicMethodNames\(\) has parameter \$classes with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:reflect\(\) return type with generic class ReflectionClass does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Parameter \#1 \$arg of method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:classStringArg\(\) expects PhpParser\\Node\\Arg\|null, PhpParser\\Node\\Arg\|PhpParser\\Node\\ArgPlaceholder\|PhpParser\\Node\\VariadicPlaceholder\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Parameter \#1 \$arg of method Splicewire\\Beam\\Surgeon\\UndescribedRegistryAudit\:\:concreteFromClosureArg\(\) expects PhpParser\\Node\\Arg\|null, PhpParser\\Node\\Arg\|PhpParser\\Node\\ArgPlaceholder\|PhpParser\\Node\\VariadicPlaceholder\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Parameter \#1 \$class of static method Rushing\\Popcorn\\Registries\\IsRegistry\:\:of\(\) expects class\-string\|object, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/UndescribedRegistryAudit.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>data" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Surgeon/UnrealmedResourceAudit.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between class\-string and '''' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/Surgeon/UnseatedNavSectionAudit.php
+
+		-
+			message: '#^Argument of an invalid type Illuminate\\Routing\\RouteCollectionInterface supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Dead catch \- Throwable is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
+			count: 1
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\WireNameDeclarationAudit\:\:exemptionFor\(\) has parameter \$class with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Surgeon\\WireNameDeclarationAudit\:\:undeclaredProperties\(\) has parameter \$reflection with generic class ReflectionClass but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Parameter \#1 \$classes of class Splicewire\\Beam\\Surgeon\\WireNameDeclarationAudit constructor expects array\<int\|string, list\<''input''\|''output''\>\|string\>, array\<non\-empty\-string, list\<string\>\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Parameter \#1 \$classes of static method Splicewire\\Beam\\Surgeon\\WireNameDeclarationAudit\:\:addAttributeClasses\(\) expects array\<class\-string, array\{input\?\: true, output\?\: true\}\>, array\<non\-empty\-string, array\<string, true\>\> given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Parameter \#2 \$haystack of function in_array expects array, list\<string\>\|string given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Parameter \#2 \$input of class Splicewire\\Beam\\Surgeon\\WireNameDeclarationAudit constructor expects class\-string\|null, string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Parameter \#3 \$output of class Splicewire\\Beam\\Surgeon\\WireNameDeclarationAudit constructor expects class\-string\|null, string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Parameter &\$classes by\-ref type of method Splicewire\\Beam\\Surgeon\\WireNameDeclarationAudit\:\:addAttributeClasses\(\) expects array\<class\-string, array\{input\?\: true, output\?\: true\}\>, non\-empty\-array\<non\-empty\-string, array\<string, true\>\> given\.$#'
+			identifier: parameterByRef.type
+			count: 1
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Possibly invalid array key type list\<string\>\|string\.$#'
+			identifier: offsetAccess.invalidOffset
+			count: 1
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Property Splicewire\\Beam\\Surgeon\\WireNameDeclarationAudit\:\:\$classes \(array\<class\-string, array\{input\: bool, output\: bool\}\>\) does not accept non\-empty\-array\<string, array\{input\: bool, output\: bool\}\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: src/Surgeon/WireNameDeclarationAudit.php
+
+		-
+			message: '#^Trait Splicewire\\Beam\\Testing\\AssertsCommercialSeams is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Testing/AssertsCommercialSeams.php
+
+		-
+			message: '#^Trait Splicewire\\Beam\\Testing\\AssertsHostIaSeam is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Testing/AssertsHostIaSeam.php
+
+		-
+			message: '#^Trait Splicewire\\Beam\\Testing\\AssertsIdentifierLabels is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Testing/AssertsIdentifierLabels.php
+
+		-
+			message: '#^Trait Splicewire\\Beam\\Testing\\AssertsUngatedWrites is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Testing/AssertsUngatedWrites.php
+
+		-
+			message: '#^Parameter \#1 \$json of function json_decode expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Validation/SchemaIntakeValidator.php
+
+		-
+			message: '#^Parameter \$hook of class Splicewire\\Beam\\Webhooks\\Data\\CreatedHookData constructor expects Splicewire\\Beam\\Data\\HookData, Splicewire\\Beam\\Data\\BeamData given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Webhooks/Data/CreatedHookData.php
+
+		-
+			message: '#^Access to an undefined property object\:\:\$is_error\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Webhooks/Data/HookDeliveryData.php
+
+		-
+			message: '#^Access to an undefined property object\:\:\$method\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Webhooks/Data/HookDeliveryData.php
+
+		-
+			message: '#^Access to an undefined property object\:\:\$path\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Webhooks/Data/HookDeliveryData.php
+
+		-
+			message: '#^Access to an undefined property object\:\:\$request_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Webhooks/Data/HookDeliveryData.php
+
+		-
+			message: '#^Access to an undefined property object\:\:\$request_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Webhooks/Data/HookDeliveryData.php
+
+		-
+			message: '#^Access to an undefined property object\:\:\$response_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Webhooks/Data/HookDeliveryData.php
+
+		-
+			message: '#^Access to an undefined property object\:\:\$response_status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Webhooks/Data/HookDeliveryData.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Webhooks\\HookDeliveryEnvelope\:\:toJson\(\) should return string but returns string\|false\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Webhooks/HookDeliveryEnvelope.php
+
+		-
+			message: '#^Unsafe usage of new static\(\)\.$#'
+			identifier: new.static
+			count: 1
+			path: src/Webhooks/HookDeliveryEnvelope.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Webhooks\\HookFrameResourceHandler\:\:store\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Webhooks/HookFrameResourceHandler.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Webhooks/HookSubscriptionReach.php
+
+		-
+			message: '#^Parameter \#1 \$class of function class_exists expects string, class\-string\|Splicewire\\Beam\\Particle\\Backing\\ResourceBacking given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Webhooks/HookSubscriptionReach.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>inputMappedName" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Webhooks/HookSubscriptionReach.php
+
+		-
+			message: '#^Class Rushing\\RequestLogs\\Models\\RequestLog not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/Webhooks/Http/HookDeliveriesController.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Webhooks\\Http\\HookDeliveriesController\:\:index\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: src/Webhooks/Http/HookDeliveriesController.php
+
+		-
+			message: '#^Method Splicewire\\Beam\\Webhooks\\Http\\HookEventCatalogController\:\:index\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: src/Webhooks/Http/HookEventCatalogController.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<Splicewire\\Beam\\Webhooks\\Data\\EventTypeDescriptorData\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Webhooks/Http/HookEventCatalogController.php
+
+		-
+			message: '#^Property Illuminate\\Console\\Command\:\:\$laravel \(Illuminate\\Contracts\\Foundation\\Application\) on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.property
+			count: 1
+			path: src/Write/AsSystemWriter.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:dedupeKeyColumn\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Write/Stages/DedupeStage.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:dedupeScope\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Write/Stages/DedupeStage.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between numeric\-string and false will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/helpers.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between numeric\-string and false will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/helpers.php

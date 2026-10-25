@@ -4,9 +4,9 @@ namespace Splicewire\Beam\Tests\Data;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use Schemastud\DataSchemas\Contracts\ProvidesJsonSchema;
+use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Data\BeamSchemaData;
 use Splicewire\Beam\Data\BeamSchemaInputData;
-use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Data\GitRepoData;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Data\HookInputData;

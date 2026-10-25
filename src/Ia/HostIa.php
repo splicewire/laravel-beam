@@ -5,8 +5,8 @@ namespace Splicewire\Beam\Ia;
 use Closure;
 use Illuminate\Support\Facades\Route;
 use InvalidArgumentException;
-use Splicewire\Beam\Realm\RealmManifestProjector;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
+use Splicewire\Beam\Realm\RealmManifestProjector;
 use Splicewire\Beam\Realm\RealmRegistry;
 
 /**

@@ -43,7 +43,7 @@ class NavSeatLockTest extends TestCase
         );
     }
 
-    public function test_a_seat_is_soft_gated_only_when_it_declares_BOTH_a_lock_and_an_entitlement_gate(): void
+    public function test_a_seat_is_soft_gated_only_when_it_declares_bot_h_a_lock_and_an_entitlement_gate(): void
     {
         $lock = new NavSeatLock('Available on the Songwriter plan', 'go-songwriter');
 

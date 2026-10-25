@@ -15,9 +15,9 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Rushing\DataFilters\Query\ResourceQuery;
 use Schemastud\Frame\FrameServiceProvider;
+use Splicewire\Beam\Authorization\RealmEntitlementReadPolicy;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
-use Splicewire\Beam\Authorization\RealmEntitlementReadPolicy;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -75,8 +75,7 @@ class PolicyBoundListReadTest extends TestCase
         ?string $readPolicy = null,
         ?string $readBoundary = null,
         array $realms = [],
-    ): void
-    {
+    ): void {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'gadgets',
             backing: Gadget::class,
@@ -453,6 +452,4 @@ class SoftGadget extends Model
     public $timestamps = false;
 }
 
-class UnpolicedGadget extends Gadget
-{
-}
+class UnpolicedGadget extends Gadget {}

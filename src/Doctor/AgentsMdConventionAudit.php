@@ -20,6 +20,7 @@ class AgentsMdConventionAudit implements DoctorAudit
 {
     /** The check names this audit emits; a docs `<DoctorOutput>` sample is checked against them (docs-walkthrough DOC-11(c)). */
     public const CHECK_AGENTS_MD = 'AGENTS.md committed / CLAUDE.md gitignored';
+
     public const CHECK_WIRING_MARKER = 'ecosystem wiring-skill marker present';
 
     private const MARKER_START = '<!-- ecosystem:start -->';

@@ -10,7 +10,6 @@ use Schemastud\Frame\Http\Controllers\FrameResourceController;
 use Schemastud\Frame\Http\Controllers\FrameResourceFiltersController;
 use Schemastud\Frame\Http\Controllers\FrameResourceSummaryController;
 use Splicewire\Beam\Http\Particle\ParticleController;
-use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Surface\RuntimeCorroborator;
 
@@ -116,7 +115,7 @@ class GuestReadablePublicReadAudit implements DoctorAudit
         }
 
         return [Finding::warn(self::CHECK, sprintf(
-            "%d particle resource%s a guest can reach declare%s no Public Read (ADR-0230) — the read guard "
+            '%d particle resource%s a guest can reach declare%s no Public Read (ADR-0230) — the read guard '
             ."refuses a guest there; declare `publicRead:` to admit the guest, or authenticate the mount:\n%s",
             count($keys),
             count($keys) === 1 ? '' : 's',
