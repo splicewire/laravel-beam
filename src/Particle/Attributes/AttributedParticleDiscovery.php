@@ -239,6 +239,8 @@ class AttributedParticleDiscovery
             idConstraint: $attribute->idConstraint,
             delivery: $attribute->delivery,
             affordance: $attribute->affordance,
+            summary: $attribute->summary,
+            description: $attribute->description,
         ));
     }
 

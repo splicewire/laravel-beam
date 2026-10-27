@@ -109,6 +109,7 @@ use Splicewire\Beam\Doctor\Support\TrackerTicketStatus;
 use Splicewire\Beam\Doctor\TestRunnerConformanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredAffordanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
+use Splicewire\Beam\Doctor\UndeclaredOperationSummaryAudit;
 use Splicewire\Beam\Doctor\UndeclaredOutputAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
@@ -1147,6 +1148,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // frame draws them, counted warn-level on the same schedule, plus declared affordances frame cannot
         // place (a `ParentSubject` op). Registry-side, like the two above.
         $manifest->register('splicewire/laravel-beam', UndeclaredAffordanceAudit::class);
+        $manifest->register('splicewire/laravel-beam', UndeclaredOperationSummaryAudit::class);
         // A declared `IdConstraint` measured against the model's REAL key type
         // (particle-operation-surface 14 gate 1). Advisory, because a key type is a fact about the
         // HOST and not grammar a package's declaration could have gotten right blind — and registry-

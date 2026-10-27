@@ -120,6 +120,8 @@ class ParticleOp
      *                                                            undeclared and counted on a Write by
      *                                                            `particle.operation-affordance`. The generator
      *                                                            emits it explicitly
+     * @param  string|null  $summary  authored endpoint title; null preserves the derived title fallback
+     * @param  string|null  $description  authored endpoint description; null preserves the kind fallback
      */
     public function __construct(
         public string $resource,
@@ -136,5 +138,7 @@ class ParticleOp
         public ?IdConstraint $idConstraint = null,
         public DeclaresDelivery|string|null $delivery = null,
         public ActionAffordance|string|false|null $affordance = null,
+        public ?string $summary = null,
+        public ?string $description = null,
     ) {}
 }

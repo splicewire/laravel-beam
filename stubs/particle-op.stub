@@ -37,6 +37,8 @@ use Splicewire\Beam\Particle\OperationKind;
 #[ParticleOp(
     resource: '{{ resource }}',
     name: '{{ opName }}',
+    summary: null, // Describe this endpoint; omission is reported by the doctor.
+    description: null,
     kind: OperationKind::{{ kind }},
     ability: '{{ ability }}',
     affordance: {{ affordance }},

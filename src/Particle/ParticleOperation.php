@@ -482,6 +482,8 @@ class ParticleOperation implements HasRegistryKey
      *                                    **0 of 107 registered operations** (2026-08-31). It is read only
      *                                    when the resource is unregistered or its backing is not a
      *                                    `BacksModel` — see the class docblock
+     * @param  string|null  $summary  authored endpoint title; null preserves the derived title fallback
+     * @param  string|null  $description  authored endpoint description; null preserves the kind fallback
      */
     public function __construct(
         public string $resource,
@@ -500,6 +502,8 @@ class ParticleOperation implements HasRegistryKey
         public DeclaresDelivery|string|null $delivery = null,
         public ?string $model = null,
         public ActionAffordance|string|false|null $affordance = null,
+        public ?string $summary = null,
+        public ?string $description = null,
     ) {
         $this->assertOutputMatchesKind();
         $this->assertAffordanceSpelling();
