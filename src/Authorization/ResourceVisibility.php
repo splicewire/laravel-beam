@@ -118,6 +118,13 @@ class ResourceVisibility
                 ? app(ResourceReadGuard::class)->declaredReadAbility($particle, $mountedRealm, $request ?? request())
                 : $this->policyOf($resource);
 
+            // A policy class is not a subject-free ability. Preserve Gate's policy-class
+            // spelling behavior (notably Gate::before superusers) instead of treating the
+            // guard's null declared ability as an unconditional denial.
+            if ($ability === null && $this->declaresPolicyClass($resource)) {
+                return $this->gate->forUser($actor)->allows($this->policyOf($resource));
+            }
+
             return $ability !== null && $this->gate->forUser($actor)->allows($ability);
         } catch (ArgumentCountError|TypeError) {
             // An ability whose callback demands a subject — a write-shaped ability declared where a
