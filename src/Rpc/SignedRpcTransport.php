@@ -69,7 +69,7 @@ use stdClass;
  * A caller with another budget passes its own: a circuit palette binding runs 10 s / 30 s with `retries: 0`,
  * because an arbitrary action is not known to be idempotent (ticket 14 Q7).
  */
-final class SignedRpcTransport
+class SignedRpcTransport
 {
     /** Seconds between a transient fault and its retry (ticket 06 Q2). */
     public const RETRY_DELAY_SECONDS = 2;
@@ -87,13 +87,13 @@ final class SignedRpcTransport
      * @param  array<string, string>  $headers  extra request headers (e.g. the probe header); the signing headers always win
      */
     public function __construct(
-        private readonly string $endpoint,
+        private string $endpoint,
         #[SensitiveParameter] string|Closure $secret,
-        private readonly ?Closure $idempotencyKey = null,
-        private readonly int|float $connectTimeout = 5,
-        private readonly int|float $timeout = 20,
-        private readonly int $retries = 1,
-        private readonly array $headers = [],
+        private ?Closure $idempotencyKey = null,
+        private int|float $connectTimeout = 5,
+        private int|float $timeout = 20,
+        private int $retries = 1,
+        private array $headers = [],
     ) {
         if ($retries < 0) {
             throw new InvalidArgumentException('SignedRpcTransport retries must be zero or more.');

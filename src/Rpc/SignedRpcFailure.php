@@ -20,11 +20,11 @@ abstract class SignedRpcFailure extends RuntimeException
      * @param  array<array-key, mixed>|null  $body  the decoded JSON response body, when it was JSON
      */
     public function __construct(
-        public readonly string $invocable,
-        public readonly string $endpoint,
-        public readonly int $attempts,
-        public readonly ?int $status,
-        public readonly ?array $body = null,
+        public string $invocable,
+        public string $endpoint,
+        public int $attempts,
+        public ?int $status,
+        public ?array $body = null,
         ?string $detail = null,
         ?Throwable $previous = null,
     ) {
