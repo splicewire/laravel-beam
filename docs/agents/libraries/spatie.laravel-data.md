@@ -122,11 +122,11 @@ beam's `src/` and two have not, as of this reading:
 zero custom transformers, zero `#[WithTransformer]`. Verified still true in beam's `src/` at this
 reading. That is not permission to hand-roll around them; it is the same blind spot as trap 1.
 
-**3. A package's discoverable assets are invisible to host-rooted scans.**
-`auto_discover_types` defaults to `app_path()` — the *host's* app dir — so beam's `#[TypeScript]`
-classes emit nothing into a host's generated types unless the host is configured to look. The same
-map found splicewire-app's `generated.d.ts` carrying **zero** frame classes for exactly this reason.
-A DTO that "doesn't generate" is usually this, not the DTO.
+**3. A package's discoverable assets are invisible to host-rooted scans.** A host's transformer scans `app_path()`,
+so beam's Data that no declaration reaches emits nothing into a host's types until beam declares the directory in
+`composer.json` `extra.typescript-transformer.directories` (`docs/agents/typescript-generation.md`). The same map
+found splicewire-app's `generated.d.ts` carrying **zero** frame classes for exactly this reason. A DTO that "doesn't
+generate" is usually this, not the DTO.
 
 **4. Two majors, one codebase.** `^4.0|^5.0` means beam's code must hold on both. A 5-only
 affordance seen in upstream docs is not automatically available here — the lock resolves 4.23.0, and

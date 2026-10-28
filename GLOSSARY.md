@@ -17,3 +17,14 @@ file is the index for readers. Wire-shape vocabulary (particle, SHAPE slots, aff
   decorator — order-independent) and config lane (null-guarded write / `packageBooted` timing —
   order-sensitive). The doctrine, with exemplars by cite:
   [`docs/agents/host-bindings.md`](docs/agents/host-bindings.md).
+- **Declared reach** — the types a host's generation reaches by walking references from its declarations: every
+  particle's SHAPE slots and every route-declared type. A reached type needs no scanned directory.
+  `docs/agents/typescript-generation.md`; ADR-0241.
+- **Route-declared type** — a Data class a route names as its response body or stream payload
+  (`->beam()->returns()`/`->streams()`, `#[ResponseFromData]`/`#[StreamsFromData]`); part of declared reach. Not a
+  request body: `#[RequestFromData]` seeds nothing.
+- **Package-declared type root** — a directory a package names in its `composer.json`
+  `extra.typescript-transformer.directories`, with the reason no declaration reaches it; scanned at every installing
+  host. _Avoid_: a host-listed `vendor/` root, "auto-discovery" (a v2 term).
+- **Host type selection** — a root one host lists, with a comment, because only its own frontend consumes that
+  population (the flagship's estate scan). The opposite of a package-declared type root.

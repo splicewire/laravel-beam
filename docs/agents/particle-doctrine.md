@@ -266,11 +266,11 @@ way gets its filter panel from `DeclaresFilterVocabulary`. Model reading: `splic
 ## What a declaration buys — the generation chain
 
 This is *why* you declare. One declaration feeds four consumers, so the UI is locked to the backend by
-construction rather than by discipline. [frontend.md](frontend.md) states the stack-blind version of
-this contract (producer authors, consumer generates); below is the beam-tier concrete chain.
+construction rather than by discipline. The runbook's `references/frontend.md` states the stack-blind
+version of this contract (producer authors, consumer generates); below is the beam-tier concrete chain.
 
 ```
-                       ┌─ typescript:transform  → generated.d.ts   (DTO interfaces, committed)
+                       ┌─ typescript:transform  → DTO types        (generated.d.ts, or modules)
 a declared Data class ─┼─ schemas:generate      → resources/schemas (JSON Schema, committed)
    (any of the 3 sites)├─ generate:client       → routes.ts, hooks/, aliases.ts (committed)
                        └─ scribe:generate       → openapi.yaml  ⚠ NOT in the umbrella, gitignored
@@ -280,6 +280,8 @@ a declared Data class ─┼─ schemas:generate      → resources/schemas (JSO
 (pipeline is a config seam, `beam.client.assets.generators`). Regenerate, then a dirty tree is the
 drift signal. `--json` emits a `{ran, skipped, failed}` summary, so a generator this host
 legitimately lacks is a *reported* skip, not ambiguous silence.
+
+The first leg's wiring, what reaches it and how to prove a change: `docs/agents/typescript-generation.md`.
 
 **The gate is `returns`.** No resolved `returns` on a manifest entry ⇒ a line in `routes.ts` and
 nothing else: no typed hook, no alias, no store. `streams` is a parallel gate emitting a discriminated
@@ -387,8 +389,8 @@ last.
   gained the same gate; the third host's absence of a client leg is recorded as deliberate in its
   `config/beam.php` (it routes through Wayfinder). The `@splicewire/_resources` DTO projection's
   staleness is detectable via the platform's `npm run verify:resources` (local-only by construction —
-  the projection lives outside the repo). See [conformance.md](conformance.md)'s clean-build assertion
-  for why a **clean** generation is the point.
+  the projection lives outside the repo). See the runbook's `references/conformance.md` clean-build
+  assertion for why a **clean** generation is the point.
 
 Still honestly open: the OpenAPI spec itself stays gitignored and rebuilt per run, so there is no
 OpenAPI *diff* gate; and the platform's CI baseline is known-broken upstream of the gates (stale
