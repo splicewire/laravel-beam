@@ -13,7 +13,8 @@ use Spatie\TypeScriptTransformer\TypeScriptTransformerConfigFactory;
  * (and output directory when it is not Spatie's default) and any commented deviations.
  *
  * The fixed parts, in the starters' call order so a starter's configuration stays equivalent call for call:
- * the declared-particle provider, laravel-data's extension (which brings `DataClassTransformer`, the two
+ * the declared-particle provider (seeded by particle declarations and by routes' declared response and stream
+ * DTOs, {@see DeclaredRouteTypes}), laravel-data's extension (which brings `DataClassTransformer`, the two
  * Laravel providers and `CarbonInterface` → `string`), `EnumTransformer`, `app_path()` plus every root an
  * installed package declares ({@see PackageTypeRoots}), and `DateTimeInterface` → `string`.
  *
@@ -28,12 +29,16 @@ final class BeamTypeScriptTransformerExtension implements TypeScriptTransformerE
     public function __construct(
         private ?DeclaredParticleTypes $declared = null,
         private ?PackageTypeRoots $roots = null,
+        private ?DeclaredRouteTypes $routes = null,
     ) {}
 
     public function enrich(TypeScriptTransformerConfigFactory $factory): void
     {
         $factory
-            ->provider(new DeclaredParticleTransformedProvider($this->declared ?? app(DeclaredParticleTypes::class)))
+            ->provider(new DeclaredParticleTransformedProvider(
+                $this->declared ?? app(DeclaredParticleTypes::class),
+                $this->routes ?? app(DeclaredRouteTypes::class),
+            ))
             ->extension(new LaravelDataTypeScriptTransformerExtension)
             ->transformer(EnumTransformer::class)
             ->transformDirectories(app_path(), ...($this->roots ?? PackageTypeRoots::forHost(base_path()))->directories())
