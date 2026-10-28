@@ -14,11 +14,13 @@ use Throwable;
 abstract class SignedRpcFailure extends RuntimeException
 {
     /**
-     * @param  int|null  $status  the HTTP status, null when no response arrived (connect error, timeout)
+     * @param  string  $invocable  the invocable name the transport was called with
+     * @param  int  $attempts  requests made; 0 when nothing was sent
+     * @param  int|null  $status  the HTTP status, null when no response arrived (connect error, timeout) or nothing was sent
      * @param  array<array-key, mixed>|null  $body  the decoded JSON response body, when it was JSON
      */
     public function __construct(
-        public readonly string $name,
+        public readonly string $invocable,
         public readonly string $endpoint,
         public readonly int $attempts,
         public readonly ?int $status,
@@ -28,7 +30,7 @@ abstract class SignedRpcFailure extends RuntimeException
     ) {
         parent::__construct(sprintf(
             'Signed RPC [%s] to %s %s after %d attempt(s)%s%s.',
-            $name,
+            $invocable,
             $endpoint,
             static::describe(),
             $attempts,

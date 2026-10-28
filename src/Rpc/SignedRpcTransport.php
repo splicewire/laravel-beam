@@ -53,6 +53,13 @@ use stdClass;
  *   {@see RETRY_DELAY_SECONDS} apart.
  * - any other status, or a 2xx whose body is not a JSON object or array → {@see SignedRpcUnexpectedResponse},
  *   never retried.
+ * - a secret that resolves empty → {@see SignedRpcBindingFault} with `attempts: 0`; nothing is sent.
+ *
+ * Laravel reports every transfer error that has no response as a `ConnectionException`, so a TLS
+ * verification failure in production is classed transient and retried, like a refused connection.
+ *
+ * The retry loop is written here rather than through `PendingRequest::retry()` because each attempt is
+ * re-signed with a fresh `t` and the failure has to report how many attempts were made.
  *
  * A 2xx with an empty body (the probe's 204) returns `[]`.
  *
@@ -124,7 +131,7 @@ final class SignedRpcTransport
         $secret = ($this->secret)();
 
         if (! is_string($secret) || $secret === '') {
-            throw new InvalidArgumentException("SignedRpcTransport for [{$name}] resolved no signing secret; nothing was sent.");
+            throw new SignedRpcBindingFault($name, $this->endpoint, 0, null, null, 'no signing secret resolved; nothing was sent');
         }
 
         $body = self::encode($input);

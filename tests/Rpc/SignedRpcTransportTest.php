@@ -6,7 +6,6 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
-use InvalidArgumentException;
 use Rushing\Popcorn\Binding;
 use Rushing\Popcorn\Invocables\RemoteInvocable;
 use Splicewire\Beam\Rpc\SignedRpcBindingFault;
@@ -155,10 +154,12 @@ class SignedRpcTransportTest extends TestCase
     {
         $this->receiver([]);
 
-        try {
-            ($this->transport(['secret' => fn (): ?string => null]))('x', []);
-            $this->fail('expected a refusal to sign with no secret');
-        } catch (InvalidArgumentException) {
+        foreach ([fn (): ?string => null, fn (): string => ''] as $secret) {
+            $e = $this->failure(fn () => ($this->transport(['secret' => $secret]))('x', []));
+
+            $this->assertInstanceOf(SignedRpcBindingFault::class, $e);
+            $this->assertSame(0, $e->attempts);
+            $this->assertNull($e->status);
         }
 
         $this->assertSame([], $this->sent);
