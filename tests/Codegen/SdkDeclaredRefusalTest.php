@@ -102,15 +102,18 @@ class SdkDeclaredRefusalTest extends TestCase
         $this->assertArrayNotHasKey('Exceptions/AugmentationErrorDataException.php', $files);
     }
 
-    public function test_an_unmapped_declared_error_keeps_the_generic_path_and_does_not_fail_generation(): void
+    /**
+     * A declared refusal the SDK has no DTO for is a declaration with no forwarding (plan §4; review-r1 14:14Z): the op said
+     * what it refuses with and the client would silently treat it as generic. Generation refuses it, naming the component,
+     * exactly as an unmapped typed success is refused. Undeclared errors never reach `meta['errors']` (the spec's
+     * `x-particle-error` provenance), so a host's generic error bodies cannot trip this.
+     */
+    public function test_an_unmapped_declared_error_is_refused_at_generation(): void
     {
-        $files = $this->generate($this->declared(), ['data' => ['AugmentationDispatchData' => 'Splicewire\\Music\\AugmentationDispatchData']]);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('AugmentationErrorData');
 
-        $this->assertStringContainsString(
-            'return AugmentationDispatchData::fromResponse($this->augmentComposition($id));',
-            $files['Resource/Augmentations.php'],
-        );
-        $this->assertArrayNotHasKey('Exceptions/AugmentationErrorDataException.php', $files);
+        $this->generate($this->declared(), ['data' => ['AugmentationDispatchData' => 'Splicewire\\Music\\AugmentationDispatchData']]);
     }
 
     public function test_an_error_that_could_not_be_told_from_a_generic_error_body_is_refused(): void

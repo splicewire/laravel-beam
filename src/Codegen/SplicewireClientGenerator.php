@@ -965,7 +965,7 @@ class SplicewireClientGenerator implements Generator
      * an op's `errors:` slot declared). Per declared status: a JSON object body holding every required member of the
      * declared Data hydrates through its spine factory and is thrown as the generated `{ErrorDto}Exception`; anything
      * else (another status, a generic validation body, a body that does not hydrate) falls through to the generic
-     * path unchanged. An undeclared or unmapped error emits nothing, so a host's generation never newly fails on it.
+     * path unchanged. An undeclared error emits nothing; a declared one with no mapped DTO is refused at generation.
      *
      * @param  array<string, mixed>  $op
      * @param  array<string, string>  $dataMap
@@ -975,8 +975,15 @@ class SplicewireClientGenerator implements Generator
         $code = '';
         foreach ((array) ($op['meta']['errors'] ?? []) as $status => $declared) {
             $component = is_array($declared) ? ($declared['ref'] ?? null) : null;
-            if (! is_string($component) || ! isset($dataMap[$component])) {
+            if (! is_string($component)) {
                 continue;
+            }
+            if (! isset($dataMap[$component])) {
+                throw new InvalidArgumentException(sprintf(
+                    'SDK declared refusal [%s] at %d for [%s %s] has no mapped DTO. Map the component in the SDK `data` map: '
+                    .'the op declares this refusal, and an unmapped one would reach the caller as a generic failure.',
+                    $component, (int) $status, $op['method'] ?? '', $op['path'] ?? '',
+                ));
             }
             $required = array_values(array_filter((array) ($declared['required'] ?? []), 'is_string'));
             if (array_diff($required, self::GENERIC_ERROR_KEYS) === []) {
