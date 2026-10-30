@@ -51,8 +51,8 @@ use stdClass;
  * - 401 / 403 → {@see SignedRpcBindingFault}: the binding (secret or endpoint) is wrong, never retried.
  * - connect error, timeout, 5xx, 429 → {@see SignedRpcTransientFault}, after `$retries` further attempts
  *   {@see RETRY_DELAY_SECONDS} apart.
- * - any other status, or a 2xx whose body is not a JSON object or array → {@see SignedRpcUnexpectedResponse},
- *   never retried.
+ * - any other status (a 3xx included: redirects are never followed), or a 2xx whose body is not a JSON object
+ *   or array → {@see SignedRpcUnexpectedResponse}, never retried.
  * - a secret that resolves empty → {@see SignedRpcBindingFault} with `attempts: 0`; nothing is sent.
  *
  * Laravel reports every transfer error that has no response as a `ConnectionException`, so a TLS
@@ -62,6 +62,16 @@ use stdClass;
  * re-signed with a fresh `t` and the failure has to report how many attempts were made.
  *
  * A 2xx with an empty body (the probe's 204) returns `[]`.
+ *
+ * ## Redirects are never followed
+ *
+ * The signature covers `t.body`, not the URL, so a signed request delivered anywhere verifies at every receiver
+ * holding the secret until its timestamp ages out. The HTTP client follows redirects by default, and for a 307/308
+ * it re-posts the same body with the same headers to the new location; across origins it strips `Authorization`
+ * and `Cookie` but keeps `X-Beam-Signature`. A bound endpoint that redirects (or a same-origin path a caller is
+ * allowed to name) could therefore hand a valid signature to a foreign host. So every attempt is sent with
+ * redirects off: the request goes to the bound endpoint and nowhere else, and a 3xx is an unexpected response,
+ * reported with its status (music-capability-lift issue 45, found by the b45-src review).
  *
  * ## The budget is explicit
  *
@@ -205,7 +215,9 @@ class SignedRpcTransport
         $request = Http::acceptJson()
             ->withHeaders([...$extra, ...$signing])
             ->connectTimeout($this->connectTimeout)
-            ->timeout($this->timeout);
+            ->timeout($this->timeout)
+            // Never follow a redirect: the signature does not cover the URL (see the class docblock).
+            ->withoutRedirecting();
 
         if (! $this->verifiesTls()) {
             $request = $request->withoutVerifying();

@@ -315,6 +315,39 @@ class SignedRpcTransportTest extends TestCase
         Sleep::assertNeverSlept();
     }
 
+    /**
+     * music-capability-lift issue 45 (b45-src review): the signature covers `t.body`, not the URL, and Guzzle's
+     * redirect middleware re-posts a 307/308 with the body and `X-Beam-Signature` intact to any origin. The fake
+     * stub sits inside that middleware (`HandlerStack::create()` pushes `allow_redirects` before Laravel's stub),
+     * so a followed redirect would show up here as a second recorded request to the collector.
+     */
+    public function test_a_redirect_is_never_followed_so_a_foreign_host_receives_no_request_or_signature(): void
+    {
+        $collector = 'https://collector.example/harvest';
+
+        foreach ([301, 302, 303, 307, 308] as $status) {
+            $this->sent = [];
+            $this->receiver([
+                Http::response('', $status, ['Location' => $collector]),
+                Http::response(['harvested' => true]),
+            ]);
+
+            $e = $this->failure(fn () => ($this->transport(['retries' => 1]))('x', ['number' => 4]));
+
+            $this->assertInstanceOf(SignedRpcUnexpectedResponse::class, $e, "a {$status} is an unexpected response");
+            $this->assertSame($status, $e->status);
+            $this->assertCount(1, $this->sent, "a {$status} is answered once and never followed or retried");
+            $this->assertSame(self::ENDPOINT, (string) $this->sent[0]['request']->url());
+            $this->assertFalse($this->sent[0]['options']['allow_redirects']);
+            $this->assertSame([], array_filter(
+                $this->sent,
+                static fn (array $s): bool => str_starts_with($s['request']->url(), 'https://collector.example'),
+            ), "the collector receives nothing after a {$status}");
+        }
+
+        Sleep::assertNeverSlept();
+    }
+
     public function test_a_probe_sends_an_empty_object_with_the_probe_header_and_reads_a_204_as_empty(): void
     {
         $this->receiver([Http::response(null, 204)]);
