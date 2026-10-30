@@ -106,6 +106,22 @@ class ParticleGeneratorTest extends TestCase
     }
 
     /**
+     * ADR-0230 Public Read is declared explicitly, never silent: a generated resource carries the `publicRead:`
+     * slot set to `null` (authenticated-only) with its guidance, so an author decides guest access rather than
+     * inheriting it, and `splicewire:beam:doctor` still finds the slot to count.
+     */
+    public function test_the_resource_generator_emits_an_explicit_null_public_read_slot(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Lyric'])->assertSuccessful();
+
+        $read = $this->read('app/Data/LyricData.php');
+
+        $this->assertMatchesRegularExpression('/#\[ParticleResource\((?:(?!\)\]).)*\n\s*publicRead: null,\n\)\]/s', $read);
+        $this->assertStringContainsString('ADR-0230 Public Read', $read);
+        $this->assertStringContainsString('`LyricData::class` when every field it', $read);
+    }
+
+    /**
      * `--summary` emits the provider and PRINTS the `summaryProvider:` line — it never edits the attribute,
      * for the same reason it never edits a route file. Without the flag no provider file exists: the resource
      * keeps beam's default (a scoped `total` count), which needs no class of its own.
