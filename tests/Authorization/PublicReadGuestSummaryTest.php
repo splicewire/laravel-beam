@@ -2,12 +2,15 @@
 
 namespace Splicewire\Beam\Tests\Authorization;
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Particle\ScopedIndexQuery;
 use Splicewire\Beam\Tests\Fixtures\ReadGuard\Gadget;
 use Splicewire\Beam\Tests\Fixtures\ReadGuard\GadgetData;
 use Splicewire\Beam\Tests\TestCase;
@@ -50,9 +53,9 @@ class PublicReadGuestSummaryTest extends TestCase
         Gadget::create(['user_id' => 2]);
     }
 
-    private function declare(?string $publicRead): void
+    private function declare(?string $publicRead): ParticleResource
     {
-        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+        $resource = new ParticleResource(
             key: 'gadgets',
             backing: Gadget::class,
             data: GadgetData::class,
@@ -60,7 +63,10 @@ class PublicReadGuestSummaryTest extends TestCase
             project: fn (Gadget $gadget): GadgetData => new GadgetData((string) $gadget->getKey()),
             readOnly: true,
             label: 'Gadgets',
-        ));
+        );
+        app(ParticleResourceRegistry::class)->register($resource);
+
+        return $resource;
     }
 
     public function test_a_guest_is_refused_the_summary_without_a_public_read_before_anything_is_counted(): void
@@ -73,6 +79,26 @@ class PublicReadGuestSummaryTest extends TestCase
 
         $counts = array_filter(array_column(DB::getQueryLog(), 'query'), fn (string $query): bool => str_contains(strtolower($query), 'count('));
         $this->assertSame([], array_values($counts));
+    }
+
+    public function test_a_direct_aggregate_refuses_a_guest_without_a_public_read(): void
+    {
+        $resource = $this->declare(publicRead: null);
+        app(Request::class)->setUserResolver(fn () => null);
+
+        // Bypass the earlier Frame HTTP/visibility gate: the aggregate builder must enforce admission itself.
+        $this->expectException(AuthorizationException::class);
+        app(ScopedIndexQuery::class)->forAggregate($resource->toResourceDefinition())->count();
+    }
+
+    public function test_a_direct_guest_aggregate_counts_only_the_declared_public_population(): void
+    {
+        $resource = $this->declare(publicRead: GadgetData::class);
+        $resource->publicScope = fn ($query) => $query->where('user_id', 1);
+        app(Request::class)->setUserResolver(fn () => null);
+
+        $this->assertSame(2, Gadget::count(), 'The full table must differ from the public population.');
+        $this->assertSame(1, app(ScopedIndexQuery::class)->forAggregate($resource->toResourceDefinition())->count());
     }
 
     public function test_a_guest_is_admitted_to_the_summary_through_a_public_read(): void
