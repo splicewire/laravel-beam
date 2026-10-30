@@ -113,6 +113,10 @@ class DeclaredParticleTypes
 
             $note($operation->input, "operation [{$key}] input:");
 
+            foreach ($operation->errors ?? [] as $status => $error) {
+                $note($error, "operation [{$key}] errors: [{$status}]");
+            }
+
             // ⚠️ `output` is kind-dependent and the asymmetry is load-bearing: a read/write/task resolves
             // ONE payload (a class-string), while a Stream emits discrete typed events under distinct wire
             // names and so declares `[eventName => [DataClass, ...]]`. `ParticleOperation` enforces the

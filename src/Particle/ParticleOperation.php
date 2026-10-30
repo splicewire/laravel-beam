@@ -8,6 +8,7 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\RegistryKey;
+use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Doctor\UndeclaredAffordanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
@@ -484,6 +485,11 @@ class ParticleOperation implements HasRegistryKey
      *                                    `BacksModel` — see the class docblock
      * @param  string|null  $summary  authored endpoint title; null preserves the derived title fallback
      * @param  string|null  $description  authored endpoint description; null preserves the kind fallback
+     * @param  array<int, class-string<Data>>|null  $errors  the body Data this op answers with at each NON-success status
+     *                                                       (`[422 => RefusalData::class]`), the body bare as the op
+     *                                                       writes it; `null` is undeclared. It parallels `output:` at
+     *                                                       the same declaration site (particle-doctrine §The invariant,
+     *                                                       site 2), so it is not a fourth site. See the class docblock
      */
     public function __construct(
         public string $resource,
@@ -504,9 +510,37 @@ class ParticleOperation implements HasRegistryKey
         public ActionAffordance|string|false|null $affordance = null,
         public ?string $summary = null,
         public ?string $description = null,
+        public ?array $errors = null,
     ) {
         $this->assertOutputMatchesKind();
         $this->assertAffordanceSpelling();
+        $this->assertErrorsDeclareRefusals();
+    }
+
+    /**
+     * `errors:` declares what an op answers when it REFUSES (music-capability-lift 34/35): a non-success status mapped to the
+     * Data class written as the whole body at that status, e.g. a bare `422` naming the refusal's code. It is the refusal
+     * twin of `output:`, at the same declaration site (particle-doctrine §The invariant, site 2): the spec documents each
+     * declared status from it and the generated clients hydrate a typed refusal from it, instead of every caller parsing the
+     * body by hand. The runtime does not read it; the op still writes its own response.
+     *
+     * A success or non-HTTP status, or a body that is not a Data class, is a declaration the author could have spelled
+     * right, so it fails here at registration rather than generating a wrong client.
+     */
+    private function assertErrorsDeclareRefusals(): void
+    {
+        foreach ($this->errors ?? [] as $status => $class) {
+            if (! is_int($status) || $status < 400 || $status > 599) {
+                throw new InvalidArgumentException("Particle operation [{$this->key()}] declares `errors:` at status [{$status}]; "
+                    .'the slot maps a 4xx or 5xx status to its body Data. A success body is `output:`.');
+            }
+            if (! is_string($class) || ! is_subclass_of($class, Data::class)) {
+                throw new InvalidArgumentException(sprintf(
+                    'Particle operation [%s] declares `errors:` [%d] => [%s], which is not a %s class.',
+                    $this->key(), $status, is_string($class) ? $class : get_debug_type($class), Data::class,
+                ));
+            }
+        }
     }
 
     /**

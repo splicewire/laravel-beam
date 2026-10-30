@@ -54,6 +54,16 @@ class SplicewireClientGenerator implements Generator
     /** @var array<string, mixed> */
     private array $options = [];
 
+    /**
+     * The keys of the host's generic error body (`ResponseBody`: a validation 422 is `{success, message, errors}`). A
+     * declared refusal is told from it by its required members, so one whose required members are all generic keys
+     * could be mis-hydrated from a validation failure and is refused at generation.
+     */
+    private const GENERIC_ERROR_KEYS = ['success', 'message', 'errors', 'data', 'statusCode', 'meta'];
+
+    /** @var array<string, string> declared refusal component → spine FQN, for the generated `Exceptions/*` */
+    private array $refusals = [];
+
     public function name(): string
     {
         return 'splicewire-client';
@@ -76,6 +86,7 @@ class SplicewireClientGenerator implements Generator
     public function invoke(array $input): array
     {
         $this->options = $input['options'] ?? [];
+        $this->refusals = [];
         $namespace = (string) ($this->options['namespace'] ?? 'Splicewire\\Client');
         $hints = (array) ($this->options['requests'] ?? []);
 
@@ -134,6 +145,11 @@ class SplicewireClientGenerator implements Generator
             }
             $files["Resource/{$domain}.php"] =
                 $printer->printFile($this->buildResource($namespace, $domain, $requests, $dataMap));
+        }
+
+        foreach ($this->refusals as $component => $spineFqn) {
+            $files['Exceptions/'.$this->refusalExceptionName($spineFqn).'.php'] =
+                $printer->printFile($this->buildRefusalException($namespace, $spineFqn));
         }
 
         foreach ($referencedComponents as $component => $spineFqn) {
@@ -772,13 +788,18 @@ class SplicewireClientGenerator implements Generator
                 $typedName = $resourceOptions['typed'] ?? $this->typedMethodName($rawName, $domain);
                 $typedMethod = $class->addMethod($typedName)->addComment('Typed response view through the generated transport adapter.');
                 $callArgs = $this->resourceSignature($typedMethod, $facadeParams);
+                // A declared refusal is dispatched FIRST: the success path's generic throw() would pre-empt it.
+                $dispatch = $this->refusalDispatch($spec['op'], $dataMap, $ns, $namespace);
+                $send = "\$this->{$rawName}(".implode(', ', $callArgs).')';
+                $prelude = $dispatch === '' ? '' : "\$response = {$send};\n{$dispatch}";
+                $sent = $dispatch === '' ? $send : '$response';
                 if (! empty($spec['op']['returnsMany'])) {
                     $typedMethod->setReturnType('array')->addComment("@return array<int, {$dtoName}>")
-                        ->setBody("\$data = \$this->{$rawName}(".implode(', ', $callArgs).")->throw()->json('data');\n"
+                        ->setBody($prelude."\$data = {$sent}->throw()->json('data');\n"
                             ."return array_map(static fn (array \$row): {$dtoName} => {$dtoName}::fromArray(\$row), is_array(\$data) ? \$data : []);");
                 } else {
                     $typedMethod->setReturnType($namespace.'\\Data\\'.$dtoName)
-                        ->setBody("return {$dtoName}::fromResponse(\$this->{$rawName}(".implode(', ', $callArgs).'));');
+                        ->setBody($prelude."return {$dtoName}::fromResponse({$sent});");
                 }
                 foreach ($resourceOptions['typedAliases'] ?? [] as $alias) {
                     $aliasMethod = $class->addMethod($alias)->setReturnType($typedMethod->getReturnType());
@@ -938,6 +959,94 @@ class SplicewireClientGenerator implements Generator
      *
      * @param  array<string, mixed>  $op
      */
+    /**
+     * The statements a typed facade runs before its success path, throwing the op's DECLARED refusals
+     * (`meta['errors']`, recorded by the host's model only for a response the spec marks `x-particle-error`, i.e. one
+     * an op's `errors:` slot declared). Per declared status: a JSON object body holding every required member of the
+     * declared Data hydrates through its spine factory and is thrown as the generated `{ErrorDto}Exception`; anything
+     * else (another status, a generic validation body, a body that does not hydrate) falls through to the generic
+     * path unchanged. An undeclared or unmapped error emits nothing, so a host's generation never newly fails on it.
+     *
+     * @param  array<string, mixed>  $op
+     * @param  array<string, string>  $dataMap
+     */
+    private function refusalDispatch(array $op, array $dataMap, \Nette\PhpGenerator\PhpNamespace $ns, string $namespace): string
+    {
+        $code = '';
+        foreach ((array) ($op['meta']['errors'] ?? []) as $status => $declared) {
+            $component = is_array($declared) ? ($declared['ref'] ?? null) : null;
+            if (! is_string($component) || ! isset($dataMap[$component])) {
+                continue;
+            }
+            $required = array_values(array_filter((array) ($declared['required'] ?? []), 'is_string'));
+            if (array_diff($required, self::GENERIC_ERROR_KEYS) === []) {
+                throw new InvalidArgumentException(sprintf(
+                    'SDK declared refusal [%s] at %d for [%s %s] requires no member a generic error body lacks (required: %s), '
+                    .'so a validation failure could hydrate as it. Give the error Data a required member of its own.',
+                    $component, (int) $status, $op['method'] ?? '', $op['path'] ?? '', json_encode($required),
+                ));
+            }
+
+            $spineFqn = (string) $dataMap[$component];
+            $this->refusals[$component] = $spineFqn;
+            $exception = $this->refusalExceptionName($spineFqn);
+            $spine = 'Spine'.$this->shortName($spineFqn);
+            $ns->addUse($spineFqn, $spine);
+            $ns->addUse($namespace.'\\Exceptions\\'.$exception);
+            $factory = $this->options['errors'][$component]['factory'] ?? 'fromArray';
+            if (! is_string($factory) || ! preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/D', $factory)) {
+                throw new InvalidArgumentException("SDK declared refusal [{$component}] factory must be a PHP method name.");
+            }
+            $members = implode(' && ', array_map(fn (string $key) => 'array_key_exists('.var_export($key, true).', $body)', $required));
+            $status = (int) $status;
+            $code .= "if (\$response->status() === {$status}) {\n"
+                ."    \$body = \$response->json();\n"
+                ."    if (is_array(\$body) && {$members}) {\n"
+                ."        try {\n"
+                ."            \$error = {$spine}::{$factory}(\$body);\n"
+                ."        } catch (\\Throwable) {\n"
+                ."            \$error = null;\n"
+                ."        }\n"
+                ."        if (\$error !== null) {\n"
+                ."            throw new {$exception}(\$response, \$error, {$status});\n"
+                ."        }\n"
+                ."    }\n"
+                ."}\n";
+        }
+
+        return $code === '' ? '' : $code."\n";
+    }
+
+    private function refusalExceptionName(string $spineFqn): string
+    {
+        return $this->shortName($spineFqn).'Exception';
+    }
+
+    /**
+     * One generated exception per declared refusal Data, shared by every op that declares it. It IS a Saloon
+     * `RequestException` (what the success path's `throw()` raises), so a caller's existing catch still catches it;
+     * a caller that wants the typed refusal catches this class and reads `->error`.
+     */
+    private function buildRefusalException(string $namespace, string $spineFqn): PhpFile
+    {
+        $file = new PhpFile;
+        $file->setStrictTypes(false);
+        $ns = $file->addNamespace($namespace.'\\Exceptions');
+        $ns->addUse('Saloon\\Exceptions\\Request\\RequestException');
+        $ns->addUse('Saloon\\Http\\Response');
+        $spine = 'Spine'.$this->shortName($spineFqn);
+        $ns->addUse($spineFqn, $spine);
+        $class = $ns->addClass($this->refusalExceptionName($spineFqn))->setExtends('Saloon\\Exceptions\\Request\\RequestException')
+            ->addComment("The operation's declared refusal: it answered with a typed {$this->shortName($spineFqn)} body.");
+        $ctor = $class->addMethod('__construct');
+        $ctor->addParameter('response')->setType('Saloon\\Http\\Response');
+        $ctor->addPromotedParameter('error')->setType($spineFqn)->setReadOnly()->setVisibility('public');
+        $ctor->addPromotedParameter('status')->setType('int')->setReadOnly()->setVisibility('public');
+        $ctor->setBody('parent::__construct($response, "The request was refused ({$status}).");');
+
+        return $file;
+    }
+
     private function returnComponent(array $op): ?string
     {
         $returns = $op['returns'] ?? null;

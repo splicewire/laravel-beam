@@ -122,6 +122,9 @@ class ParticleOp
      *                                                            emits it explicitly
      * @param  string|null  $summary  authored endpoint title; null preserves the derived title fallback
      * @param  string|null  $description  authored endpoint description; null preserves the kind fallback
+     * @param  array<int, class-string>|null  $errors  the body Data at each non-success status; the refusal twin of
+     *                                                 `output:` at this same declaration site (site 2) —
+     *                                                 {@see ParticleOperation} carries its rules
      */
     public function __construct(
         public string $resource,
@@ -140,5 +143,6 @@ class ParticleOp
         public ActionAffordance|string|false|null $affordance = null,
         public ?string $summary = null,
         public ?string $description = null,
+        public ?array $errors = null,
     ) {}
 }

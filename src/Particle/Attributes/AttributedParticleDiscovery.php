@@ -241,6 +241,7 @@ class AttributedParticleDiscovery
             affordance: $attribute->affordance,
             summary: $attribute->summary,
             description: $attribute->description,
+            errors: $attribute->errors,
         ));
     }
 

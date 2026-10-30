@@ -37,7 +37,7 @@ class AttributeCarryParityTest extends TestCase
      * @var array<string, string>
      */
     private const OP_CARRY_NOTES = [
-        // none yet: ParticleOperation mirrors all 14 names. The day one diverges, document it here
+        // none yet: ParticleOperation mirrors all 17 names. The day one diverges, document it here
         // with the mapping a reader needs, or the plain property assertion below fails naming it.
     ];
 
@@ -184,6 +184,9 @@ class AttributeCarryParityTest extends TestCase
     idConstraint: IdConstraint::Ulid,
     delivery: 'carry-delivery',
     affordance: 'action',
+    summary: 'Probe the carry',
+    description: 'The carry fixture operation.',
+    errors: [422 => CarryFixtureOutput::class],
 )]
 class CarryFixtureOp
 {
