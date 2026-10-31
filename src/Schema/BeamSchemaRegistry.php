@@ -49,7 +49,7 @@ use Schemastud\DataSchemas\Contracts\SchemaRegistry;
  * (`Splicewire\Tower\Schema\SchemaVersionResolver` — a tower class, not beam's), and
  * {@see SchemaLadderMigrator}) is untouched.
  */
-class BeamSchemaRegistry implements Contracts\SchemaRegistryCacheVersion, EnumeratesVersions, SchemaRegistry
+class BeamSchemaRegistry implements Contracts\ConfirmsSchemaRegistration, Contracts\SchemaRegistryCacheVersion, EnumeratesVersions, SchemaRegistry
 {
     /**
      * @param  array<int, string>  $sources  the ordered source keys, e.g. `['db','file']`. READ order.
@@ -81,6 +81,16 @@ class BeamSchemaRegistry implements Contracts\SchemaRegistryCacheVersion, Enumer
     public function register(array $schema): void
     {
         $this->registerIn($this->writeSource(), $schema);
+    }
+
+    public function registerConfirmed(array $schema, SchemaRegistrationConfirmationData $confirmation): void
+    {
+        $tier = $this->tierFor($this->writeSource());
+        if (! $tier instanceof Contracts\ConfirmsSchemaRegistration) {
+            throw new RuntimeException('The declared schema write tier does not support explicit impact confirmation.');
+        }
+        $tier->registerConfirmed($schema, $confirmation);
+        app(SchemaRegistryRevision::class)->changed();
     }
 
     /**

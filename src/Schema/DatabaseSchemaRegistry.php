@@ -31,7 +31,7 @@ use Splicewire\Beam\Models\BeamSchema;
  *  - a DIFFERENT fingerprint throws {@see SchemaRegistryConflict} — a changed
  *    shape requires a new `$id`/version.
  */
-class DatabaseSchemaRegistry implements Contracts\SchemaRegistryCacheVersion, EnumeratesVersions, SchemaRegistry
+class DatabaseSchemaRegistry implements Contracts\ConfirmsSchemaRegistration, Contracts\SchemaRegistryCacheVersion, EnumeratesVersions, SchemaRegistry
 {
     protected string $table;
 
@@ -48,39 +48,58 @@ class DatabaseSchemaRegistry implements Contracts\SchemaRegistryCacheVersion, En
 
     public function register(array $schema): void
     {
-        $id = $schema['$id'] ?? null;
+        $this->registerVersion($schema, null);
+    }
 
-        if (! is_string($id) || $id === '') {
-            throw new InvalidArgumentException('Cannot register a schema without an $id.');
-        }
+    public function registerConfirmed(array $schema, SchemaRegistrationConfirmationData $confirmation): void
+    {
+        $this->registerVersion($schema, $confirmation);
+    }
 
-        $incoming = SchemaFingerprint::of($schema);
+    private function registerVersion(array $schema, ?SchemaRegistrationConfirmationData $confirmation): void
+    {
+        $this->query()->getConnection()->transaction(function () use ($schema, $confirmation): void {
+            $id = $schema['$id'] ?? null;
 
-        $existing = $this->query()->where('schema_id', $id)->first();
-        if ($existing !== null) {
-            if ($existing->fingerprint === $incoming) {
-                return; // Idempotent re-publish of the identical shape.
+            if (! is_string($id) || $id === '') {
+                throw new InvalidArgumentException('Cannot register a schema without an $id.');
             }
 
-            throw new SchemaRegistryConflict($id, $existing->fingerprint, $incoming);
-        }
+            $incoming = SchemaFingerprint::of($schema);
 
-        // The {@see BeamSchema} model mints the UUID (HasUuids) + timestamps and JSON-casts `artifact`.
-        $this->query()->create([
-            'schema_id' => $id,
-            'schema_name' => SchemaId::from($id)->stem(),
-            'version' => SchemaId::from($id)->version(),
-            'fingerprint' => $incoming,
-            'artifact' => $schema,
-        ]);
-        app(SchemaRegistryRevision::class)->changed();
+            $existing = $this->query()->where('schema_id', $id)->lockForUpdate()->first();
+            if ($existing !== null) {
+                if ($existing->fingerprint === $incoming) {
+                    return; // Idempotent re-publish of the identical shape.
+                }
 
-        // Publish one event only for a newly persisted Collection version. Hosts such as Tower can
-        // enqueue their own after-commit drain without teaching this registry about host jobs; an
-        // idempotent re-publish returned above and does not drain twice.
-        if (array_key_exists('x-beam-collection', $schema)) {
-            event(new CollectionSchemaRegistered(SchemaId::from($id)->stem()));
-        }
+                throw new SchemaRegistryConflict($id, $existing->fingerprint, $incoming);
+            }
+
+            $stem = SchemaId::from($id)->stem();
+            // The same stable schema anchor used by Record Page publication. Admission reads publication
+            // pins without locking entry rows: publishers already hold entries before waiting on this anchor.
+            $versions = $this->query()->where('schema_name', $stem)->orderBy('version')->orderBy('id')
+                ->lockForUpdate()->get()->map(fn ($row) => $row->artifact)->all();
+            event(new SchemaVersionRegistering($schema, $versions, $this, $this->connection, $confirmation));
+
+            // The {@see BeamSchema} model mints the UUID (HasUuids) + timestamps and JSON-casts `artifact`.
+            $this->query()->create([
+                'schema_id' => $id,
+                'schema_name' => SchemaId::from($id)->stem(),
+                'version' => SchemaId::from($id)->version(),
+                'fingerprint' => $incoming,
+                'artifact' => $schema,
+            ]);
+            app(SchemaRegistryRevision::class)->changed();
+
+            // Publish one event only for a newly persisted Collection version. Hosts such as Tower can
+            // enqueue their own after-commit drain without teaching this registry about host jobs; an
+            // idempotent re-publish returned above and does not drain twice.
+            if (array_key_exists('x-beam-collection', $schema)) {
+                event(new CollectionSchemaRegistered(SchemaId::from($id)->stem()));
+            }
+        }, 3);
     }
 
     public function cacheVersion(): ?string
