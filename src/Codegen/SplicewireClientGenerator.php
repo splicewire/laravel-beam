@@ -559,6 +559,9 @@ class SplicewireClientGenerator implements Generator
         foreach ($params as &$param) {
             if (isset($param['wire']) && array_key_exists($param['wire'], $defaults)) {
                 $param['default'] = $defaults[$param['wire']];
+                if ($param['default'] === null) {
+                    $param['php'] = $this->nullable($param['php']);
+                }
             }
         }
         unset($param);
