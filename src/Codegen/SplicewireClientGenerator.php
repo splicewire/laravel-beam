@@ -556,8 +556,12 @@ class SplicewireClientGenerator implements Generator
     private function declaredDefaults(array $params, array $op): array
     {
         $defaults = $op['meta']['parameterDefaults'] ?? [];
+        preg_match_all('/\{(\w+)\}/', (string) $op['path'], $matches);
         foreach ($params as &$param) {
-            if (isset($param['wire']) && array_key_exists($param['wire'], $defaults)) {
+            // A body property may share a path parameter's wire name. Its optional default
+            // never makes the addressed route coordinate optional.
+            if (isset($param['wire']) && ! in_array($param['wire'], $matches[1], true)
+                && array_key_exists($param['wire'], $defaults)) {
                 $param['default'] = $defaults[$param['wire']];
                 if ($param['default'] === null) {
                     $param['php'] = $this->nullable($param['php']);
