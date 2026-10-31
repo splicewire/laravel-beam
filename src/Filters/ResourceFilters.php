@@ -189,6 +189,14 @@ class ResourceFilters
             app(ResourceReadGuard::class)->inspectDeclaredAbility($resource, Gate::getFacadeRoot())->authorize();
         }
 
+        // A projection can own its primary read decision even when its backing model has no
+        // viewAny policy. Filter metadata must not skip that declaration through the fallback below.
+        if ($resource !== null && $resource->readPolicy !== null && $resource->modelClass() === $model) {
+            app(ResourceReadGuard::class)->inspectRead($resource, request())->authorize();
+
+            return;
+        }
+
         if ($model === null || ($policy = Gate::getPolicyFor($model)) === null || ! method_exists($policy, 'viewAny')) {
             return;
         }
