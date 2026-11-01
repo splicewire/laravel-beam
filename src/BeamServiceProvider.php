@@ -7,6 +7,7 @@ use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -55,6 +56,8 @@ use Splicewire\Beam\Brand\ConfigBrandResolver;
 use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Collections\CollectionFormSchema;
 use Splicewire\Beam\Collections\CollectionResolutionScope;
+use Splicewire\Beam\Collections\CollectionResourceContextNodes;
+use Splicewire\Beam\Collections\CollectionSchemaResolver;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
@@ -692,12 +695,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->singleton(ResourceContributionRegistry::class);
 
         // Frame's OPTIONAL plug port, implemented here so a host binds nothing (ticket 19 / 17 §A1).
-        // It is what makes a contributed slice's `#[Column]`s reach the Frame manifest: the manifest
-        // reflects ONE Data class, a slice is another, so without this the columns are declared and
-        // invisible. Frame learns only THAT a key has extra participation — never that contributions
-        // exist — which is what keeps the narrowing ticket 10 landed intact.
-        $this->app->singleton(ResourceContextContributor::class, fn ($app) => new ContributionContextNodes(
-            $app->make(ResourceContributionRegistry::class),
+        // Compose the existing contributed-slice projection with the selected Collection's schema
+        // fields. Collection selection is request-scoped because one Data class serves many schema
+        // stems; Frame still learns only the final byNode map, not Beam's producer internals.
+        $this->app->scoped(ResourceContextContributor::class, fn ($app) => new CollectionResourceContextNodes(
+            new ContributionContextNodes($app->make(ResourceContributionRegistry::class)),
+            $app->make(Request::class),
+            $app->make(CollectionSchemaResolver::class),
         ));
 
         // ⚠️ TWO realm-map seeds, and the second one exists so a host never re-binds this singleton

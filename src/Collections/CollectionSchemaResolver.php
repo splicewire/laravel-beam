@@ -36,6 +36,9 @@ final class CollectionSchemaResolver
             return $cached;
         }
         $schema = $this->targets->targetFor($stem);
+        if ($schema === []) {
+            throw new NotFoundHttpException('The current schema target is not available.');
+        }
         if (! array_key_exists('x-beam-collection', $schema)) {
             throw new NotFoundHttpException('The current schema does not declare a Collection.');
         }
