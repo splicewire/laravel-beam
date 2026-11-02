@@ -77,11 +77,13 @@ class ParticleResourceRegistryAdapter implements Gated, ResourceRegistry
     /**
      * Whether `$key` has a typed read declaration that can be projected as a Frame resource. A DTO-less
      * operation subject exists in the store but has no Frame resource projection; navigation metadata is
-     * not required for direct access.
+     * not required for direct access. A resource that declared `frame: false` is a REST-only opt-out and
+     * is NOT addressable through Frame even for an authorized actor — see {@see
+     * ParticleResourceRegistry::hasAddressableResource()}. (An unlabelled typed resource stays addressable.)
      */
     public function has(RegistryKey|string $key): bool
     {
-        return $this->registry->hasReadableResource((string) $key);
+        return $this->registry->hasAddressableResource((string) $key);
     }
 
     public function register(RegistryKey|string $key, mixed $entry = null, ?string $by = null, ?string $ability = null): static
@@ -138,7 +140,7 @@ class ParticleResourceRegistryAdapter implements Gated, ResourceRegistry
      */
     public function find(string $key): ?ResourceDefinition
     {
-        return $this->registry->hasReadableResource($key)
+        return $this->registry->hasAddressableResource($key)
             ? $this->registry->definition($key)
             : null;
     }

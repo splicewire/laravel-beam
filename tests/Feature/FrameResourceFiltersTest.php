@@ -449,6 +449,23 @@ class FrameResourceFiltersTest extends TestCase
         $this->postJson('frame/resources/saved-filters', $this->payload('consumer'))->assertNotFound();
         $this->getJson('frame/resources/papers/filters/schema')->assertOk();
     }
+
+    public function test_frame_false_opt_out_is_membership_not_authorization(): void
+    {
+        // The actor IS authorized for this resource (its policy passes), yet a typed `frame: false`
+        // resource is still 404 through Frame. That proves the 404 is the Frame-membership opt-out
+        // (ruling A / herd-frame-convergence ticket 17), NOT an authorization refusal — the two must not
+        // be conflated. On origin/main (has()/find() keyed on hasReadableResource) this returned 200.
+        Gate::define('authorized.optout', fn () => true);
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'authorized-optout', backing: FilterRecord::class, data: ResourceFilterData::class,
+            policy: 'authorized.optout', frame: false,
+        ));
+        DataFilter::registry()->registerDefinition(new FilterDefinition('authorized-optout', ResourceFilterData::class, ResourceFilterQuery::class, FilterRecord::class));
+
+        $this->assertTrue(Gate::allows('authorized.optout'), 'the gate must pass so the 404 is membership, not authz');
+        $this->getJson('frame/resources/authorized-optout/filters/schema')->assertNotFound();
+    }
 }
 
 class FilterRecord extends Model {}

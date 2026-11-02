@@ -596,6 +596,27 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
     }
 
     /**
+     * Whether an authorized caller can ADDRESS `$key` as a Frame resource: it has a read Data shape
+     * ({@see hasReadableResource()}) AND its `frame` is not EXPLICITLY false. `frame: false` is a declared
+     * REST-only opt-out ({@see ParticleResource::$frame}), so a typed resource that set it is NOT
+     * addressable through Frame even for an authorized actor — this is the Frame-membership gate, distinct
+     * from authorization. An UNLABELLED typed resource (`frame` null) stays addressable; only an explicit
+     * `frame: false` opts out, which is why this is narrower than {@see hasFramedResource()} (that also
+     * excludes unlabelled typed resources). Restores the opt-out that has()/find() lost when they moved to
+     * the readable predicate (herd-frame-convergence ticket 17 flipped before its Phase 2 gate passed);
+     * removing the frame switch entirely is ticket 17 Phase 2, not this change.
+     */
+    public function hasAddressableResource(string $key): bool
+    {
+        $resource = $this->lookup($key);
+
+        return $resource !== null
+            && is_string($resource->data)
+            && $resource->data !== ''
+            && $resource->frame !== false;
+    }
+
+    /**
      * Whether `$key` is eligible for Frame presentation — false for an unknown key and for a typed
      * resource that has no navigation metadata.
      */
