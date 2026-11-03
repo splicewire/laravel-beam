@@ -1,0 +1,91 @@
+---
+title: Particle resources
+segment: beam.particle.resources
+nav_order: 12
+excerpt: Every resource Beam can list, read and write, keyed by resource name.
+---
+
+# Particle resources
+
+`beam.particle.resources` holds every **particle resource** in your application: one entry per
+resource key (`songs`, `tickets`, `tenants`), each a `ParticleResource` declaration saying what the
+rows are, how they are projected onto the wire and what a write accepts. Beam's generic REST
+controller reads a declaration from here on every request, and
+[Frame](/beam/docs/laravel/frame) reads the same entry to draw its list, form and detail screens. One
+registration serves both.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.particle.resources`
+- **Entries:** `Splicewire\Beam\Particle\ParticleResource`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `12` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Particle\ParticleResourceRegistry`
+
+{/* registry-facts:end */}
+
+## Where entries come from
+
+You rarely call this registry yourself. Declare the resource on a data class with
+`#[ParticleResource]`, and Beam's boot-time discovery registers it for you:
+
+```bash
+php artisan splicewire:beam:make:particle-resource
+```
+
+The generator writes the attribute with its backing, read projection and write shape spelled out, plus
+the mount line for your route file. Discovery finds the class when it is listed in
+`beam.core.particle.classes` or sits under a path in `beam.core.particle.discover_paths`. Beam's own
+resources are always scanned, and every installed Beam package registers its own the same way.
+
+You can also register from a service provider. That is how a package contributes a resource without an
+attribute scan:
+
+```php
+use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
+
+public function boot(): void
+{
+    $this->app->make(ParticleResourceRegistry::class)->register(
+        new ParticleResource(key: 'songs', backing: Song::class),
+        by: 'acme/music',
+    );
+}
+```
+
+Pass `by:` with your package name. Beam records it, and the registrant panel on this page reads it back.
+
+## Replacing a resource you don't own
+
+The duplicate policy is **supersede**, and that is deliberate: it is the override seam. If a package
+ships `tickets` and your application registers its own `tickets` declaration from a provider that boots
+later, yours wins, in the same position, and the displaced one stays readable as a superseded entry. A
+scan that runs twice registers the same declaration twice and nothing changes.
+
+Two things cannot change on an override: a resource's read policy and its read boundary. Registration
+refuses a declaration that would swap either. Those are authorization decisions, and an override is not
+allowed to loosen them silently.
+
+## Realms
+
+A resource can say which [realms](/beam/docs/foundations/realms-and-surfaces) it belongs to when it
+registers (`operator`, `tenant`, …). Realm membership is recorded beside the entry, not as a second key:
+one resource, many realms, no duplicate. A resource that names no realm falls back to the host's
+`frame.realms` map.
+
+## Related registries
+
+- [`beam.particle.operations`](beam.particle.operations) — named actions on a resource.
+- [`beam.particle.relatives`](beam.particle.relatives) — a resource mounted under another one's URL.
+- [`beam.particle.resource-contributions`](beam.particle.resource-contributions) — another package's
+  fields folded into this resource's rows.
+- [The particles cluster](beam.particle) — how the five fit together.
+
+## Going deeper
+
+[Particles](/beam/docs/foundations/particles) explains the declaration model;
+[build a service desk](/beam/docs/laravel/service-desk) declares a real resource end to end. The
+registry's source is
+[`ParticleResourceRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Particle/ParticleResourceRegistry.php).

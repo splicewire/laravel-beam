@@ -1,0 +1,76 @@
+---
+title: Merge strategies
+segment: beam.particle.merge
+nav_order: 14
+excerpt: How a composite backing turns several sources into one paged list, by named strategy.
+---
+
+# Merge strategies
+
+`beam.particle.merge` holds the strategies a **composite backing** uses to read several sources as one
+list. A composite backing has *arms* (a tickets table, an emails table, a read model) and names a
+merge strategy by handle. The strategy takes one page from each arm and returns one merged, paged
+stream. Each entry is a `MergeStrategy`, registered under its handle.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.particle.merge`
+- **Entries:** `Splicewire\Beam\Particle\Backing\Merge\MergeStrategy`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `14` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Particle\Backing\Merge\MergeStrategyRegistry`
+
+{/* registry-facts:end */}
+
+## The default: `ordered`
+
+Beam registers one strategy, `ordered`. It merges the arms by a shared sort key, newest first. Its
+cursor remembers where each arm stopped, so page two resumes every source exactly where page one
+left off instead of re-reading everything. The rule for your arms is one sentence: every arm pages
+itself by the same sort key, descending.
+
+A composite asks for it by handle:
+
+```php
+protected function mergeHandle(): string
+{
+    return 'ordered';
+}
+```
+
+`ordered` is registered as part of the registry itself, not by a provider, so it is there even where
+Beam's service provider never booted.
+
+## Adding a strategy
+
+A package with a different way of merging, such as relevance-ranked search across sources, registers
+its own handle from its own provider, and its composites name that handle:
+
+```php
+use Splicewire\Beam\Particle\Backing\Merge\MergeStrategyRegistry;
+
+$this->app->make(MergeStrategyRegistry::class)->register('ranked', new RankedMergeStrategy);
+```
+
+Beam doesn't need to know the package exists. Entries are shared instances, because a strategy holds
+no state of its own.
+
+## Replacing the default
+
+The policy is **supersede**, so your application can register its own `ordered`, and every composite
+that names `ordered` uses yours. The displaced default stays readable as a superseded entry.
+
+## Related registries
+
+- [`beam.particle.resources`](beam.particle.resources) — a composite backing is what a resource
+  declares as its `backing`.
+- [The particles cluster](beam.particle) — how the five fit together.
+
+## Going deeper
+
+[Resource backings](/beam/docs/laravel/backings) covers composite reads and their limits. The source
+is
+[`MergeStrategyRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Particle/Backing/Merge/MergeStrategyRegistry.php),
+and the arm contract is documented on
+[`CompositeBacking`](https://github.com/splicewire/laravel-beam/blob/main/src/Particle/Backing/CompositeBacking.php).

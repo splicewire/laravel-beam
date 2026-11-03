@@ -1,0 +1,60 @@
+---
+title: The particles cluster
+segment: beam.particle
+nav_order: 12
+excerpt: The five registries behind Beam's declared API surface, and which one you reach for.
+---
+
+# The particles cluster
+
+Everything under `beam.particle.` is the machinery behind Beam's
+[particles](/beam/docs/foundations/particles): the declared resources and operations that make up
+your API. All five registries are declared by
+[`splicewire/laravel-beam`](https://github.com/splicewire/laravel-beam), and most of the time you fill
+them without calling them, by putting an attribute on a class and letting Beam's boot-time discovery
+register it.
+
+Which one you reach for:
+
+- **Expose rows to list, read and write**: [`beam.particle.resources`](beam.particle.resources),
+  usually filled by `#[ParticleResource]`.
+- **Add an action such as *close* or *export***: [`beam.particle.operations`](beam.particle.operations),
+  usually filled by `#[ParticleOp]`.
+- **Mount a resource under another one's URL**: [`beam.particle.relatives`](beam.particle.relatives),
+  usually filled by `#[ParticleRelative]`.
+- **Add your package's fields to someone else's resource**:
+  [`beam.particle.resource-contributions`](beam.particle.resource-contributions), filled from a
+  provider.
+- **Merge several sources into one paged list**: [`beam.particle.merge`](beam.particle.merge), filled
+  from a provider.
+
+## How they fit together
+
+A **resource** is the hub. Operations act on a resource and are keyed under its name. A relative
+mounts one resource beneath another. A contribution folds another package's data into a resource's
+rows. A merge strategy is what a resource's *composite* backing uses when its rows come from several
+sources at once.
+
+## What a duplicate means here
+
+The five don't share one duplicate rule, and the difference is the point. Resources, operations,
+relatives and merge strategies **supersede**: registering a key that is already taken replaces the
+entry, which is how your application overrides something a package ships. Contributions **reject**:
+two packages claiming the same field on the same resource is a conflict, so it fails at boot rather
+than letting one field silently disappear.
+
+## Generators
+
+Three of the five have generators that write a correct declaration with every slot spelled out:
+
+```bash
+php artisan splicewire:beam:make:particle-resource
+php artisan splicewire:beam:make:particle-op
+php artisan splicewire:beam:make:particle-relative
+```
+
+## Going deeper
+
+[Popcorn registries](/beam/docs/foundations/registries) explains roots, keys and duplicate policies in
+general. [Build a service desk](/beam/docs/laravel/service-desk) uses resources and operations end to
+end.

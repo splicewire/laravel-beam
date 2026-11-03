@@ -1,0 +1,79 @@
+---
+title: Resource contributions
+segment: beam.particle.resource-contributions
+nav_order: 13
+excerpt: Another package's fields folded into a resource's rows, without the resource's owner naming it.
+---
+
+# Resource contributions
+
+`beam.particle.resource-contributions` lets one package add a named slice of data to **another**
+package's resource. When the commerce package is installed, a `tenants` row gains a `commerce` field
+carrying that tenant's plan, even though the tenancy package that owns `tenants` has never heard of
+commerce. Each entry is a `ResourceContribution`: the resource it attaches to, the field name it lands
+under, the data class that shapes the slice, and how to compute it.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.particle.resource-contributions`
+- **Entries:** `Splicewire\Beam\Particle\Contribution\ResourceContribution`
+- **Duplicate keys:** Reject — registering a taken key throws
+- **Population:** Optional — an empty registry is normal
+- **Order:** `13` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry`
+
+{/* registry-facts:end */}
+
+## The contributor declares; the owner names nothing
+
+Contributions point one way. The package adding the field registers the contribution, and the
+resource's owner declares no hook for it. That keeps dependencies flowing downward: commerce requires
+tenancy and can reach down to `tenants`, but tenancy never imports anything from commerce.
+
+Register from your package's provider, against the owner's resource **key** (a plain string):
+
+```php
+use Splicewire\Beam\Particle\Contribution\ResourceContribution;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
+
+$this->app->make(ResourceContributionRegistry::class)->register(new ResourceContribution(
+    key: 'tenants',
+    as: 'commerce',
+    data: TenantCommerceData::class,
+    includes: ['subscription'],
+    value: fn (Tenant $tenant) => TenantCommerceData::from($tenant->subscription),
+));
+```
+
+The contribution is stored against the key and folded in when the resource is read. It doesn't
+matter that your provider may boot before the owner's.
+
+`includes` names relations to eager-load on the list query, so the slice costs one query rather than
+one per row. `value` computes the slice for one record.
+
+## Absent and null mean different things
+
+If no contribution is registered for `commerce`, a `tenants` row has **no** `commerce` key at all: the
+package isn't installed. If the contribution is registered but returns null for a record, the key is
+present and `null`: the package is installed, and this tenant has no plan. A client can tell the two
+apart.
+
+## Duplicates are an error
+
+The policy is **reject**. Two packages both claiming `tenants.commerce` is a wiring conflict, and
+silently letting one win would make the other's field vanish from the API with no error anywhere. So
+the second registration throws at boot, naming both data classes. If you need to change how an
+existing resource is *presented* rather than add data to it, that is a realm overlay, which does
+supersede.
+
+## Related registries
+
+- [`beam.particle.resources`](beam.particle.resources) — the resources contributions attach to.
+- [The particles cluster](beam.particle) — how the five fit together.
+
+## Going deeper
+
+The source is
+[`ResourceContributionRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Particle/Contribution/ResourceContributionRegistry.php).
+For a working contributor, see
+[`TenantCommerceContributor` in laravel-beam-commerce](https://github.com/splicewire/laravel-beam-commerce).

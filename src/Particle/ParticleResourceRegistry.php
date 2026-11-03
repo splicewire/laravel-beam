@@ -14,6 +14,7 @@ use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\Laddered;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\RecordsSupersession;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
@@ -86,7 +87,7 @@ use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
     description: 'Frame resource definitions (model→Data projections) driving reads + the editor. Declared, not inherited: overwrite is intentional here and the class docblock argues it. This said `mixed` on the grounds that an entry is a ParticleResource OR a raw ResourceDefinition — ⚠️ STALE since the escape hatch was collapsed: the keyspace holds only ParticleResource and `all()`\'s instanceof filter was deleted as the identity. Registry-kernel ticket 47 caught it while measuring whether any registry in the estate holds two entry types; none does, which is why `entryType` stayed a scalar. Whether the three collections split into three registries is registry-kernel ticket 36\'s — ANSWERED: they do not split. The composed BasicRegistry is the keyspace; `$realms`/`$realmMap` are a two-rung membership ladder beside the entry, declared through {@see Laddered}. Realm membership is a TAG recorded beside the entry, never a second key dimension: one entry, many realms, no duplicate.',
     order: 12,
 )]
-class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupersession, Registry
+class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegistrants, RecordsSupersession, Registry
 {
     /**
      * The stored DECLARATIONS, keyed by resource key — always a {@see ParticleResource}, projected
@@ -338,6 +339,30 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsSupers
     public function superseded(RegistryKey|string $key): array
     {
         return $this->entries->superseded($key);
+    }
+
+    /**
+     * {@see RecordsRegistrants} — who registered the live, visible declaration at `$key`: the `$by`
+     * {@see register()} already hands the composed store, read back through it. Filtered exactly like
+     * {@see has()}, so a hidden declaration answers null, the same as an absent one.
+     *
+     * Exposed for the registry docs' registrant panel (registry-docs ticket 03): one forward to the
+     * store that already records it, no ledger of its own. A malformed key answers null for the same
+     * reason {@see lookup()} does — a read about something that is not here is not a defect.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->entries->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants} — every visible declaration key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        return $this->entries->keysBy($registrant);
     }
 
     // ── Registration — gains the realm axis ─────────────────────────────────────────────────────────

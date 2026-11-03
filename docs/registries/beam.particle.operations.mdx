@@ -1,0 +1,70 @@
+---
+title: Particle operations
+segment: beam.particle.operations
+nav_order: 13
+excerpt: Named actions on a resource — approve, export, reorder — each with a declared input and output.
+---
+
+# Particle operations
+
+`beam.particle.operations` holds every **named operation**: an action on a resource that isn't one of
+the five CRUD verbs, such as `tickets.close`, `songs.share` or `invoices.export`. Each entry is a
+`ParticleOperation` saying what the operation accepts, what it returns, which ability it needs and how
+it runs. Beam's generic operation controller looks the operation up here and runs it, so you write the
+handler and never a controller.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.particle.operations`
+- **Entries:** `Splicewire\Beam\Particle\ParticleOperation`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `13` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Particle\ParticleOperationRegistry`
+
+{/* registry-facts:end */}
+
+## Keys
+
+An operation's key is `<resource>.<name>`, under the registry's root: closing a ticket lives at
+`beam.particle.operations.tickets.close`. Because the resource is its own key segment, you can ask
+"what can I do to a ticket?" by listing everything under `beam.particle.operations.tickets`. The
+operation computes its own key from its declaration, so you never assemble one by hand.
+
+## Declaring an operation
+
+Put `#[ParticleOp]` on a small class that holds the handler, and let discovery register it:
+
+```bash
+php artisan splicewire:beam:make:particle-op
+```
+
+The generator writes the attribute with all three shape slots explicit (input, output and ability)
+plus the class's `handle()` method. Mount the resource's operations in your route file:
+
+```php
+Particle::ops('tickets', 'tickets', [CloseTicket::class]);
+```
+
+Each operation mounts once, at `tickets/{id}/close` for the common record-scoped case, named
+`tickets.close`.
+
+## Overriding an operation
+
+The duplicate policy is **supersede**, and it is how you replace an operation a package ships:
+register your own declaration under the same `<resource>.<name>` from a provider that boots later. Yours
+runs, and the package's original stays readable as a superseded entry, so the override can be audited
+rather than guessed from boot order.
+
+## Related registries
+
+- [`beam.particle.resources`](beam.particle.resources) — the resources these operations act on.
+- [The particles cluster](beam.particle) — how the five fit together.
+
+## Going deeper
+
+[Particles](/beam/docs/foundations/particles) covers the three declaration sites, `#[ParticleOp]` among
+them. The source is
+[`ParticleOperationRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Particle/ParticleOperationRegistry.php),
+and the mount options are in
+[the laravel-beam README](https://github.com/splicewire/laravel-beam#mounting-the-particle-surface).

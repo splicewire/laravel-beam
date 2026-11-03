@@ -1,0 +1,74 @@
+---
+title: Particle relatives
+segment: beam.particle.relatives
+nav_order: 14
+excerpt: One resource mounted under another's URL — /fragments/{fragment}/media — declared once, as an edge.
+---
+
+# Particle relatives
+
+`beam.particle.relatives` holds **relative edges**: declarations that mount one particle resource
+underneath another, so `media` can be listed as `/fragments/{fragment}/media` as well as on its own. Each
+entry is a `ParticleRelative` naming the child resource, the parent resource, the parent model the URL
+segment binds to, and how the child hangs off the parent: a relation name like `media`, or a scope.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.particle.relatives`
+- **Entries:** `Splicewire\Beam\Particle\ParticleRelative`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `14` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Particle\ParticleRelativeRegistry`
+
+{/* registry-facts:end */}
+
+## Keys
+
+An edge is keyed `<parent>.<child>`, so `fragments.media` lives at
+`beam.particle.relatives.fragments.media`. Listing everything under
+`beam.particle.relatives.fragments` gives you every resource mounted beneath fragments.
+
+## Who declares an edge
+
+An edge belongs to whoever owns the *coupling*, which is usually neither resource's package. The
+package that ships `media` is generic and shouldn't know fragments exist; the package that ships
+fragments shouldn't depend on a media package. Your application, which installs both, is the one that
+knows they belong together, so it declares the edge in a class of its own:
+
+```bash
+php artisan splicewire:beam:make:particle-relative
+```
+
+```php
+#[ParticleRelative(child: 'media', of: 'fragments', model: Fragment::class, via: 'media')]
+class FragmentMediaRelative {}
+```
+
+Then mount every edge declared against a parent with one line in your route file:
+
+```php
+Particle::relatives('fragments');
+```
+
+For an edge that is a scope rather than a named relation, leave out `via:` and give the class a
+`public static function via(Model $parent, Builder $query): Builder`. Keeping it on the class rather
+than in a closure is what lets `route:cache` serialize the route table.
+
+## Duplicates
+
+The policy is **supersede**: a second declaration of the same `<parent>.<child>` pair replaces the
+first, and the first stays readable as superseded. Two different edges between the same two
+resources can't be expressed, because the key is only the two ends.
+
+## Related registries
+
+- [`beam.particle.resources`](beam.particle.resources) — the parent and child are both entries there.
+- [The particles cluster](beam.particle) — how the five fit together.
+
+## Going deeper
+
+The source is
+[`ParticleRelativeRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Particle/ParticleRelativeRegistry.php);
+bound-relative mounting is covered in
+[the laravel-beam README](https://github.com/splicewire/laravel-beam#particlerelative--the-bound-relative-mount-http-02).
