@@ -1,4 +1,9 @@
-# Registered Collections (ADR-0235)
+# Registered Collections — runtime behavior (ADR-0235)
+
+How beam serves a registered Collection: resource mounting, validation ownership, the
+write pipeline, guest evaluation and the optional-package contributors. The normative
+shapes of the `x-beam-*` keywords themselves are `docs/collections/keywords.md` (EP-34);
+the decision record is ADR-0235.
 
 A versioned JSON Schema opts in with `x-beam-collection: {label, nameField}`.
 Both values are required; nameField is a declared property path. One `records`

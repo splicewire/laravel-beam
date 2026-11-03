@@ -1,4 +1,9 @@
-# Registered Collections (EP-34)
+# Collection schema keywords (EP-34)
+
+The normative `x-beam-*` keyword vocabulary a schema author declares to make a registered
+schema a Collection. How beam serves a Collection at runtime — routes, pipeline, guest
+evaluation, contributors — is `docs/agents/registered-collections.md`; the decision record
+is ADR-0235.
 
 A versioned registered schema is a Collection only when it carries
 `x-beam-collection: {label, nameField}`. `nameField` is a declared property dot-path.
