@@ -1,0 +1,78 @@
+---
+title: Doctor audits
+segment: beam.doctor.audits
+nav_order: 2
+excerpt: Add your package's readiness checks to the one doctor run every Beam host has.
+---
+
+# Doctor audits
+
+`beam.doctor.audits` is the list of readiness checks that `splicewire:beam:doctor` runs after its
+built-in ones. Each Beam package, and the host application itself, adds its own checks here, so
+one command reports on the whole installed stack instead of each package shipping its own
+`*:doctor`. Each entry is a `DoctorRegistration` from
+[`rushing/laravel-doctor`](https://github.com/stephenr85/laravel-doctor): the package name, the
+audit class, whether it gates the run, and an order.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.doctor.audits`
+- **Entries:** `Rushing\Doctor\DoctorRegistration`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `2` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Doctor\BeamDoctorManifest`
+
+{/* registry-facts:end */}
+
+## Registering an audit
+
+An audit is any class implementing `Rushing\Doctor\DoctorAudit`, whose `run()` returns a list of
+`Finding`s (pass, warn, fail or inconclusive). Register it from your provider's `boot()`:
+
+```php
+use Splicewire\Beam\Doctor\BeamDoctorManifest;
+
+if ($this->app->bound(BeamDoctorManifest::class)) {
+    $this->app->make(BeamDoctorManifest::class)->register(
+        'splicewire/laravel-satellite-circuit',
+        SatelliteCircuitMigrationsAudit::class,
+    );
+}
+```
+
+That is `splicewire/laravel-satellite-circuit`'s real registration. The `bound()` guard lets the
+package still boot against an older Beam. A host application registers the same way, from its own
+`AppServiceProvider`: the manifest is bound before any provider boots, and the doctor reads it when
+the command runs.
+
+Two named arguments shape how a check behaves:
+
+- **`gate: true`** lets a failing finding turn the run red. By default an audit is advisory: its
+  findings are printed but never change the exit code. `--floor=warn` makes a gating audit's
+  warnings fail the run too.
+- **`order:`** places the audit in the run. Lower runs first, and the default is `100`.
+
+## What a duplicate means here
+
+Entries are keyed by **audit class**, not by package, because one package usually ships several
+audits. Registering the same class again replaces the earlier registration (**supersede**), so a
+provider that boots twice, as in a test harness, doesn't run its audit twice.
+
+## What isn't here
+
+Beam's oldest core checks are built into the doctor command itself and run first; they aren't
+entries in this registry. Beam's newer audits, such as its house-style and bypass checks, are
+registered here like everyone else's, under `splicewire/laravel-beam`.
+
+## Related registries
+
+- [The doctor and surgeon cluster](beam.doctor): the other registries the doctor and surgeon audits read.
+- [`beam.install.steps`](beam.install.steps) and [`beam.seed.steps`](beam.seed.steps): the install
+  and seed twins of this manifest, built the same way.
+
+## Going deeper
+
+[Operate and publish](/beam/docs/laravel/operations) covers running the doctor, and
+[set up a Beam app](/beam/docs/laravel/setup) explains how to read its output. The source is
+[`BeamDoctorManifest`](https://github.com/splicewire/laravel-beam/blob/main/src/Doctor/BeamDoctorManifest.php).

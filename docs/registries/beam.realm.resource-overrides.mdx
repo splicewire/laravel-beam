@@ -1,0 +1,81 @@
+---
+title: Realm resource overrides
+segment: beam.realm.resource-overrides
+nav_order: 18
+excerpt: Present the same resource differently in each realm, from config, without redeclaring it.
+---
+
+# Realm resource overrides
+
+`beam.realm.resource-overrides` changes how a resource is **presented in one realm**. The same
+`plans` resource might be fully editable in the operator back office and read-only in a customer's
+workspace, with a different label in each. You declare the resource once and override it per
+realm. Each entry is a `RealmResourceOverride`, filed under `<realm>.<resource key>`.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.realm.resource-overrides`
+- **Entries:** `Splicewire\Beam\Realm\RealmResourceOverride`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `18` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Realm\RealmResourceRegistry`
+
+{/* registry-facts:end */}
+
+## Declaring overrides in config
+
+Most hosts declare overrides in config, as `realm => resource key => fields`:
+
+```php
+// config/beam/core.php
+'realm_resource_overrides' => [
+    'tenant' => [
+        'plans' => ['label' => 'Your plan', 'readOnly' => true],
+    ],
+],
+```
+
+Beam loads this map when the registry is first resolved. The older `frame.realm_resource_overrides`
+key is still read when the Beam key is unset. To add an override from code, call
+`app(RealmResourceRegistry::class)->override('plans', 'tenant', new RealmResourceOverride(label: 'Your plan'))`.
+
+## What you can override
+
+The navigation fields (`label`, `group`, `icon`, `section`, `navOrder`), `routeName`, the `form`
+mode (`enriched` or `bare`), the `layout` (`single`, `subnav` or `master-detail`), `editData`,
+`policy`, `query`, and the gates `readOnly`, `editable`, `deletable` and `showable`.
+
+A field you leave out, or set to null, keeps the resource's own value. `readOnly: true` turns off
+create, edit and delete together. An explicit `editable` or `deletable` in the same override takes
+precedence over it. Unknown config keys are ignored.
+
+## Which override applies
+
+When Beam projects a resource for a realm, it applies that realm's overrides **and** those of every
+realm it borrows from. They are applied from the bottom of the realm's stack upward, with the realm
+itself last, so the most specific one wins. The default `user` realm stacks on `tenant`. A
+`tenant` override therefore also shows up in `user`, and a `user` override for the same resource
+takes precedence over it there.
+
+The policy is **supersede**: declaring the same realm and resource again replaces the earlier
+override. An unknown realm, or a resource with no override, gets the resource exactly as it was
+declared, and so does any realm while the registry is empty.
+
+## Who reads it
+
+Beam's [resource registry](beam.particle.resources) applies these overrides when it projects a
+declaration for a realm. Frame never sees them; it receives the finished definition.
+
+## Related registries
+
+- [Realms](beam.realm): realm stacks, and the rest of the realm cluster.
+- [`beam.particle.resources`](beam.particle.resources): the declarations being overridden, and
+  where realm membership is set.
+
+## Going deeper
+
+The source is
+[`RealmResourceRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Realm/RealmResourceRegistry.php),
+and the field list is on
+[`RealmResourceOverride`](https://github.com/splicewire/laravel-beam/blob/main/src/Realm/RealmResourceOverride.php).

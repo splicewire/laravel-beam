@@ -1,0 +1,57 @@
+---
+title: The doctor and surgeon cluster
+segment: beam.doctor
+nav_order: 2
+excerpt: The registries behind splicewire:beam:doctor, and the scan scope its audits share.
+---
+
+# The doctor and surgeon cluster
+
+`splicewire:beam:doctor` is the one readiness check every Beam host runs. Two registries live
+under `beam.doctor.`. A third, under `beam.surgeon.`, feeds the code-shape audits the doctor runs.
+All three are declared by [`splicewire/laravel-beam`](https://github.com/splicewire/laravel-beam).
+None of them is read on a web request: they are read by console commands, and they are never
+filtered by who is signed in, so an audit always sees its full scope.
+
+Which one you reach for:
+
+- **Add a readiness check for your package**: [`beam.doctor.audits`](beam.doctor.audits).
+- **Make your package's controllers and routes part of the house-style and bypass sweeps**:
+  [`beam.surgeon.scan-paths`](beam.surgeon.scan-paths).
+- **Change which directories the facade-conformance audits scan**: rebind the scope, described below.
+
+## The facade-conformance scope
+
+`beam.doctor.facade-scope` is the set of directories the five facade-conformance audits scan
+together, in one shared walk instead of five. These audits find code that goes around the `Beam`
+facade: naming the retired `Splicewire\Beam\Beam` bridge class from a stub or config file,
+resolving the particle writer by hand, or building table names without the prefix helper. It has
+no page of its own because nothing registers into it.
+
+It is filled once, when it's built, with your application's `app/`, `src/`, `routes/` and
+`database/` directories, plus every family package under `vendor/splicewire`, `vendor/rushing` and
+`vendor/schemastud` that is a **symlink**. A symlinked package is a local checkout you can edit; a
+real directory is a pinned install that Composer would overwrite, so its findings would be advice
+nobody can act on. Tests, `vendor/`, `node_modules/`, `storage/` and `bootstrap/cache/` are
+excluded inside every root.
+
+A host with an unusual layout **rebinds** the singleton rather than registering into it:
+
+```php
+use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
+
+$this->app->singleton(FacadeConformanceScope::class, fn () => FacadeConformanceScope::forApp([
+    base_path('app'),
+    base_path('modules'),
+]));
+```
+
+Its facts, for reference: root `beam.doctor.facade-scope`, entries are absolute directory paths
+(`string`), duplicates are admitted, and the declaring class is
+[`FacadeConformanceScope`](https://github.com/splicewire/laravel-beam/blob/main/src/Doctor/Support/FacadeConformanceScope.php).
+
+## Going deeper
+
+[Operate and publish](/beam/docs/laravel/operations) covers the doctor, the surgeon and package
+topology. [Popcorn registries](/beam/docs/foundations/registries) explains roots, keys and
+duplicate policies in general.

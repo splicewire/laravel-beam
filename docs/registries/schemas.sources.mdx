@@ -1,0 +1,78 @@
+---
+title: Schema sources
+segment: schemas.sources
+nav_order: 11
+excerpt: Contribute a tier to the schema store from a package, and control which tier wins a read.
+---
+
+# Schema sources
+
+`schemas.sources` lets a package add a **tier** to Beam's schema store, without the host being
+edited. The store reads schemas from an ordered list of tiers, typically `fleet`, then `db`, then
+`file`. Each entry is a closure that builds one tier, a `SchemaRegistry`, filed under the tier's name.
+The closure runs when the tier is needed, not at registration.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `schemas.sources`
+- **Entries:** `Closure`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `11` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Schema\SchemaSources`
+
+{/* registry-facts:end */}
+
+## Contributing a tier
+
+From your provider:
+
+```php
+use Splicewire\Beam\Schema\SchemaSources;
+
+$this->app->make(SchemaSources::class)->register(
+    'theme',
+    fn () => new FilesystemSchemaRegistry(ThemeSchemas::directory()),
+);
+```
+
+That is `splicewire/laravel-beam-ux` contributing its theme schemas. Beam core registers one tier
+itself: `fleet`, the committed fleet-wide vocabulary artifacts, read from
+`beam.core.schema.fleet_path` (default `resources/schemas/fleet`).
+
+## Registration order is not read order
+
+Reads are first-hit-wins, so the order of the tiers decides which copy of a schema you get. That
+order comes from config, not from registration:
+
+```php
+// config/beam/core.php
+'schema' => [
+    'sources' => ['fleet', 'db', 'file'],
+],
+```
+
+`orderedSources()` takes that list and appends any contributed tier the config doesn't name, in
+registration order. A contributed tier is therefore always readable but has the **lowest**
+precedence until you place it in the list yourself. The default puts `fleet` ahead of `db`, so no
+tenant can shadow a fleet artifact, while ordinary content schemas keep the tenant-over-file
+override. Writes go to `beam.core.schema.write_source`, which is declared separately because "where
+to read first" and "where to write" are different questions.
+
+## Who wins on a name collision
+
+The policy is **supersede**: a later registration under the same tier name replaces the earlier one.
+The host still decides: it binds the store itself, combining its own tiers with `factories()`, and
+its own tiers win any name they share. The flagship binds its `db` and `file` tiers this way, and
+passes `orderedSources()` the configured list.
+
+## Related registries
+
+The other `schemas.*` registries belong to `schemastud/laravel-data-schemas` and are documented
+there.
+
+## Going deeper
+
+[Data schema registries](/beam/docs/laravel/schema-loop/schema-registries) explains how schemas are
+registered and resolved. The source is
+[`SchemaSources`](https://github.com/splicewire/laravel-beam/blob/main/src/Schema/SchemaSources.php).

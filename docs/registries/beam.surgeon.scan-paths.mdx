@@ -1,0 +1,85 @@
+---
+title: Surgeon scan paths
+segment: beam.surgeon.scan-paths
+nav_order: 11
+excerpt: Put your package's controllers and routes in front of Beam's code-shape audits.
+---
+
+# Surgeon scan paths
+
+`beam.surgeon.scan-paths` adds a package's HTTP code to the directories Beam's code-shape audits
+read. By default those audits read only the host's own code, such as its controllers and route
+files. A package that ships controllers and route files registers their directories here, and its
+code is then checked alongside the host's. Each entry is a `{package, controllersDir, routesDir}`
+triple, filed under the package name.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.surgeon.scan-paths`
+- **Entries:** any value (`mixed`)
+- **Duplicate keys:** Admit — every registration is kept; a single-entry read of a shared key refuses as ambiguous
+- **Population:** Optional — an empty registry is normal
+- **Order:** `11` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Surgeon\AuditScanPaths`
+
+{/* registry-facts:end */}
+
+## Who reads it
+
+Four audits, all run by `splicewire:beam:doctor`:
+
+- **House style**, which flags files using constructs Beam's PHP style forbids, such as
+  `declare(strict_types=1)`, `final` and `readonly`.
+- **Controller redundancy**, which finds a hand-written controller repeating CRUD that a mounted
+  particle resource already serves.
+- **Operation bypass**, which finds a hand-wired action working on a registered resource's model
+  outside [`beam.particle.operations`](beam.particle.operations).
+- **Bare mount**, which finds the retired `Route::particle*()` macros and names the `Particle::`
+  call that replaces each one.
+
+Contributed directories are scanned **in addition to** the host's own, never instead of them.
+
+## Registering your package
+
+Call `registerScanPaths()` from your provider's `boot()`, guarded so the package still boots where
+Beam is absent:
+
+```php
+use Splicewire\Beam\Surgeon\AuditScanPaths;
+
+if ($this->app->bound(AuditScanPaths::class)) {
+    $this->app->make(AuditScanPaths::class)->registerScanPaths(
+        'splicewire/laravel-beam-tenancy',
+        __DIR__.'/Http',
+        dirname(__DIR__).'/routes',
+    );
+}
+```
+
+That is `splicewire/laravel-beam-tenancy`'s real registration; `laravel-beam-commerce` and
+`laravel-beam-market` register the same way. A directory that doesn't exist is fine, because the
+audits treat it as empty, so a package with controllers but no route files can still register.
+
+## What a duplicate means here
+
+The policy is **admit**. A package that registers twice contributes two rows, and the sweep reads
+both. Duplicate directories are collapsed when the audits read them, so the same files aren't
+scanned twice.
+
+## How far it reaches
+
+Paths join the sweep only where the contributing package is installed and its provider boots. A
+package that isn't installed in the host being audited contributes nothing there. This registry
+covers what a host installs, not every package that exists.
+
+## Related registries
+
+- [The doctor and surgeon cluster](beam.doctor): the doctor's audit list, and the separate scope
+  the facade-conformance audits scan.
+- [`beam.doctor.audits`](beam.doctor.audits): where these four audits are registered.
+
+## Going deeper
+
+[Operate and publish](/beam/docs/laravel/operations) covers the doctor and the surgeon. The source
+is
+[`AuditScanPaths`](https://github.com/splicewire/laravel-beam/blob/main/src/Surgeon/AuditScanPaths.php).

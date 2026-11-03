@@ -1,0 +1,87 @@
+---
+title: Realm overlays
+segment: beam.realm.overlays
+nav_order: 17
+excerpt: Add fields and entitlement-gated capabilities to a realm another package ships.
+---
+
+# Realm overlays
+
+`beam.realm.overlays` holds changes to apply to an **existing** realm before Beam sends that realm
+to the client. A satellite, for example, can badge the public `site` realm or give it extra
+capabilities without owning the realm. Each entry is a `RealmOverlay`, filed under the key of the
+realm it targets.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.realm.overlays`
+- **Entries:** `Splicewire\Beam\Realm\RealmOverlay`
+- **Duplicate keys:** Admit — every registration is kept; a single-entry read of a shared key refuses as ambiguous
+- **Population:** Optional — an empty registry is normal
+- **Order:** `17` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Realm\RealmOverlayRegistry`
+
+{/* registry-facts:end */}
+
+## What an overlay carries
+
+- **A document**: a data-schema overlay, `{overlay, actions: [...]}`, where each action targets a
+  JSONPath in the realm's descriptor and overrides, merges or unsets it. This is the same overlay
+  format `schemastud/laravel-data-schemas` applies to schemas, not a separate merge language.
+- **Capabilities**, optionally. Each one is added to the descriptor's `capabilities` list. A
+  capability with an `entitlement` shows up **locked**, with its upsell, for anyone who doesn't
+  hold that entitlement. It's still listed, so the interface can offer the upgrade.
+- **A satellite key**, optionally, for your own diagnostics. It is never sent to the client.
+
+## Registering one
+
+The entry carries its own realm key, so you register it in one argument:
+
+```php
+use Splicewire\Beam\Realm\RealmOverlay;
+use Splicewire\Beam\Realm\RealmOverlayRegistry;
+
+app(RealmOverlayRegistry::class)->register(RealmOverlay::make(
+    realmKey: 'site',
+    overlay: ['overlay' => '1.0.0', 'actions' => [
+        ['target' => '$.badge', 'override' => 'Powered by Audiostud'],
+    ]],
+    capabilities: [
+        ['key' => 'music.render.voice', 'entitlement' => 'voice', 'upsell' => ['title' => 'Unlock voice']],
+    ],
+));
+```
+
+[`splicewire/laravel-satellite`](https://github.com/splicewire/laravel-satellite) is the live
+registrant. It reads a list of `{realm, overlay, capabilities, satellite}` declarations from
+`splicewire.satellite.realm_overlays` and registers each one, so a satellite usually configures
+overlays rather than writing this call.
+
+## Several overlays on one realm
+
+The policy is **admit**. Every overlay for a realm is kept, and they are applied in registration
+order, each one working on the result of the one before. Where two of them write the same JSONPath,
+the later one wins. Use `for('site')` to read a realm's overlays in that order. `resolve('site')`
+throws as soon as a realm has more than one overlay, because it can only return a single entry.
+
+## What an overlay can't do
+
+It can't create a realm. Beam's manifest projector walks the realms in
+[`beam.realm`](beam.realm) and applies overlays to those. An overlay aimed at a realm that isn't
+registered is stored and never read, so it has no effect and raises no error.
+
+An empty registry changes nothing: every realm descriptor is exactly what it would be without
+overlays.
+
+## Related registries
+
+- [Realms](beam.realm): the realms an overlay can target, and the rest of the realm cluster.
+- [`beam.realm.resource-overrides`](beam.realm.resource-overrides): change how a resource is
+  presented in a realm, rather than the realm itself.
+
+## Going deeper
+
+The source is
+[`RealmOverlayRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Realm/RealmOverlayRegistry.php),
+and the fold happens in
+[`RealmManifestProjector`](https://github.com/splicewire/laravel-beam/blob/main/src/Realm/RealmManifestProjector.php).

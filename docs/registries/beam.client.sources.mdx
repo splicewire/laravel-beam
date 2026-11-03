@@ -1,0 +1,91 @@
+---
+title: Client SDK route sources
+segment: beam.client.sources
+nav_order: 100
+excerpt: Which route manifest the client SDK generator reads for each realm tier.
+---
+
+# Client SDK route sources
+
+`beam.client.sources` says where `splicewire:beam:generate:client` gets its routes. The generator
+writes your committed client access layer: the route map, typed react-query hooks and friendly
+aliases. It reads a **route manifest** for each realm tier. Each entry is the class name of a
+`RouteManifestSource`, filed under the tier it serves. The container builds it when the generator
+runs.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.client.sources`
+- **Entries:** `class-string<Splicewire\Beam\Source\RouteManifestSource>`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `100` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Source\RouteManifestSourceRegistry`
+
+{/* registry-facts:end */}
+
+## Configuring it
+
+There is no `register()` call to make. This registry reads `config('beam.client.sources')` directly,
+and the config file ships with two tiers:
+
+```php
+// config/beam/client.php
+'sources' => [
+    'defaults' => env('BEAM_CLIENT_TENANT_SOURCE', ParticleRouteManifestSource::class),
+    'operator' => env('BEAM_CLIENT_OPERATOR_SOURCE'),
+],
+```
+
+- **`defaults`** is the primary, tenant-facing tier. Its default, `ParticleRouteManifestSource`,
+  walks the live route table for mounted particle resources and operations, and works out each read
+  route's return type from the resource's output Data class. A satellite usually needs nothing else.
+- **`operator`** is optional. Leave it unset and the registry reports the tier as absent, so the
+  generator emits an empty operator route map and no operator hooks. The flagship sets it to its own
+  Tower-backed source.
+
+To change a tier, set the environment variable or override the key in your published
+`config/beam/client.php`. The policy is **supersede**: one class per tier, and whatever the config
+says wins.
+
+## Writing a source
+
+A source implements one method, `toArray()`, returning the enriched manifest the generator reads.
+It is keyed by route name, and `returns` names the generated TypeScript type, which is the Data
+class with dots in place of backslashes:
+
+```php
+use Splicewire\Beam\Source\RouteManifestSource;
+
+final class PartnerRouteManifestSource implements RouteManifestSource
+{
+    public function toArray(): array
+    {
+        return [
+            'partners.index' => ['path' => 'api/partners', 'methods' => ['GET'], 'visibility' => 'public',
+                'returns' => 'App.Data.PartnerData', 'returnsMany' => true],
+        ];
+    }
+}
+```
+
+## Who reads it
+
+The generator, and the two doctor audits that check SDK return types (`SdkReturnsCoverageAudit`
+and `SdkReturnsTypeScriptResolutionAudit`). All three read the config path, so an unbound tier
+means the same thing everywhere.
+
+## Related registries
+
+- [Realms](beam.realm): the realms these tiers serve.
+- [`beam.particle.resources`](beam.particle.resources) and
+  [`beam.particle.operations`](beam.particle.operations): what the default source reads off the
+  route table.
+
+## Going deeper
+
+[Declarations and package reference](/beam/docs/laravel/reference) covers generated artifacts and
+how to regenerate them. The source is
+[`RouteManifestSourceRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Source/RouteManifestSourceRegistry.php),
+and the default tier is
+[`ParticleRouteManifestSource`](https://github.com/splicewire/laravel-beam/blob/main/src/Source/ParticleRouteManifestSource.php).

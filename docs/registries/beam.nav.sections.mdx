@@ -1,0 +1,99 @@
+---
+title: Navigation sections
+segment: beam.nav.sections
+nav_order: 18
+excerpt: Give your package's resources a top-level navigation section of their own, in any realm.
+---
+
+# Navigation sections
+
+`beam.nav.sections` lets a package add a **top-level section** to a realm's navigation. A resource
+already says which section it sits under, with `#[ParticleResource(section: 'calendars')]`, but
+that alone doesn't create the section. Without a seat, a host has to hand-author the section, and
+until it does, the resource is declared and invisible. A `NavSection` here is that seat. It is
+filed under the realm it belongs to.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.nav.sections`
+- **Entries:** `Splicewire\Beam\Nav\NavSection`
+- **Duplicate keys:** Admit — every registration is kept; a single-entry read of a shared key refuses as ambiguous
+- **Population:** Optional — an empty registry is normal
+- **Order:** `18` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Nav\NavSectionRegistry`
+
+{/* registry-facts:end */}
+
+## Declaring a seat
+
+Register from your provider's `boot()`:
+
+```php
+use Splicewire\Beam\Nav\NavAudience;
+use Splicewire\Beam\Nav\NavSection;
+use Splicewire\Beam\Nav\NavSectionRegistry;
+
+$this->app->make(NavSectionRegistry::class)->register(
+    new NavSection(
+        key: 'demo',
+        realm: 'tenant',
+        label: 'Demo',
+        icon: 'NotebookPen',
+        href: '/demo',
+        order: 60,
+        entitlement: null,
+        permission: null,
+        audience: NavAudience::Product,
+    ),
+    by: 'splicewire/beam-extension-demo',
+);
+```
+
+- **`key`** is the section name resources join on. Every resource declaring `section: 'demo'`
+  becomes a child of this seat.
+- **`order`** is your preferred position, ascending. The host may reorder.
+- **`entitlement`** and **`permission`** have no defaults, so you always decide on gating. `null`
+  means ungated. An `entitlement` is an any-of list of keys, and `[]` is a gate nobody passes.
+  Add a `lock:` to show an unentitled user the seat locked, with an upsell, instead of hiding it.
+- **`audience`** places the seat in the main rail (`Product`) or the developer zone (`Developer`).
+  Leave it out and you get `Product`, plus a deprecation notice and a doctor finding naming your class.
+- **`static`** adds hand-written child rows alongside the resources, each with a `title` and an `href`.
+
+## Several seats in one realm
+
+The policy is **admit**: one realm holds every seat declared for it. `for('tenant')` returns them
+sorted by `order`, then `key`, rather than in registration order. Whatever order the packages'
+providers boot in, they project the same navigation.
+
+Seats that share a `key` in one realm are drawn as **one** seat. The first in that order supplies
+the label, icon and link, and every seat's `static` rows join it. They merge only when their
+entitlement, permission, audience and lock all match. When they differ, Beam throws outside
+production (`beam.ux.ia.throw` controls this). In production it reports the conflict and keeps the
+seats apart, so one seat's rows are never shown behind another seat's looser gate.
+
+## What a seat can't do
+
+It can't create a realm. A seat for a realm the host doesn't have is stored and never read. There
+is also no list a host has to add your package to: installing it is enabling it. An empty registry
+leaves the host's own navigation exactly as it wrote it.
+
+## Who reads it
+
+`splicewire/laravel-beam-ux` projects the seats into the navigation items its shells render. Beam
+core declares the seat without depending on any navigation library, so packages like calendars
+and notifications can seat a section while requiring only `splicewire/laravel-beam`.
+
+## Related registries
+
+- [Realms](beam.realm): the realms a seat can belong to.
+- [`beam.particle.resources`](beam.particle.resources): the resources that become a seat's children.
+- [`beam.realm.resource-overrides`](beam.realm.resource-overrides): move one resource to a different
+  section in one realm.
+
+## Going deeper
+
+[Realms and surfaces](/beam/docs/foundations/realms-and-surfaces) explains why navigation is
+projected from server data. The source is
+[`NavSectionRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Nav/NavSectionRegistry.php),
+and every field is documented on
+[`NavSection`](https://github.com/splicewire/laravel-beam/blob/main/src/Nav/NavSection.php).

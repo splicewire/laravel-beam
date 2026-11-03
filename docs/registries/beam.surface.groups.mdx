@@ -1,0 +1,85 @@
+---
+title: API groups
+segment: beam.surface.groups
+nav_order: 12
+excerpt: Your API's group tree, and how Beam decides which group each route belongs to.
+---
+
+# API groups
+
+`beam.surface.groups` holds your API's **taxonomy**: the tree of groups your API reference is
+organised by, such as *Knowledge*, *Commerce* and *Platform*, with leaves under each. Each entry is
+an `ApiGroup` with a key, a canonical name (the OpenAPI tag), a description (the tag's public
+description), an optional parent, an optional shorter label for menus, and an order among its
+siblings. Beam ships the registry **empty**: a taxonomy belongs to the host, and shipping one
+host's groups would put its words into every other host's reference.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.surface.groups`
+- **Entries:** `Splicewire\Beam\Surface\ApiGroup`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `12` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Surface\GroupRegistry`
+
+{/* registry-facts:end */}
+
+## Declaring your groups
+
+Register the tree from a provider. The flagship keeps it in one class, `App\Docs\ApiTaxonomy`:
+
+```php
+use Splicewire\Beam\Surface\ApiGroup;
+use Splicewire\Beam\Surface\GroupRegistry;
+
+app(GroupRegistry::class)->registerGroups(
+    new ApiGroup(key: 'commerce', name: 'Commerce', order: 60,
+        description: 'What things cost and what can be added.'),
+    new ApiGroup(key: 'billing', name: 'Billing', parent: 'commerce'),
+);
+```
+
+The policy is **supersede**: registering a key again replaces that group, so a provider that boots
+twice doesn't declare it twice.
+
+## Which group a route lands in
+
+A route's group is a property of its **resource**, not of its URL. `resolveRoute()` tries four
+things in order and stops at the first match:
+
+1. **Your assignment** for the route's resource: `->assign('invoices', 'billing')`. Assign only the
+   resources whose own declaration you disagree with.
+2. **The resource's own declaration**, `#[ParticleResource(group: ...)]`. A package may write a
+   loose word there: a key, a name, a menu label, or a slug of any of them. A word that matches no
+   group falls through to the next step instead of failing. Your own resources should use keys.
+3. **A URI pattern**: `->matchUri('api/v1/legacy/*', 'platform')`, for routes that carry no
+   resource at all. Patterns are tried in the order you declared them, so declare a narrow pattern
+   before the broad one it carves out. Each pattern is a stopgap: giving the route a resource
+   removes the need for it.
+4. **A guess** from the first meaningful URI segment. A guessed group isn't registered, so
+   `isDeclared()` tells it apart from a real one.
+
+An assignment or pattern pointing at a group that isn't registered throws, because that is a typo
+in your taxonomy, not a missing declaration.
+
+## Who reads it
+
+The host's API reference: in the flagship, a Scribe strategy files every endpoint under its
+resolved group and takes the description from it. The `OrphanedGroupWordAudit` doctor audit
+reports a resource whose declared group word matches no group on this host, which is what happens
+when a host renames a group a package still names.
+
+## Related registries
+
+- [`beam.particle.resources`](beam.particle.resources): where a resource declares its `group`.
+- [`beam.nav.sections`](beam.nav.sections): top-level navigation, which is a separate concern from
+  API grouping.
+
+## Going deeper
+
+[Declarations and package reference](/beam/docs/laravel/reference) covers resource declarations.
+The source is
+[`GroupRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Surface/GroupRegistry.php),
+and each field is documented on
+[`ApiGroup`](https://github.com/splicewire/laravel-beam/blob/main/src/Surface/ApiGroup.php).

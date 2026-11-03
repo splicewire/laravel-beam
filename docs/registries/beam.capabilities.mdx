@@ -1,0 +1,92 @@
+---
+title: Gated capabilities
+segment: beam.capabilities
+nav_order: 15
+excerpt: Declare a feature that needs an entitlement, and optionally spends on a meter, in one place.
+---
+
+# Gated capabilities
+
+`beam.capabilities` holds every **gated capability**: a feature a tenant may use only with the
+right entitlement, such as web search. Each entry implements `GatedCapability` and answers three
+questions: its key, the entitlement it requires, and the meter it spends on, if any. The entitlement
+gate and tenant sync's pre-flight check both look capabilities up here, so declaring a gated feature
+means implementing this contract and registering it.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.capabilities`
+- **Entries:** `Splicewire\Beam\Capabilities\GatedCapability`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `15` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Capabilities\CapabilityRegistry`
+
+{/* registry-facts:end */}
+
+## Declaring a capability
+
+```php
+use Splicewire\Beam\Capabilities\GatedCapability;
+
+class WebSearchCapability implements GatedCapability
+{
+    public function key(): string
+    {
+        return 'web_search';
+    }
+
+    public function meter(): ?string
+    {
+        return 'google.cse.query';
+    }
+
+    public function requiredEntitlement(): string
+    {
+        return 'web_search';
+    }
+}
+```
+
+Access is the only mandatory part. Return `null` from `meter()` for a capability that is gated but
+free to use.
+
+## Registering it
+
+Beam registers no capabilities of its own. A package registers its capabilities from its own
+`boot()`. The entry carries its key, so one argument is enough:
+
+```php
+app(CapabilityRegistry::class)->register(new WebSearchCapability);
+```
+
+[`splicewire/tower`](https://github.com/splicewire/tower) is the live example: it registers web
+search and LLM-assisted schema migration. The policy is **supersede**. Registering a key again
+replaces the earlier capability and keeps its original position.
+
+## Who reads it
+
+- **The entitlement gate** (`splicewire/laravel-beam-commerce`'s `DefaultEntitlementGate`). Given a
+  capability key, it looks the capability up and checks the tenant against its required entitlement.
+  An unknown key is treated as its own entitlement key.
+- **Tenant sync's pre-flight**, in tower. It reports which entitlements a sync would leave the target
+  tenant missing, without blocking the copy. The tenant meets the gate later, when it uses the
+  feature.
+
+Use `get('web_search')` when the key comes from outside your code, such as a manifest or a
+request; it returns null for an unknown key, or for a string that isn't a valid key at all.
+`byEntitlement('web_search')` returns the first capability that requires an entitlement, in
+registration order.
+
+## Related registries
+
+- [`beam.realm.overlays`](beam.realm.overlays): realm overlays add entitlement-gated capabilities to
+  a realm's descriptor, shown locked to anyone not entitled.
+
+## Going deeper
+
+[Compose application capabilities](/beam/docs/laravel/capabilities) covers commerce and
+entitlements. The source is
+[`CapabilityRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Capabilities/CapabilityRegistry.php),
+and the contract is
+[`GatedCapability`](https://github.com/splicewire/laravel-beam/blob/main/src/Capabilities/GatedCapability.php).

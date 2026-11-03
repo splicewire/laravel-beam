@@ -1,0 +1,96 @@
+---
+title: Event types
+segment: beam.events.types
+nav_order: 14
+excerpt: The catalog of events a webhook can subscribe to, declared before anything fires.
+---
+
+# Event types
+
+`beam.events.types` is the catalog of **publishable events**: the names a tenant's webhook can
+subscribe to, and what each delivery is about. `GET /hooks/events` lists it, and a subscribe call
+looks names up in it. Each entry is an `EventType`, filed under its own name. Because the catalog is
+declared rather than inferred from what fires, a client can see the whole vocabulary before any
+event has happened.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.events.types`
+- **Entries:** `Splicewire\Beam\Events\EventType`
+- **Duplicate keys:** Reject — registering a taken key throws
+- **Population:** Optional — an empty registry is normal
+- **Order:** `14` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Events\EventTypeRegistry`
+
+{/* registry-facts:end */}
+
+## Naming an event
+
+A name is `{resource key}.{verb phrase}`: `compositions.render.completed` is the `compositions`
+resource plus the verb phrase `render.completed`. The resource key is always the first segment and
+is spelled exactly as the resource registry spells it, plural included. That is what lets
+`GET /hooks/events?resource=compositions` return a resource's events by segment. A `composition`
+filter never picks up `compositions.*`.
+
+## Declaring one
+
+Register from your provider. Tower declares its provisioning event like this:
+
+```php
+use Splicewire\Beam\Events\EventType;
+use Splicewire\Beam\Events\EventTypeRegistry;
+
+$this->app->booted(function () {
+    $this->app->make(EventTypeRegistry::class)->register(
+        new EventType(
+            name: 'tenants.provisioned',
+            subject: Tenant::class,
+            description: 'A brokered child tenant reached a terminal provisioning state.',
+        ),
+        null,
+        self::class,
+    );
+});
+```
+
+`subject` is the model a delivery is about, the thing a subscriber filters on. `payload` names the
+Data class for the wire body, and can stay null until you write one. You can also put
+`#[BeamEvent('tenants.provisioned', subject: Tenant::class)]` on an event class and list the class
+in `beam.core.events.classes`, or its directory in `beam.core.events.discover_paths`. The attribute
+is repeatable, so one class can publish several names, and it calls the same `register()`.
+
+## What registration checks
+
+Registration is the only place an event is validated, and each of these throws:
+
+- the name parses as a key and has at least two segments;
+- it has a `subject`, unless it explicitly says `subjectless: true`;
+- the name isn't already taken.
+
+That last rule is the policy, **reject**. Two providers claiming one event name means two teams
+think they own one wire contract, and no subscriber is safe with "the later one wins", so boot
+fails loudly instead.
+
+One further check is advisory: whether the name's first segment is a resource this host actually
+has. `splicewire:beam:doctor` reports a dead prefix as `events.catalog-prefix`, and the event is
+still registered. Firing an event that isn't in the catalog never fails; it simply finds no
+subscribers.
+
+## What ships
+
+Beam fills the catalog with `hooks.disabled` and `hooks.verified`, and with one
+`{resource}.persisted` event for every particle resource that has a single model class. Hosts get
+those with no config at all.
+
+## Related registries
+
+- [`beam.particle.resources`](beam.particle.resources): where event prefixes come from, and the
+  source of the `.persisted` events.
+
+## Going deeper
+
+[Compose application capabilities](/beam/docs/laravel/capabilities) covers workflows, events and
+hooks. The source is
+[`EventTypeRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Events/EventTypeRegistry.php),
+and the entry is
+[`EventType`](https://github.com/splicewire/laravel-beam/blob/main/src/Events/EventType.php).

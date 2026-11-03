@@ -1,0 +1,74 @@
+---
+title: Install steps
+segment: beam.install.steps
+nav_order: 1
+excerpt: How each Beam package tells splicewire:beam:install what to publish and whether to migrate.
+---
+
+# Install steps
+
+`beam.install.steps` is the plan `splicewire:beam:install` runs. Every Beam package registers one
+step from its own service provider, so a single command installs the whole stack and there's no
+per-package installer. Each entry is an `InstallStep`, filed under the package's Composer name. It
+lists the `vendor:publish` tags to run, whether the package ships migrations, an order, and,
+optionally, a note to print and commands to run after the install.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.install.steps`
+- **Entries:** `Splicewire\Beam\Install\InstallStep`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `1` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Install\BeamInstallManifest`
+
+{/* registry-facts:end */}
+
+## Registering your package
+
+From your provider's `boot()`:
+
+```php
+use Splicewire\Beam\Install\BeamInstallManifest;
+
+if ($this->app->bound(BeamInstallManifest::class)) {
+    $this->app->make(BeamInstallManifest::class)->register(
+        package: 'splicewire/laravel-beam-calendars',
+        publishTags: ['beam-calendars-config', 'beam-calendars-migrations'],
+        migrates: true,
+    );
+}
+```
+
+The other named arguments are `order:` (default `100`), `note:`, which is printed after the step
+for an easy-to-miss config option that defaults to off, and `commands:`, which run after publishing
+and migrating. `splicewire/laravel-beam-docs`, for example, runs `splicewire:beam:docs:generate`.
+
+## Order is migration order
+
+Steps run in ascending `order`, and steps with the same order run in registration order. Beam core
+registers itself at `0`, so it always goes first. The order matters more than it looks: publishing
+stamps each migration with the time it was published. The order steps run in therefore becomes the
+order their migrations run in on a fresh database. If your package alters a table another package
+creates, give your step a higher `order` than that package's step. Two packages left on the default
+`100` are separated only by provider boot order. All publishing happens first, then a single
+migrate runs if any step set `migrates: true`.
+
+## What a duplicate means here
+
+The policy is **supersede**, keyed by package name. Registering again replaces your earlier step
+instead of adding a second one, so a provider that boots twice, as in a test harness, never
+publishes twice.
+
+## Related registries
+
+- [`beam.seed.steps`](beam.seed.steps): the seed pass the install runs at the end, unless you pass
+  `--no-seed`.
+- [`beam.doctor.audits`](beam.doctor.audits): the doctor-side twin, built the same way.
+
+## Going deeper
+
+[Set up a Beam app](/beam/docs/laravel/setup) walks through a first install. The source is
+[`BeamInstallManifest`](https://github.com/splicewire/laravel-beam/blob/main/src/Install/BeamInstallManifest.php),
+and the ordering rule is written up in
+[migration publish ordering](https://github.com/splicewire/laravel-beam/blob/main/docs/agents/migration-publish-ordering.convention.md).

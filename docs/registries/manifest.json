@@ -1,0 +1,9 @@
+{
+    "exempt": {
+        "beam.doctor.facade-scope": {
+            "class": "rebind-only",
+            "reason": "Seeded once by FacadeConformanceScope::forApp() when the singleton is built, and nothing registers into it afterwards; a host with an unusual source layout rebinds the singleton. Its scope, exclusions and rebind example are documented on the doctor and surgeon cluster page.",
+            "pointer": "docs/registries/beam.doctor.mdx"
+        }
+    }
+}

@@ -1,0 +1,71 @@
+---
+title: Seed steps
+segment: beam.seed.steps
+nav_order: 3
+excerpt: How each Beam package adds its seeder to splicewire:beam:seed, and how to keep demo data out of production.
+---
+
+# Seed steps
+
+`beam.seed.steps` is the list of seeders `splicewire:beam:seed` runs. Every Beam package that ships
+seed data registers its seeder here from its own service provider, so a host's `DatabaseSeeder`
+calls one command instead of naming each package's seeder by class. Each entry is a `SeedStep`,
+filed under the package's Composer name. It names the seeder class, an order, and an optional config
+gate.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.seed.steps`
+- **Entries:** `Splicewire\Beam\Seed\SeedStep`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `3` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Seed\BeamSeedManifest`
+
+{/* registry-facts:end */}
+
+## Registering your seeder
+
+From your provider's `boot()`:
+
+```php
+use Splicewire\Beam\Seed\BeamSeedManifest;
+
+$this->app->make(BeamSeedManifest::class)->register(
+    package: 'splicewire/laravel-beam-tenancy',
+    seederClass: DemoTenantSeeder::class,
+    order: 20,
+    configGate: 'beam.tenancy.demo.seed_tenant',
+);
+```
+
+Each seeder runs through `db:seed --class`. Steps run in ascending `order` (default `100`), and
+steps with the same order run in registration order. That lets the foundational rows exist before
+the data that builds on them: tower seeds its system account at `10`, before tenancy's demo tenant
+at `20`.
+
+## Config gates
+
+`configGate` names a config key that must be truthy for the step to run. Leave it out and the step
+always runs. A demo seeder can register unconditionally and still run only where its gate is on,
+such as outside production. The command reports a gated step as **skipped**, with the key that was
+off, so "nothing registered" and "registered but switched off" are distinguishable in its output.
+A seeder that throws or exits non-zero is a failure, not a skip. The rest of the steps still
+run, the data they seeded stays, and the command exits non-zero unless you pass
+`--tolerate-failures`. To keep a seeder from running, use its gate.
+
+## What a duplicate means here
+
+The policy is **supersede**, keyed by package name. Registering again replaces your earlier step,
+so a provider that boots twice never seeds twice.
+
+## Related registries
+
+- [`beam.install.steps`](beam.install.steps): `splicewire:beam:install` runs this seed pass at the
+  end unless you pass `--no-seed`.
+- [`beam.doctor.audits`](beam.doctor.audits): the doctor-side twin, built the same way.
+
+## Going deeper
+
+[Set up a Beam app](/beam/docs/laravel/setup) covers first-run seeding. The source is
+[`BeamSeedManifest`](https://github.com/splicewire/laravel-beam/blob/main/src/Seed/BeamSeedManifest.php).

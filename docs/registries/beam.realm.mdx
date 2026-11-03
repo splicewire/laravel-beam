@@ -1,0 +1,103 @@
+---
+title: Realms
+segment: beam.realm
+nav_order: 14
+excerpt: The areas of your application people land in, and the two registries that shape them.
+---
+
+# Realms
+
+`beam.realm` holds your application's **realms**: the areas a kind of person lands in, such as the
+operator back office, a customer's workspace or the public site. Each entry is a `RealmDefinition`
+saying where the realm is mounted, which guard protects it, whether it is the central operator
+realm, and which other realms it borrows its resources from. The manifest builder and the client
+route generator both read this registry, so a realm that isn't here doesn't exist as far as the
+front end is concerned.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration by `splicewire:beam:docs:registries:scaffold`. Rerun the command; do not edit between these markers. */}
+
+- **Root:** `beam.realm`
+- **Entries:** `Schemastud\Frame\Realm\RealmDefinition`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `14` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Realm\RealmRegistry`
+
+{/* registry-facts:end */}
+
+## What ships
+
+Every install starts with four realms, registered when the registry is built:
+
+- **`operator`**, at `/operator`: the central back office, guarded by `root` and never scoped to a
+  tenant.
+- **`tenant`**, at `/`: a customer's workspace, behind the app's own sign-in.
+- **`user`**, at `/settings`: the signed-in person's account and settings.
+- **`site`**, at `/`: the public site, unguarded by default.
+
+`user` borrows from `tenant` by default: its definition carries `stack: ['tenant']`, so a person's
+settings resolve inside their workspace. Set `frame.collapse_user_realm` to `false` and the stack
+empties, giving `user` its own resources. Until something registers its own `user` realm, the
+registry re-reads that config value on every read, so flipping it at runtime takes effect.
+
+## Adding or replacing a realm
+
+The usual way is a marker class carrying `#[Realm]` or one of its presets (`#[OperatorRealm]`,
+`#[TenantRealm]`, `#[UserRealm]`, `#[SiteRealm]`), listed in your config:
+
+```php
+use Splicewire\Beam\Realm\Attributes\Realm;
+
+#[Realm(key: 'partners', routeBase: '/partners', guard: 'partner')]
+final class PartnersRealm {}
+```
+
+```php
+// config/beam/core.php
+'realms' => [
+    'classes' => [App\Realms\PartnersRealm::class],
+],
+```
+
+Beam reflects each listed class at boot and registers the realm it describes. There is no
+directory scan: realms are few, so you list them. A package can also register one directly from
+its provider with `app(RealmRegistry::class)->register(new RealmDefinition(...))`.
+
+The policy is **supersede**. Registering a key that already exists replaces that realm in its
+original position, which is how a tenancy package ships a differently-shaped `tenant` realm over
+the base one. Once anything registers `user`, the config-driven stack described above stops
+applying and your definition wins.
+
+## Reading a realm
+
+`resolve('tenant')` throws on an unknown key, because asking for a realm that doesn't exist is a
+routing bug. `get()` and `tryResolve()` return null instead. `effective('user')` walks a realm's
+stack and returns the realm its resources actually come from: `tenant` while `user` is collapsed,
+`user` itself once it isn't.
+
+## The realm cluster
+
+Two more registries nest under this root, and they never create a realm. Each one only changes a
+realm this registry already holds, and anything aimed at an unknown realm has no effect.
+
+- **Change what a realm's descriptor says**, such as adding a capability a satellite brings:
+  [`beam.realm.overlays`](beam.realm.overlays).
+- **Present one resource differently in one realm**, with a different label, layout or write
+  permissions: [`beam.realm.resource-overrides`](beam.realm.resource-overrides).
+
+Which resources belong to which realm isn't a registry of its own. It's set on the resource
+registry, through `frame.realms` and `beam.core.resources.realm_map`; see
+[`beam.particle.resources`](beam.particle.resources).
+
+## Related registries
+
+- [`beam.nav.sections`](beam.nav.sections): navigation sections are seated per realm.
+- [`beam.client.sources`](beam.client.sources): the client SDK generates one route map per realm tier.
+
+## Going deeper
+
+[Realms and surfaces](/beam/docs/foundations/realms-and-surfaces) explains realms for someone
+meeting them for the first time. The source is
+[`RealmRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Realm/RealmRegistry.php),
+and the attribute is
+[`Realm`](https://github.com/splicewire/laravel-beam/blob/main/src/Realm/Attributes/Realm.php).
