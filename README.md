@@ -13,6 +13,34 @@ Start here, in order:
   override (the two lanes);
 - [`GLOSSARY.md`](GLOSSARY.md) and [`docs/adr/`](docs/adr/) — the names and the rulings.
 
+## Registries
+
+Beam declares nineteen registries, and most Beam packages register into them. Each has a reference page under
+[`docs/registries/`](docs/registries/). Start from a cluster page, which says which registry in the group you
+reach for:
+
+- [`beam.particle`](docs/registries/beam.particle.mdx): the five registries behind the declared API surface:
+  resources, operations, relatives, resource contributions and merge strategies.
+- [`beam.realm`](docs/registries/beam.realm.mdx): the areas people land in, with their overlays and per-realm
+  resource overrides.
+- [`beam.doctor`](docs/registries/beam.doctor.mdx): the registries behind `splicewire:beam:doctor`, including the
+  facade-conformance scope, which a host rebinds rather than registers into.
+
+The rest stand alone: [`beam.install.steps`](docs/registries/beam.install.steps.mdx),
+[`beam.seed.steps`](docs/registries/beam.seed.steps.mdx),
+[`beam.doctor.audits`](docs/registries/beam.doctor.audits.mdx),
+[`beam.surgeon.scan-paths`](docs/registries/beam.surgeon.scan-paths.mdx),
+[`beam.nav.sections`](docs/registries/beam.nav.sections.mdx),
+[`beam.surface.groups`](docs/registries/beam.surface.groups.mdx),
+[`beam.client.sources`](docs/registries/beam.client.sources.mdx),
+[`beam.capabilities`](docs/registries/beam.capabilities.mdx),
+[`beam.events.types`](docs/registries/beam.events.types.mdx) and
+[`schemas.sources`](docs/registries/schemas.sources.mdx).
+
+Beam registers into one registry it doesn't own:
+[`frame.resources`](https://github.com/schemastud/laravel-frame/blob/main/docs/registries/frame.resources.mdx),
+owned by `schemastud/laravel-frame`, where it attaches the particle resource registry as the `beam` member.
+
 ## Layering (ADR-0156)
 
 `beam` **requires** `schemastud/laravel-frame` and the schema belt — the old "frame → beam, never
