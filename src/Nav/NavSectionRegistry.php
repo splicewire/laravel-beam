@@ -61,7 +61,7 @@ use Splicewire\Beam\Realm\RealmRegistry;
     entryType: NavSection::class,
     onKeyDuplicate: OnKeyDuplicate::Admit,
     populationRequirement: PopulationRequirement::Optional,
-    description: 'Package-declared navigation sections grouped by realm. Reads combine all seats for a realm in registration order. Multiple seats per realm are retained. An empty registry preserves the navigation authored by the host; seats for unknown realms have no effect.',
+    description: 'Package-declared navigation sections grouped by realm. for() returns a realm\'s seats sorted by declared order, then key (not registration order), and merges seats that share a key into one. Multiple seats per realm are retained. An empty registry preserves the navigation authored by the host; seats for unknown realms have no effect.',
     order: 18,
 )]
 /**

@@ -22,7 +22,7 @@ use Splicewire\Beam\Realm\Attributes\Realm;
  * concrete kit lives here in beam (legal now that `beam → frame`), so a self-hosted / satellite install
  * selects its realms from the package rather than hand-defining them.
  *
- * Ships three BASE realms every install has:
+ * Ships four BASE realms every install has:
  *  - **`operator`** — the operator console: central, never-tenanted, root-guarded, mounted at `/operator`.
  *  - **`tenant`** — the workspace realm: mounted at `/`, its own auth. Whether it resolves a tenant on
  *    this deployment is the `TenantResolver`'s call (ticket 08 slice B), not a flag here.
@@ -49,7 +49,7 @@ use Splicewire\Beam\Realm\Attributes\Realm;
     root: 'beam.realm',
     entryType: RealmDefinition::class,
     onKeyDuplicate: OnKeyDuplicate::Supersede,
-    description: 'authorization realms (admin·tenant·user·docs) governing resource access. Seeded-plus-registered: the constructor seeds the base realms AND #[Realm] classes augment the same instance. Contribution is last-wins by key, and deliberately so — a capability package re-registers a differently-shaped realm over the base one. `beam.realm.overlays` nests UNDER this root; longest prefix routes them apart.',
+    description: 'authorization realms (operator·tenant·user·site) governing resource access. Seeded-plus-registered: the constructor seeds those four base realms AND #[Realm] classes augment the same instance. Contribution is last-wins by key, and deliberately so — a capability package re-registers a differently-shaped realm over the base one. `beam.realm.overlays` nests UNDER this root; longest prefix routes them apart.',
     order: 14,
 )]
 class RealmRegistry implements Gated, Registry

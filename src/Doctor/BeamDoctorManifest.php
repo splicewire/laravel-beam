@@ -27,9 +27,9 @@ use Splicewire\Beam\Install\BeamInstallManifest;
  *
  * The direction is load-bearing, exactly as on the install side: consumers register DOWN into beam's
  * manifest; **beam-core never learns a consumer's name** (it iterates whatever registered). That keeps the
- * dependency graph acyclic. beam-core's own audits predate the manifest and stay hardcoded in
- * {@see BeamDoctorCommand} (coexist, not migrate — no behaviour change); the
- * manifest carries the consumer tail, which renders after the hardcoded checks (order ascending; `usort`
+ * dependency graph acyclic. beam-core's original audits predate the manifest and stay hardcoded in
+ * {@see BeamDoctorCommand} (coexist, not migrate — no behaviour change); beam-core's newer audits
+ * register here like a consumer's. The manifest renders after the hardcoded checks (order ascending; `usort`
  * is stable). Each registration carries a gate/advisory flag so a consumer decides whether its own Fail
  * blocks the exit code, honouring the same gate-vs-advisory split beam-core already draws.
  *
@@ -51,7 +51,7 @@ use Splicewire\Beam\Install\BeamInstallManifest;
     root: 'beam.doctor.audits',
     entryType: DoctorRegistration::class,
     onKeyDuplicate: OnKeyDuplicate::Supersede,
-    description: 'per-package readiness audits aggregated by splicewire:beam:doctor. beam-core\'s OWN audits are deliberately not here — they predate the manifest and stay hardcoded in BeamDoctorCommand. This carries the consumer tail only.',
+    description: 'per-package readiness audits aggregated by splicewire:beam:doctor, run after the checks hardcoded in BeamDoctorCommand. beam-core\'s original audits predate the manifest and stay hardcoded there; its newer audits register here alongside every consumer\'s.',
     order: 2,
 )]
 /**

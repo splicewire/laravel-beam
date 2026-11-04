@@ -50,7 +50,7 @@ use Rushing\Popcorn\Registries\RegistryKey;
     root: 'beam.capabilities',
     entryType: GatedCapability::class,
     onKeyDuplicate: OnKeyDuplicate::Supersede,
-    description: 'Gated capabilities resolved by key and entitlement, including web search, schema migration and node types.',
+    description: 'Gated capabilities resolved by key and entitlement. Beam registers none; a package seeds its own from boot (today tower registers `web_search` and `schema.llm-migration`).',
     order: 15,
 )]
 class CapabilityRegistry implements Gated, Registry
