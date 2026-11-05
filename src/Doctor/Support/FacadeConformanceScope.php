@@ -143,7 +143,7 @@ class FacadeConformanceScope implements Registry
         $this->store = BasicRegistry::for($this);
 
         foreach ($this->roots as $root) {
-            $this->store->register(static::pathKey((string) $root), (string) $root, by: 'constructor');
+            $this->store->register(static::pathKey((string) $root), (string) $root, by: 'splicewire/laravel-beam');
         }
     }
 

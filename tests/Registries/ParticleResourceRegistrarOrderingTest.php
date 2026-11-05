@@ -72,8 +72,8 @@ class ParticleResourceRegistrarOrderingTest extends TestCase
     }
 
     /**
-     * ...and the loser is RECORDED, with the registrant the registrar wrote — the scanned class's own
-     * FQCN, per ticket 07 D13. That is what makes a wrong-order overwrite visible rather than silent,
+     * ...and the loser is RECORDED, with the registrant the registrar wrote — `class:` and the scanned
+     * class's own FQCN, per ticket 07 D13 and the registrant vocabulary. That is what makes a wrong-order overwrite visible rather than silent,
      * which is ticket 19's third acceptance item (unmet in general; answerable here).
      */
     #[DefineEnvironment('scanTheRegistrarFixtures')]
@@ -83,7 +83,7 @@ class ParticleResourceRegistrarOrderingTest extends TestCase
 
         $this->assertCount(1, $displaced);
         $this->assertSame(7, $displaced[0]->entry->perPage);
-        $this->assertSame(ScannedPaperResource::class, $displaced[0]->by);
+        $this->assertSame('class:'.ScannedPaperResource::class, $displaced[0]->by);
     }
 
     /**

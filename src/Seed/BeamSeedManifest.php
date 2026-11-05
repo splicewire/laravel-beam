@@ -6,6 +6,7 @@ use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\Registrant;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\RelativeUriKey;
@@ -83,6 +84,9 @@ class BeamSeedManifest implements Registry
         // spelled." The slash is a joiner being translated, not a new grammar — every segment must
         // still satisfy `Key`'s own charset — and the translation is lossless both ways, which
         // matters because the same string is the coordinate a human reads back out of `beam:seed`.
+        // The caller already names its package in slot 1, so an unnamed write records that rather than
+        // whichever provider scope is open (a registration deferred past its provider records nothing).
+        $by ??= Registrant::isVocabulary((string) $package) ? (string) $package : null;
         $this->store->register(
             $package instanceof RegistryKey ? $package : RelativeUriKey::of($package),
             new SeedStep((string) $package, (string) $seederClass, $order, $configGate),

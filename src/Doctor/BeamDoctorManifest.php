@@ -9,6 +9,7 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\ClassKey;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\Registrant;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Console\BeamDoctorCommand;
@@ -90,6 +91,9 @@ class BeamDoctorManifest implements Registry
         // `$package` stays slot 1 and keeps its name because 44 call sites spell it that way. That
         // makes slot 1 the contract's `$key` position while carrying the package, which is a
         // deliberate divergence recorded here rather than a rename that would break every caller.
+        // The caller already names its package in slot 1, so an unnamed write records that rather than
+        // whichever provider scope is open (a registration deferred past its provider records nothing).
+        $by ??= Registrant::isVocabulary((string) $package) ? (string) $package : null;
         $this->store->register(ClassKey::of((string) $audit), new DoctorRegistration((string) $package, (string) $audit, $gate, $order), $by, $ability);
 
         return $this;

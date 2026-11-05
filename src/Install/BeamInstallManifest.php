@@ -6,6 +6,7 @@ use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\Registrant;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\RelativeUriKey;
@@ -88,6 +89,9 @@ class BeamInstallManifest implements Registry
         // both gone. Every parameter keeps its name because every call site in the estate
         // passes by name; the sweep that established that covered every package `src`/`tests`, every
         // Herd host and every starter, not a three-package sample.
+        // The caller already names its package in slot 1, so an unnamed write records that rather than
+        // whichever provider scope is open (a registration deferred past its provider records nothing).
+        $by ??= Registrant::isVocabulary((string) $package) ? (string) $package : null;
         $this->store->register(
             $package instanceof RegistryKey ? $package : RelativeUriKey::of($package),
             new InstallStep((string) $package, is_array($publishTags) ? $publishTags : [], $migrates, $order, $note, $commands),

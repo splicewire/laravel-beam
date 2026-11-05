@@ -93,7 +93,8 @@ class RealmResourceRegistry implements Gated, Registry
      */
     public function override(string $key, string $realm, RealmResourceOverride $override): self
     {
-        $this->store->register($realm.'.'.$key, $override, by: 'override()');
+        // No $by: the caller's registrant scope names who declared the override.
+        $this->store->register($realm.'.'.$key, $override);
 
         return $this;
     }

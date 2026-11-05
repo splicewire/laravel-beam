@@ -108,7 +108,8 @@ class GroupRegistry implements Gated, Registry
     public function registerGroups(ApiGroup ...$groups): static
     {
         foreach ($groups as $group) {
-            $this->store->register($group->key, $group, by: 'registerGroups()');
+            // No $by: the caller's registrant scope names who registered the group.
+            $this->store->register($group->key, $group);
         }
 
         return $this;

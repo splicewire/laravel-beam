@@ -68,7 +68,9 @@ class MergeStrategyRegistry implements Registry
     {
         $this->store = BasicRegistry::for($this);
 
-        $this->register('ordered', new OrderedMergeStrategy, by: self::class);
+        // The built-in seed: beam ships it. Explicit, because the constructor runs whenever the registry
+        // is first resolved, inside whichever provider's scope that happens to be.
+        $this->register('ordered', new OrderedMergeStrategy, by: 'splicewire/laravel-beam');
     }
 
     public function register(RegistryKey|string $key, mixed $entry = null, ?string $by = null, ?string $ability = null): static

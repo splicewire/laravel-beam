@@ -6,6 +6,7 @@ use Closure;
 use InvalidArgumentException;
 use ReflectionClass;
 use Rushing\Popcorn\Discovery\AttributedClassScanner;
+use Rushing\Popcorn\Registries\Registrant;
 use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Particle\ParticleOperation as ParticleOperationRuntime;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -137,7 +138,9 @@ class AttributedParticleDiscovery
      */
     private function registerResourceClass(string $class): void
     {
-        $this->resources->register(self::resourceFromAttribute($class));
+        // `class:<FQCN>`: the annotated class declared itself. Discovery runs inside beam's provider
+        // scope, so without this a host's own resources would record 'splicewire/laravel-beam'.
+        $this->resources->register(self::resourceFromAttribute($class), by: Registrant::fromClass($class));
     }
 
     /**
@@ -242,7 +245,7 @@ class AttributedParticleDiscovery
             summary: $attribute->summary,
             description: $attribute->description,
             errors: $attribute->errors,
-        ));
+        ), by: Registrant::fromClass($class));
     }
 
     /**
@@ -295,7 +298,7 @@ class AttributedParticleDiscovery
             declaredBy: $class,
             ops: $attribute->ops,
             relatives: $attribute->relatives,
-        ));
+        ), by: Registrant::fromClass($class));
     }
 
     /**

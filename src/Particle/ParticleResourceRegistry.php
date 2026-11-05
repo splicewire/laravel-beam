@@ -16,6 +16,7 @@ use Rushing\Popcorn\Registries\Laddered;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\RecordsSupersession;
+use Rushing\Popcorn\Registries\Registrant;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
 use Rushing\Popcorn\Registries\Registry;
@@ -488,7 +489,7 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegist
         // A `#[ParticleResource]`-annotated class is projected into a runtime ParticleResource
         // declaration (including its manifest fields) by the particle discovery — reflecting it here
         // (rather than going through a separate registry) keeps this the single resource producer.
-        $this->register(AttributedParticleDiscovery::resourceFromAttribute($dataClass), $realms);
+        $this->register(AttributedParticleDiscovery::resourceFromAttribute($dataClass), $realms, by: Registrant::fromClass($dataClass));
     }
 
     /**

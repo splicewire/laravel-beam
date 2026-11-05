@@ -23,6 +23,7 @@ use Rushing\Popcorn\Concerns\ChainsTraitMethods;
 use Rushing\Popcorn\Contracts\ChainsTraitMethods as ChainsTraitMethodsContract;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
 use Rushing\Popcorn\Registries\RegistryIndex;
+use Rushing\Popcorn\Registries\ScopesRegistrant;
 use Rushing\Surgeon\Audit\PackageGraph;
 use Rushing\Surgeon\Operation\CallbackConformanceManifest;
 use Rushing\Surgeon\Operation\ConformanceManifest;
@@ -290,6 +291,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 {
     use BootsBeamRouteNamespace;
     use ChainsTraitMethods;
+    use ScopesRegistrant;
+
+    /** Every registry write in register()/boot() that names no `$by` records this package. */
+    protected function registrant(): string
+    {
+        return 'splicewire/laravel-beam';
+    }
 
     public function configurePackage(Package $package): void
     {
@@ -562,7 +570,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // half-wiring this file's own history is full of. This one fires immediately when the binding is
         // already resolved and registers the hook otherwise.
         $this->callAfterResolving(CompositeResourceRegistry::class, function (CompositeResourceRegistry $resources, $app): void {
-            $resources->attach('beam', fn (): ParticleResourceRegistryAdapter => $app->make(ParticleResourceRegistryAdapter::class), by: self::class);
+            $resources->attach('beam', fn (): ParticleResourceRegistryAdapter => $app->make(ParticleResourceRegistryAdapter::class), by: 'splicewire/laravel-beam');
         });
 
         // The build-time #[ParticleResource] manifest cache (mirrors bootstrap/cache/packages.php). When it
