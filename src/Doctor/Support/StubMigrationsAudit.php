@@ -14,9 +14,16 @@ use Splicewire\Beam\Doctor\BeamDoctorManifest;
  * `->hasMigrations([...])`, never auto-loaded at runtime (`loadMigrationsFrom()`). `vendor:publish
  * --tag=<pkg>-migrations` re-stamps + sequences them into the host at install time.
  *
- * A subclass names its own package + {@see PackageServiceProvider} — the
- * "operator" a {@see BeamDoctorManifest} registration renders under. Purely
- * mechanical (source-text + filesystem inspection), zero semantic judgment: fails on a stray
+ * A package DECLARES itself with {@see BeamDoctorManifest::stubMigrations()}, naming its package and the
+ * {@see PackageServiceProvider} whose `->hasMigrations([...])` publishes them; the manifest registers this
+ * class with those two as constructor arguments (make-surface 04). That replaced twenty two-method subclasses
+ * that named exactly those two values and nothing else.
+ *
+ * Subclassing still works, overriding {@see packageName()} and {@see serviceProviderClass()}, so a package
+ * still on the retired form keeps reporting while it migrates. Constructed with neither (an argument-free
+ * `make()`), the audit reports one Fail naming the declaration it is missing, instead of guessing a subject.
+ *
+ * Purely mechanical (source-text + filesystem inspection), zero semantic judgment: fails on a stray
  * `loadMigrationsFrom(` over the package's OWN vendor source, warns when `->hasMigrations(` is absent
  * *while migration files are present*, fails on a real (non-`.stub`) `.php` migration file sitting
  * alongside the stubs.
@@ -37,23 +44,53 @@ use Splicewire\Beam\Doctor\BeamDoctorManifest;
  * Laravel's own migration discovery, exactly like any app declaring a custom migrations path. Only
  * `database_path(`-targeted calls are exempt; anything else still fails.
  */
-abstract class StubMigrationsAudit implements DoctorAudit
+class StubMigrationsAudit implements DoctorAudit
 {
     /** The check name this audit emits, suffixed with the package it reads (docs-walkthrough DOC-11(c)). */
     public const CHECK = 'migrations are publish-only stubs';
 
-    abstract protected function packageName(): string;
+    /** Not promoted, and defaulted: a retired-form subclass may declare its own constructor and never call this one. */
+    private ?string $package = null;
+
+    /** @var class-string|null */
+    private ?string $provider = null;
 
     /**
-     * @return class-string
+     * @param  string|null  $package  the declaring package, e.g. `splicewire/laravel-beam-rank`
+     * @param  class-string|null  $provider  its PackageServiceProvider, whose source and migrations dir are read
      */
-    abstract protected function serviceProviderClass(): string;
+    public function __construct(?string $package = null, ?string $provider = null)
+    {
+        $this->package = $package;
+        $this->provider = $provider;
+    }
+
+    protected function packageName(): string
+    {
+        return $this->package ?? '';
+    }
+
+    /**
+     * @return class-string|''
+     */
+    protected function serviceProviderClass(): string
+    {
+        return $this->provider ?? '';
+    }
 
     /**
      * @return list<Finding>
      */
     public function run(): array
     {
+        if ($this->packageName() === '' || $this->serviceProviderClass() === '') {
+            return [Finding::fail(
+                self::CHECK,
+                'constructed without a package and provider: declare them with '
+                .'BeamDoctorManifest::stubMigrations($package, $provider), which registers this audit with both.',
+            )];
+        }
+
         $check = self::CHECK." ({$this->packageName()})";
 
         $providerFile = (new ReflectionClass($this->serviceProviderClass()))->getFileName();

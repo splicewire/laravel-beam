@@ -8,11 +8,13 @@ use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\ClassKey;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\Registrant;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Console\BeamDoctorCommand;
+use Splicewire\Beam\Doctor\Support\StubMigrationsAudit;
 use Splicewire\Beam\Install\BeamInstallManifest;
 
 /**
@@ -97,6 +99,49 @@ class BeamDoctorManifest implements Registry
         $this->store->register(ClassKey::of((string) $audit), new DoctorRegistration((string) $package, (string) $audit, $gate, $order), $by, $ability);
 
         return $this;
+    }
+
+    /**
+     * Declare that `$package` ships its migrations as publish-only stubs, published by `$provider`'s
+     * `->hasMigrations([...])`. The doctor then runs {@see StubMigrationsAudit} for that package, with the
+     * two as its constructor arguments (make-surface 04). This replaces a per-package subclass whose two
+     * methods returned exactly these two values.
+     *
+     * Keyed by PACKAGE ({@see self::stubMigrationsKey()}), not by audit class: every package registers
+     * the same class, so the class key would collapse them into one. A provider that boots twice
+     * supersedes its own entry. The registration takes the place in the run that a `register()` call at
+     * the same point in boot would, so moving a package from its subclass to this declaration leaves the
+     * doctor's output, line for line, where it was.
+     *
+     * @param  class-string  $provider
+     */
+    public function stubMigrations(
+        string $package,
+        string $provider,
+        ?string $by = null,
+        ?string $ability = null,
+        bool $gate = false,
+        int $order = 100,
+    ): static {
+        $by ??= Registrant::isVocabulary($package) ? $package : null;
+
+        $this->store->register(
+            self::stubMigrationsKey($package),
+            new DoctorRegistration($package, StubMigrationsAudit::class, $gate, $order, [
+                'package' => $package,
+                'provider' => $provider,
+            ]),
+            $by,
+            $ability,
+        );
+
+        return $this;
+    }
+
+    /** The key a package's {@see self::stubMigrations()} declaration is registered under. */
+    public static function stubMigrationsKey(string $package): RegistryKey
+    {
+        return Key::fromSegments([...ClassKey::of(StubMigrationsAudit::class)->segments(), ...explode('/', $package)]);
     }
 
     /**
