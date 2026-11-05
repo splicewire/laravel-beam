@@ -68,8 +68,9 @@ class RealmResourceRegistry implements Gated, Registry
      * a host (RDU-05) seeds real overlays.
      *
      * @param  array<string, array<string, array<string, mixed>>>  $config
+     * @param  string|null  $by  the registrant, `config:<key>` naming the key this was read from
      */
-    public function loadConfig(array $config): self
+    public function loadConfig(array $config, ?string $by = null): self
     {
         foreach ($config as $realm => $keys) {
             if (! is_array($keys)) {
@@ -81,7 +82,7 @@ class RealmResourceRegistry implements Gated, Registry
                     continue;
                 }
 
-                $this->override((string) $key, (string) $realm, RealmResourceOverride::fromArray($fields));
+                $this->override((string) $key, (string) $realm, RealmResourceOverride::fromArray($fields), $by);
             }
         }
 
@@ -90,11 +91,11 @@ class RealmResourceRegistry implements Gated, Registry
 
     /**
      * The fluent escape hatch: register an overlay for a `(key, realm)` imperatively. Last-wins per pair.
+     * With no `$by`, the caller's registrant scope names who declared the override.
      */
-    public function override(string $key, string $realm, RealmResourceOverride $override): self
+    public function override(string $key, string $realm, RealmResourceOverride $override, ?string $by = null): self
     {
-        // No $by: the caller's registrant scope names who declared the override.
-        $this->store->register($realm.'.'.$key, $override);
+        $this->store->register($realm.'.'.$key, $override, $by);
 
         return $this;
     }

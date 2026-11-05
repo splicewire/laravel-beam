@@ -21,6 +21,7 @@ use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Rushing\PermissionCascade\Support\CascadePolicyRegistrar;
 use Rushing\Popcorn\Concerns\ChainsTraitMethods;
 use Rushing\Popcorn\Contracts\ChainsTraitMethods as ChainsTraitMethodsContract;
+use Rushing\Popcorn\Registries\Registrant;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
 use Rushing\Popcorn\Registries\RegistryIndex;
 use Rushing\Popcorn\Registries\ScopesRegistrant;
@@ -681,10 +682,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // a declaration for a realm; frame never sees it (the realm concept lives entirely in beam). A
         // host may also register overlays imperatively via
         // `->override($key, $realm, new RealmResourceOverride(...))`.
-        $this->app->singleton(RealmResourceRegistry::class, fn ($app) => (new RealmResourceRegistry(
-            $app->make(RealmRegistry::class),
-        ))->loadConfig((array) (config('beam.core.realm_resource_overrides')
-            ?? config('frame.realm_resource_overrides', []))));
+        $this->app->singleton(RealmResourceRegistry::class, function ($app) {
+            // The registrant is the config key actually read, so the fallback names itself.
+            $key = config('beam.core.realm_resource_overrides') !== null
+                ? 'beam.core.realm_resource_overrides'
+                : 'frame.realm_resource_overrides';
+
+            return (new RealmResourceRegistry($app->make(RealmRegistry::class)))
+                ->loadConfig((array) config($key, []), Registrant::fromConfig($key));
+        });
 
         // The generic particle REST surface (promoted from splicewire-app, ADR-0116). The two declaration
         // registries are container singletons so the `Particle::mount()` / `Particle::ops()`
