@@ -420,6 +420,45 @@ class ParticleGeneratorTest extends TestCase
         ])->assertExitCode(0);
     }
 
+    public function test_force_over_an_already_loaded_declared_op_checks_the_bytes_just_written(): void
+    {
+        // Codex review 09 finding 1. The first run loads RebindOp into this process, exactly as a host's boot
+        // discovery or an earlier Artisan call would. The --force rerun then rewrites the SAME class through an
+        // override that drops its output; the check must judge those bytes, not the definition already loaded.
+        $args = ['name' => 'RebindOp', '--resource' => 'lyrics', '--model' => 'Lyric', '--kind' => 'write'];
+
+        $this->artisan('splicewire:beam:make:particle-op', $args)->assertExitCode(0);
+        $this->assertTrue(class_exists('App\Particle\Operations\RebindOp', false), 'The first run did not load the op.');
+
+        $this->publishOpStubWithoutItsOutputSlot();
+
+        $this->artisan('splicewire:beam:make:particle-op', $args + ['--force' => true])
+            ->expectsOutputToContain(UndeclaredSurfaceAudit::CHECK)
+            ->assertExitCode(1);
+    }
+
+    public function test_an_invalid_run_does_not_fail_a_later_valid_run_in_the_same_kernel(): void
+    {
+        // Codex review 09 finding 2. Laravel keeps one command instance per kernel, so state a run leaves behind
+        // (its emitted files, the routes its check mounted) must not decide the next run.
+        Route::get('unrelated-host-route', fn () => 'kept')->name('unrelated.host');
+
+        $this->publishOpStubWithoutItsOutputSlot();
+        $this->artisan('splicewire:beam:make:particle-op', [
+            'name' => 'BrokenOp', '--resource' => 'lyrics', '--model' => 'Lyric', '--kind' => 'write',
+        ])->assertExitCode(1);
+
+        File::delete($this->host.'/stubs/particle-op.stub');
+        $this->artisan('splicewire:beam:make:particle-op', [
+            'name' => 'ValidOp', '--resource' => 'lyrics', '--model' => 'Lyric', '--kind' => 'write',
+        ])->assertExitCode(0);
+
+        // The check adds its own routes and removes nothing of the host's. (A route named after it is added is not
+        // in the collection's name index until the lookups are refreshed.)
+        Route::getRoutes()->refreshNameLookups();
+        $this->assertSame('unrelated-host-route', Route::getRoutes()->getByName('unrelated.host')?->uri());
+    }
+
     public function test_the_check_reaches_the_surface_it_verifies(): void
     {
         // Guards the clean results above from passing because nothing was mounted: a check that reports
@@ -432,14 +471,12 @@ class ParticleGeneratorTest extends TestCase
             '--kind' => 'read',
         ])->assertSuccessful();
 
+        // Each run mounts under its own segment: <VERIFY_PREFIX>/<run>/reacheds…
         $uris = array_map(fn ($route) => $route->uri(), Route::getRoutes()->getRoutes());
-        $prefix = ParticleGeneratorCommand::VERIFY_PREFIX.'/reacheds';
+        $run = '#^'.preg_quote(ParticleGeneratorCommand::VERIFY_PREFIX, '#').'/[0-9a-f]{8}/reacheds';
 
-        $this->assertContains($prefix, $uris, 'The resource check did not mount the resource it verified.');
-        $this->assertNotEmpty(
-            array_filter($uris, fn (string $uri) => str_starts_with($uri, $prefix.'/{id}/')),
-            'The op check did not mount the op it verified.',
-        );
+        $this->assertNotEmpty(preg_grep($run.'$#', $uris), 'The resource check did not mount the resource it verified.');
+        $this->assertNotEmpty(preg_grep($run.'/\{id\}/#', $uris), 'The op check did not mount the op it verified.');
     }
 
     public function test_every_generator_offers_no_verify(): void

@@ -97,15 +97,15 @@ class MakeParticleBackingCommand extends ParticleGeneratorCommand
     /** The check the backing test asserts: the emitted class loads and implements every capability it declares. */
     protected function declarationFindings(): array
     {
-        $this->loadEmitted();
-        $backing = array_key_first($this->emitted);
+        $emitted = array_key_first($this->emitted);
+        $backing = $this->loadEmitted()[$emitted];
         $findings = [];
 
         foreach (['ResourceBacking', ...array_keys($this->capabilities)] as $capability) {
             $interface = 'Splicewire\\Beam\\Particle\\Backing\\'.$capability;
 
             if (! is_subclass_of($backing, $interface)) {
-                $findings[] = sprintf('%s does not implement %s', $backing, $interface);
+                $findings[] = sprintf('%s does not implement %s', $emitted, $interface);
             }
         }
 

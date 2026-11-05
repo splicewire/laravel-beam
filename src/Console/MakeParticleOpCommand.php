@@ -213,8 +213,7 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
      */
     protected function declarationFindings(): array
     {
-        $this->loadEmitted();
-        $op = array_key_first($this->emitted);
+        $op = $this->loadEmitted()[array_key_first($this->emitted)];
         $this->laravel->make(AttributedParticleDiscovery::class)->discover(classes: [$op]);
 
         return $this->undeclaredWhenMounted(

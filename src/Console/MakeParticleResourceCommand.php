@@ -134,8 +134,8 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
      */
     protected function declarationFindings(): array
     {
-        $this->loadEmitted();
-        $this->laravel->make(AttributedParticleDiscovery::class)->discover(classes: [array_key_first($this->emitted)]);
+        $read = $this->loadEmitted()[array_key_first($this->emitted)];
+        $this->laravel->make(AttributedParticleDiscovery::class)->discover(classes: [$read]);
 
         return $this->undeclaredWhenMounted(fn () => Particle::mount($this->resolvedKey, $this->resolvedKey));
     }

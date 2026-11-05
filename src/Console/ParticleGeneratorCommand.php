@@ -11,7 +11,9 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Surgeon\CentralPinJustificationAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
+use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -56,17 +58,29 @@ use Throwable;
  * - every emitted file lints (`php -l`, in a child process, so a broken stub cannot fatal the generator);
  * - no emitted file pins the central connection ({@see CentralPinJustificationAudit::pinsInSource()});
  * - the generator's own declaration check, {@see declarationFindings()}: the resource and op generators load
- *   what they wrote, register it through real attribute discovery, mount it under {@see VERIFY_PREFIX} in this
- *   process only, and run {@see UndeclaredSurfaceAudit} over that prefix — the same check their tests assert.
- *   The backing generator reflects the capability interfaces it emitted. The relative and workflow generators'
- *   tests assert the emitted text and that it is real PHP, so the lint is their check.
+ *   what they wrote, register it through real attribute discovery, mount it under this run's own
+ *   {@see VERIFY_PREFIX} segment, and run {@see UndeclaredSurfaceAudit} over exactly the routes that mount added —
+ *   the same check their tests assert. The backing generator reflects the capability interfaces it emitted. The
+ *   relative and workflow generators' tests assert the emitted text and that it is real PHP, so the lint is their
+ *   check.
  *
- * Nothing the check mounts or registers outlives the generator's process; the host still routes the surface
+ * ## The check judges the bytes this run wrote (Codex review 09)
+ * A class can already be loaded when the run starts: a host's boot discovery loads every declaration under its
+ * scanned roots, and an earlier `Artisan::call` in the same process loads what it generated. PHP cannot reload a
+ * class, so with `--force` the process would hold the OLD definition while the file holds the new one. A written
+ * class that is already loaded is therefore compiled again from the file under a one-off name and THAT class is
+ * discovered, mounted and reflected; when its declaration line cannot be rebound the check refuses (exit 1)
+ * rather than judge the old definition. The run prints the sha256 of every file it verified.
+ *
+ * ## One invocation, one population
+ * Laravel keeps one command instance per kernel, so everything a run collects is reset in {@see execute()}, and a
+ * run audits only the routes its own mount added. The check adds routes and registry entries (last-wins by key,
+ * as boot discovery does) in the generator's process and removes nothing; the host still routes the surface
  * itself, from the printed mount line.
  */
 abstract class ParticleGeneratorCommand extends GeneratorCommand
 {
-    /** The throwaway route prefix a declaration check mounts under, in the generator's own process only. */
+    /** The route prefix a declaration check mounts under; each run adds its own segment below it. */
     public const VERIFY_PREFIX = 'beam-make-verify';
 
     /**
@@ -76,12 +90,35 @@ abstract class ParticleGeneratorCommand extends GeneratorCommand
      */
     protected array $emitted = [];
 
+    /**
+     * The classes this run WROTE (the primary, and companions it created rather than kept): class => true.
+     *
+     * @var array<string, true>
+     */
+    protected array $written = [];
+
+    /** This run's segment of {@see VERIFY_PREFIX}. */
+    protected string $verifyPrefix = self::VERIFY_PREFIX;
+
+    /** @var list<string> one-off source files compiled for the check, removed when it ends */
+    private array $rebindFiles = [];
+
     public function __construct(Filesystem $files)
     {
         parent::__construct($files);
 
         // Added here rather than in each generator's getOptions(), so a sixth generator cannot ship without it.
         $this->addOption('no-verify', null, InputOption::VALUE_NONE, 'Skip the post-write conformance check (lint, central pin, declared shape)');
+    }
+
+    /** One invocation: nothing an earlier call on this instance collected may decide this one. */
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $this->emitted = [];
+        $this->written = [];
+        $this->verifyPrefix = self::VERIFY_PREFIX.'/'.bin2hex(random_bytes(4));
+
+        return parent::execute($input, $output);
     }
 
     /**
@@ -97,6 +134,7 @@ abstract class ParticleGeneratorCommand extends GeneratorCommand
         // GeneratorCommand calls this only when it is about to write the primary file, so it is where the
         // primary joins the run's emitted set (a refusal on an existing file never reaches here).
         $this->emitted = [$name => $this->getPath($name)] + $this->emitted;
+        $this->written[$name] = true;
 
         return $this->renderStub($this->getStub(), $name, $this->tokens());
     }
@@ -147,6 +185,7 @@ abstract class ParticleGeneratorCommand extends GeneratorCommand
 
         $this->makeDirectory($path);
         $this->files->put($path, $this->renderStub($this->resolveStubPath($stub), $qualifiedClass, $tokens));
+        $this->written[$qualifiedClass] = true;
 
         $this->components->twoColumnDetail($qualifiedClass, '<fg=green>created</>');
     }
@@ -265,7 +304,19 @@ abstract class ParticleGeneratorCommand extends GeneratorCommand
                 array_push($findings, ...$this->declarationFindings());
             } catch (Throwable $e) {
                 $findings[] = sprintf('the declaration check could not run: %s', $e->getMessage());
+            } finally {
+                foreach ($this->rebindFiles as $file) {
+                    $this->files->delete($file);
+                }
+                $this->rebindFiles = [];
             }
+        }
+
+        foreach ($this->emitted as $class => $path) {
+            $this->components->twoColumnDetail(
+                $class,
+                sprintf('<fg=gray>sha256 %s</>', substr(hash_file('sha256', $path) ?: '?', 0, 16)),
+            );
         }
 
         if ($findings === []) {
@@ -295,37 +346,98 @@ abstract class ParticleGeneratorCommand extends GeneratorCommand
     }
 
     /**
-     * Load the emitted classes into this process, so a declaration check can discover and reflect them. A host's
-     * autoloader usually finds them already; a fresh base path (the tests' throwaway host) needs the require.
+     * Load the emitted classes so a declaration check can discover and reflect them, and return, per emitted
+     * class, the class that holds THIS run's bytes: itself when it was not yet loaded (first load reads the file),
+     * or a one-off recompilation of the file when the process already holds an older definition of a class this
+     * run wrote (see the class docblock). A kept companion's bytes are not this run's, so it loads as it is.
+     *
+     * @return array<string, string> emitted class => class to check
      */
-    protected function loadEmitted(): void
+    protected function loadEmitted(): array
     {
+        $bound = [];
+
         foreach ($this->emitted as $class => $path) {
-            if (! class_exists($class, false) && ! interface_exists($class, false) && ! trait_exists($class, false)) {
+            $loaded = class_exists($class, false) || interface_exists($class, false) || trait_exists($class, false);
+
+            if (! $loaded) {
                 require_once $path;
+                $bound[$class] = $class;
+            } elseif (isset($this->written[$class])) {
+                $bound[$class] = $this->compileUnderOneOffName($class, $path);
+            } else {
+                $bound[$class] = $class;
             }
         }
+
+        return $bound;
     }
 
     /**
-     * Mount a surface under {@see VERIFY_PREFIX} and return the undeclared-surface rows under that prefix.
+     * Compile a file under a one-off class name, so its bytes can be checked while the process holds an older
+     * definition of the original name. Refuses (throws, which the check reports) when the declaration line is not
+     * exactly one `class <Name>` the rename can address.
+     */
+    protected function compileUnderOneOffName(string $class, string $path): string
+    {
+        $short = class_basename($class);
+        $alias = $short.'BeamVerify'.bin2hex(random_bytes(4));
+
+        $source = preg_replace(
+            '/^(\s*(?:(?:final|abstract|readonly)\s+)*class\s+)'.preg_quote($short, '/').'\b/m',
+            '${1}'.$alias,
+            (string) $this->files->get($path),
+            -1,
+            $count,
+        );
+
+        if (! is_string($source) || $count !== 1) {
+            throw new \RuntimeException(sprintf(
+                '%s was already loaded in this process, and its declaration in %s could not be rebound to check the new bytes',
+                $class,
+                $path,
+            ));
+        }
+
+        $file = (string) tempnam(sys_get_temp_dir(), 'beam-make-verify-');
+        $this->rebindFiles[] = $file;
+        $this->files->put($file, $source);
+        require $file;
+
+        return Str::beforeLast($class, '\\').'\\'.$alias;
+    }
+
+    /**
+     * Mount a surface under this run's prefix and return the undeclared-surface rows for exactly the routes that
+     * mount added. Finding nothing mounted is itself a finding: a check that mounted nothing checked nothing.
      *
      * @param  Closure(): mixed  $mount  the same call the printed mount line names
      * @return list<string>
      */
     protected function undeclaredWhenMounted(Closure $mount): array
     {
-        Route::prefix(self::VERIFY_PREFIX)->group($mount);
+        $before = array_flip(array_map('spl_object_id', Route::getRoutes()->getRoutes()));
+
+        Route::prefix($this->verifyPrefix)->group($mount);
+
+        $mounted = [];
+
+        foreach (Route::getRoutes()->getRoutes() as $route) {
+            if (! isset($before[spl_object_id($route)])) {
+                $mounted[$route->uri()] = true;
+            }
+        }
+
+        if ($mounted === []) {
+            return ['the declaration check mounted no route, so it checked nothing'];
+        }
 
         $audit = new UndeclaredSurfaceAudit(
             $this->laravel->make(ParticleResourceRegistry::class),
             $this->laravel->make(ParticleOperationRegistry::class),
         );
 
-        $rows = array_filter(
-            $audit->undeclared(),
-            fn (array $row) => str_starts_with($row['uri'], self::VERIFY_PREFIX.'/'),
-        );
+        $rows = array_filter($audit->undeclared(), fn (array $row) => isset($mounted[$row['uri']]));
 
         return array_values(array_map(fn (array $row) => sprintf(
             '%s %s has an undeclared shape (%s)',
