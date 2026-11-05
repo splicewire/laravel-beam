@@ -75,10 +75,13 @@ That last rule is the
 providers claiming one event name means two teams think they own one wire contract, and no
 subscriber is safe with "the later one wins", so boot fails loudly instead.
 
-One further check is advisory: whether the name's first segment is a resource this host actually
-has. `splicewire:beam:doctor` reports a dead prefix as `events.catalog-prefix`, and the event is
-still registered. Firing an event that isn't in the catalog never fails; it simply finds no
-subscribers.
+<Callout type="note" title="One advisory check">
+
+Whether the name's first segment is a resource this host actually has is only advised on:
+`splicewire:beam:doctor` reports a dead prefix as `events.catalog-prefix`, and the event is still
+registered. Firing an event that isn't in the catalog never fails; it simply finds no subscribers.
+
+</Callout>
 
 ## What ships
 

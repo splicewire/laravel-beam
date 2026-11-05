@@ -173,9 +173,13 @@ your application registers its own `tickets` declaration from a provider that bo
 wins, in the same position, and the displaced one stays readable as a superseded entry. A scan that
 runs twice registers the same declaration twice and nothing changes.
 
+<Callout type="warning" title="An override can't loosen reads">
+
 Two things cannot change on an override: a resource's read policy and its read boundary. Registration
 refuses a declaration that would swap either. Those are authorization decisions, and an override is not
 allowed to loosen them silently.
+
+</Callout>
 
 ## Realms
 
