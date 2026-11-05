@@ -2,16 +2,17 @@
 
 namespace Splicewire\Beam\Tests\Doctor;
 
-use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
+use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Doctor\Testing\AssertsStubMigrations;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
  * beam-core's own operator check: its migrations must stay publish-only .stub files. Mirrors the
  * per-package `DeclaredTopologyTest` shape (`rushing/php-package-topology`'s `AssertsDeclaredTopology`) —
- * a thin test wrapping a shared engine, declaring only "which audit is mine."
+ * a thin test wrapping a shared engine, declaring only "which package is mine." This harness boots
+ * beam, so the shared engine also checks that the provider made the declaration.
  */
-class BeamCoreMigrationsAuditTest extends TestCase
+class BeamCoreStubMigrationsTest extends TestCase
 {
     use AssertsStubMigrations;
 
@@ -20,8 +21,13 @@ class BeamCoreMigrationsAuditTest extends TestCase
         $this->assertMigrationsArePublishOnlyStubs();
     }
 
-    protected function stubMigrationsAuditClass(): string
+    protected function stubMigrationsPackage(): ?string
     {
-        return BeamCoreMigrationsAudit::class;
+        return 'splicewire/laravel-beam';
+    }
+
+    protected function stubMigrationsProvider(): ?string
+    {
+        return BeamServiceProvider::class;
     }
 }

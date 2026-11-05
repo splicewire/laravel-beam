@@ -8,7 +8,6 @@ use Rushing\Doctor\DoctorRunner;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
 use Splicewire\Beam\BeamServiceProvider;
-use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\Support\StubMigrationsAudit;
 use Splicewire\Beam\Doctor\Testing\AssertsStubMigrations;
@@ -66,7 +65,7 @@ class StubMigrationsDeclarationTest extends TestCase
     public function test_a_declaration_keeps_its_place_among_ordinary_registrations(): void
     {
         $manifest = new BeamDoctorManifest;
-        $manifest->register('acme/laravel-one', BeamCoreMigrationsAudit::class);
+        $manifest->register('acme/laravel-one', StubMigrationsAudit::class);
         $manifest->stubMigrations('acme/laravel-two', CleanStubProvider::class);
         $manifest->register('acme/laravel-three', StubMigrationsDeclarationTestAudit::class);
 
@@ -87,7 +86,19 @@ class StubMigrationsDeclarationTest extends TestCase
         $manifest->stubMigrations('splicewire/laravel-beam', BeamServiceProvider::class);
 
         $declared = $this->app->make(DoctorRunner::class)->run($manifest->registrations())->findings;
-        $subclassed = (new BeamCoreMigrationsAudit)->run();
+        // The deleted BeamCoreMigrationsAudit, verbatim: the retired form's whole body was these two methods.
+        $subclassed = (new class extends StubMigrationsAudit
+        {
+            protected function packageName(): string
+            {
+                return 'splicewire/laravel-beam';
+            }
+
+            protected function serviceProviderClass(): string
+            {
+                return BeamServiceProvider::class;
+            }
+        })->run();
 
         $shape = fn (Finding $f): array => [$f->status, $f->check, $f->detail, $f->conclusive];
 

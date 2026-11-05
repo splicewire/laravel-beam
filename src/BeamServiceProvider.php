@@ -86,7 +86,6 @@ use Splicewire\Beam\Discovery\ResourceDiscoveryAutoMounter;
 use Splicewire\Beam\Discovery\ResourceMountMap;
 use Splicewire\Beam\Discovery\RouteReachability;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
-use Splicewire\Beam\Doctor\BeamCoreMigrationsAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
@@ -1859,12 +1858,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         );
 
         // beam-core is itself an "operator" of the estate-wide publish-only stub migrations convention
-        // (BeamServiceProvider docblock above) — self-registers the doctor/operator check on ITS OWN
-        // migrations, same as every other beam-* package registers it on theirs.
-        $this->app->make(BeamDoctorManifest::class)->register(
-            'splicewire/laravel-beam',
-            BeamCoreMigrationsAudit::class,
-        );
+        // (BeamServiceProvider docblock above) — declares the doctor/operator check on ITS OWN
+        // migrations, same as every other beam-* package declares it on theirs.
+        $this->app->make(BeamDoctorManifest::class)->stubMigrations('splicewire/laravel-beam', self::class);
 
         // splicewire-ecosystem ticket 15: beam-core self-registers the fleet AGENTS.md/CLAUDE.md
         // convention drift check on EVERY host that installs it — a host repo never has to opt in.
