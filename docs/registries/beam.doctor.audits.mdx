@@ -58,8 +58,9 @@ Two named arguments shape how a check behaves:
 ## What a duplicate means here
 
 Entries are keyed by **audit class**, not by package, because one package usually ships several
-audits. Registering the same class again replaces the earlier registration (**supersede**), so a
-provider that boots twice, as in a test harness, doesn't run its audit twice.
+audits. The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**: registering the same class again replaces the earlier registration, so a provider
+that boots twice, as in a test harness, doesn't run its audit twice.
 
 ## What isn't here
 

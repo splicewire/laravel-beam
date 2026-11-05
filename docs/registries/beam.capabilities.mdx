@@ -7,11 +7,15 @@ excerpt: Declare a feature that needs an entitlement, and optionally spends on a
 
 # Gated capabilities
 
-`beam.capabilities` holds every **gated capability**: a feature a tenant may use only with the
+`beam.capabilities` holds every **gated capability**: a feature that may be used only with the
 right entitlement, such as web search. Each entry implements `GatedCapability` and answers three
-questions: its key, the entitlement it requires, and the meter it spends on, if any. The entitlement
-gate and tenant sync's pre-flight check both look capabilities up here, so declaring a gated feature
-means implementing this contract and registering it.
+questions: its key, the entitlement it requires, and the meter it spends on, if any. Declaring a
+gated feature means implementing this contract and registering it; whatever enforces entitlements
+looks the capability up here.
+
+Today that enforcement is per tenant. The entitlement gate checks a tenant, and a tenant's
+entitlement comes from its plan, with a per-tenant override as the final word. The registry itself
+knows nothing about tenants, though: it only declares what a capability needs.
 
 {/* registry-facts:start — generated from the #[IsRegistry] declaration; regenerate it, do not edit between these markers. */}
 
@@ -62,18 +66,38 @@ Beam registers no capabilities of its own. A package registers its capabilities 
 app(CapabilityRegistry::class)->register(new WebSearchCapability);
 ```
 
-[`splicewire/tower`](https://github.com/splicewire/tower) is the live example: it registers web
-search and LLM-assisted schema migration. The policy is **supersede**. Registering a key again
-replaces the earlier capability and keeps its original position.
+[Splicewire](https://splicewire.test/) is the live example: it registers web search and LLM-assisted
+schema migration.
+
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**. Registering a key again replaces the earlier capability and keeps its original
+position, so a host can redefine a capability a package ships.
+
+### Gating who can read an entry
+
+`register()` also takes an optional `ability`. Once the host installs a registry authorizer, an
+entry registered with an ability is visible only to readers that authorizer allows: `get()`,
+`byEntitlement()` and the listings all skip it for everyone else. An entry with no ability stays
+open to every reader, and registration itself is never gated.
+
+```php
+app(CapabilityRegistry::class)->register(new WebSearchCapability, ability: 'view-billing');
+```
 
 ## Who reads it
 
 - **The entitlement gate** (`splicewire/laravel-beam-commerce`'s `DefaultEntitlementGate`). Given a
-  capability key, it looks the capability up and checks the tenant against its required entitlement.
-  An unknown key is treated as its own entitlement key.
-- **Tenant sync's pre-flight**, in tower. It reports which entitlements a sync would leave the target
-  tenant missing, without blocking the copy. The tenant meets the gate later, when it uses the
-  feature.
+  tenant and a capability key, it looks the capability up and resolves the tenant's entitlement
+  through a cascade: the global default, then the tenant's plan, then any per-tenant override, which
+  has the final word. A denial offers a plan that would grant it, when one exists. An unknown key
+  is treated as its own entitlement key.
+- **A tenant sync's pre-flight**, in a host that copies content between tenants. It reports which
+  entitlements a sync would leave the target tenant missing, without blocking the copy. The tenant
+  meets the gate later, when it uses the feature.
+
+A self-hosted install can bind a different gate, such as one that grants everything on a free
+plan, without changing any call site, because callers depend on the `EntitlementGate` contract
+rather than on the plan cascade.
 
 Use `get('web_search')` when the key comes from outside your code, such as a manifest or a
 request; it returns null for an unknown key, or for a string that isn't a valid key at all.

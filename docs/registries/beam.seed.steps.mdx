@@ -43,8 +43,8 @@ $this->app->make(BeamSeedManifest::class)->register(
 
 Each seeder runs through `db:seed --class`. Steps run in ascending `order` (default `100`), and
 steps with the same order run in registration order. That lets the foundational rows exist before
-the data that builds on them: tower seeds its system account at `10`, before tenancy's demo tenant
-at `20`.
+the data that builds on them: [Splicewire](https://splicewire.test/) seeds its system account at
+`10`, before tenancy's demo tenant at `20`.
 
 ## Config gates
 
@@ -58,8 +58,9 @@ run, the data they seeded stays, and the command exits non-zero unless you pass
 
 ## What a duplicate means here
 
-The policy is **supersede**, keyed by package name. Registering again replaces your earlier step,
-so a provider that boots twice never seeds twice.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**, keyed by package name. Registering again replaces your earlier step, so a provider
+that boots twice never seeds twice.
 
 ## Related registries
 

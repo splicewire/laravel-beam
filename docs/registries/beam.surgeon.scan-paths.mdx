@@ -64,9 +64,9 @@ audits treat it as empty, so a package with controllers but no route files can s
 
 ## What a duplicate means here
 
-The policy is **admit**. A package that registers twice contributes two rows, and the sweep reads
-both. Duplicate directories are collapsed when the audits read them, so the same files aren't
-scanned twice.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is **admit**. A
+package that registers twice contributes two rows, and the sweep reads both. Duplicate directories
+are collapsed when the audits read them, so the same files aren't scanned twice.
 
 ## How far it reaches
 

@@ -65,10 +65,11 @@ Beam reflects each listed class at boot and registers the realm it describes. Th
 directory scan: realms are few, so you list them. A package can also register one directly from
 its provider with `app(RealmRegistry::class)->register(new RealmDefinition(...))`.
 
-The policy is **supersede**. Registering a key that already exists replaces that realm in its
-original position, which is how a tenancy package ships a differently-shaped `tenant` realm over
-the base one. Once anything registers `user`, the config-driven stack described above stops
-applying and your definition wins.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**. Registering a key that already exists replaces that realm in its original position,
+which is how a tenancy package ships a differently-shaped `tenant` realm over the base one. Once
+anything registers `user`, the config-driven stack described above stops applying and your
+definition wins.
 
 ## Reading a realm
 

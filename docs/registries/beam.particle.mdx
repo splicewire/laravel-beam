@@ -37,11 +37,12 @@ sources at once.
 
 ## What a duplicate means here
 
-The five don't share one duplicate rule, and the difference is the point. Resources, operations,
-relatives and merge strategies **supersede**: registering a key that is already taken replaces the
-entry, which is how your application overrides something a package ships. Contributions **reject**:
-two packages claiming the same field on the same resource is a conflict, so it fails at boot rather
-than letting one field silently disappear.
+The five don't share one
+[**duplicate-key policy**](/beam/docs/foundations/registries#key-policies), and the difference
+is the point. Resources, operations, relatives and merge strategies **supersede**: registering a key
+that is already taken replaces the entry, which is how your application overrides something a
+package ships. Contributions **reject**: two packages claiming the same field on the same resource
+is a conflict, so it fails at boot rather than letting one field silently disappear.
 
 ## Generators
 

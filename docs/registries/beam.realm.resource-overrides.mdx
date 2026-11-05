@@ -60,9 +60,10 @@ itself last, so the most specific one wins. The default `user` realm stacks on `
 `tenant` override therefore also shows up in `user`, and a `user` override for the same resource
 takes precedence over it there.
 
-The policy is **supersede**: declaring the same realm and resource again replaces the earlier
-override. An unknown realm, or a resource with no override, gets the resource exactly as it was
-declared, and so does any realm while the registry is empty.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**: declaring the same realm and resource again replaces the earlier override. An unknown
+realm, or a resource with no override, gets the resource exactly as it was declared, and so does any
+realm while the registry is empty.
 
 ## Who reads it
 

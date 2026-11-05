@@ -60,8 +60,9 @@ no state of its own.
 
 ## Replacing the default
 
-The policy is **supersede**, so your application can register its own `ordered`, and every composite
-that names `ordered` uses yours. The displaced default stays readable as a superseded entry.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**, so your application can register its own `ordered`, and every composite that names
+`ordered` uses yours. The displaced default stays readable as a superseded entry.
 
 ## Related registries
 

@@ -44,11 +44,12 @@ and the config file ships with two tiers:
   route's return type from the resource's output Data class. A satellite usually needs nothing else.
 - **`operator`** is optional. Leave it unset and the registry reports the tier as absent, so the
   generator emits an empty operator route map and no operator hooks. The flagship sets it to its own
-  Tower-backed source.
+  operator source.
 
 To change a tier, set the environment variable or override the key in your published
-`config/beam/client.php`. The policy is **supersede**: one class per tier, and whatever the config
-says wins.
+`config/beam/client.php`. The
+[**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is **supersede**:
+one class per tier, and whatever the config says wins.
 
 ## Writing a source
 

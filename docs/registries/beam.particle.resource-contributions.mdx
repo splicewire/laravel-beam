@@ -62,11 +62,11 @@ apart.
 
 ## Duplicates are an error
 
-The policy is **reject**. Two packages both claiming `tenants.commerce` is a wiring conflict, and
-silently letting one win would make the other's field vanish from the API with no error anywhere. So
-the second registration throws at boot, naming both data classes. If you need to change how an
-existing resource is *presented* rather than add data to it, that is a realm overlay, which does
-supersede.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is **reject**.
+Two packages both claiming `tenants.commerce` is a wiring conflict, and silently letting one win
+would make the other's field vanish from the API with no error anywhere. So the second registration
+throws at boot, naming both data classes. If you need to change how an existing resource is
+*presented* rather than add data to it, that is a realm overlay, which does supersede.
 
 ## Related registries
 

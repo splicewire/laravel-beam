@@ -36,7 +36,8 @@ filter never picks up `compositions.*`.
 
 ## Declaring one
 
-Register from your provider. Tower declares its provisioning event like this:
+Register from your provider. [Splicewire](https://splicewire.test/) declares its provisioning event
+like this:
 
 ```php
 use Splicewire\Beam\Events\EventType;
@@ -69,9 +70,10 @@ Registration is the only place an event is validated, and each of these throws:
 - it has a `subject`, unless it explicitly says `subjectless: true`;
 - the name isn't already taken.
 
-That last rule is the policy, **reject**. Two providers claiming one event name means two teams
-think they own one wire contract, and no subscriber is safe with "the later one wins", so boot
-fails loudly instead.
+That last rule is the
+[**duplicate-key policy**](/beam/docs/foundations/registries#key-policies), **reject**. Two
+providers claiming one event name means two teams think they own one wire contract, and no
+subscriber is safe with "the later one wins", so boot fails loudly instead.
 
 One further check is advisory: whether the name's first segment is a resource this host actually
 has. `splicewire:beam:doctor` reports a dead prefix as `events.catalog-prefix`, and the event is

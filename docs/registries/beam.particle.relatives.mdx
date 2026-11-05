@@ -59,9 +59,10 @@ than in a closure is what lets `route:cache` serialize the route table.
 
 ## Duplicates
 
-The policy is **supersede**: a second declaration of the same `<parent>.<child>` pair replaces the
-first, and the first stays readable as superseded. Two different edges between the same two
-resources can't be expressed, because the key is only the two ends.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**: a second declaration of the same `<parent>.<child>` pair replaces the first, and the
+first stays readable as superseded. Two different edges between the same two resources can't be
+expressed, because the key is only the two ends.
 
 ## Related registries
 

@@ -63,10 +63,11 @@ to read first" and "where to write" are different questions.
 
 ## Who wins on a name collision
 
-The policy is **supersede**: a later registration under the same tier name replaces the earlier one.
-The host still decides: it binds the store itself, combining its own tiers with `factories()`, and
-its own tiers win any name they share. The flagship binds its `db` and `file` tiers this way, and
-passes `orderedSources()` the configured list.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**: a later registration under the same tier name replaces the earlier one. The host
+still decides: it binds the store itself, combining its own tiers with `factories()`, and its own
+tiers win any name they share. The flagship binds its `db` and `file` tiers this way, and passes
+`orderedSources()` the configured list.
 
 ## Related registries
 

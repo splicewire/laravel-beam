@@ -2,7 +2,7 @@
 title: Install steps
 segment: beam.install.steps
 nav_order: 1
-excerpt: How each Beam package tells splicewire:beam:install what to publish and whether to migrate.
+excerpt: How each Beam package joins splicewire:beam:install, and everything one install run does with those steps.
 ---
 
 # Install steps
@@ -46,31 +46,199 @@ The other named arguments are `order:` (default `100`), `note:`, which is printe
 for an easy-to-miss config option that defaults to off, and `commands:`, which run after publishing
 and migrating. `splicewire/laravel-beam-docs`, for example, runs `splicewire:beam:docs:generate`.
 
+A config file in one of your tags is **not** published by default. An unpublished package config
+reads your package's own file, so a key you add in a later release still reaches every host. A host
+that wants its own copy lists your tag in `beam.core.install.publish_config` (or `['*']` for all),
+and once that copy exists, install never overwrites it without `--force`. Everything else in your
+tags, migrations included, is published as usual.
+
 ## Order is migration order
 
-Steps run in ascending `order`, and steps with the same order run in registration order. Beam core
-registers itself at `0`, so it always goes first. The order matters more than it looks: publishing
-stamps each migration with the time it was published. The order steps run in therefore becomes the
-order their migrations run in on a fresh database. If your package alters a table another package
-creates, give your step a higher `order` than that package's step. Two packages left on the default
-`100` are separated only by provider boot order. All publishing happens first, then a single
-migrate runs if any step set `migrates: true`.
+Steps run in ascending `order`, and steps with the same order run in registration order. The order
+matters more than it looks: publishing stamps each migration with the time it was published, so the
+order steps run in becomes the order their migrations run in on a fresh database. If your package
+alters a table another package creates, give your step a higher `order` than that package's step.
+Two packages left on the default `100` are separated only by provider boot order. All publishing
+happens first, then a single migrate runs if any step set `migrates: true`.
+
+In practice the stack spreads out like this: Beam core at `0`, accounts and tenancy at `5`, most
+packages on the default `100`, and an engine that builds on all of them later still, at `200`.
+
+## Core and optional modules
+
+**Order `0` means core.** Every step registered at `0` always runs. Every other step is an optional
+module:
+
+- Interactively, the installer offers the optional modules in a multi-select, all checked.
+- `--modules=calendars,workflows` picks them by substring of the package name. An empty
+  `--modules=` installs core only.
+- A non-interactive run without `--modules` installs every module, which is the full-stack install.
+
+Beam core registers itself at `0`, so it always goes first. Don't register your own step at `0`
+unless it truly must be part of every install: that is the one value a host can't deselect.
+
+## What one install run does
+
+`splicewire:beam:install` reads this registry and runs the steps it selects through one fixed
+sequence. Steps choose what is published, whether to migrate and what runs afterwards; the sequence
+itself is the installer's.
+
+1. **Ask the questions.** The table prefix, the tenancy mode (`single` or `multi`), the schema
+   source order, and, when the schema tooling is installed and no authority is declared yet, the
+   schema authority. Each answer comes from its option first (`--prefix=`, `--tenancy=`,
+   `--schema-sources=`, `--schema-authority=`), then from a prompt when interactive. With neither,
+   the current config is left as it is. The answers apply to this run immediately, so its
+   migrations land under the chosen prefix.
+2. **Select the modules**, as described above.
+3. **Publish** each selected step's tags, in order, skipping any migration the host already has.
+4. **Place the new migrations**, if you passed `--travel=`.
+5. **Settle table ownership** for any Beam migration that shares a filename with another package's.
+6. **Rehearse the pending migrations** (the convergence preflight), and stop here if a table's
+   declared shape can't land.
+7. **Migrate once**, if any selected step migrates.
+8. **Persist the answers** that should survive the next boot.
+9. **Run the after-steps**: generate the JSON schema artifacts (`schemas:generate`), run every
+   selected step's `commands:`, run the seed pass, verify provisioning, and pin the frontend
+   toolchain.
+
+The run exits non-zero if the migrate was declined or failed, if the preflight stopped it, if any
+step's command failed, if the seed pass reported a failure, or if schema generation failed. A
+failure after the migrate is reported at the end, so it doesn't scroll away behind the rest of the
+output.
+
+## Answers that persist
+
+The answers reach this run's config straight away. They reach **disk** only like this:
+
+| answer | option | where it is written |
+| --- | --- | --- |
+| table prefix | `--prefix=` (an empty value means no prefix) | `table_prefix` in `config/beam/core.php` |
+| schema sources | `--schema-sources=`, such as `db,file` or `file` | `schema.sources` in `config/beam/core.php` |
+| tenancy mode | `--tenancy=single` or `--tenancy=multi` | `tenancy` in `config/beam/core.php` |
+| schema authority | `--schema-authority=`, or `false` to opt out | `SCHEMA_BASE_URI` in `.env` |
+
+The three config answers are written only when `config/beam/core.php` is published, writable, and
+you passed `--force`. That matches `vendor:publish`: a published file may carry hand edits, so
+overwriting it is an explicit act. Without `--force` the answers still govern this run, and the
+installer tells you they were not saved. A run that answers any of the three also publishes core's
+config file, so there is a file to write them into.
+
+The schema authority is the origin that serves this host's schemas, and versioned schema ids are
+write-once, so Beam never supplies a default. The prompt suggests this host's own `app.url` plus
+`/schemas`. The answer is written to the host's `.env`, replacing an existing `SCHEMA_BASE_URI` line
+or appending one.
+
+## Running it again is safe
+
+The publish step is idempotent for migrations. A package stub is stamped with a new date every time
+it is published, so Laravel's own "already published" check can't recognise the earlier copy. Beam's
+publish guard compares the stub's name without its timestamp against both the host's migration files
+and its migration ledger, so a migration that was published before, or that ran and was later
+removed, is skipped and reported, never published twice. A second install run publishes only what is
+new.
+
+Re-running after a stopped preflight is safe too. Convergent table migrations create what is absent,
+add what is missing, and do nothing to a table that already matches.
+
+## Placing migrations: travel, ownership and the preflight
+
+Three passes sit between publishing and migrating, because each one needs the files publish just
+wrote, and each has to finish before anything runs them. They run in this order.
+
+**Travel.** `--travel="-1 year"` shifts every migration this run published by a relative amount,
+keeping their order. Use it when the new block has to sort before migrations the host already
+carries. It moves only files this run created, so it can never move something that already ran, and
+it reports any already-published files the block now sorts past. Only relative shifts are accepted:
+an absolute date would collapse the block onto one stamp and lose the order the steps produced. If
+any shifted name is already taken, nothing moves. Travel governs the next fresh database, such as a
+new environment, a new tenant schema or `migrate:fresh`, because filename order only sorts pending
+migrations.
+
+**Table ownership.** A Beam migration and a third-party one can ship the same `create_*` filename.
+For each such pair where Beam's copy wouldn't run first, the installer asks who owns the table. The
+default is Beam, `--own-tables=` scripts the answer, and an empty value claims none. Claiming a table
+re-dates Beam's published copy to run just ahead of the competitor, warns about any dependency the
+move puts at risk, and, if that migration already ran, carries its ledger row onto the new name so it
+doesn't run again.
+
+**The convergence preflight.** Before anything is written to the database, the installer rehearses
+every pending convergent migration and reports how many are clean, how many will change the schema,
+and how many can't converge, with a suggested repair for each conflict. A conflict stops the install:
+interactively it asks whether to migrate anyway (default no), and without interaction it exits
+non-zero. Stopping here costs a re-run instead of a half-installed host. `--skip-preflight` turns the
+pass off and lets `migrate` meet each conflict one table at a time.
+
+## Production databases
+
+`--force` means only "overwrite files I already published". It never waives a production
+confirmation. To let the install's `migrate` and seed pass write to a production database without
+asking, pass `--allow-production-migrate`. Without it, a scripted production run is declined at the
+migrate, and the install stops there rather than reporting success. The waiver is per run and is
+never a config default, because a step that iterates tenants can reach databases the command line
+never names.
+
+## The after-steps
+
+Once migrated and persisted, the installer finishes the host:
+
+- **Schema artifacts.** It runs `schemas:generate` so the application's Data classes have their JSON
+  schema files on disk.
+- **Your commands.** Each selected step's `commands:` run in step order. A failing command fails the
+  install, naming the command to re-run.
+- **Seeding.** It runs [`splicewire:beam:seed`](beam.seed.steps), so a fresh host has the data its
+  packages need to serve anything. Pass `--no-seed` to skip it. A seeder failure doesn't stop the
+  rest of the install, but the install no longer reports success.
+- **Provisioning checks.** It verifies that the shared migrations ran, reports where navigation is
+  read from (and suggests a `nav.yml`), and reports whether a `users` table already existed. These
+  are reports, never failures.
+- **Frontend toolchain.** When `splicewire/laravel-beam-ux` is installed, it pins the unpublished JS
+  packages for a pnpm host, and pins an absolute `node` path in `.env` so entry bodies compile from a
+  browser save, not only from a shell.
+
+## What a correct install produces
+
+Beam also ships a definition of a correct install, as a doctor audit: `beam.install.desired-state`.
+It is a fixed checklist, R1 to R7, and install steps can't add to it. If your package needs its own
+post-install check, register a [doctor audit](beam.doctor.audits).
+
+- **R1.** `composer setup` completed every step. The audit checks what setup leaves behind: `.env`, an
+  app key, a reachable database with a migration ledger, `node_modules/` and a Vite manifest.
+- **R2.** The doctor reports zero errors. The audit runs inside the doctor, so it can't count this
+  itself, and says so.
+- **R3.** `composer ci:check` exits 0. The doctor never runs it; it reads a record a host may leave at
+  `beam.core.install.desired_state.ci_check_record`, and reports a record from another commit as
+  stale.
+- **R4.** `/` returns 200.
+- **R5.** `/docs`, `/docs/api` and `/docs/mcp` return 200, checked by resolving each as a guest.
+- **R6.** An auth-gated frame surface redirects a guest rather than failing.
+- **R7.** `pnpm install --frozen-lockfile` works without workspace access: a lockfile is committed and
+  no dependency reaches outside the tree through `workspace:`, `link:`, `file:` or `portal:`.
+
+The audit is advisory and never fails a run. Each requirement reads as satisfied, as violated, or as
+"couldn't measure this from here", and the last is never shown as a pass. A host steers only where
+three of the probes point, under `beam.core.install.desired_state`: the docs paths, the frame probe
+path and the ci:check record.
 
 ## What a duplicate means here
 
-The policy is **supersede**, keyed by package name. Registering again replaces your earlier step
-instead of adding a second one, so a provider that boots twice, as in a test harness, never
-publishes twice.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**, keyed by package name. Registering again replaces your earlier step instead of adding
+a second one, so a provider that boots twice, as in a test harness, never publishes twice.
 
 ## Related registries
 
 - [`beam.seed.steps`](beam.seed.steps): the seed pass the install runs at the end, unless you pass
   `--no-seed`.
-- [`beam.doctor.audits`](beam.doctor.audits): the doctor-side twin, built the same way.
+- [`beam.doctor.audits`](beam.doctor.audits): the doctor-side twin, built the same way, and where
+  the desired-state audit is registered.
 
 ## Going deeper
 
-[Set up a Beam app](/beam/docs/laravel/setup) walks through a first install. The source is
+[Set up a Beam app](/beam/docs/laravel/setup) walks through a first install. The sources are
 [`BeamInstallManifest`](https://github.com/splicewire/laravel-beam/blob/main/src/Install/BeamInstallManifest.php),
-and the ordering rule is written up in
-[migration publish ordering](https://github.com/splicewire/laravel-beam/blob/main/docs/agents/migration-publish-ordering.convention.md).
+the [`splicewire:beam:install` command](https://github.com/splicewire/laravel-beam/blob/main/src/Console/BeamInstallCommand.php)
+and the [desired-state audit](https://github.com/splicewire/laravel-beam/blob/main/src/Surgeon/InstallDesiredStateAudit.php).
+The ordering rule is written up in
+[migration publish ordering](https://github.com/splicewire/laravel-beam/blob/main/docs/agents/migration-publish-ordering.convention.md),
+and what the installer saves in
+[install answer persistence](https://github.com/splicewire/laravel-beam/blob/main/docs/agents/install-answer-persistence.convention.md).

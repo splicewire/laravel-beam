@@ -63,9 +63,10 @@ $this->app->make(NavSectionRegistry::class)->register(
 
 ## Several seats in one realm
 
-The policy is **admit**: one realm holds every seat declared for it. `for('tenant')` returns them
-sorted by `order`, then `key`, rather than in registration order. Whatever order the packages'
-providers boot in, they project the same navigation.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is **admit**:
+one realm holds every seat declared for it. `for('tenant')` returns them sorted by `order`, then
+`key`, rather than in registration order. Whatever order the packages' providers boot in, they
+project the same navigation.
 
 Seats that share a `key` in one realm are drawn as **one** seat. The first in that order supplies
 the label, icon and link, and every seat's `static` rows join it. They merge only when their

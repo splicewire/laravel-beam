@@ -42,8 +42,9 @@ app(GroupRegistry::class)->registerGroups(
 );
 ```
 
-The policy is **supersede**: registering a key again replaces that group, so a provider that boots
-twice doesn't declare it twice.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**: registering a key again replaces that group, so a provider that boots twice doesn't
+declare it twice.
 
 ## Which group a route lands in
 

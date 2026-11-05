@@ -61,10 +61,11 @@ Pass `by:` with your package name. Beam records it, and the registrant panel on 
 
 ## Replacing a resource you don't own
 
-The duplicate policy is **supersede**, and that is deliberate: it is the override seam. If a package
-ships `tickets` and your application registers its own `tickets` declaration from a provider that boots
-later, yours wins, in the same position, and the displaced one stays readable as a superseded entry. A
-scan that runs twice registers the same declaration twice and nothing changes.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**, and that is deliberate: it is the override seam. If a package ships `tickets` and
+your application registers its own `tickets` declaration from a provider that boots later, yours
+wins, in the same position, and the displaced one stays readable as a superseded entry. A scan that
+runs twice registers the same declaration twice and nothing changes.
 
 Two things cannot change on an override: a resource's read policy and its read boundary. Registration
 refuses a declaration that would swap either. Those are authorization decisions, and an override is not

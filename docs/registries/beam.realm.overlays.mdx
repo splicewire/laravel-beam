@@ -61,10 +61,11 @@ overlays rather than writing this call.
 
 ## Several overlays on one realm
 
-The policy is **admit**. Every overlay for a realm is kept, and they are applied in registration
-order, each one working on the result of the one before. Where two of them write the same JSONPath,
-the later one wins. Use `for('site')` to read a realm's overlays in that order. `resolve('site')`
-throws as soon as a realm has more than one overlay, because it can only return a single entry.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is **admit**.
+Every overlay for a realm is kept, and they are applied in registration order, each one working on
+the result of the one before. Where two of them write the same JSONPath, the later one wins. Use
+`for('site')` to read a realm's overlays in that order. `resolve('site')` throws as soon as a realm
+has more than one overlay, because it can only return a single entry.
 
 ## What an overlay can't do
 

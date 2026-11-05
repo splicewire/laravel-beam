@@ -47,7 +47,8 @@ $this->app->singleton(FacadeConformanceScope::class, fn () => FacadeConformanceS
 ```
 
 Its facts, for reference: root `beam.doctor.facade-scope`, entries are absolute directory paths
-(`string`), duplicates are admitted, and the declaring class is
+(`string`), its [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**admit**, and the declaring class is
 [`FacadeConformanceScope`](https://github.com/splicewire/laravel-beam/blob/main/src/Doctor/Support/FacadeConformanceScope.php).
 
 ## Going deeper

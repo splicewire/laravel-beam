@@ -53,10 +53,11 @@ Each operation mounts once, at `tickets/{id}/close` for the common record-scoped
 
 ## Overriding an operation
 
-The duplicate policy is **supersede**, and it is how you replace an operation a package ships:
-register your own declaration under the same `<resource>.<name>` from a provider that boots later. Yours
-runs, and the package's original stays readable as a superseded entry, so the override can be audited
-rather than guessed from boot order.
+The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is
+**supersede**, and it is how you replace an operation a package ships: register your own declaration
+under the same `<resource>.<name>` from a provider that boots later. Yours runs, and the package's
+original stays readable as a superseded entry, so the override can be audited rather than guessed
+from boot order.
 
 ## Related registries
 
