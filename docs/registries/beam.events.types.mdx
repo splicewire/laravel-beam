@@ -86,6 +86,74 @@ Beam fills the catalog with `hooks.disabled` and `hooks.verified`, and with one
 `{resource}.persisted` event for every particle resource that has a single model class. Hosts get
 those with no config at all.
 
+## What a subscriber reads, captured
+
+This example declares one more `hooks.*` event, then lists the catalog the way
+`GET /hooks/events?resource=hooks` does: one descriptor per name, with the resource key and the
+verb phrase split off, and the subject published as its morph alias (`hook`), never the model's
+class name. The first three entries are the ones Beam ships. The JSON is the real output of the
+PHP beside it, captured by the package and re-checked by its test suite.
+
+{/* data-example:start catalog-entry — captured output; regenerate it, do not edit between these markers. */}
+
+<DataExample source="docs/registries/examples/beam.events.types/catalog-entry.php">
+
+```php
+use Splicewire\Beam\Events\EventType;
+use Splicewire\Beam\Events\EventTypeRegistry;
+use Splicewire\Beam\Webhooks\Data\EventTypeDescriptorData;
+
+// A package declares one publishable event beside the ones Beam ships.
+$catalog = app(EventTypeRegistry::class)->register(new EventType(
+    name: 'hooks.paused',
+    subject: Splicewire\Beam\Models\Hook::class,
+    description: 'A hook stopped delivering until an operator resumes it.',
+), null, 'acme/hooks');
+
+// The catalog as `GET /hooks/events?resource=hooks` lists it: one descriptor per name, the resource split off.
+return array_map(
+    fn (EventType $type) => EventTypeDescriptorData::fromEventType($type),
+    $catalog->withPrefix('hooks'),
+);
+```
+
+```json
+[
+    {
+        "name": "hooks.persisted",
+        "resource": "hooks",
+        "verbPhrase": "persisted",
+        "subject": "hook",
+        "description": "A hooks record was written through the beam write pipeline."
+    },
+    {
+        "name": "hooks.disabled",
+        "resource": "hooks",
+        "verbPhrase": "disabled",
+        "subject": "hook",
+        "description": "A hook auto-disabled after consecutive delivery failures; op/reset is the way back."
+    },
+    {
+        "name": "hooks.verified",
+        "resource": "hooks",
+        "verbPhrase": "verified",
+        "subject": "hook",
+        "description": "A hook answered the hooks.ping round trip with a 2xx and is now verified."
+    },
+    {
+        "name": "hooks.paused",
+        "resource": "hooks",
+        "verbPhrase": "paused",
+        "subject": "hook",
+        "description": "A hook stopped delivering until an operator resumes it."
+    }
+]
+```
+
+</DataExample>
+
+{/* data-example:end catalog-entry */}
+
 ## Related registries
 
 - [`beam.particle.resources`](beam.particle.resources): where event prefixes come from, and the

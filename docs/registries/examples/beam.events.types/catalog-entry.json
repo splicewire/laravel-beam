@@ -1,0 +1,30 @@
+[
+    {
+        "name": "hooks.persisted",
+        "resource": "hooks",
+        "verbPhrase": "persisted",
+        "subject": "hook",
+        "description": "A hooks record was written through the beam write pipeline."
+    },
+    {
+        "name": "hooks.disabled",
+        "resource": "hooks",
+        "verbPhrase": "disabled",
+        "subject": "hook",
+        "description": "A hook auto-disabled after consecutive delivery failures; op/reset is the way back."
+    },
+    {
+        "name": "hooks.verified",
+        "resource": "hooks",
+        "verbPhrase": "verified",
+        "subject": "hook",
+        "description": "A hook answered the hooks.ping round trip with a 2xx and is now verified."
+    },
+    {
+        "name": "hooks.paused",
+        "resource": "hooks",
+        "verbPhrase": "paused",
+        "subject": "hook",
+        "description": "A hook stopped delivering until an operator resumes it."
+    }
+]

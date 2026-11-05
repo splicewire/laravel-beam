@@ -1,0 +1,57 @@
+{
+    "keys": [
+        "beam.particle.resources.saved-filters",
+        "beam.particle.resources.records",
+        "beam.particle.resources.schemas",
+        "beam.particle.resources.git-repo",
+        "beam.particle.resources.hooks",
+        "beam.particle.resources.review-items"
+    ],
+    "report": {
+        "key": "review-items",
+        "label": "Review items",
+        "realms": [],
+        "section": "work",
+        "framed": true,
+        "backing": "Splicewire\\Beam\\Tests\\Fixtures\\Backing\\InMemoryArm",
+        "model": null,
+        "handler": "Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler",
+        "streams": true,
+        "queries": false,
+        "resolves": true,
+        "writes": false,
+        "vocabulary": false,
+        "readOnly": true,
+        "creatable": false,
+        "editable": false,
+        "deletable": false,
+        "showable": true,
+        "filters": false,
+        "policy": null,
+        "disagreements": []
+    },
+    "frame": {
+        "key": "review-items",
+        "data": "Splicewire.Beam.Tests.Fixtures.Backing.ArmRowData",
+        "creatable": false,
+        "editData": null,
+        "form": "bare",
+        "nav": {
+            "label": "Review items",
+            "group": null,
+            "icon": null,
+            "section": "work",
+            "navOrder": null,
+            "routeName": null
+        },
+        "layout": null,
+        "deletable": false,
+        "editable": false,
+        "showable": true,
+        "createAffordance": "frame",
+        "singularLabel": "",
+        "createResultData": null,
+        "actions": [],
+        "collections": []
+    }
+}

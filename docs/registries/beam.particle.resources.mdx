@@ -59,6 +59,112 @@ public function boot(): void
 
 Pass `by:` with your package name. Beam records it, and the registrant panel on this page reads it back.
 
+## One entry, read three ways
+
+This example registers a read-only resource over rows a package holds in memory, with no model
+behind it. It then reads the entry back three ways: the registry's keys (Beam's own resources
+first, then the new one), the row `splicewire:beam:particle:resources` reports for it, and the
+`ResourceDefinition` that Frame draws its list and detail screens from. The report's capability
+columns (`streams`, `resolves`, `writes`) come from what the backing implements, while
+`creatable`, `editable` and `deletable` come from the declaration. The JSON is the real output of
+the PHP beside it, captured by the package and re-checked by its test suite.
+
+{/* data-example:start register-a-resource — captured output; regenerate it, do not edit between these markers. */}
+
+<DataExample source="docs/registries/examples/beam.particle.resources/register-a-resource.php">
+
+```php
+use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Particle\ResourceRegistryReport;
+use Splicewire\Beam\Tests\Fixtures\Backing\ArmRowData;
+use Splicewire\Beam\Tests\Fixtures\Backing\InMemoryArm;
+
+// A package registers a read-only resource over rows it holds in memory (no model), projected through ArmRowData.
+$registry = app(ParticleResourceRegistry::class)->register(new ParticleResource(
+    key: 'review-items',
+    backing: new InMemoryArm,
+    data: ArmRowData::class,
+    label: 'Review items',
+    section: 'work',
+    readOnly: true,
+), by: 'acme/review');
+
+// The same entry, read three ways: the registry's keys, the row `splicewire:beam:particle:resources` reports,
+// and the definition Frame draws its list and detail screens from.
+$row = collect(app(ResourceRegistryReport::class)->rows())->firstWhere('key', 'review-items');
+
+return [
+    'keys' => array_map('strval', $registry->keys()),
+    'report' => $row,
+    'frame' => $registry->get('review-items')->toResourceDefinition(),
+];
+```
+
+```json
+{
+    "keys": [
+        "beam.particle.resources.saved-filters",
+        "beam.particle.resources.records",
+        "beam.particle.resources.schemas",
+        "beam.particle.resources.git-repo",
+        "beam.particle.resources.hooks",
+        "beam.particle.resources.review-items"
+    ],
+    "report": {
+        "key": "review-items",
+        "label": "Review items",
+        "realms": [],
+        "section": "work",
+        "framed": true,
+        "backing": "Splicewire\\Beam\\Tests\\Fixtures\\Backing\\InMemoryArm",
+        "model": null,
+        "handler": "Splicewire\\Beam\\Particle\\ParticleFrameResourceHandler",
+        "streams": true,
+        "queries": false,
+        "resolves": true,
+        "writes": false,
+        "vocabulary": false,
+        "readOnly": true,
+        "creatable": false,
+        "editable": false,
+        "deletable": false,
+        "showable": true,
+        "filters": false,
+        "policy": null,
+        "disagreements": []
+    },
+    "frame": {
+        "key": "review-items",
+        "data": "Splicewire.Beam.Tests.Fixtures.Backing.ArmRowData",
+        "creatable": false,
+        "editData": null,
+        "form": "bare",
+        "nav": {
+            "label": "Review items",
+            "group": null,
+            "icon": null,
+            "section": "work",
+            "navOrder": null,
+            "routeName": null
+        },
+        "layout": null,
+        "deletable": false,
+        "editable": false,
+        "showable": true,
+        "createAffordance": "frame",
+        "singularLabel": "",
+        "createResultData": null,
+        "actions": [],
+        "collections": []
+    }
+}
+```
+
+</DataExample>
+
+{/* data-example:end register-a-resource */}
+
 ## Replacing a resource you don't own
 
 The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is

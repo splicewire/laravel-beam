@@ -110,7 +110,8 @@
         "lint": "pint --parallel",
         "lint:check": "pint --parallel --test",
         "types:check": "phpstan analyse --memory-limit=1G",
-        "test": "@php vendor/bin/pest"
+        "test": "@php vendor/bin/pest",
+        "docs:examples": "@php tests/regenerate-data-examples.php"
     },
     "repositories": [
         {
