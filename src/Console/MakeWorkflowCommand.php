@@ -46,7 +46,8 @@ class MakeWorkflowCommand extends ParticleGeneratorCommand
         return $rootNamespace.'\Workflows';
     }
 
-    public function handle(): ?bool
+    /** `int`, not the framework's `?bool`: see {@see MakeParticleResourceCommand::handle()}. */
+    public function handle(): int
     {
         if (! class_exists(\Splicewire\Beam\Workflows\Blueprint\WorkflowBlueprint::class)) {
             $this->components->warn(
@@ -63,7 +64,10 @@ class MakeWorkflowCommand extends ParticleGeneratorCommand
         $initial = $this->option('initial');
         $this->resolvedInitial = is_string($initial) && $initial !== '' ? $initial : 'draft';
 
-        $namespace = $this->getDefaultNamespace($this->rootNamespace()).'\\'.$base;
+        // Trimmed exactly as GeneratorCommand::qualifyClass() trims it: rootNamespace() ends in `\`, so the
+        // untrimmed form emitted `namespace App\\Workflows\…;` into both companions, which does not parse
+        // (found by the post-write lint, make-surface 09).
+        $namespace = $this->workflowNamespace().'\\'.$base;
         $this->gateClass = $namespace.'\\'.$base.'Gate';
         $this->effectClass = $namespace.'\\'.$base.'Recorder';
 
@@ -115,11 +119,17 @@ class MakeWorkflowCommand extends ParticleGeneratorCommand
 
             public function workflowType(): string
             {
-                return \\{$this->getDefaultNamespace($this->rootNamespace())}\\{$workflow}::TYPE_KEY;
+                return \\{$this->workflowNamespace()}\\{$workflow}::TYPE_KEY;
             }
         SNIPPETS);
 
-        return self::SUCCESS;
+        return $this->verified();
+    }
+
+    /** The workflow's namespace, from the root namespace without its trailing separator. */
+    protected function workflowNamespace(): string
+    {
+        return $this->getDefaultNamespace(trim($this->rootNamespace(), '\\'));
     }
 
     protected function tokens(): array

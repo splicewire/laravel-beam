@@ -6,8 +6,8 @@ use Illuminate\Support\Str;
 
 /**
  * `splicewire:beam:make:particle-relative` — mints a conformant `#[ParticleRelative]` edge class
- * (scaffold-family ticket 01; the 15 existing declarations spread by copy, which is the exact
- * failure the chassis docblock names).
+ * (scaffold-family ticket 01), so a new edge comes from a fixed template rather than a copy of
+ * whichever declaration its author opened: the failure the chassis docblock names.
  *
  * The emitted attribute carries `child:` / `of:` / `model:` / `via:` explicitly. `via:` in
  * particular is derived here (camel plural of the child key) but EMITTED, because the relationship
@@ -41,7 +41,8 @@ class MakeParticleRelativeCommand extends ParticleGeneratorCommand
         return $rootNamespace.'\Particles\Relatives';
     }
 
-    public function handle(): ?bool
+    /** `int`, not the framework's `?bool`: see {@see MakeParticleResourceCommand::handle()}. */
+    public function handle(): int
     {
         $base = Str::replaceLast('Relative', '', class_basename($this->getNameInput()));
 
@@ -81,7 +82,7 @@ class MakeParticleRelativeCommand extends ParticleGeneratorCommand
             class_basename($this->qualifyClass($this->getNameInput())),
         ));
 
-        return self::SUCCESS;
+        return $this->verified();
     }
 
     protected function tokens(): array

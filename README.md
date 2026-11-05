@@ -335,20 +335,21 @@ the controller — **the standalone (no-relative) path is byte-for-byte unchange
 
 ## Customizing what the generators emit — `beam-stubs`
 
-`splicewire:beam:make:particle-resource` and `splicewire:beam:make:particle-op` render from stubs the
-package ships. A host that wants its own docblock header, namespace layout or slot defaults publishes
-them once and edits the copies in place:
+The five generators (`splicewire:beam:make:particle-resource`, `…:particle-op`, `…:particle-relative`,
+`…:particle-backing` and `splicewire:beam:make:workflow`) render from stubs the package ships, and each checks
+what it wrote before exiting (exit 1 on a finding; `--no-verify` skips). A host that wants its own docblock
+header, namespace layout or slot defaults publishes them once and edits the copies in place:
 
 ```
 php artisan vendor:publish --tag=beam-stubs
 ```
 
-Seven stubs land in `stubs/` (`particle-resource`, `particle-resource-input`, `particle-op`,
-`particle-op-task`, `particle-op-stream`, `particle-data`, `particle-summary-provider`), and every later
-generate prefers the host copy with no flag. **Not publishing is the default, not a missing file** — this
-is deliberately not a `splicewire:beam:install` step. The tag maps the whole `stubs/` directory, so it
-also deposits inert copies of the `client-runtime/` and `scribe/` sources that have their own tags; see
-`docs/agents/stub-publishing.convention.md`.
+Twelve stubs land in `stubs/` (`particle-resource`, `particle-resource-input`, `particle-summary-provider`,
+`particle-op`, `particle-op-task`, `particle-op-stream`, `particle-data`, `particle-relative`,
+`particle-backing`, `workflow`, `workflow-guard`, `workflow-effect`), and every later generate prefers the
+host copy with no flag. **Not publishing is the default, not a missing file** — this is deliberately not a
+`splicewire:beam:install` step. The tag maps the whole `stubs/` directory, so it also deposits inert copies
+of the `client-runtime/` sources, which have their own tag; see `docs/agents/stub-publishing.convention.md`.
 
 ## Conventions
 

@@ -4,6 +4,8 @@ namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\GeneratorCommand;
 use Illuminate\Support\Str;
+use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Symfony\Component\Console\Input\InputOption;
@@ -202,7 +204,22 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             class_basename($qualified),
         ));
 
-        return self::SUCCESS;
+        return $this->verified();
+    }
+
+    /**
+     * The check the op tests assert: the op, registered through real attribute discovery (which enforces
+     * `handle()` and the kind guard) and mounted as the printed line mounts it, leaves no undeclared surface.
+     */
+    protected function declarationFindings(): array
+    {
+        $this->loadEmitted();
+        $op = array_key_first($this->emitted);
+        $this->laravel->make(AttributedParticleDiscovery::class)->discover(classes: [$op]);
+
+        return $this->undeclaredWhenMounted(
+            fn () => Particle::ops($this->resolvedResource, $this->resolvedResource, [$op]),
+        );
     }
 
     /**

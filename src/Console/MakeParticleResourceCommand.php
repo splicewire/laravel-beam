@@ -4,6 +4,8 @@ namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\GeneratorCommand;
 use Illuminate\Support\Str;
+use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Symfony\Component\Console\Input\InputOption;
 
 /**
@@ -123,7 +125,19 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             $this->line(sprintf('    summaryProvider: \\%s::class,', $this->summaryClass));
         }
 
-        return self::SUCCESS;
+        return $this->verified();
+    }
+
+    /**
+     * The check the resource tests assert: the read class, discovered and mounted as the printed line mounts it,
+     * leaves no undeclared surface.
+     */
+    protected function declarationFindings(): array
+    {
+        $this->loadEmitted();
+        $this->laravel->make(AttributedParticleDiscovery::class)->discover(classes: [array_key_first($this->emitted)]);
+
+        return $this->undeclaredWhenMounted(fn () => Particle::mount($this->resolvedKey, $this->resolvedKey));
     }
 
     /**

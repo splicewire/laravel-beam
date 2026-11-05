@@ -33,7 +33,8 @@ class MakeParticleBackingCommand extends ParticleGeneratorCommand
         return $rootNamespace.'\Particles\Backings';
     }
 
-    public function handle(): ?bool
+    /** `int`, not the framework's `?bool`: see {@see MakeParticleResourceCommand::handle()}. */
+    public function handle(): int
     {
         $this->capabilities = [];
 
@@ -90,7 +91,25 @@ class MakeParticleBackingCommand extends ParticleGeneratorCommand
             PHP, $this->resolvedModel));
         }
 
-        return parent::handle() === false ? self::FAILURE : self::SUCCESS;
+        return parent::handle() === false ? self::FAILURE : $this->verified();
+    }
+
+    /** The check the backing test asserts: the emitted class loads and implements every capability it declares. */
+    protected function declarationFindings(): array
+    {
+        $this->loadEmitted();
+        $backing = array_key_first($this->emitted);
+        $findings = [];
+
+        foreach (['ResourceBacking', ...array_keys($this->capabilities)] as $capability) {
+            $interface = 'Splicewire\\Beam\\Particle\\Backing\\'.$capability;
+
+            if (! is_subclass_of($backing, $interface)) {
+                $findings[] = sprintf('%s does not implement %s', $backing, $interface);
+            }
+        }
+
+        return $findings;
     }
 
     protected function capability(string $name, string $methods): void

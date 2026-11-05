@@ -121,6 +121,11 @@ class RelativeAndBackingGeneratorTest extends TestCase
         $this->assertStringContainsString("'guard' => self::GATE_GUARD,", $workflow);
         $this->assertStringContainsString("'effects' => [self::RECORD_EFFECT],", $workflow);
 
+        // The companions' namespace has ONE separator after the root (it once emitted `App\\Workflows`, which does
+        // not parse; the generator's post-write lint is what found it).
+        $this->assertStringContainsString('namespace App\Workflows\ListingTriage;', $gate);
+        $this->assertStringContainsString('namespace App\Workflows\ListingTriage;', $effect);
+
         // Handlers carry the faithful invokable signatures.
         $this->assertStringContainsString('public function __invoke(object $subject): bool|string', $gate);
         $this->assertStringContainsString('public function __invoke(WorkflowTransitioned $event, array $params): void', $effect);

@@ -22,17 +22,26 @@ file carries your edit.
 
 ## What the tag writes
 
-Seven generator stubs, one per thing a `make:particle-*` command can emit:
+Twelve generator stubs, one per thing the five generators can emit:
 
 | stub | read by |
 | --- | --- |
 | `particle-resource.stub` | `splicewire:beam:make:particle-resource` — the `#[ParticleResource]` read Data class |
 | `particle-resource-input.stub` | the same command's write-DTO companion |
+| `particle-summary-provider.stub` | `splicewire:beam:make:particle-resource --summary` — the resource's `ResourceSummaryProvider` |
 | `particle-op.stub` | `splicewire:beam:make:particle-op` — Read and Write kinds |
 | `particle-op-task.stub` | the same command, `--kind=task` |
 | `particle-op-stream.stub` | the same command, `--kind=stream` |
 | `particle-data.stub` | the same command's input/output Data companions |
-| `particle-summary-provider.stub` | `splicewire:beam:make:particle-resource --summary` — the resource's `ResourceSummaryProvider` |
+| `particle-relative.stub` | `splicewire:beam:make:particle-relative` — the `#[ParticleRelative]` edge class |
+| `particle-backing.stub` | `splicewire:beam:make:particle-backing` — the `ResourceBacking` and its capabilities |
+| `workflow.stub` | `splicewire:beam:make:workflow` — the workflow constant class |
+| `workflow-guard.stub` | the same command's gate handler |
+| `workflow-effect.stub` | the same command's effect handler |
+
+An edited stub is checked like the package copy: every generator verifies what it wrote (lint, central pin,
+and its declaration check) and exits 1 on a finding, so a host override that drops a shape slot fails the
+generate instead of passing silently. `--no-verify` skips the check.
 
 The tag maps a directory, so it also deposits `stubs/client-runtime/{api,routes}.ts`.
 Those files are wired by `beam-client-runtime`, which publishes to `resource_path('js/lib/')`.

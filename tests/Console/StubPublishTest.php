@@ -116,11 +116,13 @@ class StubPublishTest extends TestCase
     {
         $this->app->setBasePath($this->host);
 
+        // The marker goes AFTER `<?php`: placed before it, the line is inline output ahead of the namespace
+        // declaration, which does not compile, and the generator's post-write lint now refuses it.
         $marker = '// HOUSE HEADER — proves the host copy won.';
         File::ensureDirectoryExists($this->host.'/stubs');
         File::put(
             $this->host.'/stubs/particle-resource.stub',
-            $marker."\n".File::get(dirname(__DIR__, 2).'/stubs/particle-resource.stub'),
+            preg_replace('/^<\?php\n/', "<?php\n".$marker."\n", File::get(dirname(__DIR__, 2).'/stubs/particle-resource.stub'), 1),
         );
 
         $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Lyric'])->assertSuccessful();

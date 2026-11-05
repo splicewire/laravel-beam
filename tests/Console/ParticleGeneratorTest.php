@@ -7,6 +7,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Splicewire\Beam\Console\ParticleGeneratorCommand;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\OperationKind;
@@ -355,8 +356,8 @@ class ParticleGeneratorTest extends TestCase
     {
         $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Lyric'])->assertSuccessful();
 
-        require_once $this->host.'/app/Data/LyricInputData.php';
-        require_once $this->host.'/app/Data/LyricData.php';
+        $this->load('App\Data\LyricInputData', 'app/Data/LyricInputData.php');
+        $this->load('App\Data\LyricData', 'app/Data/LyricData.php');
 
         $this->app->make(AttributedParticleDiscovery::class)->discover(classes: ['App\Data\LyricData']);
         Route::prefix('api')->group(fn () => Particle::mount('lyrics', 'lyrics'));
@@ -382,6 +383,77 @@ class ParticleGeneratorTest extends TestCase
             Route::prefix('api')->group(fn () => Particle::ops('lyrics', 'lyrics', $kind->value.'-it'));
 
             $this->assertNoFindingsFor('api/lyrics/{id}/'.$kind->value.'-it');
+        }
+    }
+
+    // ── the generator checks its own output (make-surface 09) ───────────────────────────────────────
+
+    public function test_a_generator_whose_stub_is_forced_to_emit_an_undeclared_shape_exits_1(): void
+    {
+        $this->publishOpStubWithoutItsOutputSlot();
+
+        // A class name no other test generates: an earlier test's run may already have loaded a same-named,
+        // declared class, and a stale one would let this pass by accident.
+        $this->artisan('splicewire:beam:make:particle-op', [
+            'name' => 'GhostOp',
+            '--resource' => 'lyrics',
+            '--model' => 'Lyric',
+            '--kind' => 'write',
+        ])
+            ->expectsOutputToContain(UndeclaredSurfaceAudit::CHECK)
+            ->assertExitCode(1);
+
+        // The files are still written: the check reports, it does not roll back the author's tree.
+        $this->assertFileExists($this->host.'/app/Particle/Operations/GhostOp.php');
+    }
+
+    public function test_no_verify_skips_the_check_and_exits_0_on_the_same_stub(): void
+    {
+        $this->publishOpStubWithoutItsOutputSlot();
+
+        $this->artisan('splicewire:beam:make:particle-op', [
+            'name' => 'PhantomOp',
+            '--resource' => 'lyrics',
+            '--model' => 'Lyric',
+            '--kind' => 'write',
+            '--no-verify' => true,
+        ])->assertExitCode(0);
+    }
+
+    public function test_the_check_reaches_the_surface_it_verifies(): void
+    {
+        // Guards the clean results above from passing because nothing was mounted: a check that reports
+        // "no findings" by not looking is the defect class this suite exists to catch.
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Reached', '--model' => 'Lyric'])->assertSuccessful();
+        $this->artisan('splicewire:beam:make:particle-op', [
+            'name' => 'ReachedOp',
+            '--resource' => 'reacheds',
+            '--model' => 'Lyric',
+            '--kind' => 'read',
+        ])->assertSuccessful();
+
+        $uris = array_map(fn ($route) => $route->uri(), Route::getRoutes()->getRoutes());
+        $prefix = ParticleGeneratorCommand::VERIFY_PREFIX.'/reacheds';
+
+        $this->assertContains($prefix, $uris, 'The resource check did not mount the resource it verified.');
+        $this->assertNotEmpty(
+            array_filter($uris, fn (string $uri) => str_starts_with($uri, $prefix.'/{id}/')),
+            'The op check did not mount the op it verified.',
+        );
+    }
+
+    public function test_every_generator_offers_no_verify(): void
+    {
+        $commands = $this->app->make(Kernel::class)->all();
+
+        foreach ([
+            'splicewire:beam:make:particle-resource',
+            'splicewire:beam:make:particle-op',
+            'splicewire:beam:make:particle-relative',
+            'splicewire:beam:make:particle-backing',
+            'splicewire:beam:make:workflow',
+        ] as $name) {
+            $this->assertTrue($commands[$name]->getDefinition()->hasOption('no-verify'), "{$name} has no --no-verify");
         }
     }
 
@@ -517,14 +589,42 @@ class ParticleGeneratorTest extends TestCase
         return (string) File::get($path);
     }
 
+    /**
+     * A host override of the read/write op stub (the `resolveStubPath` convention) that declares no output:
+     * `output:` is nulled, so the mounted op is exactly what {@see UndeclaredSurfaceAudit} counts. (A resource
+     * cannot be forced this way: discovery defaults its `data:` to the annotated Data class itself.)
+     */
+    private function publishOpStubWithoutItsOutputSlot(): void
+    {
+        $stub = File::get(dirname(__DIR__, 2).'/stubs/particle-op.stub');
+        $broken = str_replace('    output: {{ outputClass }}::class,', '    output: null,', $stub);
+
+        $this->assertNotSame($stub, $broken, 'The op stub no longer carries the output: slot this test removes.');
+
+        File::ensureDirectoryExists($this->host.'/stubs');
+        File::put($this->host.'/stubs/particle-op.stub', $broken);
+    }
+
+    /**
+     * Require a generated class unless it is already loaded. Every generator run now verifies its output, which
+     * loads the emitted classes into this process; each test's host is a fresh directory, so a plain
+     * `require_once` (keyed on the path) of a class an earlier test's run already loaded would redeclare it.
+     */
+    private function load(string $class, string $relative): void
+    {
+        if (! class_exists($class, false)) {
+            require_once $this->host.'/'.$relative;
+        }
+    }
+
     /** Load a generated op through real attribute discovery — the path that enforces `handle()` and the kind guard. */
     private function registerOp(string $class, string $opName): ParticleOperation
     {
         $base = Str::replaceLast('Op', '', $class);
 
-        require_once $this->host.'/app/Data/'.$base.'InputData.php';
-        require_once $this->host.'/app/Data/'.$base.'OutputData.php';
-        require_once $this->host.'/app/Particle/Operations/'.$class.'.php';
+        $this->load('App\Data\\'.$base.'InputData', 'app/Data/'.$base.'InputData.php');
+        $this->load('App\Data\\'.$base.'OutputData', 'app/Data/'.$base.'OutputData.php');
+        $this->load('App\Particle\Operations\\'.$class, 'app/Particle/Operations/'.$class.'.php');
 
         $this->app->make(AttributedParticleDiscovery::class)
             ->discover(classes: ['App\Particle\Operations\\'.$class]);
