@@ -30,23 +30,35 @@ audit class, whether it gates the run, and an order.
 ## Registering an audit
 
 An audit is any class implementing `Rushing\Doctor\DoctorAudit`, whose `run()` returns a list of
-`Finding`s (pass, warn, fail or inconclusive). Register it from your provider's `boot()`:
+`Finding`s (pass, warn, fail or inconclusive). Generate one rather than writing it by hand:
+
+```bash
+php artisan doctor:make:audit PublishGateCoverage
+php artisan doctor:make:audit PublishGateCoverage --package-path=../packages/acme/laravel-widgets
+```
+
+The generator comes with [`rushing/laravel-doctor`](https://github.com/stephenr85/laravel-doctor), so
+every Beam host already has it. It writes the audit under your `Doctor` namespace, with a `CHECK` name
+and a `run()` that reports an empty population as inconclusive rather than clean. It also writes a
+test in the runner your project already uses. It targets your app unless `--package-path` names a
+package root; that package's `composer.json` decides the namespace. Last, it prints the line that
+registers the audit. Add that line to your provider's `boot()`:
 
 ```php
+use Acme\Widgets\Doctor\PublishGateCoverageAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 
 if ($this->app->bound(BeamDoctorManifest::class)) {
-    $this->app->make(BeamDoctorManifest::class)->register(
-        'splicewire/laravel-satellite-circuit',
-        SatelliteCircuitMigrationsAudit::class,
-    );
+    $this->app->make(BeamDoctorManifest::class)->register('acme/laravel-widgets', PublishGateCoverageAudit::class);
 }
 ```
 
-That is `splicewire/laravel-satellite-circuit`'s real registration. The `bound()` guard lets the
-package still boot against an older Beam. A host application registers the same way, from its own
-`AppServiceProvider`: the manifest is bound before any provider boots, and the doctor reads it when
-the command runs.
+The `bound()` guard lets the package still boot against an older Beam. A host application registers
+the same way from its own `AppServiceProvider`, and the generator prints that line without the guard:
+the manifest is bound before any provider boots, and the doctor reads it when the command runs. Pass
+`--suggests-operations` when the audit can also name its fix. The class then implements
+`rushing/laravel-surgeon`'s `SuggestsOperations` too, pairing each finding with the operation that
+repairs it.
 
 Two named arguments shape how a check behaves:
 
