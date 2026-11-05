@@ -45,7 +45,7 @@ Say what the value *is*, where a caller *gets* one, and what constrains it:
 
 ```php
 #[Description('The record type to govern — a schema identifier. Sent in the body rather than the path because a schema `$id` may contain slashes.')]
-#[Example('https://schemas.splicewire.app/food-safety/restaurant/1')]
+#[Example('https://app.splicewire.com/schemas/food-safety/restaurant/1')]
 public string $typeKey,
 ```
 

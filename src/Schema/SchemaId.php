@@ -13,8 +13,8 @@ use Schemastud\JsonNs\NamespaceUri;
  * here rather than duplicated.
  *
  * An absolute `$id` is a base authority/path, a path-style schema name, and a trailing
- * monotonic integer version — e.g. `https://schemas.splicewire.app/content/article/3`,
- * whose stem is `https://schemas.splicewire.app/content/article`, name
+ * monotonic integer version — e.g. `https://app.splicewire.com/schemas/content/article/3`,
+ * whose stem is `https://app.splicewire.com/schemas/content/article`, name
  * `content/article`, and version `3`.
  *
  * What stays in beam is beam's domain vocabulary only: {@see name()} (the path-style
