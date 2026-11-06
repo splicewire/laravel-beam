@@ -24,6 +24,7 @@ use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleRelative;
 use Splicewire\Beam\Particle\ParticleRelativeRegistry;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\Subject\SubjectResolvers;
 use Splicewire\Beam\Routing\BeamRouteAction;
 use Splicewire\Beam\Routing\IdConstraint;
@@ -100,7 +101,7 @@ class ParticleMounter
      */
     public function resource(Router $router, string $uri, string $resourceKey, array $options = []): void
     {
-        $only = $options['only'] ?? ['index', 'show', 'store', 'update', 'destroy'];
+        $only = $options['only'] ?? $this->declaredVerbs($resourceKey);
         // The route-name stem IS the resource key, verbatim — kebab, no transliteration.
         // api-surface-coherence 104: this was `str_replace('-', '_', $resourceKey)`, and that one
         // substitution was the whole CASE axis of the estate's route-name inconsistency — it minted
@@ -182,6 +183,30 @@ class ParticleMounter
         if (in_array('destroy', $only, true)) {
             $stamp($withId($router->delete("{$uri}/{id}", [$controller, 'destroy'])), 'destroy');
         }
+    }
+
+    /**
+     * The verbs a BARE mount exposes: what the declaration permits. An explicit `only()` never reaches here, because
+     * that is the host's decision, and a read-only resource may legitimately mount a body-less create
+     * (`seller-repo-authorizations`). A key not registered yet keeps all five rather than silently narrowing.
+     *
+     * @return list<string>
+     */
+    protected function declaredVerbs(string $resourceKey): array
+    {
+        $resource = app(ParticleResourceRegistry::class)->find($resourceKey);
+
+        if ($resource === null) {
+            return ['index', 'show', 'store', 'update', 'destroy'];
+        }
+
+        return array_values(array_filter([
+            'index',
+            $resource->showable ? 'show' : null,
+            $resource->readOnly ? null : 'store',
+            ($resource->editable ?? ! $resource->readOnly) ? 'update' : null,
+            ($resource->deletable ?? ! $resource->readOnly) ? 'destroy' : null,
+        ]));
     }
 
     /**
