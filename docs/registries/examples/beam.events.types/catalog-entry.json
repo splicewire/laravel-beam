@@ -4,7 +4,7 @@
         "resource": "hooks",
         "verbPhrase": "persisted",
         "subject": "hook",
-        "description": "A hooks record was written through the beam write pipeline."
+        "description": "A hooks record was written through the beam write pipeline. Catalog-only: Beam does not deliver this event to webhooks yet."
     },
     {
         "name": "hooks.disabled",
