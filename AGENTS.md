@@ -12,6 +12,14 @@ Before adding or changing any I/O surface (HTTP route, MCP tool, Inertia page, c
 declare-every-boundary-crossing-shape invariant, its three declaration sites, the four exceptions,
 and `popcorn:registries --json` for locating the registry behind a surface.
 
+## TypeScript generation
+
+A host generates TypeScript through `BeamTypeScriptTransformerExtension`, called first in its own
+`TypeScriptTransformerServiceProvider`. A package whose Data no declaration reaches declares that directory in its
+`composer.json` `extra.typescript-transformer.directories`. Before touching a host provider, a declared root, a
+writer, a generated tree, or a hand-written type that mirrors a Data class, read
+`docs/agents/typescript-generation.md`.
+
 ## Check the library before building the mechanism
 
 Before adding a mechanism to beam, check whether a primary dependency already ships it. This has

@@ -12,7 +12,7 @@ the code. When a doc points at `vendor/…`, go read that — the pointer is the
 | library | why it's here | version |
 | --- | --- | --- |
 | [`spatie/laravel-data`](spatie.laravel-data.md) | the substrate the particle doctrine extends | 4.23.0 (`^4.0\|^5.0`) |
-| [`spatie/typescript-transformer`](spatie.typescript-transformer.md) | the emitted `.d.ts` beam's codegen reads back; beam annotates, the host transforms | 3.3.0 (`^3.0`) |
+| [`spatie/typescript-transformer`](spatie.typescript-transformer.md) | the host's generation shape, which beam ships as an extension, and the tree its codegen reads back | 3.3.1 (`^3.0`) |
 | [`nette/php-generator`](nette.php-generator.md) | beam **generates PHP** with it — the SDK and Saloon connectors | v4.2.2 (`^3.4\|^4.0`) |
 | [`spatie/laravel-package-tools`](spatie.laravel-package-tools.md) | the provider skeleton, and where publishing meets migration ordering | 1.93.1 (`^1.16`) |
 | [`orchestra/testbench`](orchestra.testbench.md) | how a package gets a Laravel app to test against at all | v11.1.0 (`^9.0\|^10.0\|^11.0`) |
@@ -42,8 +42,7 @@ pattern transfers. Three differences bite repeatedly:
 
 - **No config here.** Beam ships no `config/data.php`; the host owns it. A setting you want may not
   be yours to set.
-- **Host-rooted discovery skips you.** `auto_discover_types` defaults to the *host's* `app_path()`,
-  so a package's discoverable classes are invisible unless the host is configured to look.
+- **Host-rooted discovery skips you.** A host scans its own `app_path()`, so a package's Data that no declaration reaches is invisible until the package declares the directory (`docs/agents/typescript-generation.md`).
 - **Two majors, one codebase.** `^4.0|^5.0` means beam's code must hold on both, whatever upstream
   docs show for the newer one.
 

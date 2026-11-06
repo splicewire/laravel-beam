@@ -86,69 +86,11 @@ class PackageStubs
 
     /**
      * Composer's record of what is installed here and where it really lives, as name => absolute path.
-     * Empty when the manifest is absent or unreadable — a package repo running its own testbench has no
-     * `vendor/composer/installed.json` describing a HOST, and reporting nothing there is correct.
      *
      * @return array<string, string>
      */
     protected static function installPaths(string $hostRoot): array
     {
-        $vendor = rtrim($hostRoot, '/').'/vendor';
-        $file = $vendor.'/composer/installed.json';
-
-        if (! is_file($file)) {
-            return [];
-        }
-
-        $decoded = json_decode((string) @file_get_contents($file), true);
-
-        if (! is_array($decoded)) {
-            return [];
-        }
-
-        $raw = $decoded['packages'] ?? $decoded; // composer v2 wraps in "packages"; v1 is a bare list.
-
-        if (! is_array($raw)) {
-            return [];
-        }
-
-        $paths = [];
-
-        foreach ($raw as $package) {
-            if (! is_array($package) || ! is_string($package['name'] ?? null)) {
-                continue;
-            }
-
-            // composer v2 records install-path relative to vendor/composer/; v1 has none.
-            $paths[$package['name']] = is_string($package['install-path'] ?? null)
-                ? static::absolutize($vendor.'/composer/'.$package['install-path'])
-                : $vendor.'/'.$package['name'];
-        }
-
-        ksort($paths);
-
-        return $paths;
-    }
-
-    /** Collapse `a/b/../c` textually — `realpath()` is not used because it resolves the co-dev symlink away. */
-    protected static function absolutize(string $path): string
-    {
-        $parts = [];
-
-        foreach (explode('/', $path) as $segment) {
-            if ($segment === '' || $segment === '.') {
-                continue;
-            }
-
-            if ($segment === '..') {
-                array_pop($parts);
-
-                continue;
-            }
-
-            $parts[] = $segment;
-        }
-
-        return '/'.implode('/', $parts);
+        return InstalledPackagePaths::forHost($hostRoot);
     }
 }

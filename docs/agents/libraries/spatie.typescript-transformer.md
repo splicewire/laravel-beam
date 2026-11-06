@@ -1,12 +1,12 @@
 ---
 library: spatie/typescript-transformer
 tier: primary
-version-read: 3.3.0
+version-read: 3.3.1
 arrives: declared
 docs: https://spatie.be/docs/typescript-transformer — the package ships NO docs/ tree; `vendor/spatie/typescript-transformer/src/` is the on-disk authority
 overlay: splicewire/laravel-beam — `src/Codegen/`, `src/Surgeon/`
 config: none — beam is a package; the host owns the transformer's service-provider wiring
-related: [spatie.laravel-data.md, particle-doctrine]
+related: [spatie.laravel-data.md, particle-doctrine, typescript-generation]
 date: 2026-08-27
 ---
 
@@ -14,19 +14,14 @@ date: 2026-08-27
 
 ## What it is here
 
-The **declaration vocabulary and the emitted artifact** beam's codegen is built around — not a runtime
-beam drives. Beam declares the framework-agnostic core (`^3.0`, resolving **3.3.0**), never
-`spatie/laravel-typescript-transformer`: the host owns the provider, the discovery config and the
-`typescript:transform` command. Beam only *annotates* — `#[TypeScript]` on the Data classes in each
-domain's own `Data/` directory (`src/Surface/`, `src/Webhooks/`, `src/Intake/`, `src/Discovery/`,
-plus `src/Data/` itself). Domain-nested is the rule rather than a list to maintain: directories come
-and go with the domains, and there is no `src/Rendering/Data/` any more — this doc named one until
-its DTOs left beam. And
-then *reads the result back* — `src/Codegen/AmbientTypeIndex.php` parses what the global-namespace
-writer emitted, `src/Codegen/ContributedTypesGenerator.php` intersects it, and two `src/Surgeon/`
-audits encode its failure modes. So the surface that matters is the **attributes**, the **writer's
-output shape**, and the **discovery seam**; the machinery between them is the host's problem — until
-it degrades silently (see Traps).
+The **declaration vocabulary, the host's generation shape and the emitted artifact** beam's codegen is built around.
+Beam requires the framework-agnostic core (`^3.0`) and takes `spatie/laravel-typescript-transformer` in
+`require-dev` and `suggest` only: the host owns the provider and the `typescript:transform` command, and its
+provider calls `src/Codegen/BeamTypeScriptTransformerExtension.php`, which fixes what every host generates
+(`docs/agents/typescript-generation.md`). Beam then *reads the result back*: `src/Codegen/ClientTypeReferences.php`
+resolves either writer's output for the client, `src/Codegen/AmbientTypeIndex.php` parses an ambient tree,
+`src/Codegen/ContributedTypesGenerator.php` intersects it, and two `src/Surgeon/` audits encode its failure modes.
+So the surface that matters is the **extension**, the **writer's output shape**, and the **declared roots**.
 
 **There is no vendored docs tree.** The README is a two-page pitch and `UPGRADE.md` is the closest
 thing to a v2→v3 map. Read `src/` — the class names below *are* the concept index.
@@ -55,7 +50,7 @@ v3 folded the old *collector* concept in here: a transformer decides *whether* i
 | concept | what it's for | read |
 | --- | --- | --- |
 | the contract | returns `Transformed` or `Untransformable` | `Transformer.php` |
-| attribute-driven | the default — transform what carries `#[TypeScript]` | `AttributedClassTransformer.php` |
+| attribute-driven | transform what carries `#[TypeScript]`; the shape does not use it — laravel-data's `DataClassTransformer` emits every `BaseData` it scans | `AttributedClassTransformer.php` |
 | class / interface / enum | the three built-in shapes | `ClassTransformer.php`, `InterfaceTransformer.php`, `EnumTransformer.php` |
 
 ### The result and its links — `vendor/spatie/typescript-transformer/src/`
@@ -81,8 +76,8 @@ Host-tier; read when a host's generation misbehaves, not to wire beam.
 
 | concept | what it's for | read |
 | --- | --- | --- |
-| namespaced `.d.ts` | **the shape beam assumes** — `declare namespace A.B.C { … }` | `Writers/GlobalNamespaceWriter.php` |
-| module writers | the per-file alternatives | `Writers/ModuleWriter.php`, `Writers/FlatModuleWriter.php` |
+| namespaced `.d.ts` | the ambient writer, `declare namespace A.B.C { … }`: what `AmbientTypeIndex` parses, so `verify:declared-types` and `generate:contributed-types` need it | `Writers/GlobalNamespaceWriter.php` |
+| module writers | the starters' writer; `ClientTypeReferences` resolves it as well | `Writers/ModuleWriter.php`, `Writers/FlatModuleWriter.php` |
 | formatting | prettier/eslint post-pass over the written files | `Formatters/PrettierFormatter.php` |
 | entry point + config | v3 configures in a service provider, **not a config file** | `TypeScriptTransformer.php`, `TypeScriptTransformerConfigFactory.php` |
 | the pipeline | discover → transform → connect → write | `Actions/DiscoverTypesAction.php`, `Actions/TransformTypesAction.php`, `Actions/ConnectReferencesAction.php`, `Actions/WriteFilesAction.php` |
@@ -109,14 +104,13 @@ siblings, not a chain. Two `surgeon:audit` checks encode its failure modes:
 
 ## Traps
 
-**1. Host-rooted discovery skips a package — this estate's most-repeated defect.**
-`auto_discover_types` defaults to the **host's** `app_path()`, so a package's `#[TypeScript]` classes
-emit nothing. Measured, not theorized: splicewire-app's regenerated `generated.d.ts` (2044 lines)
-contained **zero** frame classes — no `ResourceDefinition`, no `NavMetadata`, no `RealmDefinition`
-(`particle-contribution-seam` ticket 10 §A5). `AmbientTypeIndex`'s own docblock counts it as the
-**third** mechanism with the identical shape, after `config('frame.discover_paths')` (ticket 07).
-Fix without publishing config: a package provider appends its own `src/` to
-`config('typescript-transformer.auto_discover_types')` at `packageBooted()` (ticket 12).
+**1. Host-rooted discovery skips a package — this estate's most-repeated defect.** A host scans its own
+`app_path()`, so a package's Data that no declaration reaches emits nothing. Measured, not theorized:
+splicewire-app's regenerated `generated.d.ts` (2044 lines) contained **zero** frame classes
+(`particle-contribution-seam` ticket 10 §A5), and `AmbientTypeIndex`'s docblock counts it as the **third**
+mechanism with that shape. The fix is the owning package's `extra.typescript-transformer.directories`
+(`docs/agents/typescript-generation.md`). `auto_discover_types` is a v2 config key that v3 never reads; appending to
+it changes nothing.
 
 **2. An unresolvable docblock element type degrades to `unknown` instead of erroring.**
 A bare `@var SomeClass[]` naming a class outside the file's own namespace/imports — routine when a

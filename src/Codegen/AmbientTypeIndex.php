@@ -14,8 +14,8 @@ namespace Splicewire\Beam\Codegen;
  * (ticket 07); spatie's `auto_discover_types` defaults to `app_path()` (ticket 10 §A5); the
  * `#[TypeScript]` scan does the same (ticket 10). Every slice {@see ContributedTypesGenerator}
  * references lives in a package — `TenantCommerceData` in beam-commerce, `AuthUserEmbedData` in
- * beam-embed — so on a host that has not widened its scan, the intersection would name types that were
- * never written.
+ * beam-embed — so on a host where neither declared reach nor a package-declared root covers them, the
+ * intersection would name types that were never written.
  *
  * Checking the emitted tree turns that from a TypeScript compile error in a UI nobody has opened yet
  * into a generation-time failure naming the missing class.
