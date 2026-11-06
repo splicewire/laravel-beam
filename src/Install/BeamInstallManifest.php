@@ -5,7 +5,9 @@ namespace Splicewire\Beam\Install;
 use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\Registrant;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
@@ -56,7 +58,7 @@ use Rushing\Popcorn\Registries\RelativeUriKey;
 /**
  * @implements Registry<InstallStep>
  */
-class BeamInstallManifest implements Registry
+class BeamInstallManifest implements RecordsRegistrants, Registry
 {
     /** @var BasicRegistry<InstallStep> */
     private BasicRegistry $store;
@@ -164,6 +166,26 @@ class BeamInstallManifest implements Registry
     public function keys(): array
     {
         return $this->store->keys();
+    }
+
+    /**
+     * {@see RecordsRegistrants}: who registered the visible entry at `$key`, read back through the
+     * composed store that recorded it. Filtered exactly like {@see has()}, so a hidden entry answers
+     * null, the same as an absent one. A key that cannot be parsed answers null too.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->store->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants}: every visible key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        return $this->store->keysBy($registrant);
     }
 
     public function unfiltered(): Registry

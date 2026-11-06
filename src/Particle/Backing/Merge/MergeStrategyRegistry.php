@@ -4,7 +4,9 @@ namespace Splicewire\Beam\Particle\Backing\Merge;
 
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Particle\Backing\CompositeBacking;
@@ -59,7 +61,7 @@ use Splicewire\Beam\Particle\Backing\CompositeBacking;
     description: 'merge strategies for a CompositeBacking, by handle. Beam registers `ordered` (a k-way merge on a declared sort key, composite cursor = an encoded {arm => armCursor|null} map) and owns nothing else; a package with a different merge (ranked/relevance fusion) registers its own handle from its own boot and the composite names it. Supersede, because a host replacing the ordered default for its own list is a legitimate override and the displaced plug stays readable through superseded().',
     order: 14,
 )]
-class MergeStrategyRegistry implements Registry
+class MergeStrategyRegistry implements RecordsRegistrants, Registry
 {
     /** @var BasicRegistry<MergeStrategy> */
     private BasicRegistry $store;
@@ -112,6 +114,26 @@ class MergeStrategyRegistry implements Registry
     public function keys(): array
     {
         return $this->store->keys();
+    }
+
+    /**
+     * {@see RecordsRegistrants}: who registered the visible entry at `$key`, read back through the
+     * composed store that recorded it. Filtered exactly like {@see has()}, so a hidden entry answers
+     * null, the same as an absent one. A key that cannot be parsed answers null too.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->store->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants}: every visible key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        return $this->store->keysBy($registrant);
     }
 
     public function unfiltered(): Registry

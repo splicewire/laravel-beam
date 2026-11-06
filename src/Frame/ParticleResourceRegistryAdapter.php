@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Frame;
 use Illuminate\Routing\Route;
 use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\Gated;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Contracts\ResourceRegistry;
@@ -70,7 +71,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * {@see unfiltered()}, read directly or through the index. A typed resource may resolve without gaining
  * navigation metadata; `FrameResourcesIndexMembershipTest` pins both paths.
  */
-class ParticleResourceRegistryAdapter implements Gated, ResourceRegistry
+class ParticleResourceRegistryAdapter implements Gated, RecordsRegistrants, ResourceRegistry
 {
     public function __construct(private ParticleResourceRegistry $registry) {}
 
@@ -113,6 +114,22 @@ class ParticleResourceRegistryAdapter implements Gated, ResourceRegistry
     public function keys(): array
     {
         return $this->registry->keys();
+    }
+
+    /**
+     * {@see RecordsRegistrants}: who registered the visible entry at `$key`, read back through the
+     * composed store that recorded it. Filtered exactly like {@see has()}, so a hidden entry answers
+     * null, the same as an absent one. A key that cannot be parsed answers null too.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        return $this->registry->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants}: every visible key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        return $this->registry->keysBy($registrant);
     }
 
     public function unfiltered(): Registry

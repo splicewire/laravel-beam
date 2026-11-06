@@ -8,6 +8,8 @@ use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\WritesRecords;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Webhooks\HookEmitter;
+use Splicewire\Beam\Webhooks\HookSubscriptionReach;
 
 /**
  * Expands the one nameless producer — {@see BeamParticlePersisted} — into one flat catalog entry per
@@ -54,9 +56,38 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *
  * `ParticlePersistedCapabilityGuardTest` pins all four quadrants; the `model, no write` case was
  * verified red against the old guard.
+ *
+ * ## Catalog-only: these names are listed, and nothing delivers them
+ *
+ * {@see HookEmitter::emit()} has one caller, `DispatchWebhookJob::announce()`, which sends the `hooks.*`
+ * lifecycle names. Nothing listens on {@see BeamParticlePersisted} to emit `{resource}.persisted`, so a
+ * hook may subscribe to the name (it is in the catalog) and will receive nothing. {@see DESCRIPTION}
+ * says so in the description `GET /hooks/events` publishes, and `ParticlePersistedCatalogOnlyTest` pins
+ * the pair: a write reaches no subscriber, and the published description admits it.
+ *
+ * Delivery does not wire in at the write pipeline's emit stage without three decisions first:
+ *
+ *  - **Which resource.** The event carries the model, the payload and the schema binding, not the
+ *    resource key. Mapping a model class back to a key is ambiguous wherever two resources share one
+ *    model class, and nothing forbids that.
+ *  - **What body.** The payload is the raw schema-shaped content that was written. A webhook body
+ *    crosses the application's edge, so it needs a declared Data shape (the particle doctrine), most
+ *    likely the resource's read output.
+ *  - **Whose rows.** A subjectless subscription is vetted once, by `viewAny` on the model
+ *    ({@see HookSubscriptionReach}), and that check is known to be wider than a resource's row scope.
+ *    Fanning every write out to it would push rows the subscriber cannot read, and emission has no
+ *    principal to re-ask.
+ *
+ * Whoever wires delivery changes {@see DESCRIPTION} and that test in the same change.
  */
 class ParticlePersistedEventRegistrar implements Registrar
 {
+    /**
+     * The description every `{resource}.persisted` entry publishes, after its `A <key> record` lead-in.
+     * It states the catalog-only status, because the catalog is what a subscriber reads.
+     */
+    public const DESCRIPTION = 'record was written through the beam write pipeline. Catalog-only: Beam does not deliver this event to webhooks yet.';
+
     private BackingResolver $backings;
 
     public function __construct(private ParticleResourceRegistry $resources, ?BackingResolver $backings = null)
@@ -90,7 +121,7 @@ class ParticlePersistedEventRegistrar implements Registrar
                 new EventType(
                     name: "{$resource->key}.persisted",
                     subject: $model,
-                    description: 'A '.$resource->key.' record was written through the beam write pipeline.',
+                    description: 'A '.$resource->key.' '.self::DESCRIPTION,
                 ),
                 null,
                 self::class,

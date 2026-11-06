@@ -86,8 +86,13 @@ registered. Firing an event that isn't in the catalog never fails; it simply fin
 ## What ships
 
 Beam fills the catalog with `hooks.disabled` and `hooks.verified`, and with one
-`{resource}.persisted` event for every particle resource that has a single model class. Hosts get
-those with no config at all.
+`{resource}.persisted` event for every writable particle resource that has a single model class.
+Hosts get those with no config at all.
+
+The `{resource}.persisted` entries are catalog-only for now. A hook can subscribe to one, but
+nothing delivers it yet, and each entry's description says so. To react to a write inside your
+application, listen for `BeamParticlePersisted`. Of the events Beam ships, only the two `hooks.*`
+ones are delivered.
 
 ## What a subscriber reads, captured
 
@@ -127,7 +132,7 @@ return array_map(
         "resource": "hooks",
         "verbPhrase": "persisted",
         "subject": "hook",
-        "description": "A hooks record was written through the beam write pipeline."
+        "description": "A hooks record was written through the beam write pipeline. Catalog-only: Beam does not deliver this event to webhooks yet."
     },
     {
         "name": "hooks.disabled",
@@ -160,7 +165,7 @@ return array_map(
 ## Related registries
 
 - [`beam.particle.resources`](beam.particle.resources): where event prefixes come from, and the
-  source of the `.persisted` events.
+  source of the catalog-only `.persisted` events.
 
 ## Going deeper
 

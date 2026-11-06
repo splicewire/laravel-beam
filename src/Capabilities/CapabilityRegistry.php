@@ -8,6 +8,7 @@ use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 
@@ -53,7 +54,7 @@ use Rushing\Popcorn\Registries\RegistryKey;
     description: 'Gated capabilities resolved by key and entitlement. Beam registers none; a package seeds its own from boot (today tower registers `web_search` and `schema.llm-migration`).',
     order: 15,
 )]
-class CapabilityRegistry implements Gated, Registry
+class CapabilityRegistry implements Gated, RecordsRegistrants, Registry
 {
     /**
      * The stored declarations, keyed by {@see GatedCapability::key()}.
@@ -169,6 +170,26 @@ class CapabilityRegistry implements Gated, Registry
     public function keys(): array
     {
         return $this->store->keys();
+    }
+
+    /**
+     * {@see RecordsRegistrants}: who registered the visible entry at `$key`, read back through the
+     * composed store that recorded it. Filtered exactly like {@see has()}, so a hidden entry answers
+     * null, the same as an absent one. A key that cannot be parsed answers null too.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->store->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants}: every visible key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        return $this->store->keysBy($registrant);
     }
 
     public function unfiltered(): Registry

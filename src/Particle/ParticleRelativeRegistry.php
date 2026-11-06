@@ -11,6 +11,7 @@ use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\RecordsSupersession;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registry;
@@ -55,7 +56,7 @@ use Rushing\Popcorn\Registries\Superseded;
     description: 'declared relative edges — a child particle resource mounted under a route-model-bound parent. Keys are `<parent>.<child>` under the stamped root, off the self-keying entry ({@see ParticleRelative::registryKey()}). The edge is declared by the COUPLING OWNER — never by the child\'s package or the parent\'s, because either would force one tier to name the other (api-surface-coherence ticket 50 / 18 §D1). Nothing about an edge lives on `#[ParticleResource]`. An edge whose `via` is behavioural rides as the DECLARING CLASS NAME in the route defaults rather than as a Closure, which is what keeps the table `route:cache`-able (ticket 51 §2). `Supersede` means a second declaration of one `<parent>.<child>` pair is a second opinion about the same coupling and the later wins; two distinct edges between one pair are not expressible, deliberately, at a live population of one.',
     order: 14,
 )]
-class ParticleRelativeRegistry implements Gated, RecordsSupersession, Registry
+class ParticleRelativeRegistry implements Gated, RecordsRegistrants, RecordsSupersession, Registry
 {
     private BasicRegistry $entries;
 
@@ -180,6 +181,26 @@ class ParticleRelativeRegistry implements Gated, RecordsSupersession, Registry
     public function keys(): array
     {
         return $this->entries->keys();
+    }
+
+    /**
+     * {@see RecordsRegistrants}: who registered the visible entry at `$key`, read back through the
+     * composed store that recorded it. Filtered exactly like {@see has()}, so a hidden entry answers
+     * null, the same as an absent one. A key that cannot be parsed answers null too.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->entries->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants}: every visible key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        return $this->entries->keysBy($registrant);
     }
 
     public function unfiltered(): Registry
