@@ -34,19 +34,24 @@ use Splicewire\Beam\Install\BeamInstallManifest;
  * is stable). Each registration carries a gate/advisory flag so a consumer decides whether its own Fail
  * blocks the exit code, honouring the same gate-vs-advisory split beam-core already draws.
  *
- * ## `Gated` is deliberately absent — nothing reads this on a request
+ * ## `Gated` is deliberately absent — the door is the reader's, not the manifest's
  *
- * Every read site in the estate is a service provider registering DOWN into it, or
- * {@see BeamDoctorCommand} iterating it at the console. A readiness audit is not something an actor
- * sees; it is something an operator runs, and an operator who may not run an audit is refused at the
- * command, not by having audits vanish from the manifest under them.
+ * The write sites are service providers registering DOWN into it. The read sites run the whole manifest:
+ * {@see BeamDoctorCommand} and surgeon's conformance sweep at the console, and one request-facing reader,
+ * the exec board's posture (`splicewire/laravel-beam-exec`'s `DoctorPostureContributor`). The board runs the
+ * audits off the request, in a queued refresh or its `refresh-posture` command, and serves the stored report
+ * to holders of `exec.view`; only a host that sets its ttl to 0 runs them inline on a board read. In every
+ * case the reader decides who sees the report, and the audits that run are the same for every reader. A
+ * readiness audit is not something an actor sees; it is something an operator runs, and an operator who may
+ * not run an audit is refused at the command or the board, not by having audits vanish from the manifest
+ * under them.
  *
  * `Gated` is therefore NOT implemented, and the absence is information rather than an omission
  * (registry-kernel ticket 74). {@see Authorizer} already states the
  * policy this rests on: tooling reads through the registry's explicit unfiltered accessor under the
- * estate's trusted shell. A console run has no actor to gate against, so an authorizer pushed here
- * would either sit null forever — dead wiring that reads as a working door — or, worse, narrow a
- * maintenance run by whoever happened to be authenticated when it started.
+ * estate's trusted shell. A console run or a queued refresh has no actor to gate against, so an
+ * authorizer pushed here would either sit null forever — dead wiring that reads as a working door — or,
+ * worse, narrow a maintenance run by whoever happened to be authenticated when it started.
  */
 #[IsRegistry(
     root: 'beam.doctor.audits',
