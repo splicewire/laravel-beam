@@ -11,6 +11,7 @@ use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\RecordsSupersession;
 use Rushing\Popcorn\Registries\Registrar;
 use Rushing\Popcorn\Registries\Registry;
@@ -51,7 +52,7 @@ use Rushing\Popcorn\Registries\Superseded;
     description: 'named particle operations (custom actions) mounted on the generic op controller. Keys are `<resource>.<name>` under the stamped root, off the self-keying entry ({@see ParticleOperation::registryKey()}). The old note said `:` was REJECTED by Key and that this registry "cannot be migrated by rekeying alone" (registry-kernel ticket 05) — ⚠️ STALE since ticket 30 widened the charset: `:` is legal inside a segment, so `resource:name` always parsed, as ONE segment. The migration was about SHAPE (a flat key cannot enumerate a resource\'s operations, nest a relation scope, or line up with a dot-segmented permission name), not legality. `Supersede` is load-bearing rather than incidental: registering over a key is how a package OVERRIDES an operation it does not own, and {@see superseded()} is what makes that auditable.',
     order: 13,
 )]
-class ParticleOperationRegistry implements Gated, RecordsSupersession, Registry
+class ParticleOperationRegistry implements Gated, RecordsRegistrants, RecordsSupersession, Registry
 {
     private BasicRegistry $entries;
 
@@ -193,6 +194,26 @@ class ParticleOperationRegistry implements Gated, RecordsSupersession, Registry
     public function keys(): array
     {
         return $this->entries->keys();
+    }
+
+    /**
+     * {@see RecordsRegistrants}: who registered the visible entry at `$key`, read back through the
+     * composed store that recorded it. Filtered exactly like {@see has()}, so a hidden entry answers
+     * null, the same as an absent one. A key that cannot be parsed answers null too.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->entries->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants}: every visible key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        return $this->entries->keysBy($registrant);
     }
 
     public function unfiltered(): Registry

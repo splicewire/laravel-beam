@@ -9,7 +9,9 @@ use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Attributes\WidgetIn;
@@ -63,7 +65,7 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
 /**
  * @implements Registry<ResourceContribution>
  */
-class ResourceContributionRegistry implements Gated, Registry
+class ResourceContributionRegistry implements Gated, RecordsRegistrants, Registry
 {
     /**
      * Contributions at `<owner key>.<as>` — the two DIMENSIONS the docblock describes, expressed as one
@@ -289,6 +291,26 @@ class ResourceContributionRegistry implements Gated, Registry
     public function keys(): array
     {
         return $this->store->keys();
+    }
+
+    /**
+     * {@see RecordsRegistrants}: who registered the visible entry at `$key`, read back through the
+     * composed store that recorded it. Filtered exactly like {@see has()}, so a hidden entry answers
+     * null, the same as an absent one. A key that cannot be parsed answers null too.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->store->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants}: every visible key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        return $this->store->keysBy($registrant);
     }
 
     public function unfiltered(): Registry

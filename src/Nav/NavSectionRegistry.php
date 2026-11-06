@@ -9,6 +9,7 @@ use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\PopulationRequirement;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\BeamServiceProvider;
@@ -67,7 +68,7 @@ use Splicewire\Beam\Realm\RealmRegistry;
 /**
  * @implements Registry<NavSection>
  */
-class NavSectionRegistry implements Gated, Registry
+class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
 {
     /** @var BasicRegistry<NavSection> realm key => the seats declared for it, in registration order. */
     private BasicRegistry $store;
@@ -258,6 +259,26 @@ class NavSectionRegistry implements Gated, Registry
     public function keys(): array
     {
         return $this->store->keys();
+    }
+
+    /**
+     * {@see RecordsRegistrants}: who registered the visible entry at `$key`, read back through the
+     * composed store that recorded it. Filtered exactly like {@see has()}, so a hidden entry answers
+     * null, the same as an absent one. A key that cannot be parsed answers null too.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->store->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants}: every visible key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        return $this->store->keysBy($registrant);
     }
 
     public function unfiltered(): Registry

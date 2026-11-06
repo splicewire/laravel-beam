@@ -8,6 +8,7 @@ use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\IsRegistry;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\RelativeUriKey;
@@ -100,7 +101,7 @@ use Splicewire\Beam\Surgeon\TablePrefixBypassAudit;
 /**
  * @implements Registry<string>
  */
-class FacadeConformanceScope implements Registry
+class FacadeConformanceScope implements RecordsRegistrants, Registry
 {
     /** The family vendor directories whose symlinked children are live source. */
     public const FAMILY_VENDORS = ['splicewire', 'rushing', 'schemastud'];
@@ -488,6 +489,26 @@ class FacadeConformanceScope implements Registry
     public function keys(): array
     {
         return $this->store->keys();
+    }
+
+    /**
+     * {@see RecordsRegistrants}: who registered the visible entry at `$key`, read back through the
+     * composed store that recorded it. Filtered exactly like {@see has()}, so a hidden entry answers
+     * null, the same as an absent one. A key that cannot be parsed answers null too.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->store->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants}: every visible key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        return $this->store->keysBy($registrant);
     }
 
     public function unfiltered(): Registry

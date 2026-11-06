@@ -9,7 +9,9 @@ use Rushing\Popcorn\Registries\Authorizer;
 use Rushing\Popcorn\Registries\BasicRegistry;
 use Rushing\Popcorn\Registries\Gated;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Schemastud\Frame\Realm\RealmDefinition;
@@ -52,7 +54,7 @@ use Splicewire\Beam\Realm\Attributes\Realm;
     description: 'authorization realms (operator·tenant·user·site) governing resource access. Seeded-plus-registered: the constructor seeds those four base realms AND #[Realm] classes augment the same instance. Contribution is last-wins by key, and deliberately so — a capability package re-registers a differently-shaped realm over the base one. `beam.realm.overlays` nests UNDER this root; longest prefix routes them apart.',
     order: 14,
 )]
-class RealmRegistry implements Gated, Registry
+class RealmRegistry implements Gated, RecordsRegistrants, Registry
 {
     /**
      * The entries. Held as a FIELD rather than inherited, because this class already carries realm
@@ -257,6 +259,30 @@ class RealmRegistry implements Gated, Registry
         $this->syncUserRealm();
 
         return $this->entries->keys();
+    }
+
+    /**
+     * {@see RecordsRegistrants}: who registered the visible entry at `$key`, read back through the
+     * composed store that recorded it. Filtered exactly like {@see has()}, so a hidden entry answers
+     * null, the same as an absent one. A key that cannot be parsed answers null too.
+     */
+    public function registrantOf(RegistryKey|string $key): ?string
+    {
+        $this->syncUserRealm();
+
+        if (is_string($key) && Key::tryParse($key) === null) {
+            return null;
+        }
+
+        return $this->entries->registrantOf($key);
+    }
+
+    /** {@see RecordsRegistrants}: every visible key registered by `$registrant`, in registration order. */
+    public function keysBy(string $registrant): array
+    {
+        $this->syncUserRealm();
+
+        return $this->entries->keysBy($registrant);
     }
 
     public function unfiltered(): Registry
