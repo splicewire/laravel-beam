@@ -1,0 +1,26 @@
+<?php
+
+namespace {{ namespace }};
+
+{{ imports }}
+
+/**
+ * The filter vocabulary for the `{{ key }}` particle resource, derived from the `{{ table }}` table's actual columns by
+ * `splicewire:beam:make:particle-resource --filters`. It is a starting point: edit freely.
+ *
+ * What the generator chose, and why (the estate's existing `*FilterData` classes are the convention):
+ * names search (`IlikeMatch`, contains), titles match partially, a unique key and the dates and counts sort, a
+ * nullable column filters with `NullableExact` so `?filter[x]=` can ask for the rows where it is empty, and every
+ * other plain column filters exactly. The primary key, long text, json and binary columns are not facets, and
+ * relation or tag facets are the host's own operators — add them here.
+ *
+ * This class names the resource it filters by the resource's key. Discovery has to know the class, so list it in
+ * `config('data-filters.discover.classes')`, or register it from a provider: the generator edits neither.
+ */
+#[ResourceFilter(key: '{{ key }}', query: DeclaredResourceQuery::class)]
+class {{ class }} extends Data
+{
+    public function __construct(
+{{ properties }}
+    ) {}
+}

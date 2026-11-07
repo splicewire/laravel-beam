@@ -41,6 +41,7 @@ class StubPublishTest extends TestCase
         'particle-op-stream.stub',
         'particle-data.stub',
         'particle-summary-provider.stub',
+        'particle-resource-filter.stub',
     ];
 
     /** The boot-time `base_path('stubs')` the tag is bound to — cleaned up after each test that publishes. */

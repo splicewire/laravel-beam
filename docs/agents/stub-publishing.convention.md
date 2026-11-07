@@ -22,13 +22,14 @@ file carries your edit.
 
 ## What the tag writes
 
-Sixteen generator stubs, one per thing the six generators can emit:
+Seventeen generator stubs, one per thing the six generators can emit:
 
 | stub | read by |
 | --- | --- |
 | `particle-resource.stub` | `splicewire:beam:make:particle-resource` — the `#[ParticleResource]` read Data class |
 | `particle-resource-input.stub` | the same command's write-DTO companion |
 | `particle-summary-provider.stub` | `splicewire:beam:make:particle-resource --summary` — the resource's `ResourceSummaryProvider` |
+| `particle-resource-filter.stub` | `splicewire:beam:make:particle-resource --filters` — the resource's `*FilterData` (`#[ResourceFilter]`, columns from the model's table) |
 | `particle-op.stub` | `splicewire:beam:make:particle-op` — Read and Write kinds |
 | `particle-op-task.stub` | the same command, `--kind=task` |
 | `particle-op-stream.stub` | the same command, `--kind=stream` |

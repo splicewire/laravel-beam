@@ -3,10 +3,14 @@
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\GeneratorCommand;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
+use Splicewire\Beam\Surgeon\UnseatedNavSectionAudit;
 use Symfony\Component\Console\Input\InputOption;
+use Throwable;
 
 /**
  * `splicewire:beam:make:particle-resource` — mints a conformant `#[ParticleResource]` surface: the read
@@ -30,6 +34,19 @@ use Symfony\Component\Console\Input\InputOption;
  * since edited. So the provider is emitted and the `summaryProvider:` line is printed, exactly as the mount line
  * is. Absent the flag, the resource keeps beam's default provider (a scoped `total` count) with no file at all.
  *
+ * ## `--filters`, `--cascade-policy` and `--section` (make-surface ticket 06)
+ * - `--filters` emits `Data\Filters\<Name>FilterData` from the model's ACTUAL table — the columns come from the
+ *   schema (`Schema::getColumns()`/`getIndexes()`, the introspection `model:show` uses), never from a guess, and a
+ *   table that does not resolve refuses the whole run before anything is written. The column → `#[Filterable]`/
+ *   `#[Sortable]` mapping follows the estate's existing filter classes (measured, make-surface 06 PROOF). The class
+ *   names the resource by its key (`#[ResourceFilter]`); the one host step discovery needs is printed.
+ * - `--cascade-policy` prints the `#[UseCascadePolicy]` attribute and import for the model, and the registrar call the
+ *   attribute needs to fire. This command emits no model, so no model is ever its to edit: authored model code is
+ *   never touched.
+ * - `--section` declares the resource's `section:`, and when no `NavSection` seats it here — declared through
+ *   {@see \Splicewire\Beam\Nav\NavSectionRegistry} or authored by hand, the same reading
+ *   {@see UnseatedNavSectionAudit} uses — it warns and prints a registration line. Seating is the host's decision.
+ *
  * ## What it deliberately does NOT do
  * It does not mount a route. Routing is a host concern by design (`Particle::mount($uri, $key)`) —
  * the attribute declares, the host routes — so the command prints the mount line and stops. A generator that
@@ -51,6 +68,11 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
     protected string $inputClass = '';
 
     protected string $summaryClass = '';
+
+    protected string $filterClass = '';
+
+    /** @var array{table: string, properties: string, operators: list<string>, sortable: bool}|null */
+    protected ?array $filterVocabulary = null;
 
     protected function getStub(): string
     {
@@ -97,6 +119,18 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
 
         $this->inputClass = $this->getNamespace($qualified).'\\'.$base.'InputData';
 
+        // Resolved BEFORE anything is written: a filter vocabulary is read from the model's table, and a run that
+        // cannot read it refuses whole rather than leaving a resource without the filters it was asked for.
+        if ($this->option('filters')) {
+            $this->filterVocabulary = $this->filterVocabulary();
+
+            if ($this->filterVocabulary === null) {
+                return self::FAILURE;
+            }
+
+            $this->filterClass = $this->rootNamespace().'Data\\Filters\\'.$base.'FilterData';
+        }
+
         if (parent::handle() === false) {
             return self::FAILURE;
         }
@@ -115,7 +149,30 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             ]);
         }
 
+        if ($this->filterVocabulary !== null) {
+            $this->writeCompanion('stubs/particle-resource-filter.stub', $this->filterClass, [
+                'key' => $this->resolvedKey,
+                'table' => $this->filterVocabulary['table'],
+                'imports' => $this->filterImports($this->filterVocabulary),
+                'properties' => $this->filterVocabulary['properties'],
+            ]);
+        }
+
         $this->report(sprintf("Particle::mount('%s', '%s');", $this->resolvedKey, $this->resolvedKey));
+
+        if ($this->filterClass !== '') {
+            $this->printFilterDiscovery();
+        }
+
+        if ($this->option('cascade-policy')) {
+            $this->printCascadePolicy();
+        }
+
+        $section = $this->option('section');
+
+        if (is_string($section) && $section !== '') {
+            $this->warnWhenUnseated($section);
+        }
 
         if ($this->summaryClass !== '') {
             // Printed, not edited: the generator never rewrites a declaration it did not just write, for the
@@ -151,7 +208,222 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             'model' => class_basename($this->resolvedModel),
             'namespacedModel' => $this->resolvedModel,
             'inputClass' => class_basename($this->inputClass),
+            'sectionLine' => is_string($section = $this->option('section')) && $section !== ''
+                ? sprintf("    section: '%s',\n", $section)
+                : '',
         ];
+    }
+
+    /**
+     * The filter vocabulary of the model's table, or null after reporting why it cannot be read.
+     *
+     * @return array{table: string, properties: string, operators: list<string>, sortable: bool}|null
+     */
+    protected function filterVocabulary(): ?array
+    {
+        if (! class_exists($this->resolvedModel) || ! is_subclass_of($this->resolvedModel, Model::class)) {
+            $this->components->error(sprintf('--filters reads the model\'s table, and [%s] is not an Eloquent model.', $this->resolvedModel));
+
+            return null;
+        }
+
+        /** @var Model $model */
+        $model = new ($this->resolvedModel);
+        $table = $model->getTable();
+
+        try {
+            $schema = Schema::connection($model->getConnectionName());
+            $columns = $schema->getColumns($table);
+            $indexes = $schema->getIndexes($table);
+        } catch (Throwable $e) {
+            $columns = [];
+            $indexes = [];
+        }
+
+        if ($columns === []) {
+            $this->components->error(sprintf(
+                '--filters reads the columns of [%s]\'s table `%s`, and it does not resolve on the [%s] connection. '
+                    .'Migrate it first; the generator never invents columns.',
+                $this->resolvedModel,
+                $table,
+                $model->getConnectionName() ?? config('database.default'),
+            ));
+
+            return null;
+        }
+
+        return ['table' => $table] + $this->filterProperties($columns, $indexes, $model->getKeyName());
+    }
+
+    /**
+     * The column → filter vocabulary mapping. Each rule is the estate's measured majority (make-surface 06 PROOF,
+     * the 21 existing `*FilterData` classes): dates sort and never filter; names search and sort; titles match
+     * partially; a unique key filters exactly and sorts; a nullable plain column is `NullableExact` (so the empty
+     * value is askable); counts sort; everything else filters exactly. The key, long text, json and binary columns
+     * are not facets.
+     *
+     * @param  list<array<string, mixed>>  $columns
+     * @param  list<array<string, mixed>>  $indexes
+     * @return array{properties: string, operators: list<string>, sortable: bool}
+     */
+    protected function filterProperties(array $columns, array $indexes, string $keyName): array
+    {
+        $unique = [];
+
+        foreach ($indexes as $index) {
+            if (($index['unique'] ?? false) && ! ($index['primary'] ?? false) && count($index['columns'] ?? []) === 1) {
+                $unique[] = $index['columns'][0];
+            }
+        }
+
+        $lines = [];
+        $operators = [];
+        $sortable = false;
+
+        foreach ($columns as $column) {
+            $name = (string) $column['name'];
+            $kind = $this->columnKind($column);
+
+            if ($name === $keyName || $kind === 'skip') {
+                continue;
+            }
+
+            $property = Str::camel($name);
+            $sort = $property === $name ? '#[Sortable]' : sprintf("#[Sortable(column: '%s')]", $name);
+            $type = 'string|Optional|null';
+            $attributes = [];
+
+            if ($kind === 'date') {
+                $attributes = [$sort];
+            } elseif ($kind === 'number' && ! str_ends_with($name, '_id')) {
+                $attributes = [$sort];
+                $type = 'string|Optional|int|null';
+            } elseif ($kind === 'string' && in_array($name, ['name', 'label', 'display_name'], true)) {
+                $attributes = ["#[Filterable(IlikeMatch::class, mode: 'contains')]", $sort];
+                $operators[] = 'IlikeMatch';
+            } elseif ($kind === 'string' && $name === 'title') {
+                $attributes = ['#[Filterable(Partial::class)]', $sort];
+                $operators[] = 'Partial';
+            } elseif ($kind === 'string' && in_array($name, $unique, true)) {
+                $attributes = ['#[Filterable(Exact::class)]', $sort];
+                $operators[] = 'Exact';
+            } elseif ($kind === 'string' && ($column['nullable'] ?? false) && ! str_ends_with($name, '_id')) {
+                $attributes = ['#[Filterable(NullableExact::class)]'];
+                $operators[] = 'NullableExact';
+            } else {
+                $attributes = ['#[Filterable(Exact::class)]'];
+                $operators[] = 'Exact';
+            }
+
+            $sortable = $sortable || in_array($sort, $attributes, true);
+            $lines[] = '        '.implode("\n        ", $attributes)."\n        public {$type} \${$property} = null,";
+        }
+
+        return ['properties' => implode("\n\n", $lines), 'operators' => array_values(array_unique($operators)), 'sortable' => $sortable];
+    }
+
+    /**
+     * date | number | boolean | string | skip, from the schema's type name — engine-neutral on purpose (sqlite
+     * reports a json column as text and a boolean as `tinyint(1)`; postgres reports `int4`, `timestamp(0)`).
+     *
+     * @param  array<string, mixed>  $column
+     */
+    protected function columnKind(array $column): string
+    {
+        $typeName = strtolower((string) ($column['type_name'] ?? ''));
+        $type = strtolower((string) ($column['type'] ?? $typeName));
+
+        return match (true) {
+            in_array($typeName, ['bool', 'boolean'], true) || str_starts_with($type, 'tinyint(1)') => 'boolean',
+            preg_match('/text|json|blob|binary|bytea|geometry|point|xml/', $typeName) === 1 => 'skip',
+            preg_match('/date|time|year/', $typeName) === 1 => 'date',
+            preg_match('/int|decimal|numeric|float|double|real|money|serial/', $typeName) === 1 => 'number',
+            default => 'string',
+        };
+    }
+
+    /** @param array{operators: list<string>, sortable: bool} $vocabulary */
+    protected function filterImports(array $vocabulary): string
+    {
+        $uses = [
+            'Rushing\\DataFilters\\Attributes\\ResourceFilter',
+            'Spatie\\LaravelData\\Data',
+            'Spatie\\LaravelData\\Optional',
+            'Splicewire\\Beam\\Filters\\DeclaredResourceQuery',
+        ];
+
+        if ($vocabulary['operators'] !== []) {
+            $uses[] = 'Rushing\\DataFilters\\Attributes\\Filterable';
+        }
+
+        if ($vocabulary['sortable']) {
+            $uses[] = 'Rushing\\DataFilters\\Attributes\\Sortable';
+        }
+
+        foreach ($vocabulary['operators'] as $operator) {
+            $uses[] = 'Rushing\\DataFilters\\Operators\\'.$operator;
+        }
+
+        sort($uses);
+
+        return implode("\n", array_map(fn (string $use) => "use {$use};", $uses));
+    }
+
+    /** The one host step a generated filter class needs: discovery has to know the class. Printed, never edited. */
+    protected function printFilterDiscovery(): void
+    {
+        $this->newLine();
+        $this->components->info('List the filter class for discovery — in config/data-filters.php (or register it from a provider):');
+        $this->line(sprintf("    'discover' => ['classes' => [\\%s::class]],", $this->filterClass));
+    }
+
+    /**
+     * `#[UseCascadePolicy]` belongs on the MODEL, which this command never emits — so it is printed, not written.
+     * The attribute also never fires on its own; the registrar call is printed with it.
+     */
+    protected function printCascadePolicy(): void
+    {
+        $model = class_basename($this->resolvedModel);
+
+        $this->newLine();
+        $this->components->info(sprintf('Declare the cascade policy — add to %s (an authored model; the generator never edits it):', $this->resolvedModel));
+        $this->line('    use Rushing\\PermissionCascade\\Attributes\\UseCascadePolicy;');
+        $this->line(sprintf('    #[UseCascadePolicy]  // on class %s', $model));
+        $this->components->info('The attribute is read, not self-registering — bind it from a service provider\'s boot():');
+        $this->line(sprintf('    \\Rushing\\PermissionCascade\\Support\\CascadePolicyRegistrar::register(\\%s::class);', $this->resolvedModel));
+    }
+
+    /**
+     * Warns when no `NavSection` seats `$section` here, reading both seat forms through the same audit the doctor
+     * runs. A host it cannot read is "could not tell" — said so, never claimed unseated.
+     */
+    protected function warnWhenUnseated(string $section): void
+    {
+        try {
+            $seated = $this->laravel->make(UnseatedNavSectionAudit::class)->seatedKeys();
+        } catch (Throwable) {
+            $this->components->warn(sprintf('Could not read this host\'s navigation seats, so whether `%s` is seated is unknown.', $section));
+
+            return;
+        }
+
+        if (in_array($section, $seated, true)) {
+            return;
+        }
+
+        $this->newLine();
+        $this->components->warn(sprintf(
+            'No NavSection seats `%s` here, so this resource attaches to nothing in a projected navigation. '
+                .'A `section:` says what a resource sits UNDER; it cannot create the section. If this host should '
+                .'show it, seat it from a service provider\'s boot() (realm, label, icon, href and order are yours to choose):',
+            $section,
+        ));
+        $this->line(sprintf(
+            "    \$this->app->make(\\Splicewire\\Beam\\Nav\\NavSectionRegistry::class)->register(new \\Splicewire\\Beam\\Nav\\NavSection(key: '%s', realm: 'tenant', label: '%s', icon: 'Folder', href: '/%s', order: 100, entitlement: null, permission: null, audience: \\Splicewire\\Beam\\Nav\\NavAudience::Product), by: __CLASS__);",
+            $section,
+            Str::headline($section),
+            $section,
+        ));
     }
 
     /**
@@ -164,6 +436,9 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             ['key', 'k', InputOption::VALUE_REQUIRED, 'The registry key and data-filters resource key (default: the kebab-cased plural of <Name>)'],
             ['force', 'f', InputOption::VALUE_NONE, 'Overwrite the read Data class if it already exists'],
             ['summary', 's', InputOption::VALUE_NONE, 'Also emit a summary provider (App\\Particle\\Summaries\\<Name>SummaryProvider) implementing ResourceSummaryProvider, and print the summaryProvider: line to add to the attribute'],
+            ['filters', null, InputOption::VALUE_NONE, 'Also emit App\\Data\\Filters\\<Name>FilterData from the model\'s actual table columns (#[Filterable]/#[Sortable]), naming the resource by its key'],
+            ['cascade-policy', null, InputOption::VALUE_NONE, 'Print the #[UseCascadePolicy] attribute and its registrar call for the model (the generator never edits an authored model)'],
+            ['section', null, InputOption::VALUE_REQUIRED, 'Declare the resource\'s section:, and warn (with a registration line) when no NavSection seats it here'],
         ];
     }
 }

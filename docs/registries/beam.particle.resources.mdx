@@ -37,7 +37,15 @@ php artisan splicewire:beam:make:particle-resource
 ```
 
 The generator writes the attribute with its backing, read projection and write shape spelled out, plus
-the mount line for your route file. Discovery finds the class when it is listed in
+the mount line for your route file.
+
+Three optional flags:
+- `--filters` emits a `*FilterData` class from the model's actual table columns, and prints the one discovery line
+  it needs.
+- `--cascade-policy` prints the model's `#[UseCascadePolicy]` lines; it never edits an authored model.
+- `--section=` declares `section:`, and warns, printing a registration line, when no `NavSection` seats it.
+
+Discovery finds the class when it is listed in
 `beam.core.particle.classes` or sits under a path in `beam.core.particle.discover_paths`. Beam's own
 resources are always scanned, and every installed Beam package registers its own the same way.
 
