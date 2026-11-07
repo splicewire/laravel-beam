@@ -1,6 +1,6 @@
 # ADR-0222 — A realm dashboard is ONE read-only resource per realm, whose rows are cards
 
-**Status:** accepted
+**Status:** accepted, amended by decision 9 (analytics-area ticket 03, 2026-11-07)
 **Date:** 2026-09-14
 **Repo:** `splicewire/laravel-beam`
 **Wayfinding:** `.scratch/splicewire/splicewire-ecosystem/realm-dashboards/` PRD ("Implementation Decisions"),
@@ -62,6 +62,25 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
    check; it is not evidence that the card is absent. Rail-only tiles are outside that population;
    no eligible cards is inconclusive. ADR-0224 disables derived-card participation.
 
+9. **A nav section may have its own overview, which is the same dashboard confined to that section.** A package
+   flags a seat with `NavSection(overview: true)`. Beam-ux then registers one read-only resource,
+   `{realm}-{section}-overview` (grammar in `Splicewire\Beam\Dashboard\SectionOverview`), a member of that realm only,
+   backed by a `DashboardBacking` instance carrying the realm and the section. Decisions 2 to 8 apply to it unchanged,
+   because it shares that code: `Unpaged`, one participation rule, card XOR tile, the savepoint, the per-row gate.
+   - **The seat lands on it.** Its leaf mounts at the seat's own path, and the seat's `routeName` is the leaf's list
+     route instead of `{key}.section`. A bound route is what makes a console skip its section index, and the
+     `routeContext` leaf is what a route builder mounts, so neither client needs a change.
+   - **Its gate is the realm's, the seat's, and something to open.** `policy:` is
+     `section-overview.view.{realm}.{section}`, defined at boot unless a host defined it first. A reader passes when
+     the realm's gate, the seat's own gates and at least one child of the section all admit them. A reader who can
+     open nothing in the section therefore has no leaf, and the seat is pruned with it.
+   - **On the realm's dashboard the section is one destination.** The seat draws one tile, and the section's resources
+     draw no card there, including those seated by a static child rather than by `section:`. A seat that is soft-locked
+     for this reader keeps `{key}.section`, so it stays visible and locked and has no landing.
+   - **A section with no flag is untouched.** Every new branch is empty without a flagged seat, so output is
+     byte-identical, pinned against a capture taken before this decision.
+   - `DashboardTierAudit` skips the overview, as it skips the realm's own, and keeps auditing the cards it draws.
+
 ## Consequences
 
 - A fresh host gets one dashboard per realm by writing nothing; a package puts a card on it by declaring
@@ -78,6 +97,9 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
   tower-ux `7dcddde`, flagship `9347808a3`): the OTB realm dashboard is the dashboard.
 
 ## Alternatives rejected
+
+- **A thin overview backing beside this one (decision 9).** A section filter over the rail was enough, so one class still
+  owns the card, tile, gate and savepoint rules.
 
 - **A single `dashboard` key with the realm read from the route.** Impossible on the socket: only the
   manifest is mounted per realm; the resource socket reads a null realm.
