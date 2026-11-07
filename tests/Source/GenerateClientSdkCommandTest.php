@@ -186,6 +186,13 @@ class GenerateClientSdkCommandTest extends TestCase
             backing: 'App\\Models\\Widget',
             data: 'App\\Data\\WidgetData',
         ));
+        $this->app->make(ParticleOperationRegistry::class)->register(new ParticleOperation(
+            resource: 'widgets',
+            name: 'recalculate',
+            kind: OperationKind::Write,
+            model: 'App\\Models\\Widget',
+            handle: fn () => null,
+        ));
 
         Route::prefix('resources')->group(function () {
             Particle::mount('widgets', 'widgets')->only(['index']);
@@ -282,6 +289,15 @@ class GenerateClientSdkCommandTest extends TestCase
     {
         // A resource key that was never registered — the degradation is CORRECT (never fabricate a type)
         // but it must be reportable, else "we generated nothing" and "this returns nothing" look identical.
+        // The op itself must be registered to mount (tutorial-dx 05); it declares no output, so its shape stays unresolved.
+        $this->app->make(ParticleOperationRegistry::class)->register(new ParticleOperation(
+            resource: 'ghosts',
+            name: 'vanish',
+            kind: OperationKind::Task,
+            model: 'App\\Models\\Ghost',
+            handle: fn () => null,
+        ));
+
         Route::prefix('resources')->group(function () {
             Particle::mount('ghosts', 'ghosts')->only(['index']);
             Particle::ops('ghosts', 'ghosts', 'vanish');

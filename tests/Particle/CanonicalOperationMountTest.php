@@ -33,6 +33,14 @@ class CanonicalOperationMountTest extends TestCase
 
     public function test_mount_name_stems_and_explicit_names_remain_authoritative(): void
     {
+        app(ParticleOperationRegistry::class)->register(new ParticleOperation(
+            resource: 'sprockets',
+            name: 'spin',
+            kind: OperationKind::Write,
+            subject: CanonicalOperationSubject::class,
+            handle: fn ($subject) => ['data' => ['id' => $subject->id]],
+        ));
+
         Particle::ops('relative/sprockets', 'sprockets', 'spin', ['names' => 'relative.sprockets']);
         Particle::ops('named/sprockets', 'sprockets', 'spin', ['names' => 'ignored', 'name' => 'custom.spin']);
         Route::getRoutes()->refreshNameLookups();

@@ -192,6 +192,16 @@ class ParticleMountFacadeTest extends TestCase
      */
     public function test_an_explicit_op_list_mounts_the_op_route_it_names(): void
     {
+        app(ParticleOperationRegistry::class)->register(
+            new ParticleOperation(
+                resource: 'sprockets',
+                name: 'spin',
+                kind: OperationKind::Task,
+                model: 'App\\Models\\Sprocket',
+                handle: fn () => null,
+            ),
+        );
+
         Particle::mount('sprockets')->only([])->ops(['spin'], ['method' => 'get']);
 
         // `->only([])` is the shape `Particle::ops()` exists to replace: it still mounts the resource's

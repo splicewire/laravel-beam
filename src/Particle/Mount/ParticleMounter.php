@@ -360,8 +360,14 @@ class ParticleMounter
                         ?? throw new InvalidArgumentException("Class [{$op}] carries no #[ParticleOp] to mount as a particle op."),
                     fn () => $discovery->registerClass($op),
                 ),
-                // A bare name — already registered elsewhere; mount only.
-                default => $op,
+                // A bare name — already registered elsewhere; mount only. Nothing registered it: fail here, at
+                // registration, naming the fix (tutorial-dx 05), not later as a 500 from the mounted route.
+                default => $operations->has($resourceKey, $op) ? $op : throw new InvalidArgumentException(
+                    "No particle operation [{$op}] on resource [{$resourceKey}] to mount: a bare name in ->ops() mounts an op "
+                    ."registered elsewhere, and none is. Register it first: give its class #[ParticleOp] and list that class "
+                    ."in beam.core.particle.classes or under beam.core.particle.discover_paths, or pass the class-string or "
+                    ."a ParticleOperation to ->ops() instead of the bare name."
+                ),
             };
 
             $this->op($router, $uri, $resourceKey, $name, $options);
