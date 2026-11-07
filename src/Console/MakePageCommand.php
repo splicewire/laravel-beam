@@ -178,6 +178,9 @@ class MakePageCommand extends ParticleGeneratorCommand
             $this->controllerClass,
             str_replace('/', '.', $this->component()),
         ));
+        // Measured at the laravel-beam-starter host (make-surface 03 proof): pasted after `Route::beamUxSite()` the
+        // page 404s, because that macro registers a `{path}` catch-all and the first matching route wins.
+        $this->line('    // Paste it ABOVE Route::beamUxSite(): that macro\'s {path} catch-all takes every route registered after it.');
 
         return $this->verified();
     }

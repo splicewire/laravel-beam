@@ -287,8 +287,10 @@ class PageGeneratorTest extends TestCase
 
     public function test_a_site_page_carries_its_own_site_layout_and_mounts_at_the_root(): void
     {
+        // The placement note: the starter host proof 404'd with the line pasted after Route::beamUxSite().
         $this->artisan('splicewire:beam:make:page', ['name' => 'site/about-us'])
             ->expectsOutputToContain("Route::get('/about-us', ")
+            ->expectsOutputToContain('ABOVE Route::beamUxSite()')
             ->assertSuccessful();
 
         $page = $this->read('resources/js/pages/site/about-us.tsx');
