@@ -236,12 +236,30 @@ class UnseatedNavSectionAudit implements DoctorAudit
      */
     public function seatedKeys(): array
     {
-        $keys = array_map(
+        return $this->seatReading()['keys'];
+    }
+
+    /**
+     * {@see seatedKeys()} with its completeness: the seats found, and the realms whose hand-authored navigation could
+     * not be read because its factory threw. An empty `unread` means absence from `keys` is proven; a non-empty one
+     * means it is not, and a caller that must not claim "unseated" without proof can say "unknown" instead.
+     * `seatedKeys()` and the audit's own findings keep their deliberate asymmetry (an unread host reads as no seats).
+     *
+     * @return array{keys: list<string>, unread: list<string>}
+     */
+    public function seatReading(): array
+    {
+        $declared = array_map(
             static fn (NavSection $section): string => $section->key,
             $this->sections->all(),
         );
 
-        return array_values(array_unique(array_merge($keys, $this->handAuthoredKeys())));
+        $hand = $this->handAuthoredReading();
+
+        return [
+            'keys' => array_values(array_unique(array_merge($declared, $hand['keys']))),
+            'unread' => $hand['unread'],
+        ];
     }
 
     /**
@@ -258,11 +276,23 @@ class UnseatedNavSectionAudit implements DoctorAudit
      * invisible, so a wrong `seated` would hide precisely what it was built to find, and a wrong
      * `unseated` is merely noisy. The asymmetry is deliberate.
      *
+     * A failed realm is still RECORDED as unread rather than dropped, so a caller that must not guess
+     * ({@see seatReading()}) can tell "no seat found" from "could not look".
+     *
      * @return list<string>
      */
     protected function handAuthoredKeys(): array
     {
+        return $this->handAuthoredReading()['keys'];
+    }
+
+    /**
+     * @return array{keys: list<string>, unread: list<string>}
+     */
+    protected function handAuthoredReading(): array
+    {
         $keys = [];
+        $unread = [];
 
         foreach (array_keys($this->realms->all()) as $realm) {
             try {
@@ -274,6 +304,8 @@ class UnseatedNavSectionAudit implements DoctorAudit
 
                 $nodes = $factory(new NavContext(attributes: ['realm' => $realm]));
             } catch (\Throwable) {
+                $unread[] = (string) $realm;
+
                 continue;
             }
 
@@ -286,7 +318,7 @@ class UnseatedNavSectionAudit implements DoctorAudit
             }
         }
 
-        return array_values(array_unique($keys));
+        return ['keys' => array_values(array_unique($keys)), 'unread' => $unread];
     }
 
     /**

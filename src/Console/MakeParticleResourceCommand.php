@@ -45,7 +45,8 @@ use Throwable;
  *   never touched.
  * - `--section` declares the resource's `section:`, and when no `NavSection` seats it here — declared through
  *   {@see \Splicewire\Beam\Nav\NavSectionRegistry} or authored by hand, the same reading
- *   {@see UnseatedNavSectionAudit} uses — it warns and prints a registration line. Seating is the host's decision.
+ *   {@see UnseatedNavSectionAudit} uses — it warns and prints a registration line. When a hand-authored navigation
+ *   cannot be read here, it says "unknown" instead. Seating is the host's decision.
  *
  * ## What it deliberately does NOT do
  * It does not mount a route. Routing is a host concern by design (`Particle::mount($uri, $key)`) —
@@ -103,6 +104,12 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
      */
     public function handle(): int
     {
+        // The console kernel keeps ONE instance of this command for every call, and the shared execute() resets only
+        // its own output bookkeeping. Every field below is set per invocation, so each starts empty here: a value a
+        // previous call left would otherwise steer this one (its filter companion, its printed lines).
+        $this->resolvedModel = $this->resolvedKey = $this->inputClass = $this->summaryClass = $this->filterClass = '';
+        $this->filterVocabulary = null;
+
         $base = Str::replaceLast('Data', '', class_basename($this->getNameInput()));
 
         $model = $this->option('model');
@@ -395,19 +402,35 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
 
     /**
      * Warns when no `NavSection` seats `$section` here, reading both seat forms through the same audit the doctor
-     * runs. A host it cannot read is "could not tell" — said so, never claimed unseated.
+     * runs. Three answers: a seat positively found is silence; absence is warned only when every navigation was
+     * read; a navigation that could not be read (its factory threw) makes the answer "unknown", said so, never
+     * claimed unseated.
      */
     protected function warnWhenUnseated(string $section): void
     {
         try {
-            $seated = $this->laravel->make(UnseatedNavSectionAudit::class)->seatedKeys();
+            $reading = $this->laravel->make(UnseatedNavSectionAudit::class)->seatReading();
         } catch (Throwable) {
             $this->components->warn(sprintf('Could not read this host\'s navigation seats, so whether `%s` is seated is unknown.', $section));
 
             return;
         }
 
-        if (in_array($section, $seated, true)) {
+        if (in_array($section, $reading['keys'], true)) {
+            return;
+        }
+
+        if ($reading['unread'] !== []) {
+            $this->newLine();
+            $this->components->warn(sprintf(
+                'No declared NavSection seats `%s`, but this host\'s hand-authored navigation for %s could not be read '
+                    .'here (its factory threw, wanting context this console run has not got), so whether `%s` is seated '
+                    .'is unknown.',
+                $section,
+                implode(', ', array_map(fn (string $realm): string => "`{$realm}`", $reading['unread'])),
+                $section,
+            ));
+
             return;
         }
 

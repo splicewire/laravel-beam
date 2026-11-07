@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Rushing\DataFilters\Discovery\AttributedResourceFilterDiscovery;
+use Rushing\DataNav\NavLink;
+use Rushing\DataNav\NavRegistry;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Nav\NavAudience;
 use Splicewire\Beam\Nav\NavSection;
@@ -142,6 +144,34 @@ class ParticleResourceFlagsTest extends TestCase
         Schema::dropIfExists('vinyls');
     }
 
+    /**
+     * The console kernel keeps ONE command instance for every call, so state one invocation sets must not steer
+     * the next (make-surface 06 REVISE, finding 1). The first call asks for filters and a summary; the second asks
+     * for neither, on a model with no table. A command still carrying the first call's vocabulary would print its
+     * discovery line and recreate the deleted Track companion under the second call's key.
+     */
+    public function test_a_second_call_on_the_same_kernel_carries_nothing_from_the_first(): void
+    {
+        $command = Artisan::all()['splicewire:beam:make:particle-resource'];
+
+        $this->assertSame(0, Artisan::call('splicewire:beam:make:particle-resource', ['name' => 'Track', '--filters' => true, '--summary' => true]));
+        $this->assertFileExists($this->host.'/app/Data/Filters/TrackFilterData.php');
+        File::delete($this->host.'/app/Data/Filters/TrackFilterData.php');
+
+        $this->assertSame(0, Artisan::call('splicewire:beam:make:particle-resource', ['name' => 'Ghost']));
+        $output = Artisan::output();
+
+        // The premise: the same kernel served both calls with the same command instance.
+        $this->assertSame($command, Artisan::all()['splicewire:beam:make:particle-resource']);
+
+        $this->assertFileExists($this->host.'/app/Data/GhostData.php');
+        $this->assertStringNotContainsString('List the filter class for discovery', $output);
+        $this->assertStringNotContainsString('FilterData', $output);
+        $this->assertStringNotContainsString('summaryProvider:', $output);
+        $this->assertFileDoesNotExist($this->host.'/app/Data/Filters/TrackFilterData.php');
+        $this->assertFileDoesNotExist($this->host.'/app/Data/Filters/GhostFilterData.php');
+    }
+
     public function test_filters_refuse_when_the_models_table_does_not_resolve(): void
     {
         $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Ghost', '--filters' => true])
@@ -209,5 +239,75 @@ class ParticleResourceFlagsTest extends TestCase
             ->doesntExpectOutputToContain('NavSectionRegistry::class)->register(')
             ->doesntExpectOutputToContain('No NavSection seats')
             ->assertSuccessful();
+    }
+
+    public function test_a_section_seated_by_hand_does_not_warn(): void
+    {
+        $called = false;
+        $this->app->make(NavRegistry::class)->register('tenant', function () use (&$called): array {
+            $called = true;
+
+            return [NavLink::make(title: 'Catalog', href: '/catalog', routeName: 'catalog.section')];
+        }, by: 'host');
+
+        $this->assertSame(0, Artisan::call('splicewire:beam:make:particle-resource', ['name' => 'Track', '--section' => 'catalog']));
+        $output = Artisan::output();
+
+        $this->assertTrue($called, 'The hand-authored navigation was never read, so this control proves nothing.');
+        $this->assertStringNotContainsString('No NavSection seats', $output);
+        $this->assertStringNotContainsString('NavSectionRegistry::class)->register(', $output);
+        $this->assertStringNotContainsString('unknown', $output);
+    }
+
+    /**
+     * A hand-authored navigation factory that throws (it wants a tenant, an actor or a request this console run
+     * has not got) leaves absence UNPROVEN, so the answer is "unknown", never "No NavSection seats" (make-surface 06
+     * REVISE, finding 2). The audit swallows the throw inside its own read, so this needs a real throwing factory.
+     */
+    public function test_an_unreadable_hand_authored_navigation_reports_unknown_rather_than_unseated(): void
+    {
+        $called = $this->registerThrowingNavigation();
+
+        $this->assertSame(0, Artisan::call('splicewire:beam:make:particle-resource', ['name' => 'Track', '--section' => 'catalog']));
+        $output = Artisan::output();
+
+        $this->assertTrue($called->value, 'The throwing factory was never invoked, so this proves nothing.');
+        $this->assertStringContainsString('unknown', $output);
+        $this->assertStringContainsString('tenant', $output);
+        $this->assertStringNotContainsString('No NavSection seats', $output);
+        $this->assertStringNotContainsString('NavSectionRegistry::class)->register(', $output);
+    }
+
+    /** A positively known seat stays silent even when another part of the navigation could not be read. */
+    public function test_a_declared_seat_is_silent_even_when_a_hand_authored_navigation_throws(): void
+    {
+        $called = $this->registerThrowingNavigation();
+        $this->app->make(NavSectionRegistry::class)->register(new NavSection(
+            key: 'catalog', realm: 'tenant', label: 'Catalog', icon: 'Folder', href: '/catalog', order: 50,
+            entitlement: null, permission: null, audience: NavAudience::Product,
+        ), by: self::class);
+
+        $this->assertSame(0, Artisan::call('splicewire:beam:make:particle-resource', ['name' => 'Track', '--section' => 'catalog']));
+        $output = Artisan::output();
+
+        $this->assertTrue($called->value, 'The throwing factory was never invoked, so this proves nothing.');
+        $this->assertStringNotContainsString('No NavSection seats', $output);
+        $this->assertStringNotContainsString('NavSectionRegistry::class)->register(', $output);
+        $this->assertStringNotContainsString('unknown', $output);
+    }
+
+    /** Registers a tenant navigation that throws when read; the returned flag records that it was actually invoked. */
+    private function registerThrowingNavigation(): \stdClass
+    {
+        $called = new \stdClass;
+        $called->value = false;
+
+        $this->app->make(NavRegistry::class)->register('tenant', function () use ($called): array {
+            $called->value = true;
+
+            throw new \RuntimeException('needs a tenant this console run has not got');
+        }, by: 'host');
+
+        return $called;
     }
 }

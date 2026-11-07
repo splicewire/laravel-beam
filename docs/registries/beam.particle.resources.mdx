@@ -43,7 +43,8 @@ Three optional flags:
 - `--filters` emits a `*FilterData` class from the model's actual table columns, and prints the one discovery line
   it needs.
 - `--cascade-policy` prints the model's `#[UseCascadePolicy]` lines; it never edits an authored model.
-- `--section=` declares `section:`, and warns, printing a registration line, when no `NavSection` seats it.
+- `--section=` declares `section:`, and warns, printing a registration line, when no `NavSection` seats it. If a
+  hand-authored navigation can't be read from the console, it says whether the section is seated is unknown.
 
 Discovery finds the class when it is listed in
 `beam.core.particle.classes` or sits under a path in `beam.core.particle.discover_paths`. Beam's own

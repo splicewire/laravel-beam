@@ -313,4 +313,35 @@ class UnseatedNavSectionAuditTest extends TestCase
 
         $this->assertSame([], $this->audit()->seatedKeys());
     }
+
+    /**
+     * The same throw, read with its completeness: the realm whose factory threw is reported UNREAD, so a caller can
+     * tell "no seat found" from "could not look" (make-surface 06 REVISE). `seatedKeys()` keeps its answer above.
+     */
+    public function test_a_throwing_host_navigation_is_reported_unread_not_absent(): void
+    {
+        $called = false;
+        $this->app->make(\Rushing\DataNav\NavRegistry::class)->register('tenant', function () use (&$called): array {
+            $called = true;
+
+            throw new \RuntimeException('needs a tenant this console run has not got');
+        }, by: 'host');
+
+        $reading = $this->audit()->seatReading();
+
+        $this->assertTrue($called, 'The throwing factory was never invoked, so this proves nothing.');
+        $this->assertSame(['keys' => [], 'unread' => ['tenant']], $reading);
+    }
+
+    public function test_a_readable_host_navigation_reads_complete(): void
+    {
+        $this->seat('declared');
+        $this->app->make(\Rushing\DataNav\NavRegistry::class)->register(
+            'tenant',
+            fn (): array => [\Rushing\DataNav\NavLink::make(title: 'Studio', href: '/studio', routeName: 'studio.section')],
+            by: 'host',
+        );
+
+        $this->assertSame(['keys' => ['declared', 'studio'], 'unread' => []], $this->audit()->seatReading());
+    }
 }
