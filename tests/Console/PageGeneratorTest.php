@@ -264,6 +264,76 @@ class PageGeneratorTest extends TestCase
         $this->assertStringEndsWith("// the author's edit\n", File::get($action));
     }
 
+    // ── a kept controller must not silently contradict this run's options (03 review REVISE) ─────────
+
+    public function test_forcing_a_request_onto_a_kept_controller_without_one_is_refused_before_any_write(): void
+    {
+        $this->artisan('splicewire:beam:make:page', ['name' => 'account/contract-add'])->assertSuccessful();
+        $before = $this->snapshot('contract-add', 'ContractAdd');
+
+        $this->artisan('splicewire:beam:make:page', ['name' => 'account/contract-add', '--force' => true, '--request' => 'ContractAddFilterData'])
+            ->expectsOutputToContain('declares no #[RequestFromData]')
+            ->assertExitCode(1);
+
+        $this->assertSame($before, $this->snapshot('contract-add', 'ContractAdd'));
+        $this->assertFileDoesNotExist($this->host.'/app/Data/ContractAddFilterData.php');
+    }
+
+    public function test_switching_the_request_of_a_kept_controller_is_refused(): void
+    {
+        $this->artisan('splicewire:beam:make:page', ['name' => 'account/contract-swap', '--request' => 'SwapAData'])->assertSuccessful();
+        $before = $this->snapshot('contract-swap', 'ContractSwap');
+
+        $this->artisan('splicewire:beam:make:page', ['name' => 'account/contract-swap', '--force' => true, '--request' => 'SwapBData'])
+            ->expectsOutputToContain('App\Data\SwapAData')
+            ->assertExitCode(1);
+
+        $this->assertSame($before, $this->snapshot('contract-swap', 'ContractSwap'));
+        $this->assertFileDoesNotExist($this->host.'/app/Data/SwapBData.php');
+    }
+
+    public function test_a_forced_same_name_page_in_another_realm_is_refused_against_the_kept_controller(): void
+    {
+        $this->artisan('splicewire:beam:make:page', ['name' => 'site/contract-realm'])->assertSuccessful();
+        $before = $this->snapshot('contract-realm', 'ContractRealm');
+
+        $this->artisan('splicewire:beam:make:page', ['name' => 'account/contract-realm', '--force' => true])
+            ->expectsOutputToContain("renders 'site/contract-realm'")
+            ->assertExitCode(1);
+
+        $this->assertSame($before, $this->snapshot('contract-realm', 'ContractRealm'));
+        $this->assertFileDoesNotExist($this->host.'/resources/js/pages/account/contract-realm.tsx');
+    }
+
+    public function test_a_forced_rerun_with_the_same_request_keeps_the_companions_and_succeeds(): void
+    {
+        $this->artisan('splicewire:beam:make:page', ['name' => 'account/contract-same', '--request' => 'SameFilterData'])->assertSuccessful();
+
+        $action = $this->host.'/app/Http/Controllers/Pages/ContractSamePageController.php';
+        File::put($action, File::get($action)."// the author's edit\n");
+
+        $this->artisan('splicewire:beam:make:page', ['name' => 'account/contract-same', '--force' => true, '--request' => 'SameFilterData'])
+            ->expectsOutputToContain('exists, kept')
+            ->assertSuccessful();
+
+        $this->assertStringEndsWith("// the author's edit\n", File::get($action));
+    }
+
+    public function test_a_host_stub_that_drops_the_request_attribute_fails_the_run(): void
+    {
+        $stub = (string) File::get(dirname(__DIR__, 2).'/stubs/page-controller.stub');
+        $broken = str_replace('{{ requestAttribute }}', '', $stub);
+
+        $this->assertNotSame($stub, $broken, 'The controller stub no longer carries the request attribute token.');
+
+        File::ensureDirectoryExists($this->host.'/stubs');
+        File::put($this->host.'/stubs/page-controller.stub', $broken);
+
+        $this->artisan('splicewire:beam:make:page', ['name' => 'account/contract-stub', '--request' => 'StubFilterData'])
+            ->expectsOutputToContain('does not declare #[RequestFromData(App\Data\StubFilterData::class)]')
+            ->assertExitCode(1);
+    }
+
     // ── names, realms and the URI ───────────────────────────────────────────────────────────────────
 
     public function test_a_name_that_is_not_realm_slash_kebab_is_refused_before_anything_is_written(): void
@@ -361,6 +431,29 @@ class PageGeneratorTest extends TestCase
         $this->assertFileExists($path);
 
         return (string) File::get($path);
+    }
+
+    /**
+     * The bytes of every file one page owns, keyed by path — absent files included, so "nothing was written" covers
+     * files the refused run might have created.
+     *
+     * @return array<string, string|null>
+     */
+    private function snapshot(string $kebab, string $base): array
+    {
+        $files = [];
+
+        foreach ([
+            "app/Data/Pages/{$base}PageData.php",
+            "app/Http/Controllers/Pages/{$base}PageController.php",
+            "resources/js/pages/site/{$kebab}.tsx",
+            "resources/js/pages/account/{$kebab}.tsx",
+        ] as $relative) {
+            $path = $this->host.'/'.$relative;
+            $files[$relative] = is_file($path) ? (string) File::get($path) : null;
+        }
+
+        return $files;
     }
 
     private function load(string $class, string $relative): void

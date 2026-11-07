@@ -5,6 +5,16 @@ namespace Splicewire\Beam\Console;
 use Illuminate\Console\GeneratorCommand;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use PhpParser\Error;
+use PhpParser\Node;
+use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\NameResolver;
+use PhpParser\ParserFactory;
+use ReflectionAttribute;
+use ReflectionMethod;
+use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
+use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -159,6 +169,22 @@ class MakePageCommand extends ParticleGeneratorCommand
             ? $this->qualifyData($request)
             : '';
 
+        // A kept controller is the author's, so it is never overwritten — which means an explicit option that the
+        // kept controller contradicts would otherwise be silently ignored while the run reports success (03 review,
+        // REVISE 8a4a24af5). Refuse before anything is written.
+        $conflicts = $this->keptControllerConflicts();
+
+        if ($conflicts !== []) {
+            $this->components->error(sprintf(
+                'The existing %s does not match this run, and an authored controller is never overwritten. Align the '
+                .'options with it, or move it aside and rerun; nothing was written:',
+                $this->controllerClass,
+            ));
+            $this->components->bulletList($conflicts);
+
+            return self::FAILURE;
+        }
+
         if (parent::handle() === false) {
             return self::FAILURE;
         }
@@ -205,6 +231,23 @@ class MakePageCommand extends ParticleGeneratorCommand
 
         $findings = $this->undeclaredWhenMounted(fn () => Route::get(ltrim($this->uri, '/'), $controller));
 
+        // The declaration the run promises, read off the class that holds this run's bytes: generic conformance would
+        // pass a controller that declares SOME response but not this page's, or drops the requested input.
+        $invoke = new ReflectionMethod($controller, '__invoke');
+        $declared = fn (string $attribute): array => array_map(
+            fn (ReflectionAttribute $a) => (string) ($a->getArguments()[0] ?? $a->getArguments()['dataClass'] ?? ''),
+            $invoke->getAttributes($attribute),
+        );
+        $pageData = $this->qualifyClass($this->getNameInput());
+
+        if (! in_array($pageData, $declared(ResponseFromData::class), true)) {
+            $findings[] = sprintf('%s::__invoke() does not declare #[ResponseFromData(%s::class)]', $this->controllerClass, $pageData);
+        }
+
+        if ($this->requestClass !== '' && ! in_array($this->requestClass, $declared(RequestFromData::class), true)) {
+            $findings[] = sprintf('%s::__invoke() does not declare #[RequestFromData(%s::class)]', $this->controllerClass, $this->requestClass);
+        }
+
         // The audit records only render sites that are undeclared (an array, even of Data) or propless; a render
         // that passes a Data object is skipped by design, so an empty result IS the pass. A propless render is a
         // complete contract by that audit's reading, but this generator promises declared props, so it counts here.
@@ -222,6 +265,101 @@ class MakePageCommand extends ParticleGeneratorCommand
         }
 
         return $findings;
+    }
+
+    /**
+     * What an EXISTING controller would contradict in this run: the component it renders, the page Data its
+     * `#[ResponseFromData]` names, and — only when `--request` was given — its `#[RequestFromData]`. Read statically
+     * (names resolved, nothing loaded), so a kept file cannot be confused with a class this process already holds.
+     * Without `--request` the kept controller's own input is left as authored: no explicit option contradicts it.
+     *
+     * @return list<string>
+     */
+    protected function keptControllerConflicts(): array
+    {
+        $path = $this->getPath($this->controllerClass);
+
+        if (! $this->files->exists($path)) {
+            return [];
+        }
+
+        $contract = $this->controllerContract((string) $this->files->get($path));
+        $pageData = $this->qualifyClass($this->getNameInput());
+        $conflicts = [];
+
+        if ($contract['component'] !== $this->component()) {
+            $conflicts[] = $contract['component'] === null
+                ? sprintf("it renders no Inertia component this run can read; this run asks for '%s'", $this->component())
+                : sprintf("it renders '%s'; this run asks for '%s'", $contract['component'], $this->component());
+        }
+
+        if ($contract['response'] !== $pageData) {
+            $conflicts[] = sprintf(
+                'it declares #[ResponseFromData(%s)]; this run expects %s',
+                $contract['response'] ?? 'nothing',
+                $pageData,
+            );
+        }
+
+        if ($this->requestClass !== '' && $contract['request'] !== $this->requestClass) {
+            $conflicts[] = $contract['request'] === null
+                ? sprintf('it declares no #[RequestFromData]; --request asks for %s', $this->requestClass)
+                : sprintf('it declares #[RequestFromData(%s)]; --request asks for %s', $contract['request'], $this->requestClass);
+        }
+
+        return $conflicts;
+    }
+
+    /**
+     * The contract a controller source declares on `__invoke()`, with names resolved through its imports.
+     *
+     * @return array{component: string|null, response: string|null, request: string|null}
+     */
+    protected function controllerContract(string $source): array
+    {
+        $contract = ['component' => null, 'response' => null, 'request' => null];
+
+        try {
+            $ast = (new ParserFactory)->createForNewestSupportedVersion()->parse($source) ?? [];
+        } catch (Error) {
+            return $contract;
+        }
+
+        $traverser = new NodeTraverser;
+        $traverser->addVisitor(new NameResolver);
+        $ast = $traverser->traverse($ast);
+        $finder = new NodeFinder;
+
+        $invoke = $finder->findFirst($ast, fn (Node $n) => $n instanceof Node\Stmt\ClassMethod && $n->name->toString() === '__invoke');
+
+        if (! $invoke instanceof Node\Stmt\ClassMethod) {
+            return $contract;
+        }
+
+        foreach ($invoke->attrGroups as $group) {
+            foreach ($group->attrs as $attr) {
+                $slot = match ($attr->name->toString()) {
+                    ResponseFromData::class => 'response',
+                    RequestFromData::class => 'request',
+                    default => null,
+                };
+                $value = $attr->args[0]->value ?? null;
+
+                if ($slot !== null && $value instanceof Node\Expr\ClassConstFetch && $value->class instanceof Node\Name) {
+                    $contract[$slot] ??= $value->class->toString();
+                }
+            }
+        }
+
+        $render = $finder->findFirst($invoke, fn (Node $n) => $n instanceof Node\Expr\StaticCall
+            && $n->class instanceof Node\Name && $n->class->toString() === 'Inertia\Inertia'
+            && $n->name instanceof Node\Identifier && $n->name->toString() === 'render');
+
+        if ($render instanceof Node\Expr\StaticCall && ($render->getArgs()[0]->value ?? null) instanceof Node\Scalar\String_) {
+            $contract['component'] = $render->getArgs()[0]->value->value;
+        }
+
+        return $contract;
     }
 
     /** The `.tsx` companion: not PHP, so it is neither linted nor loaded, and never overwritten. */
