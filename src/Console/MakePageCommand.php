@@ -133,6 +133,16 @@ class MakePageCommand extends ParticleGeneratorCommand
             ));
         }
 
+        // Measured at the starter host proof: a site page wrapped in the public `@splicewire/beam-ux/site` SiteLayout
+        // renders without the starter's site chrome (nav, auth links). That chrome is beam-inertia's internal
+        // `layouts/site-layout`, which the package does not export, so a generated page cannot reach it.
+        if ($this->realm === 'site') {
+            $this->components->warn(
+                'Site pages carry their own layout, and beam-inertia does not export its OOTB site chrome (nav, auth links). '
+                .'This page wraps the bare @splicewire/beam-ux/site SiteLayout; swap in the host\'s own site chrome if it has one.'
+            );
+        }
+
         if (! class_exists('Inertia\Inertia')) {
             $this->components->warn('inertiajs/inertia-laravel is not installed in this host; the emitted action renders through it.');
         }

@@ -288,7 +288,10 @@ class PageGeneratorTest extends TestCase
     public function test_a_site_page_carries_its_own_site_layout_and_mounts_at_the_root(): void
     {
         // The placement note: the starter host proof 404'd with the line pasted after Route::beamUxSite().
+        // The chrome warning: the host proof rendered a site page without the starter's site nav, because
+        // beam-inertia's site chrome is internal; the generator says so rather than implying parity.
         $this->artisan('splicewire:beam:make:page', ['name' => 'site/about-us'])
+            ->expectsOutputToContain('does not export its OOTB site chrome')
             ->expectsOutputToContain("Route::get('/about-us', ")
             ->expectsOutputToContain('ABOVE Route::beamUxSite()')
             ->assertSuccessful();
