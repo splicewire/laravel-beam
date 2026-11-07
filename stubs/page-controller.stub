@@ -10,7 +10,7 @@ use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;{{ requestImpor
 /**
  * {{ purpose }}
  */
-final class {{ class }}
+class {{ class }}
 {
     #[ResponseFromData({{ pageData }}::class)]{{ requestAttribute }}
     public function __invoke({{ requestParameter }}): Response

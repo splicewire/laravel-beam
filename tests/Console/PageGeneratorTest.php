@@ -7,11 +7,13 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use ReflectionClass;
+use Rushing\Doctor\DoctorStatus;
 use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Surgeon\HouseStyleAudit;
 use Splicewire\Beam\Surgeon\InertiaPropShapeAudit;
 use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
 use Splicewire\Beam\Tests\TestCase;
@@ -68,7 +70,7 @@ class PageGeneratorTest extends TestCase
 
         $this->assertStringContainsString('namespace App\Data\Pages;', $data);
         $this->assertStringContainsString('#[TypeScript]', $data);
-        $this->assertStringContainsString('final class BillingSummaryPageData extends Data', $data);
+        $this->assertStringContainsString("\nclass BillingSummaryPageData extends Data", $data);
         $this->assertStringContainsString('public string $title,', $data);
 
         // The declaration and the render: the attribute names the Data class, and the render passes an OBJECT.
@@ -323,6 +325,23 @@ class PageGeneratorTest extends TestCase
         $process->run();
 
         $this->assertTrue($process->isSuccessful(), 'Generated code is not pint-clean: '.$process->getOutput());
+    }
+
+    /**
+     * House style forbids `final`, `readonly` and `declare(strict_types=1)` (`HouseStyleAudit`). The first host proof
+     * caught this: the draft stubs emitted `final class`, and the host's surgeon sweep grew by one
+     * `house-style.forbidden-modifier` per generated PHP file.
+     */
+    public function test_the_generated_php_carries_no_forbidden_house_style_construct(): void
+    {
+        $this->artisan('splicewire:beam:make:page', ['name' => 'account/style-page', '--request' => 'StyleFilterData'])->assertSuccessful();
+
+        $findings = (new HouseStyleAudit([$this->host.'/app']))->run();
+
+        $this->assertNotSame([], $findings);
+        foreach ($findings as $finding) {
+            $this->assertSame(DoctorStatus::Pass, $finding->status, $finding->check.': '.$finding->detail);
+        }
     }
 
     public function test_the_command_is_listed_with_the_other_generators(): void

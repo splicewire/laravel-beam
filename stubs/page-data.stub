@@ -9,7 +9,7 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * {{ purpose }}
  */
 #[TypeScript]
-final class {{ class }} extends Data
+class {{ class }} extends Data
 {
     public function __construct(
         // Replace with the props this page receives; `{{ component }}.tsx` is typed against the generated shape.
