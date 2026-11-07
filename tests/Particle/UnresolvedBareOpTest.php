@@ -41,6 +41,25 @@ class UnresolvedBareOpTest extends TestCase
         Particle::mount('calculators')->ops(['resolve'])->register();
     }
 
+    /**
+     * A class-string whose class does not exist used to fall through to the bare-name arm and mount a route literally
+     * named after it (`plans/{id}/Splicewire\Beam\Commerce\Ops\ChoosePlan`, measured on the flagship 2026-11-07, where
+     * a path overlay was behind the lock). It is named as the missing class it is, not as an unregistered name.
+     */
+    public function test_a_class_string_whose_class_does_not_exist_fails_naming_the_missing_class(): void
+    {
+        try {
+            Particle::ops('plans', 'plans', ['Acme\\Ops\\ChoosePlan']);
+            $this->fail('a missing op class must not mount');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('Class [Acme\\Ops\\ChoosePlan] does not exist', $e->getMessage());
+            $this->assertStringContainsString('autoload', $e->getMessage());
+            $this->assertStringNotContainsString('a bare name', $e->getMessage());
+        }
+
+        $this->assertNull(Route::getRoutes()->getByName('plans.Acme\\Ops\\ChoosePlan'));
+    }
+
     public function test_a_bare_op_name_that_IS_registered_still_mounts(): void
     {
         $this->app->make(ParticleOperationRegistry::class)->register(new ParticleOperation(
