@@ -73,7 +73,14 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
    - **Its gate is the realm's, the seat's, and something to open.** `policy:` is
      `section-overview.view.{realm}.{section}`, defined at boot unless a host defined it first. A reader passes when
      the realm's gate, the seat's own gates and at least one child of the section all admit them. A reader who can
-     open nothing in the section therefore has no leaf, and the seat is pruned with it.
+     open nothing in the section therefore has no leaf, and the seat is pruned with it. The seat and its children are
+     asked of the host's nav gate stages through `NavGate::allows`, in the context the rail's stages get: the bound
+     contributor's own, which `FrameNavContribution` exposes over its overridable `context()`, so a subclass is covered by
+     inheritance. So the overview refuses what the rail denies, on a direct request as well as a manifest. It fails closed
+     when it cannot have that context: no contributor, one that does not provide a context, or a context about another
+     reader, compared by auth identifier. A child opens when its route is mounted and admits the reader. An unnamed
+     href is judged by its local route's seat gate, whether written as a path or as a URL to the host's own origin, and only
+     a genuinely different origin counts as open without one.
    - **On the realm's dashboard the section is one destination.** The seat draws one tile, and the section's resources
      draw no card there, including those seated by a static child rather than by `section:`. A seat that is soft-locked
      for this reader keeps `{key}.section`, so it stays visible and locked and has no landing.
