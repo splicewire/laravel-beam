@@ -1,0 +1,22 @@
+<?php
+
+namespace {{ namespace }};
+
+use {{ namespacedPageData }};
+use Inertia\Inertia;
+use Inertia\Response;
+use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;{{ requestImports }}
+
+/**
+ * {{ purpose }}
+ */
+final class {{ class }}
+{
+    #[ResponseFromData({{ pageData }}::class)]{{ requestAttribute }}
+    public function __invoke({{ requestParameter }}): Response
+    {
+        return Inertia::render('{{ component }}', new {{ pageData }}(
+            title: '{{ title }}',
+        ));
+    }
+}

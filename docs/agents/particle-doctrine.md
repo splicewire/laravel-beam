@@ -30,7 +30,10 @@ Three legal declaration sites — no fourth:
 
 Don't hand-roll: `splicewire:beam:make:particle-resource` and `splicewire:beam:make:particle-op`
 emit the attribute with every SHAPE slot filled (`input:`, `output:`, `ability:`, and on an op `affordance:` — a default-valued slot such as `method:` or `signed:` is deliberately omitted, because an omission and a decision must not be spelled the same), the classes those slots name, and the
-`Particle::mount()` / `Particle::ops()` mount line to paste into the host's route file.
+`Particle::mount()` / `Particle::ops()` mount line to paste into the host's route file. For the third
+site, `splicewire:beam:make:page {realm}/{name}` emits an Inertia page's `#[TypeScript]` props Data class, the
+invokable action carrying `#[ResponseFromData]` (`--request=<Data>` adds `#[RequestFromData]`) that renders a Data
+object, the typed `.tsx` page, and the route line.
 
 **A registered schema is not a fourth site.** A JSON Schema a tenant registers at runtime never declares a
 resource. It may type one member of a Data class declared at one of the three sites: a Record's fields, or a

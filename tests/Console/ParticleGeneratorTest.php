@@ -489,6 +489,7 @@ class ParticleGeneratorTest extends TestCase
             'splicewire:beam:make:particle-relative',
             'splicewire:beam:make:particle-backing',
             'splicewire:beam:make:workflow',
+            'splicewire:beam:make:page',
         ] as $name) {
             $this->assertTrue($commands[$name]->getDefinition()->hasOption('no-verify'), "{$name} has no --no-verify");
         }

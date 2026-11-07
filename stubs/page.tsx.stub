@@ -1,0 +1,14 @@
+import type { {{ pageData }} } from '@/generated/{{ typesModule }}';
+
+/**
+ * The `{{ component }}` page. Its props are `{{ namespacedPageData }}`, declared on the action by
+ * `#[ResponseFromData]`; regenerate the types after changing that class. The {{ realm }} realm's chrome is applied
+ * by the host's Inertia `layout:` resolution, never inside this component.
+ */
+export default function {{ componentName }}({ title }: {{ pageData }}) {
+    return (
+        <section>
+            <h1>{title}</h1>
+        </section>
+    );
+}

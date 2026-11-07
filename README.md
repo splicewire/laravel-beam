@@ -335,8 +335,8 @@ the controller — **the standalone (no-relative) path is byte-for-byte unchange
 
 ## Customizing what the generators emit — `beam-stubs`
 
-The five generators (`splicewire:beam:make:particle-resource`, `…:particle-op`, `…:particle-relative`,
-`…:particle-backing` and `splicewire:beam:make:workflow`) render from stubs the package ships, and each checks
+The six generators (`splicewire:beam:make:particle-resource`, `…:particle-op`, `…:particle-relative`,
+`…:particle-backing`, `splicewire:beam:make:workflow` and `splicewire:beam:make:page`) render from stubs the package ships, and each checks
 what it wrote before exiting (exit 1 on a finding; `--no-verify` skips). A host that wants its own docblock
 header, namespace layout or slot defaults publishes them once and edits the copies in place:
 
@@ -344,9 +344,10 @@ header, namespace layout or slot defaults publishes them once and edits the copi
 php artisan vendor:publish --tag=beam-stubs
 ```
 
-Twelve stubs land in `stubs/` (`particle-resource`, `particle-resource-input`, `particle-summary-provider`,
+Sixteen stubs land in `stubs/` (`particle-resource`, `particle-resource-input`, `particle-summary-provider`,
 `particle-op`, `particle-op-task`, `particle-op-stream`, `particle-data`, `particle-relative`,
-`particle-backing`, `workflow`, `workflow-guard`, `workflow-effect`), and every later generate prefers the
+`particle-backing`, `workflow`, `workflow-guard`, `workflow-effect`, `page-data`, `page-controller`, `page.tsx`,
+`page-site.tsx`), and every later generate prefers the
 host copy with no flag. **Not publishing is the default, not a missing file** — this is deliberately not a
 `splicewire:beam:install` step. The tag maps the whole `stubs/` directory, so it also deposits inert copies
 of the `client-runtime/` sources, which have their own tag; see `docs/agents/stub-publishing.convention.md`.

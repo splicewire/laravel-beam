@@ -1,0 +1,18 @@
+<?php
+
+namespace {{ namespace }};
+
+use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
+
+/**
+ * {{ purpose }}
+ */
+#[TypeScript]
+final class {{ class }} extends Data
+{
+    public function __construct(
+        // Replace with the props this page receives; `{{ component }}.tsx` is typed against the generated shape.
+        public string $title,
+    ) {}
+}

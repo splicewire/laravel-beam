@@ -72,6 +72,7 @@ use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\GenerateContributedTypesCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
+use Splicewire\Beam\Console\MakePageCommand;
 use Splicewire\Beam\Console\MakeParticleBackingCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
 use Splicewire\Beam\Console\MakeParticleRelativeCommand;
@@ -1789,6 +1790,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 MakeParticleRelativeCommand::class,
                 MakeParticleBackingCommand::class,
                 MakeWorkflowCommand::class,
+                // …and the third declaration site's generator (make-surface 03): an Inertia page born with
+                // `#[ResponseFromData]` on its action and a Data object at its render, same chassis.
+                MakePageCommand::class,
                 // The registry's own reading surface (otb-ui-frontier-sidebar DESIGN-02, reshaped from an
                 // operator SCREEN to a command). Nav-invisibility is the registry's default — most
                 // declarations name no `section` — so nothing in-product could enumerate the vocabulary;

@@ -22,7 +22,7 @@ file carries your edit.
 
 ## What the tag writes
 
-Twelve generator stubs, one per thing the five generators can emit:
+Sixteen generator stubs, one per thing the six generators can emit:
 
 | stub | read by |
 | --- | --- |
@@ -38,6 +38,10 @@ Twelve generator stubs, one per thing the five generators can emit:
 | `workflow.stub` | `splicewire:beam:make:workflow` — the workflow constant class |
 | `workflow-guard.stub` | the same command's gate handler |
 | `workflow-effect.stub` | the same command's effect handler |
+| `page-data.stub` | `splicewire:beam:make:page` — the `#[TypeScript]` page props Data class |
+| `page-controller.stub` | the same command's invokable action, carrying `#[ResponseFromData]` (and `#[RequestFromData]` with `--request`) |
+| `page.tsx.stub` | the same command's `resources/js/pages/<realm>/<name>.tsx` companion |
+| `page-site.tsx.stub` | the same, for a `site/` page, which carries its own `<SiteLayout>` |
 
 An edited stub is checked like the package copy: every generator verifies what it wrote (lint, central pin,
 and its declaration check) and exits 1 on a finding, so a host override that drops a shape slot fails the

@@ -1,0 +1,15 @@
+import { SiteLayout } from '@splicewire/beam-ux/site';
+import type { {{ pageData }} } from '@/generated/{{ typesModule }}';
+
+/**
+ * The `{{ component }}` page. Its props are `{{ namespacedPageData }}`, declared on the action by
+ * `#[ResponseFromData]`; regenerate the types after changing that class. Site-realm pages carry their own
+ * <SiteLayout> (the host's `layout:` resolution wraps them only in the editing and OS overlays).
+ */
+export default function {{ componentName }}({ title }: {{ pageData }}) {
+    return (
+        <SiteLayout>
+            <h1>{title}</h1>
+        </SiteLayout>
+    );
+}

@@ -18,9 +18,9 @@ use Symfony\Component\Process\Process;
 use Throwable;
 
 /**
- * Shared machinery for the five generators: `splicewire:beam:make:particle-resource`,
+ * Shared machinery for the six generators: `splicewire:beam:make:particle-resource`,
  * `splicewire:beam:make:particle-op`, `splicewire:beam:make:particle-relative`,
- * `splicewire:beam:make:particle-backing` and `splicewire:beam:make:workflow`.
+ * `splicewire:beam:make:particle-backing`, `splicewire:beam:make:workflow` and `splicewire:beam:make:page`.
  *
  * ## Why a generator is a convergence mechanism and not a convenience
  * The estate had no `make:*` command of any kind, and that absence — not carelessness — is the mechanical
