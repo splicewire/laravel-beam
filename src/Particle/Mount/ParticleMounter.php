@@ -360,6 +360,12 @@ class ParticleMounter
                         ?? throw new InvalidArgumentException("Class [{$op}] carries no #[ParticleOp] to mount as a particle op."),
                     fn () => $discovery->registerClass($op),
                 ),
+                // A class-string whose class does not exist (it would otherwise mount a route named after it).
+                is_string($op) && str_contains($op, '\\') => throw new InvalidArgumentException(
+                    "Class [{$op}] does not exist, so it cannot be mounted as a particle op on resource [{$resourceKey}]. "
+                    .'Check the class name, and that the package providing it is installed and autoloadable at the '
+                    .'version the lock names (a path overlay checkout behind the lock is a common cause).'
+                ),
                 // A bare name — already registered elsewhere; mount only. Nothing registered it: fail here, at
                 // registration, naming the fix (tutorial-dx 05), not later as a 500 from the mounted route.
                 default => $operations->has($resourceKey, $op) ? $op : throw new InvalidArgumentException(
