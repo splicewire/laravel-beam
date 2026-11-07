@@ -73,19 +73,17 @@ class PendingParticleMount
     ) {}
 
     /**
-     * Which of the five CRUD verbs to mount. Defaults to all five; `true` says so explicitly (the
-     * wildcard 07 §D2 accepted for the declared edge) and `false` mounts none — an exposure whose whole
-     * surface is operations, or a parent that exists only to hang relatives off.
+     * Which of the five CRUD verbs to mount. Left unset, the declaration decides (`ParticleMounter::declaredVerbs()`);
+     * `true` asks for all five whatever it says (the wildcard 07 §D2 accepted for the declared edge) and `false`
+     * mounts none — an exposure whose whole surface is operations, or a parent that exists only to hang relatives off.
      */
     public function only(array|bool $verbs): static
     {
-        if ($verbs === true) {
-            unset($this->options['only']);
-
-            return $this;
-        }
-
-        $this->options['only'] = $verbs === false ? [] : $verbs;
+        $this->options['only'] = match ($verbs) {
+            true => ['index', 'show', 'store', 'update', 'destroy'],
+            false => [],
+            default => $verbs,
+        };
 
         return $this;
     }
