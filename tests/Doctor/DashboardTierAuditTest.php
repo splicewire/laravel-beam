@@ -241,6 +241,33 @@ class DashboardTierAuditTest extends TestCase
         $this->assertStringNotContainsString('[operator/widgets]', $findings[0]->detail);
         $this->assertStringContainsString('[operator/feed]', $findings[0]->detail);
     }
+
+    public function test_a_section_overview_is_skipped_as_a_dashboard_and_the_cards_it_draws_stay_audited(): void
+    {
+        $this->sections->register(new NavSection(
+            key: 'reports', realm: 'operator', label: 'Reports', icon: 'Box', href: '/reports', order: 20,
+            entitlement: null, permission: null, audience: NavAudience::Product, overview: true,
+        ), by: self::class);
+        // A provider that always declines, so counting this resource would turn the pass below into an ABSENT warning.
+        $this->declare('operator-reports-overview', BeamSchema::class, section: 'reports', provider: DecliningTierProvider::class);
+        $this->declare('drawn', BeamSchema::class, data: SummaryBoundTierData::class, section: 'reports');
+
+        $findings = $this->audit()->run();
+
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
+        $this->assertStringContainsString('1 dashboard card,', $findings[0]->detail);
+    }
+
+    public function test_a_resource_merely_named_like_an_overview_is_still_audited(): void
+    {
+        $this->declare('operator-platform-overview', BeamSchema::class, section: 'platform', provider: DecliningTierProvider::class);
+
+        $findings = $this->audit()->run();
+
+        $this->assertSame(DoctorStatus::Warn, $findings[0]->status);
+        $this->assertStringContainsString('operator-platform-overview', $findings[0]->detail);
+    }
 }
 
 #[Summary(false)]

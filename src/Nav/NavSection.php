@@ -94,6 +94,10 @@ class NavSection
      *                                  gets the seat present-but-locked with this reason/upsell
      *                                  instead of omitted. `null` (the default) = hard, today's
      *                                  behaviour. See the class docblock for why this one defaults
+     * @param  bool  $overview  whether this seat opens on its own page of the section's cards and tiles, and is one
+     *                          destination on its realm's dashboard ({@see \Splicewire\Beam\Dashboard\SectionOverview},
+     *                          ADR-0222 decision 9). `false` (the default) leaves a seat exactly as it was, for the
+     *                          same reason `$lock` may default: it adds a behaviour and takes no gate decision
      */
     public function __construct(
         public readonly string $key,
@@ -107,6 +111,7 @@ class NavSection
         ?NavAudience $audience = null,
         public readonly array $static = [],
         public readonly ?NavSeatLock $lock = null,
+        public readonly bool $overview = false,
     ) {
         $this->audienceDeclared = $audience !== null;
         $this->audience = $audience ?? NavAudience::Product;

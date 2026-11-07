@@ -11,6 +11,7 @@ use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Dashboard\DashboardParticipation;
 use Splicewire\Beam\Dashboard\RailLeaves;
 use Splicewire\Beam\Dashboard\RealmDashboard;
+use Splicewire\Beam\Dashboard\SectionOverview;
 use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -30,6 +31,10 @@ use Throwable;
  * eligible declarations is inconclusive, never a vacuous pass. The reported 0 DERIVED is the
  * participation policy's invariant, not a provider-health outcome. Participation tests pin that
  * a seated, countable resource without a declaration never enters the card population.
+ *
+ * A section's overview (ADR-0222 decision 9) is a dashboard, not a card, so it is skipped as the realm's own is. The
+ * cards it draws stay in this population: they are the same declarations with the same providers, and only which page
+ * draws them differs.
  *
  * Custom providers are called under a guard; exceptions become advisory findings. Actor
  * gates, mounted routes and the provider's actor-dependent answer still need host evidence.
@@ -59,7 +64,7 @@ class DashboardTierAudit implements DoctorAudit
             foreach ($this->resources->keysForRealm($realm) as $key) {
                 $resource = $this->resources->find($key);
 
-                if ($resource === null || ! $resource->isFramed() || RealmDashboard::isKey($key, $realm)) {
+                if ($resource === null || ! $resource->isFramed() || RealmDashboard::isKey($key, $realm) || SectionOverview::isKey($key, $realm, $this->sections)) {
                     continue;
                 }
 
