@@ -111,6 +111,24 @@ class BareMountVerbsTest extends TestCase
         $this->assertSame(['index', 'store'], $this->mountedVerbs('granted-rows'));
     }
 
+    public function test_only_true_is_an_explicit_all_five_and_wins_over_a_read_only_declaration(): void
+    {
+        $this->declare('wildcard-rows', ['input' => false, 'readOnly' => true, 'showable' => false]);
+
+        Particle::mount('wildcard-rows')->only(true)->register();
+
+        $this->assertSame(['destroy', 'index', 'show', 'store', 'update'], $this->mountedVerbs('wildcard-rows'));
+    }
+
+    public function test_only_false_still_mounts_no_crud_verb(): void
+    {
+        $this->declare('ops-only-rows');
+
+        Particle::mount('ops-only-rows')->only(false)->register();
+
+        $this->assertSame([], $this->mountedVerbs('ops-only-rows'));
+    }
+
     public function test_a_key_not_yet_registered_keeps_the_five_verbs(): void
     {
         Particle::mount('late-rows')->register();

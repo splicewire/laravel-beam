@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Spatie\LaravelData\Data;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
@@ -14,6 +15,8 @@ use Splicewire\Beam\Particle\Attributes\ParticleRelative;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -142,6 +145,23 @@ class RelativeOpsSlotTest extends TestCase
         }
     }
 
+    public function test_only_true_on_an_edge_wins_over_a_read_only_child(): void
+    {
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'frozen-holds',
+            backing: Hold::class,
+            data: FrozenHoldData::class,
+            input: false,
+            readOnly: true,
+        ));
+
+        Particle::relatives('hulls', [HullFrozenHoldOnlyTrueRelative::class]);
+
+        foreach (['index', 'show', 'store', 'update', 'destroy'] as $verb) {
+            $this->assertNotNull($this->route("hulls.frozen-holds.{$verb}"), "`only: true` did not mount {$verb}");
+        }
+    }
+
     public function test_only_false_mounts_no_crud_so_an_edge_can_carry_ops_alone(): void
     {
         // An edge whose whole surface is operations on the child — no CRUD asked for, none mounted.
@@ -218,6 +238,14 @@ class HullHoldAllOpsRelative {}
 
 #[ParticleRelative(child: 'holds', of: 'hulls', model: Hull::class, via: 'holds', binding: 'hull', only: true, names: 'hulls.all-holds', childAt: 'all-holds')]
 class HullHoldOnlyTrueRelative {}
+
+#[ParticleRelative(child: 'frozen-holds', of: 'hulls', model: Hull::class, via: 'holds', binding: 'hull', only: true, names: 'hulls.frozen-holds')]
+class HullFrozenHoldOnlyTrueRelative {}
+
+class FrozenHoldData extends Data
+{
+    public function __construct(public ?int $id = null) {}
+}
 
 #[ParticleRelative(child: 'holds', of: 'hulls', model: Hull::class, via: 'holds', binding: 'hull', only: false, names: 'hulls.sealed-holds', childAt: 'sealed-holds', ops: ['seal'])]
 class HullHoldOpsOnlyRelative {}
