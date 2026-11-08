@@ -151,6 +151,15 @@ class ParticleController extends Controller
             // actually need a builder; only subject resolution and a relative mount do, and both still
             // demand `QueriesRecords`. Its declared vocabulary describes the controls interpreted by the backing.
             if ($this->streamsOnly($resource)) {
+                // A stream has no query for the public floor to narrow: streamedIndex() hands the backing the raw facets
+                // and serves its rows as they come, so the Public Read's scope, filter allowlist and projection cannot be
+                // applied. A signed-in reader bound to that floor is therefore refused here, exactly as before ADR-0230's
+                // fallback (the guard's own refusal), unless the floor IS the whole read: the Public Read is the
+                // resource's own Data and no public scope narrows it (calcucrypt's PlanCatalog-backed `plans`).
+                if ($request->user() !== null && $ctx->publicProjection && ! $this->publicFloorIsTheWholeRead($resource)) {
+                    ResourceReadGuard::forApp()->inspectRead($resource, $request)->authorize();
+                }
+
                 return $this->streamedIndex($request, $resource, $ctx, $facets);
             }
         }
@@ -226,6 +235,12 @@ class ParticleController extends Controller
      * also streams (via `BacksEloquent`), and routing it here would drop the data-filters surface,
      * saved filters and the declared default sort for ~30 resources that have all three.
      */
+    /** Whether the Public Read narrows nothing: it is the resource's own Data, and no public scope narrows its rows. */
+    protected function publicFloorIsTheWholeRead(ParticleResource $resource): bool
+    {
+        return $resource->publicRead !== null && $resource->publicRead === $resource->data && $resource->publicScope === null;
+    }
+
     protected function streamsOnly(ParticleResource $resource): bool
     {
         $backing = $resource->backing();
