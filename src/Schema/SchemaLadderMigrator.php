@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Schema;
 
 use Closure;
+use LogicException;
 use ReflectionClass;
 use Rushing\Versioning\Contracts\Migrator;
 use Rushing\Versioning\Contracts\RecordReconciler;
@@ -396,7 +397,7 @@ class SchemaLadderMigrator implements Migrator, RecordReconciler
         $oldId = $old['$id'] ?? null;
         $newId = $new['$id'] ?? null;
 
-        if (! is_string($oldId) || ! is_string($newId) || ! $this->registry instanceof EnumeratesVersions) {
+        if (! is_string($oldId) || ! is_string($newId)) {
             return [$new];
         }
 
@@ -405,6 +406,15 @@ class SchemaLadderMigrator implements Migrator, RecordReconciler
 
         if (! $from->isComparableTo($target) || ($from->version() ?? 0) >= ($target->version() ?? 0)) {
             return [$new];
+        }
+
+        if (! $this->registry instanceof EnumeratesVersions) {
+            throw new LogicException(sprintf(
+                'Cannot migrate versioned schema %s to %s: the configured schema registry must implement %s to enumerate intermediate versions.',
+                $oldId,
+                $newId,
+                EnumeratesVersions::class,
+            ));
         }
 
         $versions = $this->registry->versionsFor($from->stem());

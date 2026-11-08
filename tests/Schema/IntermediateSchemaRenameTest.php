@@ -2,7 +2,9 @@
 
 namespace Splicewire\Beam\Tests\Schema;
 
+use LogicException;
 use Rushing\Versioning\MigrationStatus;
+use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
@@ -51,6 +53,44 @@ class IntermediateSchemaRenameTest extends TestCase
         $this->assertSame(MigrationStatus::Current, $outcome->status);
         $this->assertSame(['headline' => 'VALUE-KEEPS-ME-12345'], $outcome->payload);
         $this->assertSame(self::id(4), $outcome->versionId);
+    }
+
+    public function test_versioned_migration_refuses_a_registry_that_cannot_enumerate_intermediate_versions(): void
+    {
+        $registry = new class($this->registry) implements SchemaRegistry
+        {
+            public function __construct(private FilesystemSchemaRegistry $inner) {}
+
+            public function register(array $schema): void
+            {
+                $this->inner->register($schema);
+            }
+
+            public function get(string $id): ?array
+            {
+                return $this->inner->get($id);
+            }
+
+            public function has(string $id): bool
+            {
+                return $this->inner->has($id);
+            }
+
+            public function ids(): array
+            {
+                return $this->inner->ids();
+            }
+        };
+
+        $migrator = new SchemaLadderMigrator($registry, new JsonSchemaGenerator(config('data-schemas', [])));
+
+        try {
+            $migrator->migrate(['summary' => 'VALUE-KEEPS-ME-12345'], self::id(1), self::id(3));
+            $this->fail('Expected an explicit refusal when intermediate versions cannot be enumerated.');
+        } catch (LogicException $exception) {
+            $this->assertStringContainsString('must implement', $exception->getMessage());
+            $this->assertStringContainsString('EnumeratesVersions', $exception->getMessage());
+        }
     }
 
     public function test_the_eager_host_factory_receives_each_hops_source_and_target(): void
