@@ -117,6 +117,7 @@ use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UndeclaredOperationSummaryAudit;
 use Splicewire\Beam\Doctor\UndeclaredOutputAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
+use Splicewire\Beam\Doctor\UndefinedEntitlementKeyAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Doctor\UngatedWriteAudit;
@@ -125,6 +126,7 @@ use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Doctor\UnrehearsableStubAudit;
 use Splicewire\Beam\Doctor\UnverifiedOnPopulatedTableAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
+use Splicewire\Beam\Entitlements\EntitlementKeyUniverse;
 use Splicewire\Beam\Events\BeamEventRegistrar;
 use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Events\HookEventRegistrar;
@@ -771,6 +773,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // host where the capability was registered.
         $this->app->singleton(CapabilityRegistry::class);
 
+        // tutorial-dx 04: the one entitlement key universe. A singleton for the same reason as above: a package that
+        // contributes keys (beam-accounts' bundles and grant sources) must reach the instance the gate and the can map read.
+        $this->app->singleton(EntitlementKeyUniverse::class);
+        // Its Gate::before is attached as the Gate is first resolved: the earliest a before callback can exist, so it
+        // runs ahead of any added in a provider's boot (see registerEntitlementBefore() for why the order matters).
+        $this->callAfterResolving(Gate::class, fn (Gate $gate) => $this->registerEntitlementBefore($gate));
+
         // The host's API taxonomy and the chain that resolves a route into it (api-surface-coherence 17).
         // Beam ships the registry EMPTY on purpose: a taxonomy belongs to the host, and seeding this
         // estate's roots from core would ship one host's engine names to every beam site — the mistake the
@@ -1141,6 +1150,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host
         // mounted, and the count is the gate the `null` → derived-permission-name flip waits on.
         $manifest->register('splicewire/laravel-beam', UngatedOperationAudit::class);
+        // tutorial-dx 04: an `entitlement:{key}` referenced but known to no source. Static and advisory: the deny stands,
+        // this only names it, and every finding says which references it cannot see.
+        $manifest->register('splicewire/laravel-beam', UndefinedEntitlementKeyAudit::class);
         // app-walkthrough APP-08 (APP-11): the hand-written trio write routes nothing gates. Advisory, per host.
         $manifest->register('splicewire/laravel-beam', UngatedWriteAudit::class);
         $manifest->register('splicewire/laravel-beam', IdentifierLabelAudit::class);
@@ -2193,12 +2205,22 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
     /**
      * Frame OS ticket 08 (ADR-0013 §2/§4): define an `entitlement:{key}` Gate ability per known feature
-     * key, each delegating to the {@see EntitlementGate}. The key universe is
-     * `array_keys(config('app.entitlements'))` ∪ any beam-known feature keys the host lists under
-     * `beam.core.entitlements.keys`. The ability ignores the resolved user argument and asks the gate for
-     * the ambient principal ($user) so both a request-time user and a null/tenant principal route through
-     * the one resolver. Skipped entirely when the kernel resolver contract is unbound (a bare install
-     * without permission-cascade) — the gate stays byte-for-byte inert.
+     * key, each delegating to the {@see EntitlementGate}. The key universe is {@see EntitlementKeyUniverse}
+     * (`app.entitlements` ∪ `beam.core.entitlements.keys` ∪ contributed sources). The ability ignores the
+     * resolved user argument and asks the gate for the ambient principal ($user) so both a request-time user
+     * and a null/tenant principal route through the one resolver. Skipped entirely when the kernel resolver
+     * contract is unbound (a bare install without permission-cascade) — the gate stays byte-for-byte inert.
+     *
+     * tutorial-dx 04: the universe is read lazily, so a key is defined whenever it becomes known, at three moments:
+     *   - here, at beam's boot (as before);
+     *   - once the app has booted, after every provider's `boot()`, so a key a host declares in its own `boot()` is
+     *     defined before any request. This pass, not the before callback, is what reaches `Gate::forUser()` and so
+     *     `$user->can()`: forUser() COPIES the abilities array, so a definition added during a check never reaches
+     *     the copy making it;
+     *   - on a check, by the `Gate::before` of {@see registerEntitlementBefore()}, which also enforces Exec ADR-0001.
+     *     (A key that only becomes known after boot, through config, reaches `Gate::allows` and `can:` middleware on
+     *     first check, and a forUser() copy from the next one; a contributed source is defined as it is contributed.)
+     * A key already defined, by the host or an earlier pass, is never redefined.
      */
     protected function registerEntitlementAbilities(): void
     {
@@ -2207,19 +2229,65 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         }
 
         $gate = $this->app->make(Gate::class);
+        $universe = $this->app->make(EntitlementKeyUniverse::class);
+        $defineKnown = function () use ($gate, $universe): void {
+            foreach ($universe->keys() as $key) {
+                $this->defineEntitlementAbility($gate, $key);
+            }
+        };
 
-        $keys = array_values(array_unique([
-            ...array_keys((array) config('app.entitlements', [])),
-            ...(array) config('beam.core.entitlements.keys', []),
-        ]));
+        $defineKnown();
+        $this->app->booted($defineKnown);
+        $universe->whenContributed($defineKnown);
+    }
 
-        foreach ($keys as $key) {
-            $gate->define(
-                'entitlement:'.$key,
-                fn ($user = null) => $this->app->make(EntitlementGate::class)
-                    ->allows($key, $user),
-            );
+    /**
+     * tutorial-dx 04: the `Gate::before` for `entitlement:{key}`, attached the moment the Gate is first resolved
+     * (`callAfterResolving` from {@see packageRegistered()}), the earliest point a before callback can exist, so it
+     * runs ahead of every before callback a host or package adds in its own boot. For an `entitlement:{key}` check:
+     *   - a KNOWN key (in the {@see EntitlementKeyUniverse}): define its ability if missing, return null. It never
+     *     answers, so the ability, a host's own definition and every later before callback decide;
+     *   - an UNKNOWN key the host did not define itself: return FALSE. Exec ADR-0001's "an undefined key denies
+     *     everyone" then holds even against a later allow-all before callback (a super-admin, a wildcard), which
+     *     would otherwise authorize a key nothing declares;
+     *   - an UNKNOWN key the host DID define as an ability: return null, and the host's definition decides.
+     * Every other ability, and every check while the kernel resolver is unbound, returns null untouched.
+     *
+     * RESIDUAL: Laravel runs before callbacks in registration order and the first non-null answer wins. A before
+     * callback registered before this one (only possible for code that resolved the Gate and added it before beam's
+     * register phase) still answers first, an allow-all included.
+     */
+    protected function registerEntitlementBefore(Gate $gate): void
+    {
+        $gate->before(function ($user = null, $ability = null) use ($gate) {
+            if (! is_string($ability) || ! str_starts_with($ability, 'entitlement:') || ! $this->app->bound(EntitlementResolver::class)) {
+                return null;
+            }
+
+            $key = substr($ability, strlen('entitlement:'));
+
+            if ($this->app->make(EntitlementKeyUniverse::class)->knows($key)) {
+                $this->defineEntitlementAbility($gate, $key);
+
+                return null;
+            }
+
+            return $gate->has($ability) ? null : false;
+        });
+    }
+
+    /** Define `entitlement:{key}` unless something (the host, an earlier pass) already has. */
+    protected function defineEntitlementAbility(Gate $gate, string $key): void
+    {
+        if ($gate->has('entitlement:'.$key)) {
+            return;
         }
+
+        $gate->define(
+            'entitlement:'.$key,
+            fn ($user = null) => $this->app->make(EntitlementGate::class)
+                ->allows($key, $user),
+        );
     }
 
     /**

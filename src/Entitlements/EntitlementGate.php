@@ -36,6 +36,17 @@ class EntitlementGate
      */
     public function allows(string $entitlementKey, mixed $principal = null): bool
     {
-        return in_array($entitlementKey, $this->resolver->entitlementsFor($principal), true);
+        return in_array($entitlementKey, $this->held($principal), true);
+    }
+
+    /**
+     * Every key `$principal` holds, resolved once: what a caller testing many keys reads (tutorial-dx 04's can map),
+     * so the resolver and whatever it queries run once per principal rather than once per key.
+     *
+     * @return list<string>
+     */
+    public function held(mixed $principal = null): array
+    {
+        return array_values($this->resolver->entitlementsFor($principal));
     }
 }

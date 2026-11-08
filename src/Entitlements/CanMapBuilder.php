@@ -12,8 +12,9 @@ use Splicewire\Beam\Realm\RealmRegistry;
  * computation; it consumes this map and the projected manifest only.
  *
  * The map spans three key families:
- *  - FEATURE keys — every entitlement key (`array_keys(config('app.entitlements'))` ∪ any explicitly-known
- *    beam feature keys), resolved through the {@see EntitlementGate};
+ *  - FEATURE keys — every key of the {@see EntitlementKeyUniverse} (the one the `entitlement:{key}` abilities are
+ *    defined from: `app.entitlements` ∪ `beam.core.entitlements.keys` ∪ contributed sources) ∪ any keys folded in
+ *    with {@see withFeatureKeys()}, tested against the principal's holdings resolved ONCE (tutorial-dx 04);
  *  - APP/REALM keys — `app:{realmKey}` for each registered realm, true when the realm is REACHABLE by this
  *    principal (present in the projected manifest, whether unlocked or soft-locked; a hard-gated,
  *    unreachable realm is absent → false);
@@ -35,7 +36,7 @@ class CanMapBuilder
     /** @var list<string> extra ability strings folded into the next build */
     private array $extraAbilityChecks = [];
 
-    /** @var list<string> extra feature keys beyond config('app.entitlements') */
+    /** @var list<string> extra feature keys beyond the entitlement key universe */
     private array $extraFeatureKeys = [];
 
     public function __construct(
@@ -43,6 +44,7 @@ class CanMapBuilder
         private RealmRegistry $realms,
         private RealmManifestProjector $manifest,
         private Gate $gate,
+        private ?EntitlementKeyUniverse $universe = null,
     ) {}
 
     /**
@@ -83,9 +85,10 @@ class CanMapBuilder
     {
         $can = [];
 
-        // FEATURE plane — every configured entitlement key ∪ any explicitly-known beam feature keys.
+        // FEATURE plane — every key in the universe ∪ any folded-in keys, against holdings resolved once.
+        $held = array_flip($this->entitlements->held($principal));
         foreach ($this->featureKeys() as $key) {
-            $can[$key] = $this->entitlements->allows($key, $principal);
+            $can[$key] = isset($held[$key]);
         }
 
         // APP/REALM plane — reachable = present in the projected manifest (unlocked OR soft-locked).
@@ -109,7 +112,7 @@ class CanMapBuilder
     private function featureKeys(): array
     {
         return array_values(array_unique([
-            ...array_keys((array) config('app.entitlements', [])),
+            ...($this->universe ?? app(EntitlementKeyUniverse::class))->keys(),
             ...$this->extraFeatureKeys,
         ]));
     }
