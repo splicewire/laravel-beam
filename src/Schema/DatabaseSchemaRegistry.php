@@ -7,6 +7,7 @@ use InvalidArgumentException;
 use Schemastud\DataSchemas\Contracts\EnumeratesVersions;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
+use Schemastud\DataSchemas\Lifecycle\MigrationKeywordPlacement;
 use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
 use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
 use Splicewire\Beam\Facades\Beam;
@@ -58,6 +59,8 @@ class DatabaseSchemaRegistry implements Contracts\ConfirmsSchemaRegistration, Co
 
     private function registerVersion(array $schema, ?SchemaRegistrationConfirmationData $confirmation): void
     {
+        MigrationKeywordPlacement::assertTopLevelOnly($schema);
+
         $this->query()->getConnection()->transaction(function () use ($schema, $confirmation): void {
             $id = $schema['$id'] ?? null;
 

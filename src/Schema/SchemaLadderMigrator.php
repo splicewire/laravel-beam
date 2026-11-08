@@ -7,6 +7,7 @@ use ReflectionClass;
 use Rushing\Versioning\Contracts\Migrator;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Rushing\Versioning\MigrationOutcome;
+use Schemastud\DataSchemas\Contracts\EnumeratesVersions;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Schemastud\DataSchemas\Generators\Generator;
 use Schemastud\DataSchemas\Keywords;
@@ -251,18 +252,23 @@ class SchemaLadderMigrator implements Migrator, RecordReconciler
         }
 
         // The FULL ladder: structural + declared + custom-transform (backed by the
-        // configured registry). The LLM-try rung is appended only when armed AND a
-        // host migrator factory produces one.
+        // configured registry). Rebuild it for each hop so the host's LLM factory sees
+        // that hop's source and target instead of the endpoints of a long chain.
         $ladder = MigrationLadder::default($this->transforms);
+        $ladderForHop = null;
 
         if ($allowLlm && $this->llmMigratorFactory !== null) {
-            $migrator = ($this->llmMigratorFactory)($old, $new, $recordType);
-            if ($migrator !== null) {
-                $ladder = $ladder->withRungs((new LlmTryRung)->withMigrator($migrator));
-            }
+            $ladderForHop = function (array $from, array $to) use ($recordType): MigrationLadder {
+                $step = MigrationLadder::default($this->transforms);
+                $migrator = ($this->llmMigratorFactory)($from, $to, $recordType);
+
+                return $migrator === null
+                    ? $step
+                    : $step->withRungs((new LlmTryRung)->withMigrator($migrator));
+            };
         }
 
-        $migrated = $this->climb($ladder, $payload, $old, $new);
+        $migrated = $this->climb($ladder, $payload, $old, $new, $ladderForHop);
 
         if ($migrated !== null) {
             return MigrationOutcome::migrated($migrated, (string) $currentId);
@@ -345,7 +351,7 @@ class SchemaLadderMigrator implements Migrator, RecordReconciler
      * @param  array<string, mixed>  $new
      * @return array<string, mixed>|null
      */
-    protected function climb(MigrationLadder $ladder, array $payload, array $old, array $new): ?array
+    protected function climb(MigrationLadder $ladder, array $payload, array $old, array $new, ?Closure $ladderForHop = null): ?array
     {
         $document = (new JsonDocumentShape)->restore($payload, $old);
         $document = is_array($document) ? $document : $payload;
@@ -355,16 +361,70 @@ class SchemaLadderMigrator implements Migrator, RecordReconciler
             $introduced->detach($existing);
         }
 
-        $result = $ladder->migrate($document, $old, $new);
+        $schemas = $this->intermediateSchemas($old, $new);
+        $from = $old;
 
-        if (! $result->wasMigrated()) {
-            return null;
+        foreach ($schemas as $to) {
+            $stepLadder = $ladderForHop === null ? $ladder : $ladderForHop($from, $to);
+            $result = $stepLadder->migrate($document, $from, $to);
+
+            if (! $result->wasMigrated()) {
+                return null;
+            }
+
+            $document = $result->migrated;
+            $from = $to;
         }
 
         /** @var array<string, mixed> $migrated */
-        $migrated = $this->respell($result->migrated, $introduced);
+        $migrated = $this->respell($document, $introduced);
 
         return $migrated;
+    }
+
+    /**
+     * Resolve every registered version strictly between the stored and target schema. A long-lived
+     * record therefore pays one schema lookup and one deterministic ladder pass per intervening
+     * version (linear in the number of registered hops, with no batching).
+     *
+     * @param  array<string, mixed>  $old
+     * @param  array<string, mixed>  $new
+     * @return list<array<string, mixed>>
+     */
+    private function intermediateSchemas(array $old, array $new): array
+    {
+        $oldId = $old['$id'] ?? null;
+        $newId = $new['$id'] ?? null;
+
+        if (! is_string($oldId) || ! is_string($newId) || ! $this->registry instanceof EnumeratesVersions) {
+            return [$new];
+        }
+
+        $from = SchemaId::from($oldId);
+        $target = SchemaId::from($newId);
+
+        if (! $from->isComparableTo($target) || ($from->version() ?? 0) >= ($target->version() ?? 0)) {
+            return [$new];
+        }
+
+        $versions = $this->registry->versionsFor($from->stem());
+        sort($versions);
+
+        $steps = [];
+        foreach ($versions as $version) {
+            if ($version <= ($from->version() ?? 0) || $version >= ($target->version() ?? 0)) {
+                continue;
+            }
+
+            $schema = $this->registry->get((string) $from->withVersion($version));
+            if ($schema !== null) {
+                $steps[] = $schema;
+            }
+        }
+
+        $steps[] = $new;
+
+        return $steps;
     }
 
     /**
