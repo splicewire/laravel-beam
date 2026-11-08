@@ -96,7 +96,8 @@ class ParticleGeneratorTest extends TestCase
         $this->assertStringContainsString("key: 'lyrics',", $read);
         $this->assertStringContainsString('backing: Lyric::class,', $read);
         // BOTH shape slots, present and pointing at real emitted classes — the whole point of the ticket.
-        $this->assertStringContainsString('data: LyricData::class,', $read);
+        // tutorial-dx 06: `data:` is omitted, because naming the annotated class there says what omitting it says.
+        $this->assertStringNotContainsString('data: LyricData::class,', $read);
         $this->assertStringContainsString('input: LyricInputData::class,', $read);
         $this->assertStringContainsString('use App\Models\Lyric;', $read);
 
@@ -617,6 +618,178 @@ class ParticleGeneratorTest extends TestCase
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────────────────────────
+
+    // ── tutorial-dx 06: scaffold by intent ──────────────────────────────────────────────────────────────
+    //
+    // Before: the tutorial's first scaffold wrote a write DTO the next step deleted, ch-02's op wrote an output class
+    // the next step deleted, a resource named itself in `data:`, and an op with `--model` omitted wrote an unchecked
+    // `use App\Models\Plan;`. After: the reader states the intent with a flag, every decision slot is written out, and
+    // the printed mount line is the one 01's bare-mount defaults make true for the declaration.
+
+    public function test_a_resource_states_read_only_as_a_decision_and_omits_the_self_naming_data_slot(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Verse', '--model' => 'Lyric'])
+            ->expectsOutputToContain("Particle::mount('verses', 'verses'); // index, show, store, update, destroy")
+            ->assertSuccessful();
+
+        $read = $this->read('app/Data/VerseData.php');
+
+        $this->assertStringNotContainsString('data: VerseData::class', $read, 'an omitted data: already means the annotated class');
+        $this->assertStringContainsString('readOnly: false,', $read, 'a decision, written out');
+        $this->assertStringContainsString('input: VerseInputData::class,', $read);
+    }
+
+    public function test_read_only_declares_no_write_shape_writes_no_write_dto_and_prints_the_read_verbs(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Chorus', '--model' => 'Lyric', '--key' => 'choruses', '--read-only' => true])
+            ->expectsOutputToContain("Particle::mount('choruses', 'choruses'); // index, show")
+            ->assertSuccessful();
+
+        $read = $this->read('app/Data/ChorusData.php');
+
+        $this->assertStringContainsString('readOnly: true,', $read);
+        $this->assertStringContainsString('input: false,', $read, 'no write shape is a decision, not an omission');
+        $this->assertFileDoesNotExist($this->host.'/app/Data/ChorusInputData.php', 'nothing for the next step to delete');
+        $this->assertStringContainsString("Particle::mount('choruses', 'choruses');", $read);
+    }
+
+    public function test_the_printed_bare_mount_of_a_read_only_resource_mounts_only_its_read_verbs(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Bridge', '--model' => 'Lyric', '--key' => 'bridges', '--read-only' => true])
+            ->assertSuccessful();
+
+        $this->load('App\Data\BridgeData', 'app/Data/BridgeData.php');
+        $this->app->make(AttributedParticleDiscovery::class)->discover(classes: ['App\Data\BridgeData']);
+        Route::prefix('api')->group(fn () => Particle::mount('bridges', 'bridges'));
+
+        $verbs = [];
+        foreach (Route::getRoutes() as $route) {
+            if (str_starts_with($route->uri(), 'api/bridges')) {
+                $verbs[] = implode('|', array_diff($route->methods(), ['HEAD'])).' '.$route->uri();
+            }
+        }
+        $this->assertNotContains('POST api/bridges', $verbs, '01: a bare mount derives its verbs from the declaration');
+        $this->assertContains('GET api/bridges', $verbs);
+        $this->assertNoFindingsFor('api/bridges');
+    }
+
+    public function test_public_names_the_read_class_as_the_public_read(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Riff', '--model' => 'Lyric', '--public' => true])
+            ->assertSuccessful();
+
+        $this->assertStringContainsString('publicRead: RiffData::class,', $this->read('app/Data/RiffData.php'));
+    }
+
+    public function test_no_subject_declares_no_subject_imports_no_model_and_takes_mixed_subject(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-op', ['name' => 'PurchasePlan', '--resource' => 'plans', '--op' => 'purchase', '--no-subject' => true])
+            ->assertSuccessful();
+
+        $op = $this->read('app/Particle/Operations/PurchasePlan.php');
+
+        $this->assertStringContainsString('subject: NoSubject::class,', $op);
+        $this->assertStringContainsString('abilityModel: false,', $op);
+        $this->assertStringContainsString('use Splicewire\Beam\Particle\Subject\NoSubject;', $op);
+        $this->assertStringNotContainsString('use App\Models\\', $op, 'no unchecked model import');
+        $this->assertStringContainsString('public static function handle(mixed $subject, Request $request, mixed $actor)', $op);
+    }
+
+    // orch-peer's REVISE (2026-11-08): a subject-free op's flat {uri}/{op} loses to an earlier {uri}/{id}.
+
+    public function test_a_no_subject_op_prints_and_documents_its_placement_above_the_id_routes(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-op', ['name' => 'SearchPlans', '--kind' => 'read', '--resource' => 'plans', '--op' => 'search', '--no-subject' => true])
+            ->expectsOutputToContain("Mount this line ABOVE Particle::mount('plans', …)")
+            ->assertSuccessful();
+
+        $docblock = str_replace("\n * ", ' ', $this->read('app/Particle/Operations/SearchPlans.php'));
+        $this->assertStringContainsString("Mount this line ABOVE Particle::mount('plans', …)", $docblock);
+        $this->assertStringContainsString('flat plans/search', $docblock);
+    }
+
+    public function test_co_mounted_below_the_resource_a_no_subject_op_is_swallowed_by_the_id_route(): void
+    {
+        [$resource, $op] = $this->tunesAndSearch();
+        // Mounted GET, as a search usually is (the doctrine's measured case): a read op's default POST has no {id} rival.
+        Route::prefix('api')->group(function () use ($op): void {
+            Particle::mount('tunes', 'tunes');
+            Particle::ops('tunes', 'tunes', [$op], ['method' => 'get']);
+        });
+
+        $this->assertSame('api/tunes/{id}', $this->routeFor('GET', '/api/tunes/search'), 'the wrong order: show answers with id = "search"');
+    }
+
+    public function test_co_mounted_in_the_printed_order_a_no_subject_op_answers_its_own_url(): void
+    {
+        [$resource, $op] = $this->tunesAndSearch();
+        Route::prefix('api')->group(function () use ($op): void {
+            Particle::ops('tunes', 'tunes', [$op], ['method' => 'get']);
+            Particle::mount('tunes', 'tunes');
+        });
+
+        $this->assertSame('api/tunes/search', $this->routeFor('GET', '/api/tunes/search'));
+        $this->assertSame('api/tunes/{id}', $this->routeFor('GET', '/api/tunes/7'), 'the resource\'s own show still answers');
+    }
+
+    /** @return array{0: class-string, 1: class-string} a generated resource and a subject-free read op on the same uri, discovered */
+    private function tunesAndSearch(): array
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Tune', '--model' => 'Lyric', '--key' => 'tunes'])->assertSuccessful();
+        $this->artisan('splicewire:beam:make:particle-op', ['name' => 'SearchTunes', '--kind' => 'read', '--resource' => 'tunes', '--op' => 'search', '--no-subject' => true])->assertSuccessful();
+
+        $this->load('App\Data\TuneInputData', 'app/Data/TuneInputData.php');
+        $this->load('App\Data\TuneData', 'app/Data/TuneData.php');
+        $this->load('App\Data\SearchTunesInputData', 'app/Data/SearchTunesInputData.php');
+        $this->load('App\Data\SearchTunesOutputData', 'app/Data/SearchTunesOutputData.php');
+        $this->load('App\Particle\Operations\SearchTunes', 'app/Particle/Operations/SearchTunes.php');
+        $this->app->make(AttributedParticleDiscovery::class)->discover(classes: ['App\Data\TuneData', 'App\Particle\Operations\SearchTunes']);
+
+        return ['App\Data\TuneData', 'App\Particle\Operations\SearchTunes'];
+    }
+
+    private function routeFor(string $method, string $uri): string
+    {
+        return Route::getRoutes()->match(\Illuminate\Http\Request::create($uri, $method))->uri();
+    }
+
+    public function test_an_omitted_model_whose_derived_class_does_not_exist_is_refused_naming_both_ways_out(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-op', ['name' => 'Refund', '--resource' => 'plans'])
+            ->expectsOutputToContain('Name the model with --model, or declare the operation subject-free with --no-subject.')
+            ->assertFailed();
+
+        $this->assertFileDoesNotExist($this->host.'/app/Particle/Operations/Refund.php');
+    }
+
+    public function test_output_names_an_existing_class_and_writes_no_output_class(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Stanza', '--model' => 'Lyric'])->assertSuccessful();
+        $this->artisan('splicewire:beam:make:particle-op', [
+            'name' => 'ResolveStanza', '--kind' => 'read', '--resource' => 'stanzas', '--model' => 'Lyric', '--output' => 'App\Data\StanzaData',
+        ])->assertSuccessful();
+
+        $op = $this->read('app/Particle/Operations/ResolveStanza.php');
+
+        $this->assertStringContainsString('output: StanzaData::class,', $op);
+        $this->assertStringContainsString('use App\Data\StanzaData;', $op);
+        $this->assertFileDoesNotExist($this->host.'/app/Data/ResolveStanzaOutputData.php', 'nothing for the next step to delete');
+        $this->assertFileExists($this->host.'/app/Data/ResolveStanzaInputData.php');
+    }
+
+    public function test_output_naming_a_class_that_does_not_exist_or_on_a_stream_or_task_is_refused(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-op', ['name' => 'Ghost', '--resource' => 'lyrics', '--model' => 'Lyric', '--output' => 'App\Data\NopeData'])
+            ->assertFailed();
+        $this->artisan('splicewire:beam:make:particle-op', ['name' => 'Flow', '--kind' => 'stream', '--resource' => 'lyrics', '--model' => 'Lyric', '--output' => 'App\Models\Lyric'])
+            ->assertFailed();
+        $this->artisan('splicewire:beam:make:particle-op', ['name' => 'Batch', '--kind' => 'task', '--resource' => 'lyrics', '--no-subject' => true])
+            ->assertFailed();
+
+        foreach (['Ghost', 'Flow', 'Batch'] as $name) {
+            $this->assertFileDoesNotExist($this->host."/app/Particle/Operations/{$name}.php");
+        }
+    }
 
     private function read(string $relative): string
     {

@@ -30,7 +30,10 @@ Three legal declaration sites — no fourth:
 
 Don't hand-roll: `splicewire:beam:make:particle-resource` and `splicewire:beam:make:particle-op`
 emit the attribute with every SHAPE slot filled (`input:`, `output:`, `ability:`, and on an op `affordance:` — a default-valued slot such as `method:` or `signed:` is deliberately omitted, because an omission and a decision must not be spelled the same), the classes those slots name, and the
-`Particle::mount()` / `Particle::ops()` mount line to paste into the host's route file. For the third
+`Particle::mount()` / `Particle::ops()` mount line to paste into the host's route file. `data:` is not a shape slot:
+omitted, it defaults to the annotated class (`AttributedParticleDiscovery:164`), and a generator omits a self-naming
+`data:` (tutorial-dx 06). A `--no-subject` op's mount line is printed with its placement: above the resource's `{id}`
+routes (the ⚠️ below). For the third
 site, `splicewire:beam:make:page {realm}/{name}` emits an Inertia page's `#[TypeScript]` props Data class, the
 invokable action carrying `#[ResponseFromData]` (`--request=<Data>` adds `#[RequestFromData]`) that renders a Data
 object, the typed `.tsx` page, and the route line.

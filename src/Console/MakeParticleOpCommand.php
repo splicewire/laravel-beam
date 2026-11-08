@@ -137,6 +137,13 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
                 : Str::studly(Str::singular(str_replace('-', '_', $this->resolvedResource)))
         );
 
+        // tutorial-dx 06: refuse, before anything is written, what would emit an unchecked or contradictory declaration.
+        if (($refusal = $this->intentRefusal($kind, is_string($model) && $model !== '')) !== null) {
+            $this->components->error($refusal);
+
+            return self::FAILURE;
+        }
+
         $ability = $this->option('ability');
         $this->resolvedAbility = is_string($ability) && $ability !== ''
             ? $ability
@@ -168,7 +175,9 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
         }
 
         $this->inputClass = $this->dataNamespace().'\\'.$base.'InputData';
-        $this->outputClass = $this->dataNamespace().'\\'.$base.'OutputData';
+        // `--output` names a class that already exists, so no output class is emitted for the next step to delete.
+        $named = $this->namedOutput();
+        $this->outputClass = $named ?? $this->dataNamespace().'\\'.$base.'OutputData';
 
         if (parent::handle() === false) {
             return self::FAILURE;
@@ -183,6 +192,97 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             ),
         ]);
 
+        if ($named === null) {
+            $this->writeOutputCompanion($kind);
+        }
+
+        $this->report(sprintf(
+            "Particle::ops('%s', '%s', [%s::class]);",
+            $this->resolvedResource,
+            $this->resolvedResource,
+            class_basename($qualified),
+        ));
+
+        // A subject-free op's URL is the flat `{uri}/{op}`, the same shape as the resource's `{uri}/{id}`, and Laravel
+        // matches the first registered: mounted below an `{id}` route it is swallowed silently (particle doctrine).
+        if ($this->option('no-subject')) {
+            $this->components->warn($this->placementWarning());
+        }
+
+        return $this->verified();
+    }
+
+    /**
+     * tutorial-dx 06: why this run must not write anything, or null. An omitted `--model` is derived from the resource
+     * key, and a derived model that does not exist would be written as an unchecked `use App\Models\…;` (the tutorial's
+     * `PurchasePlan` on `plans`, which has no `Plan`); an explicit `--model` is the author's decision and is kept as
+     * given. `--no-subject` and `--output` fit the read/write stub only.
+     */
+    protected function intentRefusal(OperationKind $kind, bool $modelGiven): ?string
+    {
+        $singleOutput = in_array($kind, [OperationKind::Read, OperationKind::Write], true);
+
+        if ($this->option('no-subject') && ! $singleOutput) {
+            return sprintf('--no-subject applies to read and write operations; a %s operation\'s handler works on its subject.', $kind->value);
+        }
+
+        $output = $this->option('output');
+        if (is_string($output) && $output !== '') {
+            if (! $singleOutput) {
+                return sprintf('--output names one Data class, which a read or write operation declares; a %s operation declares its own output shape.', $kind->value);
+            }
+            if (! $this->classExistsInHost($this->qualifyOutput($output))) {
+                return sprintf('--output names [%s], which does not exist. Name an existing Data class, or omit --output to emit one.', $this->qualifyOutput($output));
+            }
+        }
+
+        if (! $modelGiven && ! $this->option('no-subject') && ! $this->classExistsInHost($this->resolvedModel)) {
+            return sprintf(
+                'No --model was given, and the model derived from the resource key, [%s], does not exist. Name the model '
+                .'with --model, or declare the operation subject-free with --no-subject.',
+                $this->resolvedModel,
+            );
+        }
+
+        return null;
+    }
+
+    /** Where a subject-free op's mount line must go, printed with it and written into the class's docblock. */
+    protected function placementWarning(): string
+    {
+        return sprintf(
+            "Mount this line ABOVE Particle::mount('%s', …) and any other '%s/{id}' route: its URL is the flat %s/%s, which an "
+            .'earlier {id} route on the same method (a GET mount, say) matches first and answers instead, silently.',
+            $this->resolvedResource,
+            $this->resolvedResource,
+            $this->resolvedResource,
+            $this->resolvedOpName,
+        );
+    }
+
+    /** The `--output` class, qualified, or null to emit one. */
+    protected function namedOutput(): ?string
+    {
+        $output = $this->option('output');
+
+        return is_string($output) && $output !== '' ? $this->qualifyOutput($output) : null;
+    }
+
+    protected function qualifyOutput(string $output): string
+    {
+        $output = ltrim($output, '\\');
+
+        return str_contains($output, '\\') ? $output : $this->dataNamespace().'\\'.$output;
+    }
+
+    /** Loaded or autoloadable, or a file at the path the host's root namespace maps it to. */
+    protected function classExistsInHost(string $class): bool
+    {
+        return class_exists($class) || $this->files->exists($this->getPath($class));
+    }
+
+    protected function writeOutputCompanion(OperationKind $kind): void
+    {
         $this->writeCompanion('stubs/particle-data.stub', $this->outputClass, [
             'purpose' => $kind === OperationKind::Stream
                 ? sprintf(
@@ -196,15 +296,6 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
                     $this->resolvedResource,
                 ),
         ]);
-
-        $this->report(sprintf(
-            "Particle::ops('%s', '%s', [%s::class]);",
-            $this->resolvedResource,
-            $this->resolvedResource,
-            class_basename($qualified),
-        ));
-
-        return $this->verified();
     }
 
     /**
@@ -241,6 +332,29 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             'namespacedInputClass' => $this->inputClass,
             'outputClass' => class_basename($this->outputClass),
             'namespacedOutputClass' => $this->outputClass,
+            // tutorial-dx 06 (the read/write stub): a subject-free op declares it, imports no model and takes `mixed $subject`
+            // (null at run time); an `--output` class is built from what the op has, not from a placeholder it lacks.
+            ...$this->subjectTokens(),
+        ];
+    }
+
+    /** @return array<string, string> */
+    protected function subjectTokens(): array
+    {
+        $noSubject = (bool) $this->option('no-subject');
+        $output = class_basename($this->outputClass);
+
+        return [
+            'modelImport' => $noSubject ? '' : 'use '.$this->resolvedModel.";\n",
+            'noSubjectImport' => $noSubject ? "use Splicewire\\Beam\\Particle\\Subject\\NoSubject;\n" : '',
+            'subjectSlots' => $noSubject ? "    subject: NoSubject::class,\n    abilityModel: false,\n" : '',
+            'subjectParam' => $noSubject ? 'mixed $subject' : class_basename($this->resolvedModel).' $model',
+            'mountPlacement' => $noSubject ? ' * '.wordwrap($this->placementWarning(), 110, "\n * ")."\n *\n" : '',
+            'outputReturn' => match (true) {
+                $this->namedOutput() === null => "new {$output}(placeholder: \$input->placeholder)",
+                $noSubject => "{$output}::from(\$input)",
+                default => "{$output}::from(\$model)",
+            },
         ];
     }
 
@@ -259,6 +373,8 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             ['event', 'e', InputOption::VALUE_REQUIRED, 'Stream only: the wire event name the output map is keyed by (default: <name>_status)'],
             ['data-namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the emitted input/output Data classes (default: App\Data)'],
             ['force', 'f', InputOption::VALUE_NONE, 'Overwrite the operation class if it already exists'],
+            ['no-subject', null, InputOption::VALUE_NONE, 'Read/write only: a collection-level op (subject: NoSubject::class, abilityModel: false); no model is imported and handle() takes mixed $subject'],
+            ['output', null, InputOption::VALUE_REQUIRED, 'Read/write only: name an EXISTING Data class as output: instead of emitting <Name>OutputData (a bare name resolves under the data namespace)'],
         ];
     }
 }
