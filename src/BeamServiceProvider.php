@@ -117,6 +117,7 @@ use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UndeclaredOperationSummaryAudit;
 use Splicewire\Beam\Doctor\UndeclaredOutputAudit;
 use Splicewire\Beam\Doctor\UndeclaredRegistryShapeAudit;
+use Splicewire\Beam\Doctor\UndefinedEntitlementKeyAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Doctor\UngatedWriteAudit;
@@ -1138,6 +1139,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // fourteen shipped endpoints. Registry-side rather than static: the question is what THIS host
         // mounted, and the count is the gate the `null` → derived-permission-name flip waits on.
         $manifest->register('splicewire/laravel-beam', UngatedOperationAudit::class);
+        // tutorial-dx 04: an `entitlement:{key}` referenced but known to no source. Static and advisory: the deny stands,
+        // this only names it, and every finding says which references it cannot see.
+        $manifest->register('splicewire/laravel-beam', UndefinedEntitlementKeyAudit::class);
         // app-walkthrough APP-08 (APP-11): the hand-written trio write routes nothing gates. Advisory, per host.
         $manifest->register('splicewire/laravel-beam', UngatedWriteAudit::class);
         $manifest->register('splicewire/laravel-beam', IdentifierLabelAudit::class);
