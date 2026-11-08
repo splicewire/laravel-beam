@@ -675,10 +675,10 @@ class ParticleGeneratorTest extends TestCase
 
     public function test_public_names_the_read_class_as_the_public_read(): void
     {
-        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Hook', '--model' => 'Lyric', '--public' => true])
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Riff', '--model' => 'Lyric', '--public' => true])
             ->assertSuccessful();
 
-        $this->assertStringContainsString('publicRead: HookData::class,', $this->read('app/Data/HookData.php'));
+        $this->assertStringContainsString('publicRead: RiffData::class,', $this->read('app/Data/RiffData.php'));
     }
 
     public function test_no_subject_declares_no_subject_imports_no_model_and_takes_mixed_subject(): void
@@ -698,8 +698,7 @@ class ParticleGeneratorTest extends TestCase
     public function test_an_omitted_model_whose_derived_class_does_not_exist_is_refused_naming_both_ways_out(): void
     {
         $this->artisan('splicewire:beam:make:particle-op', ['name' => 'Refund', '--resource' => 'plans'])
-            ->expectsOutputToContain('--model')
-            ->expectsOutputToContain('--no-subject')
+            ->expectsOutputToContain('Name the model with --model, or declare the operation subject-free with --no-subject.')
             ->assertFailed();
 
         $this->assertFileDoesNotExist($this->host.'/app/Particle/Operations/Refund.php');

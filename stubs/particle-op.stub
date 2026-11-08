@@ -3,12 +3,11 @@
 namespace {{ namespace }};
 
 use {{ namespacedInputClass }};
-use {{ namespacedModel }};
-use {{ namespacedOutputClass }};
+{{ modelImport }}use {{ namespacedOutputClass }};
 use Illuminate\Http\Request;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\OperationKind;
-
+{{ noSubjectImport }}
 /**
  * The `{{ opName }}` operation on the `{{ resource }}` particle resource — declaration and host code in one
  * class, so it registers with no provider glue.
@@ -44,14 +43,14 @@ use Splicewire\Beam\Particle\OperationKind;
     affordance: {{ affordance }},
     input: {{ inputClass }}::class,
     output: {{ outputClass }}::class,
-)]
+{{ subjectSlots }})]
 class {{ class }}
 {
-    public static function handle({{ model }} $model, Request $request, mixed $actor): {{ outputClass }}
+    public static function handle({{ subjectParam }}, Request $request, mixed $actor): {{ outputClass }}
     {
         // The declared `input:` has already been validated by the controller; hydrate it and do the work.
         $input = {{ inputClass }}::from($request->all());
 
-        return new {{ outputClass }}(placeholder: $input->placeholder);
+        return {{ outputReturn }};
     }
 }

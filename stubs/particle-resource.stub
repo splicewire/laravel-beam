@@ -9,10 +9,10 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
 /**
  * The READ projection for the `{{ key }}` particle resource, and its declaration site.
  *
- * `data:` and `input:` are the resource's two shape slots — the read projection (this class) and the write
- * DTO ({{ inputClass }}). Both are declared HERE, before any behaviour exists, because a surface whose
- * shape is undeclared is negative space to `splicewire:beam:undeclared-surface` no matter how correct its
- * behaviour is. Filling in the properties is the next step; deleting a slot is not.
+ * The resource's two shapes are declared HERE, before any behaviour exists, because a surface whose shape is
+ * undeclared is negative space to `splicewire:beam:undeclared-surface` no matter how correct its behaviour is:
+ * the read projection is THIS class (`data:` is omitted because omitting it names the annotated class), and
+ * `input:` is the write shape, {{ inputNote }}. Filling in the properties is the next step; deleting a slot is not.
  *
  * The attribute DECLARES; the host ROUTES. Mount it from a route file:
  *
@@ -30,13 +30,13 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
 #[ParticleResource(
     key: '{{ key }}',
     backing: {{ model }}::class,
-    data: {{ class }}::class,
-    input: {{ inputClass }}::class,
+    input: {{ inputSlot }},
+    readOnly: {{ readOnly }},
 {{ sectionLine }}    // ADR-0230 Public Read — declared EXPLICITLY, never silent. A guest (a null actor) is refused on every
     // read path UNLESS this names the Data class a guest may read: `{{ class }}::class` when every field it
     // projects is public, or a narrower Data class. Leave `null` for an authenticated-only resource — do not
     // delete the slot: `splicewire:beam:doctor` counts a guest-reachable resource that declares none.
-    publicRead: null,
+    publicRead: {{ publicRead }},
 )]
 class {{ class }} extends Data
 {

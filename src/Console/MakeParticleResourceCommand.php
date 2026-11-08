@@ -124,7 +124,11 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             return self::FAILURE;
         }
 
-        $this->inputClass = $this->getNamespace($qualified).'\\'.$base.'InputData';
+        // tutorial-dx 06: `--read-only` declares no write shape (`input: false`), so there is no write DTO to emit and none
+        // for the next step to delete.
+        if (! $this->option('read-only')) {
+            $this->inputClass = $this->getNamespace($qualified).'\\'.$base.'InputData';
+        }
 
         // Resolved BEFORE anything is written: a filter vocabulary is read from the model's table, and a run that
         // cannot read it refuses whole rather than leaving a resource without the filters it was asked for.
@@ -142,10 +146,12 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             return self::FAILURE;
         }
 
-        $this->writeCompanion('stubs/particle-resource-input.stub', $this->inputClass, [
-            'key' => $this->resolvedKey,
-            'readClass' => class_basename($qualified),
-        ]);
+        if ($this->inputClass !== '') {
+            $this->writeCompanion('stubs/particle-resource-input.stub', $this->inputClass, [
+                'key' => $this->resolvedKey,
+                'readClass' => class_basename($qualified),
+            ]);
+        }
 
         if ($this->option('summary')) {
             $this->summaryClass = $this->rootNamespace().'Particle\\Summaries\\'.$base.'SummaryProvider';
@@ -165,7 +171,14 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             ]);
         }
 
-        $this->report(sprintf("Particle::mount('%s', '%s');", $this->resolvedKey, $this->resolvedKey));
+        // A bare mount mounts the verbs the declaration allows (tutorial-dx 01), so the bare line IS the matching one; the
+        // comment names those verbs so the reader sees what it mounts.
+        $this->report(sprintf(
+            "Particle::mount('%s', '%s'); // %s",
+            $this->resolvedKey,
+            $this->resolvedKey,
+            $this->option('read-only') ? 'index, show' : 'index, show, store, update, destroy',
+        ));
 
         if ($this->filterClass !== '') {
             $this->printFilterDiscovery();
@@ -209,12 +222,20 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
      */
     protected function tokens(): array
     {
+        $readClass = class_basename($this->qualifyClass($this->getNameInput()));
+        $readOnly = (bool) $this->option('read-only');
+
         return [
             'key' => $this->resolvedKey,
             'uri' => $this->resolvedKey,
             'model' => class_basename($this->resolvedModel),
             'namespacedModel' => $this->resolvedModel,
             'inputClass' => class_basename($this->inputClass),
+            // tutorial-dx 06: every decision slot written out, an omission and a decision not spelled alike.
+            'inputSlot' => $readOnly ? 'false' : class_basename($this->inputClass).'::class',
+            'inputNote' => $readOnly ? '`false`: this resource accepts no writes' : 'the write DTO '.class_basename($this->inputClass),
+            'readOnly' => $readOnly ? 'true' : 'false',
+            'publicRead' => $this->option('public') ? $readClass.'::class' : 'null',
             'sectionLine' => is_string($section = $this->option('section')) && $section !== ''
                 ? sprintf("    section: '%s',\n", $section)
                 : '',
@@ -462,6 +483,8 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             ['filters', null, InputOption::VALUE_NONE, 'Also emit App\\Data\\Filters\\<Name>FilterData from the model\'s actual table columns (#[Filterable]/#[Sortable]), naming the resource by its key'],
             ['cascade-policy', null, InputOption::VALUE_NONE, 'Print the #[UseCascadePolicy] attribute and its registrar call for the model (the generator never edits an authored model)'],
             ['section', null, InputOption::VALUE_REQUIRED, 'Declare the resource\'s section:, and warn (with a registration line) when no NavSection seats it here'],
+            ['read-only', null, InputOption::VALUE_NONE, 'Declare a read-only resource (readOnly: true, input: false) and emit no write DTO; a bare mount then mounts index and show'],
+            ['public', null, InputOption::VALUE_NONE, 'Declare the read class as the Public Read (publicRead: <Name>Data::class): a guest may read every field it projects'],
         ];
     }
 }
