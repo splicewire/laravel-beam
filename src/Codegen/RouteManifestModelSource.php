@@ -59,6 +59,12 @@ class RouteManifestModelSource
                 $meta['streams'] = $entry['streams'];
             }
 
+            // tutorial-dx 03: a write's declared input (a TS type path, or `false` for no body) rides the same
+            // facet. `CodegenModel::operation(body:)` is a structural record, not a reference to a host DTO.
+            if (array_key_exists('input', $entry) && (is_string($entry['input']) || $entry['input'] === false)) {
+                $meta['input'] = $entry['input'];
+            }
+
             $model->operation(
                 name: $name,
                 method: $methods[0] ?? 'GET',

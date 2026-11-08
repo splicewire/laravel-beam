@@ -81,7 +81,7 @@ class GenerateClientSdkCommandTest extends TestCase
 
         // The update write → useMutation with params + body, PATCH verb.
         $this->assertStringContainsString('export function useLibraryLyricsUpdate(', $hook);
-        $this->assertStringContainsString("api.patch(route('library-lyrics.update', vars.params ?? {}), vars.body)", $hook);
+        $this->assertStringContainsString("api.patch(route('library-lyrics.update', vars.params), vars.body)", $hook);
 
         // aliases.ts — the friendly non-namespaced re-export.
         $aliases = file_get_contents($this->outDir.'/aliases.ts');

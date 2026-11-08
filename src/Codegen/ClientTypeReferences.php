@@ -24,6 +24,10 @@ final class ClientTypeReferences
             if (isset($operation['returns']['ref'])) {
                 $references[] = $operation['returns']['ref'];
             }
+            // tutorial-dx 03: a mutation's body type is resolved (and must be emitted) exactly as its return type is.
+            if (is_string($operation['meta']['input'] ?? null)) {
+                $references[] = $operation['meta']['input'];
+            }
             foreach ($operation['meta']['streams'] ?? [] as $variants) {
                 array_push($references, ...$variants);
             }

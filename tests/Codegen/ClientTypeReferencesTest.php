@@ -40,7 +40,7 @@ class ClientTypeReferencesTest extends TestCase
         parent::setUp();
         $this->directory = sys_get_temp_dir().'/beam-writer-client-'.uniqid();
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
-            key: 'writer-fixtures', backing: Model::class, data: WriterRootData::class,
+            key: 'writer-fixtures', backing: Model::class, data: WriterRootData::class, input: WriterInputData::class,
         ));
     }
 
@@ -70,7 +70,7 @@ class ClientTypeReferencesTest extends TestCase
 
         return ['operations' => [
             ['name' => 'examples.index', 'path' => '/examples', 'method' => 'GET', 'returns' => ['ref' => $ref], 'returnsMany' => true],
-            ['name' => 'examples.save', 'path' => '/examples', 'method' => 'POST', 'returns' => ['ref' => $ref]],
+            ['name' => 'examples.save', 'path' => '/examples/{id}', 'method' => 'POST', 'returns' => ['ref' => $ref], 'meta' => ['input' => str_replace('\\', '.', WriterInputData::class)]],
             ['name' => 'examples.events', 'path' => '/examples/events', 'method' => 'GET', 'meta' => ['streams' => ['changed' => [$ref]]]],
         ]];
     }
@@ -115,6 +115,25 @@ class ClientTypeReferencesTest extends TestCase
         config()->set('beam.client.emit_stores', false);
         $this->assertSame(0, Artisan::call('splicewire:beam:generate:client'));
         $this->assertStringContainsString('import("../types/Wire/Results").RenamedResult', file_get_contents($this->directory.'/sdk/aliases.ts'));
+    }
+
+    /** tutorial-dx 03: a mutation's body type resolves through the host's writer exactly as its return type does. */
+    public function test_a_mutations_input_type_follows_the_same_writer(): void
+    {
+        foreach ([true, false] as $modules) {
+            $refs = (new ClientTypeReferences)->resolve($this->model(), $this->directory.'/sdk', $this->config($modules));
+            $files = (new TsClientGenerator)->invoke(['model' => $this->model(), 'options' => ['type_references' => $refs]])['files'];
+            $input = $modules ? 'import("../../types/Wire/Inputs").WriterInput' : 'Wire.Inputs.WriterInput';
+            $this->assertStringContainsString("export type ExamplesSaveVars = { params: { id: string | number }; body: {$input} };", $files['hooks/examples.ts'], json_encode($refs));
+        }
+    }
+
+    public function test_an_input_dto_the_transformer_does_not_emit_fails_loud(): void
+    {
+        $model = ['operations' => [['name' => 'examples.save', 'path' => '/examples', 'method' => 'POST', 'meta' => ['input' => str_replace('\\', '.', WriterOrphanInputData::class)]]]];
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage(WriterOrphanInputData::class);
+        (new ClientTypeReferences)->resolve($model, $this->directory.'/sdk', $this->config(true));
     }
 
     public function test_missing_export_fails_before_the_client_can_emit_dangling_types(): void
@@ -181,6 +200,19 @@ TS);
 class WriterRootData extends Data
 {
     public function __construct(public WriterNestedData $nested) {}
+}
+
+#[TypeScript(name: 'WriterInput', location: ['Wire', 'Inputs'])]
+class WriterInputData extends Data
+{
+    public function __construct(public string $title, public WriterState $state) {}
+}
+
+/** Declared nowhere the transformer looks: no resource or operation names it, and the scan directory is empty. */
+#[TypeScript]
+class WriterOrphanInputData extends Data
+{
+    public function __construct(public string $title) {}
 }
 
 #[TypeScript]

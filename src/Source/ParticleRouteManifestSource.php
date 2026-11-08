@@ -92,6 +92,14 @@ class ParticleRouteManifestSource implements RouteManifestSource
                 $entry['unresolved'] = true;
             }
 
+            // tutorial-dx 03: a write route's declared input, three-state as declared — a Data class (the mutation's
+            // `body` type), `false` (it sends none), or no key when undeclared (the body stays `unknown`).
+            $input = $this->inputFor($route, $name);
+
+            if ($input !== null) {
+                $entry['input'] = $input === false ? false : $this->toTsType($input);
+            }
+
             $manifest[$name] = $entry;
         }
 
@@ -192,6 +200,35 @@ class ParticleRouteManifestSource implements RouteManifestSource
         }
 
         return $this->operations->find($resource, $name)?->output;
+    }
+
+    /**
+     * The input a write route accepts (tutorial-dx 03): an operation's own `input:` slot, or for a resource's
+     * `store`/`update` the resource's `input:` (both go through {@see ParticleController::parseInput()}). Null for
+     * a read, a destroy, an unregistered declaration, or an undeclared input.
+     *
+     * @return class-string|false|null
+     */
+    private function inputFor(Route $route, string $name): string|false|null
+    {
+        if (! array_intersect($this->readMethods($route), ['POST', 'PUT', 'PATCH'])) {
+            return null;
+        }
+
+        $resource = $route->defaults[ParticleOperationController::RESOURCE] ?? null;
+        $operation = $route->defaults[ParticleOperationController::NAME] ?? null;
+
+        if (is_string($resource) && is_string($operation)) {
+            return $this->operations->find($resource, $operation)?->input;
+        }
+
+        $key = $route->defaults[ParticleController::RESOURCE] ?? null;
+
+        if (! is_string($key) || ! in_array($this->verbOf($name), ['store', 'update'], true) || ! $this->registry->has($key)) {
+            return null;
+        }
+
+        return $this->registry->get($key)->input;
     }
 
     /**

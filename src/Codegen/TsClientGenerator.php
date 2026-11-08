@@ -115,6 +115,10 @@ class TsClientGenerator implements Generator
                 $entry['streams'] = $op['meta']['streams'];
             }
 
+            if (array_key_exists('input', $op['meta'] ?? [])) {
+                $entry['input'] = $op['meta']['input'];
+            }
+
             if (($op['meta']['realm'] ?? 'tenant') === 'operator') {
                 $admin[$op['name']] = $entry;
             } else {
@@ -302,6 +306,8 @@ class TsClientGenerator implements Generator
                 'domainKey' => $domainSlug,
                 'hookName' => 'use'.Str::studly($domainSlug).Str::studly($action),
                 'params' => $paramMatches[1],
+                // tutorial-dx 03: a TS type path, false (no body) or null (undeclared: the body stays unknown).
+                'input' => $entry['input'] ?? null,
                 'isWrite' => (bool) array_intersect($entry['methods'], ['POST', 'PUT', 'PATCH', 'DELETE']),
                 'writeVerb' => strtolower((string) (array_values(array_intersect(
                     ['POST', 'PUT', 'PATCH', 'DELETE'],
@@ -414,7 +420,7 @@ class TsClientGenerator implements Generator
     private function renderStreamHook(array $e, string $client, string $routeFn): string
     {
         $hasParams = ! empty($e['params']);
-        $sig = $hasParams ? 'params: Record<string, string | number>' : '';
+        $sig = $hasParams ? 'params: '.$this->paramsType($e['params']) : '';
         $routeCall = $hasParams ? "{$routeFn}('{$e['name']}', params)" : "{$routeFn}('{$e['name']}')";
 
         return "export function {$e['hookName']}({$sig}) {\n"
@@ -469,8 +475,8 @@ class TsClientGenerator implements Generator
         }
 
         if ($hasMutation) {
-            $out .= "type MutationVars = { params?: Record<string, string | number>; body?: unknown };\n"
-                ."type MutationOpts<T> = Omit<Partial<UseMutationOptions<T, Error, MutationVars>>, 'mutationFn'>;\n";
+            // tutorial-dx 03: each mutation names its own variables type (see renderHook), so the options carry it.
+            $out .= "type MutationOpts<T, V> = Omit<Partial<UseMutationOptions<T, Error, V>>, 'mutationFn'>;\n";
         }
 
         return $out === '' ? '' : $out."\n";
@@ -485,7 +491,7 @@ class TsClientGenerator implements Generator
         $hasParams = ! empty($e['params']);
 
         if (! $e['isWrite']) {
-            $params = $hasParams ? 'params: Record<string, string | number>, ' : '';
+            $params = $hasParams ? 'params: '.$this->paramsType($e['params']).', ' : '';
             $sig = "{$params}options?: QueryOpts<{$type}>";
             $key = $hasParams ? "['{$e['name']}', params]" : "['{$e['name']}']";
             $routeCall = $hasParams ? "{$routeFn}('{$e['name']}', params)" : "{$routeFn}('{$e['name']}')";
@@ -502,17 +508,33 @@ class TsClientGenerator implements Generator
                 ."}\n";
         }
 
-        $routeCall = $hasParams ? "{$routeFn}('{$e['name']}', vars.params ?? {})" : "{$routeFn}('{$e['name']}')";
-        $call = $e['writeVerb'] === 'delete'
-            ? "{$client}.delete({$routeCall})"
-            : "{$client}.{$e['writeVerb']}({$routeCall}, vars.body)";
+        // tutorial-dx 03: the mutation's OWN variables — the path's parameters by name (required when the path has
+        // any), and a body typed from the route's declared input: a Data class types it, `false` sends none, an
+        // undeclared input stays `unknown`. A DELETE sends no body. Nothing to send at all: the variables are `void`.
+        $fields = [];
+        if ($hasParams) {
+            $fields[] = 'params: '.$this->paramsType($e['params']);
+        }
+        $input = $e['input'] ?? null;
+        $sendsBody = $e['writeVerb'] !== 'delete' && $input !== false;
+        if ($sendsBody) {
+            $fields[] = is_string($input) ? 'body: '.$this->typeReference($input) : 'body?: unknown';
+        }
+        $varsType = 'void';
+        $alias = '';
+        if ($fields !== []) {
+            $varsType = substr((string) $e['hookName'], 3).'Vars';
+            $alias = "export type {$varsType} = { ".implode('; ', $fields)." };\n";
+        }
 
-        // A paramless DELETE reads nothing off vars — omit the parameter so the emitted hook
-        // survives `noUnusedParameters` (mutationFn may legally take fewer args than the
-        // MutationVars contract declares; callers still type their variables through MutationOpts).
-        $varsParam = str_contains($call, 'vars.') ? 'vars: MutationVars' : '';
+        $routeCall = $hasParams ? "{$routeFn}('{$e['name']}', vars.params)" : "{$routeFn}('{$e['name']}')";
+        $call = $sendsBody
+            ? "{$client}.{$e['writeVerb']}({$routeCall}, vars.body)"
+            : "{$client}.{$e['writeVerb']}({$routeCall})";
+        $varsParam = $fields !== [] ? "vars: {$varsType}" : '';
 
-        return "export function {$e['hookName']}(options?: MutationOpts<{$type}>) {\n"
+        return $alias
+            ."export function {$e['hookName']}(options?: MutationOpts<{$type}, {$varsType}>) {\n"
             ."    return useMutation({\n"
             ."        mutationFn: async ({$varsParam}) => {\n"
             ."            const res = await {$call};\n"
@@ -656,6 +678,17 @@ class TsClientGenerator implements Generator
     private function hasMutation(array $entries): bool
     {
         return (bool) array_filter($entries, fn ($e) => $e['isWrite']);
+    }
+
+    /**
+     * A path's parameters as a named record (tutorial-dx 03): `{post}/{comment}` → `{ post: string | number; comment:
+     * string | number }`, so a misspelt or missing parameter fails the caller's compile, not the request.
+     *
+     * @param  list<string>  $params
+     */
+    private function paramsType(array $params): string
+    {
+        return '{ '.implode('; ', array_map(fn (string $p) => "{$p}: string | number", array_values(array_unique($params)))).' }';
     }
 
     private function tsKey(string $key): string
