@@ -372,6 +372,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // {@see self::registerCentralConnectionAlias()}
         $this->registerCentralConnectionAlias();
 
+        // tutorial-dx 03: an operation's context exists only while that operation validates its input (the controller
+        // binds the instance for that window). Anywhere else, refuse to build one rather than autowire a context with no
+        // subject, so a `rules(OperationContext $operation)` used outside an operation fails loudly instead of lying.
+        $this->app->bind(\Splicewire\Beam\Particle\OperationContext::class, fn () => throw new \LogicException(
+            'An OperationContext exists only while a particle operation validates its input: a rules() that asks for one '
+            .'is being resolved outside an operation (tutorial-dx 03).'
+        ));
+
         // The Beam instance (beam-facade ticket 05) — the object the Splicewire\Beam\Facades\Beam facade
         // proxies to. FIRST, because this provider itself calls Beam::table(...) a few lines down and the
         // facade resolves through this binding.

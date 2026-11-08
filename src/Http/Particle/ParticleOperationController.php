@@ -2,11 +2,13 @@
 
 namespace Splicewire\Beam\Http\Particle;
 
+use Closure;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
+use LogicException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\AbilityResolver;
@@ -14,6 +16,8 @@ use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Data\ResponseBody;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
 use Splicewire\Beam\Particle\Emitter;
+use Splicewire\Beam\Particle\OperationCall;
+use Splicewire\Beam\Particle\OperationContext;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -169,14 +173,24 @@ class ParticleOperationController extends Controller
 
         $this->format($operation, $request);
 
-        $this->validateInput($operation, $request);
+        // tutorial-dx 03: the input's `rules()` may type-hint this context (subject, request, actor) while it validates;
+        // a handler that opts in with ONE OperationCall parameter then gets {context, validated DTO}. Every other handler
+        // keeps the legacy (model, request, actor[, emit]) call, unchanged.
+        $context = new OperationContext($model, $request, $request->user());
+        $call = $this->withOperationContext($context, function () use ($operation, $request, $context): ?OperationCall {
+            $this->validateInput($operation, $request);
+
+            return OperationCall::wantedBy($operation->handle)
+                ? new OperationCall($context, $this->validatedInput($operation, $request))
+                : null;
+        });
 
         return match ($operation->kind) {
-            OperationKind::Task => $this->runTask($operation, $model, $request),
-            OperationKind::Stream => $this->runStream($operation, $model, $request),
+            OperationKind::Task => $this->runTask($operation, $model, $request, $call),
+            OperationKind::Stream => $this->runStream($operation, $model, $request, $call),
             default => $this->finish(
                 $operation,
-                ($operation->handle)($model, $request, $request->user()),
+                $call !== null ? ($operation->handle)($call) : ($operation->handle)($model, $request, $request->user()),
                 $model,
             ),
         };
@@ -244,6 +258,64 @@ class ParticleOperationController extends Controller
      *   - `null` is undeclared and stays untouched, which is the state every operation is in until the
      *     declaration sweep reaches it. {@see ParticleOperation} carries the schedule for closing it.
      */
+    /**
+     * Run `$run` with the operation's context bound, so an input's `rules(OperationContext $operation)` sees it; the
+     * previous binding (an operation run inside another) is restored afterwards. Outside this window the container
+     * refuses to build one ({@see \Splicewire\Beam\BeamServiceProvider}), so no `rules()` meets a context with no subject.
+     */
+    protected function withOperationContext(OperationContext $context, Closure $run): mixed
+    {
+        $container = app();
+        $previous = rescue(fn () => $container->make(OperationContext::class), null, false);
+        $container->instance(OperationContext::class, $context);
+
+        try {
+            return $run();
+        } finally {
+            $previous !== null ? $container->instance(OperationContext::class, $previous) : $container->forgetInstance(OperationContext::class);
+        }
+    }
+
+    /**
+     * A Task's job is serialized onto a queue, so it must carry domain values, never the per-request OperationCall, its
+     * OperationContext or the Request (tutorial-dx 03). Its properties are looked through (two levels, arrays included)
+     * and a job holding any of them is refused before dispatch, naming the fix.
+     */
+    protected function refuseCapturedCall(ParticleOperation $operation, mixed $job): void
+    {
+        $captures = function (mixed $value, int $depth) use (&$captures): bool {
+            if ($value instanceof OperationCall || $value instanceof OperationContext || $value instanceof Request) {
+                return true;
+            }
+            if ($depth >= 2 || $value instanceof Closure || (! is_array($value) && ! is_object($value))) {
+                return false;
+            }
+            foreach ((array) $value as $item) { // (array) on an object exposes its protected and private properties too
+                if ($captures($item, $depth + 1)) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        if (is_object($job) && $captures($job, 0)) {
+            throw new LogicException(sprintf(
+                'The job [%s] of operation [%s.%s] must not capture the per-request OperationCall, its OperationContext or the '
+                .'Request: a Task job is queued. Copy the domain values it needs into the job instead (tutorial-dx 03).',
+                $job::class, $operation->resource, $operation->name,
+            ));
+        }
+    }
+
+    /** The validated input DTO an opting-in handler receives, made once and after validation; null without a Data `input:`. */
+    protected function validatedInput(ParticleOperation $operation, Request $request): ?Data
+    {
+        $input = $operation->input;
+
+        return is_string($input) && is_subclass_of($input, Data::class) ? $input::from($request->all()) : null;
+    }
+
     protected function validateInput(ParticleOperation $operation, Request $request): void
     {
         $input = $operation->input;
@@ -351,10 +423,13 @@ class ParticleOperationController extends Controller
      * `($event, $data)` frames; beam-core owns the `StreamedResponse` + SSE headers, so the plumbing every
      * hand-rolled streaming action copied (CircuitController::run/resume) lives here once (ADR-0160 §2/§3).
      */
-    protected function runStream(ParticleOperation $operation, mixed $model, Request $request): mixed
+    protected function runStream(ParticleOperation $operation, mixed $model, Request $request, ?OperationCall $call = null): mixed
     {
+        // An opting-in Stream handler gets the call and the emitter as its second argument (tutorial-dx 03).
         $stream = SseEmitter::stream(
-            fn ($emit) => ($operation->handle)($model, $request, $request->user(), $emit),
+            fn ($emit) => $call !== null
+                ? ($operation->handle)($call, $emit)
+                : ($operation->handle)($model, $request, $request->user(), $emit),
         );
 
         // Consulted here too, so `respond` means the same thing on all four kinds. A stream's payload IS its
@@ -367,9 +442,13 @@ class ParticleOperationController extends Controller
      * Dispatch a task's job sync or async per `?async` (default async). The SAME operation runs either way
      * with no host branching — the host's `handle` just returns the job.
      */
-    protected function runTask(ParticleOperation $operation, mixed $model, Request $request): mixed
+    protected function runTask(ParticleOperation $operation, mixed $model, Request $request, ?OperationCall $call = null): mixed
     {
-        $job = ($operation->handle)($model, $request, $request->user());
+        $job = $call !== null ? ($operation->handle)($call) : ($operation->handle)($model, $request, $request->user());
+
+        if ($call !== null) {
+            $this->refuseCapturedCall($operation, $job);
+        }
         $async = $request->boolean(static::ASYNC, true);
 
         if ($async) {
