@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\Backing\CollectionBacking;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\Fixtures\ReadGuard\Gadget;
@@ -117,6 +118,37 @@ class SignedInPublicReadFallbackTest extends TestCase
         $this->assertCount(2, $this->getJson('/gadgets')->assertOk()->json('data'));
     }
 
+    /**
+     * orch-peer's REVISE: a streams-only backing has no query to narrow. streamedIndex() hands it the raw facets and serves
+     * its rows (pre-projected Data included) as-is, so neither the Public Read's scope, nor its filter/sort allowlist, nor
+     * its projection can be applied. A floor-bound reader is refused there, as before tutorial-dx 02, unless the floor IS
+     * the whole read: the Public Read is the resource's own Data and no public scope narrows it.
+     */
+    public function test_a_floor_bound_reader_is_refused_a_streams_only_index_the_floor_cannot_be_applied_to(): void
+    {
+        Route::get('streams', [ParticleController::class, 'index'])->defaults(ParticleController::RESOURCE, 'streams');
+        $resource = new ParticleResource(key: 'streams', backing: PrivateRowStream::class, data: FullGadgetData::class, publicRead: GadgetData::class, readOnly: true, label: 'Streams');
+        $resource->publicScope = fn ($query) => $query; // declared, and impossible to apply to a stream
+        app(ParticleResourceRegistry::class)->register($resource);
+        $this->signIn();
+
+        $this->getJson('/streams')->assertForbidden();
+        $this->getJson('/streams?filter[user_id]=2')->assertForbidden();
+        $this->assertSame([], PrivateRowStream::$filtersSeen, 'the backing was never asked, with or without a hidden-field filter');
+    }
+
+    public function test_a_floor_bound_reader_reads_a_streams_only_index_whose_floor_is_the_whole_read(): void
+    {
+        // calcucrypt's `plans` shape (PlanCatalog extends CollectionBacking): publicRead is the resource's own Data, no publicScope.
+        Route::get('catalog', [ParticleController::class, 'index'])->defaults(ParticleController::RESOURCE, 'catalog');
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(key: 'catalog', backing: OpenRowStream::class, data: GadgetData::class, publicRead: GadgetData::class, readOnly: true, label: 'Catalog'));
+        $this->signIn();
+
+        $ids = array_column($this->getJson('/catalog')->assertOk()->json('data'), 'id');
+        sort($ids); // the backing pages in its own order
+        $this->assertSame(['1', '2'], $ids);
+    }
+
     public function test_without_a_public_read_the_refused_reader_stays_refused(): void
     {
         $this->declare(publicRead: false);
@@ -136,6 +168,29 @@ class FallbackReader extends User
     protected $guarded = [];
 
     public $timestamps = false;
+}
+
+/** A streams-only backing whose rows are pre-projected and carry a private field (user_id), public and private alike. */
+class PrivateRowStream extends CollectionBacking
+{
+    /** @var array<int, array<string, mixed>> */
+    public static array $filtersSeen = [];
+
+    protected function rows(array $filters): iterable
+    {
+        self::$filtersSeen[] = $filters;
+
+        return [new FullGadgetData('1', 1), new FullGadgetData('2', 2)];
+    }
+}
+
+/** A streams-only backing whose every field is public (the Public Read is the resource's own Data). */
+class OpenRowStream extends CollectionBacking
+{
+    protected function rows(array $filters): iterable
+    {
+        return [new GadgetData('1'), new GadgetData('2')];
+    }
 }
 
 class FullGadgetData extends Data
