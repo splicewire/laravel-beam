@@ -40,6 +40,20 @@ class ResourceReadGuard
         return $context;
     }
 
+    /**
+     * ADR-0230 (0230-…md:68-69): a signed-in reader whose own read of a RECORD was refused (the model policy's `view`)
+     * still receives what the Public Read gives a guest. Binds the public floor for this request, so the record is looked
+     * up again inside the Public Read's scope and projected through its Data class. Only a resource that declares a
+     * Public Read has a floor; the caller refuses otherwise.
+     */
+    public function bindPublicFloor(ParticleResource $resource, Request $request): ReadContext
+    {
+        $context = new ReadContext(actor: $request->user(), publicProjection: true, resource: $resource->key);
+        $request->attributes->set(ReadContext::class, $context);
+
+        return $context;
+    }
+
     public function authorizeReadContext(ParticleResource $resource, Request $request): void
     {
         $verdict = $this->inspectReadFor($resource, $request, $request->user());
