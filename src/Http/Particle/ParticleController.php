@@ -132,14 +132,18 @@ class ParticleController extends Controller
         ResourceReadGuard::forApp()->inspectDeclaredAbility($resource, Gate::forUser($request->user()), $request)->authorize();
 
         // ADR-0230: a guest reads a resource only through its declared Public Read. The standalone path's
-        // denyUngatedRead() below refuses a guest without one, but a relative mount does not reach it, so
-        // the guest gate is asked here for both. A signed-in reader is untouched (kept to its own guard).
+        // read binding below refuses a guest without one, but a relative mount does not reach it, so
+        // the guest gate is asked here for both. A signed-in reader is left to the binding below.
         ResourceReadGuard::forApp()->inspectGuestReadFor($resource, $request->user())->authorize();
 
         // beam-docs-satellite 65: a standalone list whose read is gated by NOTHING fails closed here, on
         // read — never at the mount, because whether a host's mount is scoped is a host fact.
         if ($relativeQuery === null) {
-            $this->denyUngatedRead($request, $resource);
+            // ADR-0230 (0230-…md:68-69): the same decision as denyUngatedRead(), except that a signed-in reader whose own
+            // read is refused, with a Public Read declared, is bound to that floor instead of refused: the list query then
+            // narrows to the Public Read's scope and filters, and each row projects through its Data class.
+            $ctx->publicProjection = ResourceReadGuard::forApp()->bindReadContext($resource, $request)->publicProjection;
+            $ctx->resource = $resource->key;
 
             // composite-backing 04: a backing that only STREAMS has no `Builder` for the three lines
             // below to paginate, and until now that meant the whole resource was unservable over REST
@@ -147,6 +151,15 @@ class ParticleController extends Controller
             // actually need a builder; only subject resolution and a relative mount do, and both still
             // demand `QueriesRecords`. Its declared vocabulary describes the controls interpreted by the backing.
             if ($this->streamsOnly($resource)) {
+                // A stream has no query for the public floor to narrow: streamedIndex() hands the backing the raw facets
+                // and serves its rows as they come, so the Public Read's scope, filter allowlist and projection cannot be
+                // applied. A signed-in reader bound to that floor is therefore refused here, exactly as before ADR-0230's
+                // fallback (the guard's own refusal), unless the floor IS the whole read: the Public Read is the
+                // resource's own Data and no public scope narrows it (calcucrypt's PlanCatalog-backed `plans`).
+                if ($request->user() !== null && $ctx->publicProjection && ! $this->publicFloorIsTheWholeRead($resource)) {
+                    ResourceReadGuard::forApp()->inspectRead($resource, $request)->authorize();
+                }
+
                 return $this->streamedIndex($request, $resource, $ctx, $facets);
             }
         }
@@ -222,6 +235,12 @@ class ParticleController extends Controller
      * also streams (via `BacksEloquent`), and routing it here would drop the data-filters surface,
      * saved filters and the declared default sort for ~30 resources that have all three.
      */
+    /** Whether the Public Read narrows nothing: it is the resource's own Data, and no public scope narrows its rows. */
+    protected function publicFloorIsTheWholeRead(ParticleResource $resource): bool
+    {
+        return $resource->publicRead !== null && $resource->publicRead === $resource->data && $resource->publicScope === null;
+    }
+
     protected function streamsOnly(ParticleResource $resource): bool
     {
         $backing = $resource->backing();
@@ -238,7 +257,8 @@ class ParticleController extends Controller
      *
      *  - it does not apply `$resource->scope`, which is a `Closure(Builder)`. A streams-only list's row
      *    gate is the backing's own narrowing (an arm that scopes to the actor), plus the class-level
-     *    gate `denyUngatedRead()` already required of the caller before this method runs;
+     *    gate the read binding (`ResourceReadGuard::bindReadContext()`) already required of the caller before this
+     *    method runs;
      *  - it does not sort. The order is the backing's declared one (a composite's `sortKey`, descending);
      *    a `sort=` parameter naming something the arms do not page by cannot be honoured after the fact
      *    without re-reading everything, which is the defect the composite exists to remove;
@@ -310,9 +330,19 @@ class ParticleController extends Controller
         // `view` below never decides a guest's read of a resource that declares none. Signed-in reader untouched.
         ResourceReadGuard::forApp()->inspectGuestReadFor($resource, $request->user())->authorize();
         $model = $this->findParticle($resource, $this->subjectId($request, $id), $request);
-        // ADR-0230: the declared Public Read and scoped lookup admit a guest.
-        // Signed-in readers still meet the model policy.
-        if ($request->user() !== null || $resource->publicRead === null) {
+        // ADR-0230: the declared Public Read and scoped lookup admit a guest. A signed-in reader meets the model policy;
+        // refused, with a Public Read declared, they still receive what a guest would (0230-…md:68-69): the record is
+        // looked up again inside the Public Read's scope (a private record still 404s) and projected through its Data.
+        if ($request->user() !== null) {
+            $own = Gate::inspect('view', $model);
+            if ($own->denied()) {
+                if ($resource->publicRead === null) {
+                    $own->authorize();
+                }
+                ResourceReadGuard::forApp()->bindPublicFloor($resource, $request);
+                $model = $this->findParticle($resource, $this->subjectId($request, $id), $request);
+            }
+        } elseif ($resource->publicRead === null) {
             $this->authorize('view', $model);
         }
 
@@ -777,6 +807,8 @@ class ParticleController extends Controller
         }
 
         $ctx = ReadContext::detail($resource->includes, $request->user());
+        $ctx->publicProjection = ReadContext::projectsPublic($request, $resource->key);
+        $ctx->resource = $resource->key;
         $data = $this->projectRecord($resource, $model, $ctx, $this->facets($request));
 
         $backing = $resource->backing();
@@ -813,8 +845,9 @@ class ParticleController extends Controller
         // Read names the resource's OWN read projection — the "may be its own" case, every projected field is
         // public (audiostud listen-songs) — the normal projection already IS the guest's and runs unchanged,
         // including its `project()` convention. A narrower Public Read Data class is projected from the record
-        // directly. A signed-in reader always keeps the normal projection.
-        $guestPublicRead = $ctx->actor === null
+        // directly. A signed-in reader keeps the normal projection, unless their own read was refused and they read
+        // through the public floor (ADR-0230 0230-…md:68-69; $ctx->publicProjection): then they receive what a guest would.
+        $guestPublicRead = ($ctx->actor === null || $ctx->publicProjection)
             && $resource->publicRead !== null
             && $resource->publicRead !== $resource->data;
 

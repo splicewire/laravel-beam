@@ -129,7 +129,12 @@ class PublicReadGuestReadTest extends TestCase
         $this->getJson('/gadgets/2')->assertNotFound();
     }
 
-    public function test_public_guest_admission_does_not_bypass_the_signed_in_model_policy(): void
+    /**
+     * tutorial-dx 02: this test used to expect 403 for the refused signed-in reader on the PUBLIC record, which is what
+     * ADR-0230 (0230-…md:68-69) rules out ("still receives what the Public Read gives a guest"). What it protects still
+     * holds: the refused reader gets the guest's read and no more (the private record 404s, as for a guest).
+     */
+    public function test_a_refused_signed_in_reader_gets_exactly_the_guests_public_read_and_no_more(): void
     {
         $resource = $this->declare(publicRead: GadgetData::class);
         $resource->publicScope = fn ($query) => $query->where('user_id', 1);
@@ -140,7 +145,8 @@ class PublicReadGuestReadTest extends TestCase
         $this->getJson('/gadgets/1')->assertOk();
         $this->getJson('/gadgets/2')->assertNotFound();
         $this->actingAs(PublicReadActor::create(['name' => 'Ada']));
-        $this->getJson('/gadgets/1')->assertForbidden();
+        $this->getJson('/gadgets/1')->assertOk();
+        $this->getJson('/gadgets/2')->assertNotFound();
         Gate::define('view', fn (?User $actor, Gadget $record): bool => true);
         $this->getJson('/gadgets/2')->assertOk();
     }
