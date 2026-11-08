@@ -203,6 +203,12 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             class_basename($qualified),
         ));
 
+        // A subject-free op's URL is the flat `{uri}/{op}`, the same shape as the resource's `{uri}/{id}`, and Laravel
+        // matches the first registered: mounted below an `{id}` route it is swallowed silently (particle doctrine).
+        if ($this->option('no-subject')) {
+            $this->components->warn($this->placementWarning());
+        }
+
         return $this->verified();
     }
 
@@ -239,6 +245,19 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
         }
 
         return null;
+    }
+
+    /** Where a subject-free op's mount line must go, printed with it and written into the class's docblock. */
+    protected function placementWarning(): string
+    {
+        return sprintf(
+            "Mount this line ABOVE Particle::mount('%s', …) and any other '%s/{id}' route: its URL is the flat %s/%s, which an "
+            .'earlier {id} route on the same method (a GET mount, say) matches first and answers instead, silently.',
+            $this->resolvedResource,
+            $this->resolvedResource,
+            $this->resolvedResource,
+            $this->resolvedOpName,
+        );
     }
 
     /** The `--output` class, qualified, or null to emit one. */
@@ -330,6 +349,7 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             'noSubjectImport' => $noSubject ? "use Splicewire\\Beam\\Particle\\Subject\\NoSubject;\n" : '',
             'subjectSlots' => $noSubject ? "    subject: NoSubject::class,\n    abilityModel: false,\n" : '',
             'subjectParam' => $noSubject ? 'mixed $subject' : class_basename($this->resolvedModel).' $model',
+            'mountPlacement' => $noSubject ? ' * '.wordwrap($this->placementWarning(), 110, "\n * ")."\n *\n" : '',
             'outputReturn' => match (true) {
                 $this->namedOutput() === null => "new {$output}(placeholder: \$input->placeholder)",
                 $noSubject => "{$output}::from(\$input)",

@@ -30,7 +30,7 @@ use Splicewire\Beam\Particle\OperationKind;
  *
  *     Particle::ops('{{ uri }}', '{{ resource }}', [{{ class }}::class]);
  *
- * A `public static function respond(mixed $payload, {{ model }} $model): mixed` may be added as a transport
+{{ mountPlacement }} * A `public static function respond(mixed $payload, {{ model }} $model): mixed` may be added as a transport
  * override; it is optional and only needed when the payload is not the response.
  */
 #[ParticleOp(

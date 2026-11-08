@@ -695,6 +695,64 @@ class ParticleGeneratorTest extends TestCase
         $this->assertStringContainsString('public static function handle(mixed $subject, Request $request, mixed $actor)', $op);
     }
 
+    // orch-peer's REVISE (2026-11-08): a subject-free op's flat {uri}/{op} loses to an earlier {uri}/{id}.
+
+    public function test_a_no_subject_op_prints_and_documents_its_placement_above_the_id_routes(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-op', ['name' => 'SearchPlans', '--kind' => 'read', '--resource' => 'plans', '--op' => 'search', '--no-subject' => true])
+            ->expectsOutputToContain("Mount this line ABOVE Particle::mount('plans', …)")
+            ->assertSuccessful();
+
+        $docblock = str_replace("\n * ", ' ', $this->read('app/Particle/Operations/SearchPlans.php'));
+        $this->assertStringContainsString("Mount this line ABOVE Particle::mount('plans', …)", $docblock);
+        $this->assertStringContainsString('flat plans/search', $docblock);
+    }
+
+    public function test_co_mounted_below_the_resource_a_no_subject_op_is_swallowed_by_the_id_route(): void
+    {
+        [$resource, $op] = $this->tunesAndSearch();
+        // Mounted GET, as a search usually is (the doctrine's measured case): a read op's default POST has no {id} rival.
+        Route::prefix('api')->group(function () use ($op): void {
+            Particle::mount('tunes', 'tunes');
+            Particle::ops('tunes', 'tunes', [$op], ['method' => 'get']);
+        });
+
+        $this->assertSame('api/tunes/{id}', $this->routeFor('GET', '/api/tunes/search'), 'the wrong order: show answers with id = "search"');
+    }
+
+    public function test_co_mounted_in_the_printed_order_a_no_subject_op_answers_its_own_url(): void
+    {
+        [$resource, $op] = $this->tunesAndSearch();
+        Route::prefix('api')->group(function () use ($op): void {
+            Particle::ops('tunes', 'tunes', [$op], ['method' => 'get']);
+            Particle::mount('tunes', 'tunes');
+        });
+
+        $this->assertSame('api/tunes/search', $this->routeFor('GET', '/api/tunes/search'));
+        $this->assertSame('api/tunes/{id}', $this->routeFor('GET', '/api/tunes/7'), 'the resource\'s own show still answers');
+    }
+
+    /** @return array{0: class-string, 1: class-string} a generated resource and a subject-free read op on the same uri, discovered */
+    private function tunesAndSearch(): array
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Tune', '--model' => 'Lyric', '--key' => 'tunes'])->assertSuccessful();
+        $this->artisan('splicewire:beam:make:particle-op', ['name' => 'SearchTunes', '--kind' => 'read', '--resource' => 'tunes', '--op' => 'search', '--no-subject' => true])->assertSuccessful();
+
+        $this->load('App\Data\TuneInputData', 'app/Data/TuneInputData.php');
+        $this->load('App\Data\TuneData', 'app/Data/TuneData.php');
+        $this->load('App\Data\SearchTunesInputData', 'app/Data/SearchTunesInputData.php');
+        $this->load('App\Data\SearchTunesOutputData', 'app/Data/SearchTunesOutputData.php');
+        $this->load('App\Particle\Operations\SearchTunes', 'app/Particle/Operations/SearchTunes.php');
+        $this->app->make(AttributedParticleDiscovery::class)->discover(classes: ['App\Data\TuneData', 'App\Particle\Operations\SearchTunes']);
+
+        return ['App\Data\TuneData', 'App\Particle\Operations\SearchTunes'];
+    }
+
+    private function routeFor(string $method, string $uri): string
+    {
+        return Route::getRoutes()->match(\Illuminate\Http\Request::create($uri, $method))->uri();
+    }
+
     public function test_an_omitted_model_whose_derived_class_does_not_exist_is_refused_naming_both_ways_out(): void
     {
         $this->artisan('splicewire:beam:make:particle-op', ['name' => 'Refund', '--resource' => 'plans'])
