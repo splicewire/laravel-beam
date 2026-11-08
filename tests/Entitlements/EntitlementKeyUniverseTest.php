@@ -81,6 +81,34 @@ class EntitlementKeyUniverseTest extends TestCase
         $this->assertFalse(Gate::allows('entitlement:late.key'), 'beam\'s callback returned null, so the host\'s refusal stands');
     }
 
+    // ── orch-peer's REVISE (2026-11-08): ADR-0001 against a later allow-all before callback ─────────────────────
+
+    public function test_an_unknown_key_stays_denied_even_against_a_later_allow_all_before_callback(): void
+    {
+        $this->resolverHolding(['calculators.nope']);
+        Gate::before(fn ($user = null, $ability = null) => true); // a super-admin / wildcard, registered after beam's
+
+        $this->assertFalse(Gate::allows('entitlement:calculators.nope'), 'a key nothing declares denies everyone');
+        $this->assertFalse($this->user()->can('entitlement:calculators.nope'));
+        $this->assertTrue(Gate::allows('some-other-ability'), 'beam answers only for entitlement:* keys');
+    }
+
+    public function test_a_known_key_still_defers_to_a_later_allow_all_before_callback(): void
+    {
+        $this->resolverHolding([]);
+        Gate::before(fn ($user = null, $ability = null) => true);
+
+        $this->assertTrue(Gate::allows('entitlement:calculators.profit'), 'unchanged: beam returns null for a known key');
+    }
+
+    public function test_an_unknown_key_the_host_defined_itself_is_decided_by_the_host(): void
+    {
+        $this->resolverHolding([]);
+
+        $this->assertTrue(Gate::allows('entitlement:host.unlisted.allow'), 'the host\'s own ability decides');
+        $this->assertFalse(Gate::allows('entitlement:host.unlisted.deny'));
+    }
+
     public function test_a_host_s_own_definition_of_a_known_key_is_never_replaced(): void
     {
         $this->resolverHolding(['host.owned']);
@@ -123,6 +151,9 @@ class HostDeclaresKeysInBootProvider extends ServiceProvider
             'host.owned',
         ]]);
         Gate::define('entitlement:host.owned', fn ($user = null) => false);
+        // Abilities the host defines under the entitlement: prefix WITHOUT listing the key in any source.
+        Gate::define('entitlement:host.unlisted.allow', fn ($user = null) => true);
+        Gate::define('entitlement:host.unlisted.deny', fn ($user = null) => false);
     }
 }
 

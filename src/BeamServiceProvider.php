@@ -768,6 +768,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // tutorial-dx 04: the one entitlement key universe. A singleton for the same reason as above: a package that
         // contributes keys (beam-accounts' bundles and grant sources) must reach the instance the gate and the can map read.
         $this->app->singleton(EntitlementKeyUniverse::class);
+        // Its Gate::before is attached as the Gate is first resolved: the earliest a before callback can exist, so it
+        // runs ahead of any added in a provider's boot (see registerEntitlementBefore() for why the order matters).
+        $this->callAfterResolving(Gate::class, fn (Gate $gate) => $this->registerEntitlementBefore($gate));
 
         // The host's API taxonomy and the chain that resolves a route into it (api-surface-coherence 17).
         // Beam ships the registry EMPTY on purpose: a taxonomy belongs to the host, and seeding this
@@ -2206,11 +2209,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      *     defined before any request. This pass, not the before callback, is what reaches `Gate::forUser()` and so
      *     `$user->can()`: forUser() COPIES the abilities array, so a definition added during a check never reaches
      *     the copy making it;
-     *   - on a check, by a `Gate::before` that DEFINES a missing known key and always returns null. It never answers,
-     *     so a host's own definition and every other before callback still decide, and an unknown key still meets
-     *     Exec ADR-0001's deny. (A key that only becomes known after boot, through config, reaches `Gate::allows`
-     *     and `can:` middleware on first check, and a forUser() copy from the next one; a contributed source is
-     *     defined as it is contributed.)
+     *   - on a check, by the `Gate::before` of {@see registerEntitlementBefore()}, which also enforces Exec ADR-0001.
+     *     (A key that only becomes known after boot, through config, reaches `Gate::allows` and `can:` middleware on
+     *     first check, and a forUser() copy from the next one; a contributed source is defined as it is contributed.)
      * A key already defined, by the host or an earlier pass, is never redefined.
      */
     protected function registerEntitlementAbilities(): void
@@ -2230,17 +2231,40 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $defineKnown();
         $this->app->booted($defineKnown);
         $universe->whenContributed($defineKnown);
+    }
 
-        $gate->before(function ($user = null, $ability = null) use ($gate, $universe) {
-            if (is_string($ability) && str_starts_with($ability, 'entitlement:') && ! $gate->has($ability)) {
-                $key = substr($ability, strlen('entitlement:'));
-
-                if ($universe->knows($key)) {
-                    $this->defineEntitlementAbility($gate, $key);
-                }
+    /**
+     * tutorial-dx 04: the `Gate::before` for `entitlement:{key}`, attached the moment the Gate is first resolved
+     * (`callAfterResolving` from {@see packageRegistered()}), the earliest point a before callback can exist, so it
+     * runs ahead of every before callback a host or package adds in its own boot. For an `entitlement:{key}` check:
+     *   - a KNOWN key (in the {@see EntitlementKeyUniverse}): define its ability if missing, return null. It never
+     *     answers, so the ability, a host's own definition and every later before callback decide;
+     *   - an UNKNOWN key the host did not define itself: return FALSE. Exec ADR-0001's "an undefined key denies
+     *     everyone" then holds even against a later allow-all before callback (a super-admin, a wildcard), which
+     *     would otherwise authorize a key nothing declares;
+     *   - an UNKNOWN key the host DID define as an ability: return null, and the host's definition decides.
+     * Every other ability, and every check while the kernel resolver is unbound, returns null untouched.
+     *
+     * RESIDUAL: Laravel runs before callbacks in registration order and the first non-null answer wins. A before
+     * callback registered before this one (only possible for code that resolved the Gate and added it before beam's
+     * register phase) still answers first, an allow-all included.
+     */
+    protected function registerEntitlementBefore(Gate $gate): void
+    {
+        $gate->before(function ($user = null, $ability = null) use ($gate) {
+            if (! is_string($ability) || ! str_starts_with($ability, 'entitlement:') || ! $this->app->bound(EntitlementResolver::class)) {
+                return null;
             }
 
-            return null;
+            $key = substr($ability, strlen('entitlement:'));
+
+            if ($this->app->make(EntitlementKeyUniverse::class)->knows($key)) {
+                $this->defineEntitlementAbility($gate, $key);
+
+                return null;
+            }
+
+            return $gate->has($ability) ? null : false;
         });
     }
 
