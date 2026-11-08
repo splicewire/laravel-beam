@@ -67,6 +67,21 @@ class UndefinedEntitlementKeyAuditTest extends TestCase
         $this->assertStringContainsString('Gate checks in PHP, Blade `@can`', $finding->detail);
     }
 
+    public function test_an_undeclared_realm_gate_key_is_named_from_either_config_shape(): void
+    {
+        config(['beam.core.entitlements.keys' => ['os.operate']]);
+        config(['beam.core.realms.operator.gate' => ['entitlement' => 'os.operate', 'mode' => 'hard']]);
+        config(['beam.core.realms.exec.gate' => ['entitlement' => 'exec.ghost', 'mode' => 'hard']]);
+        config(['beam.core.realm_gates' => ['site' => ['entitlement' => 'site.ghost', 'mode' => 'soft']]]);
+
+        $finding = $this->finding();
+
+        $this->assertSame(DoctorStatus::Warn, $finding->status);
+        $this->assertMatchesRegularExpression('/exec\.ghost\s+← realm gate exec/', $finding->detail);
+        $this->assertMatchesRegularExpression('/site\.ghost\s+← realm gate site/', $finding->detail);
+        $this->assertStringNotContainsString('os.operate ', $finding->detail, 'a declared realm key is not named');
+    }
+
     public function test_a_contributed_key_counts_as_known(): void
     {
         $this->app->make(\Splicewire\Beam\Entitlements\EntitlementKeyUniverse::class)->contribute(fn (): array => ['bundle.key']);
