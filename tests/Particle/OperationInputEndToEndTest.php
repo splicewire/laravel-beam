@@ -11,7 +11,9 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use Laravel\SerializableClosure\SerializableClosure;
 use LogicException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationCall;
@@ -172,6 +174,86 @@ class OperationInputEndToEndTest extends TestCase
         Bus::assertNotDispatched(CapturingJob::class);
     }
 
+    // ── orch-peer's REVISE (2026-11-08) ────────────────────────────────────────────────────────────────
+
+    public function test_the_dto_is_built_from_the_validated_payload_not_the_raw_request(): void
+    {
+        // NoteInput's rules exclude `note` unless count is 10: a value the rules did not admit must not reach the DTO.
+        $seen = null;
+        $this->mount(function (OperationCall $call) use (&$seen) {
+            $seen = $call->input;
+
+            return ['ok' => true];
+        }, NoteInput::class);
+
+        $this->postJson('/ledgers/1/tally', ['count' => '5', 'note' => 'smuggled', 'extra' => 'nope'])->assertOk();
+
+        $this->assertInstanceOf(NoteInput::class, $seen);
+        $this->assertNull($seen->note, 'an excluded field never reaches the DTO');
+        $this->assertSame(['count' => 5, 'note' => null], $seen->toArray(), 'nor does a field no rule names');
+
+        $this->postJson('/ledgers/1/tally', ['count' => '10', 'note' => 'admitted'])->assertOk();
+        $this->assertSame('admitted', $seen->note, 'an admitted field still arrives');
+    }
+
+    /** @return array<string, array{Closure(OperationCall): object}> */
+    public static function capturingJobs(): array
+    {
+        return [
+            'three levels down' => [fn (OperationCall $call) => new DeepJob(['wrapped' => new Holder($call)])],
+            'inside a serializable closure' => [fn (OperationCall $call) => new ClosureJob(new SerializableClosure(fn () => $call->input))],
+            'the context alone, deep' => [fn (OperationCall $call) => new DeepJob(['a' => ['b' => new Holder($call->context)]])],
+            'a plain closure (cannot be queued at all)' => [fn (OperationCall $call) => new ClosureJob(fn () => 1)],
+        ];
+    }
+
+    #[DataProvider('capturingJobs')]
+    public function test_a_job_capturing_the_call_anywhere_in_its_graph_is_refused(Closure $makeJob): void
+    {
+        Bus::fake();
+        $this->withoutExceptionHandling();
+        $this->mount(fn (OperationCall $call) => $makeJob($call), kind: OperationKind::Task);
+
+        try {
+            $this->postJson('/ledgers/1/tally', ['count' => '4', 'label' => 'fresh']);
+            $this->fail('a job carrying the per-request call must not be dispatched');
+        } catch (LogicException $refused) {
+            $this->assertStringContainsString('must not capture', $refused->getMessage());
+        }
+
+        Bus::assertNothingDispatched();
+    }
+
+    /** @return array<string, array{Closure}> */
+    public static function misspelledOptIns(): array
+    {
+        return [
+            'a union' => [fn (OperationCall|Ledger $call) => null],
+            'a nullable' => [fn (?OperationCall $call) => null],
+            'a later parameter' => [fn ($model, OperationCall $call) => null],
+        ];
+    }
+
+    #[DataProvider('misspelledOptIns')]
+    public function test_an_opt_in_spelled_any_other_way_is_refused_not_read_as_legacy(Closure $handle): void
+    {
+        try {
+            OperationCall::wantedBy($handle);
+            $this->fail('the handler names OperationCall, so it must not silently fall through to the legacy call');
+        } catch (LogicException $refused) {
+            $this->assertStringContainsString('typed exactly `OperationCall $call`', $refused->getMessage());
+        }
+    }
+
+    public function test_a_union_typed_handler_is_refused_at_the_request(): void
+    {
+        $this->withoutExceptionHandling();
+        $this->mount(fn (OperationCall|Ledger $call) => ['ok' => true]);
+
+        $this->expectException(LogicException::class);
+        $this->postJson('/ledgers/1/tally', ['count' => 1, 'label' => 'fresh']);
+    }
+
     // ── the ruled design's spelling ────────────────────────────────────────────────────────────────────
 
     /** A handler that receives the validated input: `$use($subject, $input, $actor)`, through ONE OperationCall parameter. */
@@ -257,5 +339,41 @@ class CapturingJob
 {
     public function __construct(
         public OperationCall $call,
+    ) {}
+}
+
+class NoteInput extends Data
+{
+    public function __construct(
+        public int $count,
+        public ?string $note = null,
+    ) {}
+
+    /** @return array<string, array<int, mixed>> */
+    public static function rules(): array
+    {
+        return ['count' => ['required', 'integer'], 'note' => ['exclude_unless:count,10', 'nullable', 'string']];
+    }
+}
+
+class DeepJob
+{
+    /** @param  array<string, mixed>  $payload */
+    public function __construct(
+        public array $payload,
+    ) {}
+}
+
+class Holder
+{
+    public function __construct(
+        private object $held,
+    ) {}
+}
+
+class ClosureJob
+{
+    public function __construct(
+        public mixed $after,
     ) {}
 }

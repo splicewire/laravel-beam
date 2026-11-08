@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Particle;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
+use LogicException;
 
 /**
  * What an operation's input may see while it is VALIDATED: the subject the operation acts on, the request, and the actor
@@ -24,4 +25,10 @@ final class OperationContext
         public readonly Request $request,
         public readonly ?Authenticatable $actor,
     ) {}
+
+    /** Never queued: a Task job copies the domain values it needs (tutorial-dx 03). */
+    public function __serialize(): array
+    {
+        throw new LogicException(OperationCall::NOT_QUEUED);
+    }
 }

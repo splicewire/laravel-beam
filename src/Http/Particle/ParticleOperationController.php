@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Http\Particle;
 
 use Closure;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Http\Request;
@@ -178,10 +179,10 @@ class ParticleOperationController extends Controller
         // keeps the legacy (model, request, actor[, emit]) call, unchanged.
         $context = new OperationContext($model, $request, $request->user());
         $call = $this->withOperationContext($context, function () use ($operation, $request, $context): ?OperationCall {
-            $this->validateInput($operation, $request);
+            $validated = $this->validateInput($operation, $request);
 
             return OperationCall::wantedBy($operation->handle)
-                ? new OperationCall($context, $this->validatedInput($operation, $request))
+                ? new OperationCall($context, $this->validatedInput($operation, $validated))
                 : null;
         });
 
@@ -278,57 +279,58 @@ class ParticleOperationController extends Controller
 
     /**
      * A Task's job is serialized onto a queue, so it must carry domain values, never the per-request OperationCall, its
-     * OperationContext or the Request (tutorial-dx 03). Its properties are looked through (two levels, arrays included)
-     * and a job holding any of them is refused before dispatch, naming the fix.
+     * OperationContext or the Request (tutorial-dx 03). The job is serialized here exactly as the queue would, before
+     * dispatch and whatever the connection (the sync driver and a faked bus never serialize). PHP's serializer walks the
+     * whole graph, cycle-safe, including whatever a SerializableClosure carries; the call and the context refuse to be
+     * serialized, and any other failure (a plain Closure, the Request's resolvers) is refused the same way, naming the fix.
      */
     protected function refuseCapturedCall(ParticleOperation $operation, mixed $job): void
     {
-        $captures = function (mixed $value, int $depth) use (&$captures): bool {
-            if ($value instanceof OperationCall || $value instanceof OperationContext || $value instanceof Request) {
-                return true;
-            }
-            if ($depth >= 2 || $value instanceof Closure || (! is_array($value) && ! is_object($value))) {
-                return false;
-            }
-            foreach ((array) $value as $item) { // (array) on an object exposes its protected and private properties too
-                if ($captures($item, $depth + 1)) {
-                    return true;
-                }
-            }
+        if (! is_object($job)) {
+            return;
+        }
 
-            return false;
-        };
-
-        if (is_object($job) && $captures($job, 0)) {
+        try {
+            serialize(clone $job);
+        } catch (\Throwable $e) {
             throw new LogicException(sprintf(
-                'The job [%s] of operation [%s.%s] must not capture the per-request OperationCall, its OperationContext or the '
-                .'Request: a Task job is queued. Copy the domain values it needs into the job instead (tutorial-dx 03).',
-                $job::class, $operation->resource, $operation->name,
-            ));
+                'The job [%s] of operation [%s.%s] cannot be queued: a Task job must not capture the per-request '
+                .'OperationCall, its OperationContext or the Request, and must serialize. Copy the domain values it needs '
+                .'into the job instead (tutorial-dx 03). Serializing it failed: %s',
+                $job::class, $operation->resource, $operation->name, $e->getMessage(),
+            ), previous: $e);
         }
     }
 
-    /** The validated input DTO an opting-in handler receives, made once and after validation; null without a Data `input:`. */
-    protected function validatedInput(ParticleOperation $operation, Request $request): ?Data
+    /**
+     * The input DTO an opting-in handler receives, made once from the VALIDATED payload (never the raw request), so a
+     * field the rules did not admit cannot reach it; null without a Data-class `input:`.
+     *
+     * @param  array<array-key, mixed>|Arrayable<array-key, mixed>|null  $validated
+     */
+    protected function validatedInput(ParticleOperation $operation, array|Arrayable|null $validated): ?Data
     {
         $input = $operation->input;
 
-        return is_string($input) && is_subclass_of($input, Data::class) ? $input::from($request->all()) : null;
+        return is_string($input) && is_subclass_of($input, Data::class) && $validated !== null ? $input::from($validated) : null;
     }
 
-    protected function validateInput(ParticleOperation $operation, Request $request): void
+    /** @return array<array-key, mixed>|Arrayable<array-key, mixed>|null the validated payload of a Data-class `input:`, else null */
+    protected function validateInput(ParticleOperation $operation, Request $request): array|Arrayable|null
     {
         $input = $operation->input;
 
         if ($input === false) {
             $this->rejectInput($operation, $request);
 
-            return;
+            return null;
         }
 
         if ($input !== null && is_subclass_of($input, Data::class)) {
-            $input::validate($request->all());
+            return $input::validate($request->all());
         }
+
+        return null;
     }
 
     /**
