@@ -141,8 +141,15 @@ class RealmManifestProjectorTest extends TestCase
         $this->assertNotContains('operator', $this->keys($manifest));
     }
 
+    /*
+     * tutorial-dx 04 (orch-peer's REVISE, Exec ADR-0001): a host's Gate::before still admits a principal the resolver
+     * does not, for a DECLARED key. An undeclared key denies everyone, Root included, so the key is declared here,
+     * as beam-accounts declares `os.operate` in every host that installs it. (Pending orch-lead's ruling against
+     * UX-12a: this commit can be dropped if Root must pass an undeclared key.)
+     */
     public function test_gate_before_admits_a_realm_whose_key_has_no_defined_ability(): void
     {
+        config(['beam.core.entitlements.keys' => ['os.operate']]);
         config(['beam.core.realms.operator.gate' => ['entitlement' => 'os.operate', 'mode' => 'hard']]);
         $this->withResolver([]);
         Gate::before(fn ($user) => ($user->root ?? false) ? true : null);
