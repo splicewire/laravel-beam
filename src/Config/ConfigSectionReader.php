@@ -39,6 +39,8 @@ class ConfigSectionReader
         protected ConfigSectionSchema $schemas,
         /** The host's config directory; null reads `config_path()`. */
         protected ?string $configDirectory = null,
+        /** Whether config is cached; null asks the application. */
+        protected ?bool $configCached = null,
     ) {}
 
     public function read(RegisteredConfigSection $registered): ConfigSectionData
@@ -167,9 +169,18 @@ class ConfigSectionReader
         return is_array($values) ? $values : null;
     }
 
-    protected function envSet(string $name): bool
+    /**
+     * Whether the variable is set: true, false, or null for unknown. Under `config:cache` Laravel skips loading
+     * `.env`, so a variable only `.env` held is invisible here although the cached config was built with it; an
+     * absence then proves nothing ({@see ConfigEnvData}).
+     */
+    protected function envSet(string $name): ?bool
     {
-        return Env::get($name) !== null;
+        if (Env::get($name) !== null) {
+            return true;
+        }
+
+        return ($this->configCached ?? app()->configurationIsCached()) ? null : false;
     }
 
     /**
