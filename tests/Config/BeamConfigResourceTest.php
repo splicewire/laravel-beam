@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Schemastud\Frame\FrameServiceProvider;
+use Splicewire\Beam\Config\ConfigSectionAccess;
 use Splicewire\Beam\Config\ConfigSectionBacking;
 use Splicewire\Beam\Config\ConfigSectionReader;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
@@ -132,6 +133,23 @@ class BeamConfigResourceTest extends TestCase
 
         auth()->logout();
         $this->assertContains($this->getJson('/beam-config')->status(), [401, 403]);
+    }
+
+    public function test_the_non_particle_read_asks_the_same_gate_and_serves_the_same_rows(): void
+    {
+        $access = app(ConfigSectionAccess::class);
+        $operator = ConfigReadActor::query()->where('name', 'operator')->firstOrFail();
+        $member = ConfigReadActor::query()->where('name', 'member')->firstOrFail();
+
+        $this->actingAs($operator);
+        $rest = $this->getJson('/beam-config')->assertOk()->json('data');
+
+        $this->assertSame($rest, json_decode(json_encode(array_map(fn ($row) => $row->toArray(), $access->rows($operator))), true));
+        $this->assertSame([$rest[1]], json_decode(json_encode(array_map(fn ($row) => $row->toArray(), $access->rows($operator, 'widgets'))), true));
+        $this->assertSame([], $access->rows($operator, 'no.such.root'));
+
+        $this->assertNull($access->rows($member), 'refused exactly where REST refuses');
+        $this->assertNull($access->rows(null), 'a guest is refused: beam-config declares no Public Read');
     }
 
     public function test_no_write_verb_is_mounted(): void
