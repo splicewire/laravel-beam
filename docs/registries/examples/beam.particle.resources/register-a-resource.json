@@ -2,6 +2,7 @@
     "keys": [
         "beam.particle.resources.saved-filters",
         "beam.particle.resources.records",
+        "beam.particle.resources.beam-config",
         "beam.particle.resources.schemas",
         "beam.particle.resources.git-repo",
         "beam.particle.resources.hooks",

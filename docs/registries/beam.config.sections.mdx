@@ -1,0 +1,96 @@
+---
+title: Config sections
+segment: beam.config.sections
+nav_order: 19
+excerpt: Describe a config root once, and the Config area shows each key's value and where it came from.
+---
+
+# Config sections
+
+`beam.config.sections` holds one **Config Section** per config root: a typed description of what a
+package (or the host) keeps in `config()`. A section names each key, its shape, and how the key behaves
+on the **Override Ladder**: which tier may override it, when a change takes effect, whether it is a
+secret, and how an override merges. The `beam-config` particle resource serves every registered section,
+with each key's effective value and its provenance.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration; regenerate it, do not edit between these markers. */}
+
+- **Root:** `beam.config.sections`
+- **Entries:** `Splicewire\Beam\Config\RegisteredConfigSection`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `19` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Config\ConfigSectionRegistry`
+
+{/* registry-facts:end */}
+
+<RegistryRegistrants root="beam.config.sections" />
+
+## Declaring a section
+
+A section is a Data class. Its properties are the root's keys, named exactly as the config file names
+them, and `#[ConfigKey]` says how each one behaves:
+
+```php
+use Schemastud\DataSchemas\Attributes\Title;
+use Splicewire\Beam\Config\Attributes\ConfigKey;
+use Splicewire\Beam\Config\Attributes\ConfigRoot;
+use Splicewire\Beam\Config\ConfigEffect;
+use Splicewire\Beam\Config\ConfigSection;
+use Splicewire\Beam\Config\ConfigTier;
+
+#[ConfigRoot(root: 'acme.widgets', title: 'Widgets')]
+class WidgetsSection extends ConfigSection
+{
+    public function __construct(
+        #[Title('Enabled'), ConfigKey(ceiling: ConfigTier::Operator, effect: ConfigEffect::Live)]
+        public bool $enabled,
+        public string $driver,
+    ) {}
+}
+```
+
+A key with no `#[ConfigKey]` takes the conservative default: not overridable, deploy-only, not a
+secret, replaced on merge. Declaring a section therefore changes no behaviour.
+
+A root keyed by names a host chooses, like `app.meters`, names an **entry** class instead and
+declares no properties of its own: `#[ConfigRoot(root: 'app.meters', title: 'Meters', entries: MeterEntry::class)]`.
+
+## Registering one
+
+A package registers its sections from its provider, with the file it passes to `mergeConfigFrom()`:
+
+```php
+use Splicewire\Beam\Config\ConfigSectionRegistry;
+
+app(ConfigSectionRegistry::class)->section(
+    WidgetsSection::class,
+    owner: 'acme/laravel-widgets',
+    packageFile: __DIR__.'/../config/widgets.php',
+);
+```
+
+A host declares sections for its own roots with `owner: 'host'` and no package file. The registry
+holds one section per root, so a later registration for a root supersedes an earlier one.
+
+## What it holds, and what it never holds
+
+Entries are vocabulary: a section class, its owner and its package file. Values are read from
+`config()` and the config files when a row is read, and an override, once the store exists, is a
+database row. A per-tenant value never becomes an entry.
+
+## Schemas
+
+`php artisan splicewire:beam:config:schemas` writes each section's JSON Schema to
+`resources/schemas/config-sections/<root>.schema.json`; `--check` reports a missing or stale file and
+writes nothing. Each key carries an `x-beam-config` keyword with its ceiling, effect, secret flag and
+merge strategy.
+
+## Related registries
+
+- [`beam.particle.resources`](beam.particle.resources): `beam-config`, the resource that serves these sections.
+
+## Going deeper
+
+ADR-0245, *Config sections and the Override Ladder*, records the ladder, the tiers, effect classes,
+merge strategies, secrets and the override table's placement.
