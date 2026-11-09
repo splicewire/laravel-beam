@@ -3,9 +3,9 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Rushing\SchemaConvergence\ConvergentTable;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Ownership\OwnershipEdgeType;
-use Rushing\SchemaConvergence\ConvergentTable;
 
 /**
  * The ownership / GC edge store (sourced-particles ticket 08, ADR-0161 Position 3 + MAP §Graphine).

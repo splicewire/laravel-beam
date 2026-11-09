@@ -3,9 +3,9 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Rushing\SchemaConvergence\ConvergentTable;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamSubmission;
-use Rushing\SchemaConvergence\ConvergentTable;
 
 /**
  * The shared submission ledger — beam-core's first schema-driven-CMS consumer (ADR-0138). One
