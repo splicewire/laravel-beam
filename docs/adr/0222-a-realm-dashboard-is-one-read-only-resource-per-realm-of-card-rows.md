@@ -63,7 +63,9 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
    no eligible cards is inconclusive. ADR-0224 disables derived-card participation.
 
 9. **A nav section may have its own overview, which is the same dashboard confined to that section.** A package
-   flags a seat with `NavSection(overview: true)`. Beam-ux then registers one read-only resource,
+   flags a seat with `NavSection(overview: true)`. Same-key seats still merge into one, and the merged seat is flagged
+   when any of its declarations is: a package owns whether its section has an overview, and an extension only adds rows
+   (charter ruling 2026-11-09, A1). Beam-ux then registers one read-only resource,
    `{realm}-{section}-overview` (grammar in `Splicewire\Beam\Dashboard\SectionOverview`), a member of that realm only,
    backed by a `DashboardBacking` instance carrying the realm and the section. Decisions 2 to 8 apply to it unchanged,
    because it shares that code: `Unpaged`, one participation rule, card XOR tile, the savepoint, the per-row gate.
@@ -80,10 +82,11 @@ for a model-less, streams-only, actor-filtered, in-memory backing was `ResourceR
      with no child, as it drops an empty contributed section. A reader who opens the overview's URL anyway gets an empty
      overview, not a 403, the same as opening a resource whose seat is hidden. This withdraws the earlier promise that the
      overview refuses whatever the rail denies on a direct request.
-   - **On the realm's dashboard the section is one destination.** The seat draws one tile, and the section's resources
-     draw no card there, including those seated by a static child rather than by `section:`, and those a stage took off the
-     rail. A seat that is soft-locked
-     for this reader keeps `{key}.section`, so it stays visible and locked and has no landing.
+   - **On the realm's dashboard the section is at most one destination** (charter ruling 2026-11-09, A2). For a reader
+     the seat admits, it draws one tile. For a reader the seat locks out, it draws nothing: the rail alone shows the lock,
+     and a tile would be a link past it. Either way the section's resources draw no card there, including those seated
+     by a static child rather than by `section:`, and those a stage took off the rail. A seat that is soft-locked for this
+     reader keeps `{key}.section`, so it stays visible and locked and has no landing.
    - **A section with no flag is untouched.** Every new branch is empty without a flagged seat, so output is
      byte-identical, pinned against a capture taken before this decision.
    - `DashboardTierAudit` skips the overview, as it skips the realm's own, and keeps auditing the cards it draws.

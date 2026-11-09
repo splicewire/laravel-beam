@@ -131,7 +131,8 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
      * Seats sharing a key in one realm are ONE seat (ux-walkthrough UX-09; IA-10, IA-13). Tower's Billing task section,
      * commerce's optional `billing` extension seat and a host's bespoke Usage & cost row all name `billing`: each used to
      * draw its own header. The first seat in projection order (the lowest `order`) supplies the header: its label, icon,
-     * href and order. Every same-key seat's static rows join it, the header's own first. Only seats with the SAME gates,
+     * href and order. Every same-key seat's static rows join it, the header's own first, and the merged seat has an overview
+     * when any of them declares one: a package owns that, and an extension only adds rows. Only seats with the SAME gates,
      * audience and lock merge; a mismatch is refused (thrown outside production, reported and kept apart in it). The rows still
      * sort among the seat's resources by `navOrder` downstream, so a contributor places its row with `navOrder`.
      *
@@ -170,6 +171,7 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
                 audience: $head->audience,
                 static: [...$head->static, ...$section->static],
                 lock: $head->lock,
+                overview: $head->overview || $section->overview,
             );
         }
 
