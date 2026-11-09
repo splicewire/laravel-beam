@@ -6,8 +6,15 @@
 **Wayfinding:** `.scratch/splicewire/laravel-beam/config-sections/` (MAP, PRD, tickets 01 and 02), in `splicewire-ecosystem`.
 **Builds on:** `docs/agents/particle-doctrine.md` (three declaration sites, no fourth), ADR-0212 (the `backing:` slot),
 ADR-0235 (a registered schema types a member and is served beside it).
-**Companions:** `splicewire/laravel-beam-ux` ADR-0225, ADR-0226, ADR-0227 (the Release, which a config override joins in
-ticket 08); `tests/Config/*`.
+**Companions:** the Release, which a config override joins in ticket 08:
+`splicewire/laravel-beam-ux docs/adr/0225-an-entry-has-one-history-a-save-is-a-draft-and-publish-moves-the-pin.md`,
+`splicewire/laravel-beam-ux docs/adr/0226-a-release-publishes-entries-together-and-git-records-what-was-published.md`,
+`splicewire/laravel-beam-ux docs/adr/0227-a-tenant-owned-entry-holds-blocks-not-code-and-starts-as-a-pack-copy.md`;
+the overlay format the operator and tenant tiers apply through,
+`splicewire/splicewire-app docs/adr/0089-dataoverlay-context-invoked-overlays-one-format-two-appliers.md`; and
+`tests/Config/*`.
+**Cross-review:** codex, 2026-11-09, REVISE at `185e44a`; amended once (decision 2's op contract, the env `set`
+state under `config:cache`, cross-repo citations, and §Open questions for ticket 05).
 **Placement:** repo-local. Promoted to the runbook's fleet tier once two family packages declare sections, per the
 ecosystem's ADR placement rule.
 
@@ -76,10 +83,39 @@ per-key provenance out. Keys are RFC 6901 **JSON pointers** relative to the root
 - **Env bindings** come from the same syntax-tree walk: each `env('NAME', …)` call is mapped to the pointer of the
   array key whose value contains it. A key reports the binding of the tier that set it, plus whether the variable is set.
   A binding the walk cannot see can be named on the key (`#[ConfigKey(env: …)]`).
+- **"Set" has three states.** `true` means the running process sees the variable. `false` means config is not cached
+  and the variable is absent, so the key runs on its file default. `null` means unknown: under `config:cache` Laravel
+  no longer loads `.env` (`Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables` returns early), so a variable
+  only `.env` held is invisible although the cached config was built with it. Absence then proves nothing, and the
+  row never claims "file default".
 
 Ticket 02 folds package, host and provider. Operator and tenant join as sparse pointer layers when the override store
-exists (ticket 05), with three ops: set, unset and explicit null. They reuse DataOverlay's `override` and `unset` ops
-from `schemastud/laravel-data-schemas`, so ADR-0089's op set does not change.
+exists (ticket 05), with three ops. **These are config ops, not DataOverlay ops**, and the difference matters for
+`unset`:
+
+- **`set`** writes a value at a pointer in that tier's layer. It wins over every tier below.
+- **explicit `null`** is a `set` whose value is null: a **retained null override**. The tier still has an entry at that
+  pointer, the effective value is null, and the provenance names the tier. It is never a deletion, so "no value" and
+  "inherit" stay different things (PRD story 11).
+- **`unset`** means **inherit**. It removes that tier's override row for the pointer, and the ladder refolds the
+  tiers below, so the key reads the next lower tier's value again (ticket 05: "Unset returns to the host value"). It
+  never deletes the inherited effective value. DataOverlay's own `unset` is a node-delete
+  (`splicewire/splicewire-app docs/adr/0089-dataoverlay-context-invoked-overlays-one-format-two-appliers.md`;
+  `schemastud/laravel-data-schemas` `src/Overlay/JsonPathMutator.php`), so a config `unset` is never sent to
+  DataOverlay at all. DataOverlay's semantics are unchanged.
+- **The document an override tier modifies** is that tier's own sparse set for the section: the operator's central
+  rows, or one tenant's rows in its own schema. A tier's layer is built from its published rows. Each `set`/`null` is
+  applied, in pointer order, to the effective document of the tiers below it through DataOverlay's `override`, which
+  upserts a concrete path. An `unset` row is simply absent from the set.
+- **Pointers stay public; JSONPath is internal.** The pointer is the address on the wire, in override rows and in the
+  ladder. It becomes a DataOverlay JSONPath in exactly one place, `JsonPointer::toJsonPath()`, when a tier's layer is
+  applied. Every segment is bracket-quoted (`/google.cse.query/unit_cost_usd` → `$['google.cse.query']['unit_cost_usd']`),
+  so a dotted key stays one segment. DataOverlay's concrete-target parser has no escape for a quote or `]` inside a
+  quoted segment, so a key holding either is refused by name rather than turned into a path naming another node.
+  `tests/Config/JsonPointerOverlayBoundaryTest.php` runs this against DataOverlay's real mutator: a dotted-key set, a
+  retained null, and a create-absent.
+- **`extend`** (decision 5) is applied by core before the layer reaches DataOverlay, as a filter on which map entries the
+  tier may add. It is not a new DataOverlay op, so DataOverlay's op set (`splicewire/splicewire-app docs/adr/0089-dataoverlay-context-invoked-overlays-one-format-two-appliers.md`) does not change.
 
 ### 3. Tiers and the ceiling
 
@@ -102,8 +138,8 @@ already read is exactly what the boot-read audit (ticket 06) exists to catch.
 `ConfigMerge` says how an override combines with what it covers:
 - `replace`, the default;
 - `deep`: maps merge recursively, and the override wins per key;
-- `extend`: an override may add map entries and never replaces the package's own, which is the model-catalog merge
-  made declarable.
+- `extend`: an override may add map entries and never replaces one already present in a tier below it, which is the
+  model-catalog merge made declarable. A colliding write is refused when its draft is saved (§Open questions, 2).
 
 `extend` is a core-side wrapper over the DataOverlay ops, not a new op.
 
@@ -154,7 +190,7 @@ to central and to every tenant schema the beam-ux way, rather than one central t
 section, pointer, op, value, encrypted value and revision, plus a per-section scope row carrying the draft and published
 pins, versioned through `rushing/laravel-versioning`.
 
-**The reason:** a Release's members must share its connection (`laravel-beam-ux` `ReleaseService`), so only
+**The reason:** a Release's members must share its connection (`splicewire/laravel-beam-ux` `src/Release/ReleaseService.php`), so only
 same-connection storage keeps a tenant's mixed Release (page, theme and config together) atomic. **The cost:** "which
 tenants override key X" needs a fan-out query. A central projection is deferred until someone asks for it. Operator
 locks are central data.
@@ -163,6 +199,24 @@ The database is the authority and a git mirror is a record (the owner's ruling, 
 override file. A committed file becomes a draft only through an explicit import, and the tenant tier keeps database
 history only.
 
+## Open questions for ticket 05
+
+Raised by the cross-review. Two are decided here because ticket 05 builds on them, and one stays open for ticket 08.
+
+1. **Which document does `unset` modify before the ladder refolds?** *Decided (decision 2).* That tier's own sparse
+   set: the operator's central rows, or one tenant's rows in its schema. `unset` removes the row for the pointer.
+   Nothing in a lower tier, and no effective document, is edited.
+2. **Under `extend`, what happens when a tenant's entry collides with an entry the operator added?** *Decided.*
+   `extend` protects every entry already present below the writing tier, whichever tier put it there (package, host
+   or operator). A tenant may add new map keys and may not replace any existing one. A colliding tenant write is
+   refused when the draft is saved, with the pointer and the tier that owns the entry, and is never silently
+   dropped at fold time. An operator collides with package and host entries the same way.
+3. **When a secret changes after it joined a Release, what preserves the Release's selected secret?** *Open, for
+   ticket 08; proposed here.* Each secret write creates a new override revision that holds the encrypted value. A
+   Release member and a version snapshot carry that revision's id, plus `set` and `setAt`, never the value, so a
+   later write cannot change what the Release publishes or rolls back to. Whether the revision row is the store's
+   own or `rushing/laravel-versioning`'s is ticket 05's to settle with this constraint.
+
 ## Consequences
 
 - Declaring a section changes no behaviour: every undeclared key is deploy-only and not overridable. On the first day,
@@ -170,7 +224,8 @@ history only.
 - A package author gets a schema, validation of their defaults, and a Config area row from one Data class.
 - Sections for the flagship's `app.meters` and `app.entitlements` are the first two, declared by the host (ticket 02).
   Every beam package's sections follow (ticket 13), with the generator and two audits (ticket 06).
-- `config:cache` keeps working. Provenance reads `config()` and syntax trees, never a re-executed host file.
+- `config:cache` keeps working. Provenance reads `config()` and syntax trees, never a re-executed host file. The one
+  thing caching hides, whether an env var only `.env` held was set, reads as unknown rather than "file default".
 - What would miss: a key whose value is assembled by a function call, or whose env var a provider reads directly, has no
   binding the walk can see, so the key declares it. A root whose host file doesn't return a literal array has no host
   keys, and the ladder reads it as package plus provider.
