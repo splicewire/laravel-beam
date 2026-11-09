@@ -103,7 +103,7 @@ class HookInputData extends BeamData implements MapsToModelAttributes
 
         /** @var list<string>|null */
         #[ArrayItems('string')]
-        #[Description('The events to send, by name, such as redirects.created.')]
+        #[Description('The events to send, by name. GET /hooks/events lists every name you can use.')]
         public ?array $events = null,
 
         /**
@@ -129,7 +129,7 @@ class HookInputData extends BeamData implements MapsToModelAttributes
          * skipping the re-vet. The two changes are one change; do not split them.
          */
         #[MapName('subjectType')]
-        #[Description('With subjectId: send only events about this one record. The kind of record, such as redirects. Clearing both sends events about every record you can see.')]
+        #[Description('With subjectId: send only events about one record. The record type, as GET /hooks/events gives it for each event. Clearing both removes the one-record limit, and that needs permission for the wider subscription.')]
         public string|Optional|null $subjectType = new Optional,
 
         #[MapName('subjectId')]
