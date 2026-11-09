@@ -71,7 +71,8 @@ class GenerateClientSdkCommandTest extends TestCase
 
         // hooks/library-lyrics.ts — a query for the read, a mutation for the write.
         $hook = file_get_contents($this->outDir.'/hooks/library-lyrics.ts');
-        $this->assertStringContainsString("import { useMutation, useQuery, type UseQueryOptions, type UseMutationOptions } from '@tanstack/react-query';", $hook);
+        $this->assertStringContainsString("import { useMutation, useQuery } from '@tanstack/react-query';", $hook);
+        $this->assertStringContainsString("import type { UseMutationOptions, UseQueryOptions } from '@tanstack/react-query';", $hook);
         $this->assertStringContainsString("import { api } from '@/lib/api';", $hook);
         $this->assertStringContainsString("import { route } from '@/lib/routes';", $hook);
 

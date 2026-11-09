@@ -443,15 +443,14 @@ class TsClientGenerator implements Generator
             $hasQuery = $this->hasQuery($entries);
             $hasMutation = $this->hasMutation($entries);
 
-            $named = array_filter([
-                $hasMutation ? 'useMutation' : null,
-                $hasQuery ? 'useQuery' : null,
-                $hasQuery ? 'type UseQueryOptions' : null,
-                $hasMutation ? 'type UseMutationOptions' : null,
-            ]);
+            // Types in their own top-level `import type` (a host's eslint `import/consistent-type-specifier-style:
+            // prefer-top-level` refuses `type` specifiers inline in a value import; calcucrypt MAP-24).
+            $values = array_filter([$hasMutation ? 'useMutation' : null, $hasQuery ? 'useQuery' : null]);
+            $types = array_filter([$hasMutation ? 'UseMutationOptions' : null, $hasQuery ? 'UseQueryOptions' : null]);
 
             $body = $this->banner()
-                .'import { '.implode(', ', $named)." } from '@tanstack/react-query';\n"
+                .'import { '.implode(', ', $values)." } from '@tanstack/react-query';\n"
+                .'import type { '.implode(', ', $types)." } from '@tanstack/react-query';\n"
                 ."import { {$client} } from '{$this->clientImport()}';\n"
                 ."import { {$routeFn} } from '{$this->routesImport()}';\n\n"
                 .$this->optionTypes($hasQuery, $hasMutation);
@@ -501,6 +500,7 @@ class TsClientGenerator implements Generator
                 ."        queryKey: {$key},\n"
                 ."        queryFn: async () => {\n"
                 ."            const res = await {$client}.get({$routeCall});\n"
+                ."\n"
                 ."            return {$e['responseExpression']} as {$type};\n"
                 ."        },\n"
                 ."        ...options,\n"
@@ -538,6 +538,7 @@ class TsClientGenerator implements Generator
             ."    return useMutation({\n"
             ."        mutationFn: async ({$varsParam}) => {\n"
             ."            const res = await {$call};\n"
+            ."\n"
             ."            return {$e['responseExpression']} as {$type};\n"
             ."        },\n"
             ."        ...options,\n"
@@ -600,6 +601,7 @@ class TsClientGenerator implements Generator
             ."    error: null,\n"
             ."    fetch: async () => {\n"
             ."        set({ loading: true, error: null });\n"
+            ."\n"
             ."        try {\n"
             ."            const res = await {$client}.get({$routeFn}('{$e['name']}'));\n"
             ."            set({ data: {$e['responseExpression']} as {$type}, loading: false });\n"
