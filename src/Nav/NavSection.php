@@ -97,7 +97,8 @@ class NavSection
      * @param  bool  $overview  whether this seat opens on its own page of the section's cards and tiles, and is one
      *                          destination on its realm's dashboard ({@see \Splicewire\Beam\Dashboard\SectionOverview},
      *                          ADR-0222 decision 9). `false` (the default) leaves a seat exactly as it was, for the
-     *                          same reason `$lock` may default: it adds a behaviour and takes no gate decision
+     *                          same reason `$lock` may default: it adds a behaviour and takes no gate decision. Same-key
+     *                          seats merge with it: the merged seat has an overview when any declaration does
      */
     public function __construct(
         public readonly string $key,
