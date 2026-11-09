@@ -61,6 +61,7 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
  * claiming one sub-projection key is a wiring conflict with no correct silent resolution.
  *
  * @see ParticleResource the declaration a contribution attaches to
+ *
  * @api
  */
 class ResourceContribution

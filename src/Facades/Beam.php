@@ -31,6 +31,7 @@ use Splicewire\Beam\BeamManager;
  * @method static \Illuminate\Database\Eloquent\Model write(\Illuminate\Database\Eloquent\Model|string $target, array $payload, mixed $actor = null, ?\Closure $after = null, bool $emit = true)
  *
  * @see BeamManager
+ *
  * @api
  */
 class Beam extends Facade

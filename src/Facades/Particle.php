@@ -55,6 +55,7 @@ use Splicewire\Beam\Surgeon\BareParticleMountAudit;
  * @method static void ops(string $uri, string $resourceKey, array|string $ops, array $options = [])
  *
  * @see ParticleMountManager
+ *
  * @api
  */
 class Particle extends Facade
