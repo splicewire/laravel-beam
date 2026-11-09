@@ -42,12 +42,11 @@ use Splicewire\Beam\Write\ParticleWriter;
  *    extensions, spend embedding budget). So `Write` SHOULD mean "gated", and today does not.
  *
  *    What it buys meanwhile is codegen and spec signal. The two known routes to making it mean something
- *    are recorded rather than chosen here: an `ability:` on each op (see particle-write-surface ticket 02
- *    — measured, costed, and blocked on a dataset that can discriminate), and deriving the mounted verb
+ *    are recorded rather than chosen here: an `ability:` on each op — measured, costed, and blocked on
+ *    a dataset that can discriminate (particle-write-surface ticket 02) — and deriving the mounted verb
  *    set from the backing's CAPABILITY so a resource can declare write-only and the operations fall out
- *    ({@see WritesRecords}; the seam exists, `hasCapability()` is
- *    consulted nowhere at runtime, and particle-operation-surface ticket 04 designed exactly this and
- *    deferred the build).
+ *    — see {@see WritesRecords}: the seam exists, `hasCapability()` is consulted nowhere at runtime, and
+ *    this exact design has been drawn up but its build deferred (particle-operation-surface ticket 04).
  *
  *    Emitting `BeamParticlePersisted` is deliberately NOT done here either: that event has live listeners
  *    (`NotifyOnSubmission`, and the flagship's `UpdateContextScopeEmbeddingsOnPersist`), so turning it on
@@ -67,6 +66,8 @@ use Splicewire\Beam\Write\ParticleWriter;
  * This split keeps read/write operations plain synchronous request/response (no job overhead), confines
  * the queue/async convention to the operations that genuinely need it, and gives streaming actions a home
  * in the registry instead of a hand-rolled `StreamedResponse` controller (the ADR-0152 tier-D residue).
+ *
+ * @api
  */
 enum OperationKind: string
 {

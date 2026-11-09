@@ -23,6 +23,8 @@ use Splicewire\Beam\Surgeon\ParticleOperationBypassAudit;
  * reviewer sees every deliberate divergence without re-litigating it on every run. The full reasoning
  * stays in the method/class docblock; `reason:` is its condensed, greppable form. Removing the attribute
  * (or the bespoke shape it defends) re-arms the WARN — nothing is permanently muted.
+ *
+ * @api
  */
 #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
 class BespokeByDesign

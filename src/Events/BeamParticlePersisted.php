@@ -18,6 +18,8 @@ use Splicewire\Beam\Write\ParticleWriter;
  * It carries the persisted model, the schema-shaped payload that was written, and the schema binding
  * (`schema_ref` — a bare stem or a versioned `$id`) the record was written under, or null for a record
  * type that carries no schema binding (a plain app model riding the pipeline).
+ *
+ * @api
  */
 class BeamParticlePersisted
 {

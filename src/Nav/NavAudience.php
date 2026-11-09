@@ -15,6 +15,8 @@ namespace Splicewire\Beam\Nav;
  *
  * There is deliberately no `admin` value: no renderer or invariant would read it, and the realm already carries the
  * operator/tenant difference.
+ *
+ * @api
  */
 enum NavAudience: string
 {

@@ -37,6 +37,8 @@ use Throwable;
  *
  * A member added below must be placeable under one of the two headings. If it cannot be, the
  * question is which role it actually has — not which keyword is convenient at its call site.
+ *
+ * @api
  */
 #[TypeScript]
 class ResponseBody extends Data

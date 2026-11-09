@@ -37,6 +37,8 @@ use Splicewire\Beam\Write\ParticleWriter;
  * `$app->bound(...)` guard, which is safe by construction in a way macros are not.
  * Reopening that needs a sibling capability which clears the bar
  * AND cannot be expressed as a facade or a typed accessor.
+ *
+ * @api
  */
 class BeamManager
 {

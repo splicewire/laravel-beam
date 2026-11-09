@@ -7,7 +7,11 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Splicewire\Beam\Particle\ParticleResource;
 
-/** A resource-owned primary read decision, used instead of its backing model's viewAny policy. */
+/**
+ * A resource-owned primary read decision, used instead of its backing model's viewAny policy.
+ *
+ * @api
+ */
 interface ResourceReadPolicy
 {
     public function inspect(

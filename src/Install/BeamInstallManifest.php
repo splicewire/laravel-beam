@@ -47,6 +47,8 @@ use Rushing\Popcorn\Registries\RelativeUriKey;
  * estate's trusted shell. A console run has no actor to gate against, so an authorizer pushed here
  * would either sit null forever — dead wiring that reads as a working door — or, worse, narrow a
  * maintenance run by whoever happened to be authenticated when it started.
+ *
+ * @api
  */
 #[IsRegistry(
     root: 'beam.install.steps',

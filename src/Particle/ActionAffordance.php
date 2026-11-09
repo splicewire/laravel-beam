@@ -21,6 +21,8 @@ use Schemastud\Frame\Registry\ResourceActionDefinition;
  *
  * ⚠️ An attribute argument must be a constant expression: `new ActionAffordance(...)` is legal, a static
  * factory is not (the same trap `subject:` and `delivery:` carry).
+ *
+ * @api
  */
 class ActionAffordance
 {

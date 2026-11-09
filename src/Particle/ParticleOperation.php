@@ -113,9 +113,9 @@ use Splicewire\Beam\Routing\IdConstraint;
  * registry rather than an edit at every declaration site.
  *
  * The separator moved from `:` to `.` (particle-operation-surface ticket 03). ⚠️ Note precisely what
- * that was and was not: `:` is LEGAL to {@see Key} since registry-kernel ticket 30 widened the segment
- * charset, so `tenants:suspend` parses — as ONE segment. The colon was never the blocker the tracker
- * recorded; it was a FLATTENING. `tenants.suspend` is TWO segments, so
+ * that was and was not: `:` is LEGAL to {@see Key} (the segment charset was widened in registry-kernel
+ * ticket 30), so `tenants:suspend` parses — as ONE segment. The colon was never a legality blocker;
+ * the problem was FLATTENING. `tenants.suspend` is TWO segments, so
  * `matches('beam.particle.operations.tenants')` enumerates a resource's operations, a relation-scoped
  * operation extends naturally to `compositions.cells.approve`, and the key is the same dot-segmented
  * shape `Rushing\PermissionCascade\Support\PermissionNamer::assemble()` produces. The 1:1 alignment
@@ -179,8 +179,8 @@ use Splicewire\Beam\Routing\IdConstraint;
  *   - **`false`** — NO subject ⇒ the subject-free ENTITLEMENT plane (`entitlement:{key}`).
  *
  * The third state is the declared override the derivation needs. Its live instance — the two
- * `ux.author` operations in `splicewire/laravel-beam-ux` — was flipped onto it by
- * particle-operation-surface ticket 08, and what the enumeration found there is worth keeping next to
+ * `ux.author` operations in `splicewire/laravel-beam-ux` — was flipped onto it
+ * (particle-operation-surface ticket 08), and what the enumeration found there is worth keeping next to
  * the flag: the mismatched declaration had been answering CORRECTLY, by accident, in all seven hosts
  * that mount it. `BeamUxEntry` carries no policy anywhere, so Laravel's Gate fell through the
  * subject-bearing branch to the bare `ux.author` ability `beam-accounts` defines as
@@ -196,8 +196,8 @@ use Splicewire\Beam\Routing\IdConstraint;
  *
  * ## `subject:` — WHAT the operation resolves before host code runs, and why `$model` stayed
  *
- * particle-operation-surface ticket 02. Subject means the CONTEXT an operation runs in, not what it
- * hands back, and it is a polymorphic slot rather than an enum — see
+ * Subject means the CONTEXT an operation runs in, not what it hands back (particle-operation-surface
+ * ticket 02), and it is a polymorphic slot rather than an enum — see
  * {@see ResolvesOperationSubject}. Four implementations ship; `null` means {@see RecordSubject},
  * which is what every declaration had implicitly, so the slot is a pure addition and no declaration
  * site moved.
@@ -217,8 +217,8 @@ use Splicewire\Beam\Routing\IdConstraint;
  * actor-relative list admission. The operation's own `ability` then decides authority for the
  * resolved subject.
  *
- * ⚠️ **`$model` did not delete at ticket 02, and the reason given here was false.** The paragraph that
- * stood in this slot read: *"It has a real remaining job: it is the fallback subject class for an
+ * ⚠️ **`$model` was kept when `subject:` landed, but not for the reason once given here.** That
+ * reason was: *"It has a real remaining job: it is the fallback subject class for an
  * operation registered against a resource key that is not a registered particle resource — the shape
  * `beam-accounts`' `Sharing::attachTo($resourceKey, $model)`, `beam-rank`'s `Resources::attachTo()` and
  * `beam-market`'s `market-products.*` all use, 13+ live sites."*
@@ -226,14 +226,14 @@ use Splicewire\Beam\Routing\IdConstraint;
  * **The 13+ was a count of DECLARATION SITES IN SOURCE, quoted as LIVE REGISTRATIONS**, and beam is
  * where it was written, so it propagated outward — `beam-market`, `beam-rank` and `beam-accounts` each
  * cite this file for it. Re-measured 2026-08-31 from booted registries at every `~/Herd` root (21
- * roots by realpath, 15 boot with beam): **107 registered operations, 0 anchors.** Ticket 19 declared
- * the three shapes as real resources; `Resources::attachTo()` has zero call sites estate-wide and
+ * roots by realpath, 15 boot with beam): **107 registered operations, 0 anchors.** The three shapes
+ * are now declared as real resources (ticket 19); `Resources::attachTo()` has zero call sites estate-wide and
  * `Sharing::attachTo()` has one, on a key its host registers normally. {@see RecordSubject}'s docblock
  * carries the full amendment.
  *
  * ## ⚠️ `$model` is DEPRECATED — the model is a property of the RESOURCE, not of the operation
  *
- * particle-operation-surface ticket 18's ruling, given the reading above. An op names a `resource:`;
+ * This follows from the reading above (particle-operation-surface ticket 18). An op names a `resource:`;
  * the resource names its `backing:`; the model is a fact about that backing. Stating it per-OPERATION
  * states a per-RESOURCE fact in a place where nothing checks the two agree — `market-products` named
  * `MarketProduct` four times, `beam-ux`'s two entry ops named `BeamUxEntry` twice.
@@ -252,7 +252,7 @@ use Splicewire\Beam\Routing\IdConstraint;
  * it by NAME**, zero positionally.
  *
  * ⚠️ **The resource's backing WINS over a declared `$model`**, rather than the other way round. A
- * disagreement between the two is the duplication defect this ruling removes, and the resource is the
+ * disagreement between the two is the duplication defect this deprecation removes, and the resource is the
  * side that owns the fact; preferring the op's copy would preserve the drift it exists to end.
  *
  * ⚠️ **The remaining population is a per-HOST figure and it is currently GROWING — do not read a low
@@ -269,7 +269,7 @@ use Splicewire\Beam\Routing\IdConstraint;
  *
  * ## `signed:` — a validly-signed request is itself a credential
  *
- * api-surface-coherence ticket 95. Before this slot existed, beam had NO notion of a signed request,
+ * Before this slot existed (api-surface-coherence ticket 95), beam had NO notion of a signed request,
  * and the gap bit the SAME operation twice through two different slots — which is the argument for a
  * declaration rather than a patch at either site:
  *
@@ -355,7 +355,7 @@ use Splicewire\Beam\Routing\IdConstraint;
  * sibling literal segment is not swallowed.
  *
  * ⚠️ **The mount option still wins where it is passed, and that is a MIGRATION state, not the design.**
- * Ticket 14's end state is that `op()` stops reading `$options['method']` and `$options['idConstraint']`
+ * The intended end state (ticket 14) is that `op()` stops reading `$options['method']` and `$options['idConstraint']`
  * entirely. It cannot until every call site has moved, and one of them
  * (`laravel-beam-accounts`' `Concerns\WiresDemo`, mounting the imperative `LogInAsUser` as GET) is in a
  * package this landing did not own. Removing the option read early would have silently turned that
@@ -380,8 +380,9 @@ use Splicewire\Beam\Routing\IdConstraint;
  *
  *   1. {@see ParticleOperationController::format()} — 422s a `?format`
  *      outside the declared enumeration, BEFORE `handle` runs. This is the ENFORCEMENT half, and it is
- *      the clause `RenderingsController` owned until ticket 13 (11 A6). Without it 13's dissolution
- *      would have regressed format validation from enforced-and-published to per-rendering ad hoc.
+ *      the clause the now-deleted `RenderingsController` used to own (ticket 13, 11 A6). Without it,
+ *      dissolving that controller would have regressed format validation from enforced-and-published to
+ *      per-rendering ad hoc.
  *   2. the optional documentation projection +
  *      the optional documentation projection — the PUBLICATION half: one
  *      `content` entry per declared media type at 200, the declared response headers, and the 422 the
@@ -395,6 +396,8 @@ use Splicewire\Beam\Routing\IdConstraint;
  * validated, no 422, the `output:`-derived 200 untouched. Every one of the estate's declarations is in
  * that state today, so anything else would be a behaviour change dressed as an addition. A `delivery:`
  * naming a class that is not the port DOES throw — that is grammar, not a fact about the host.
+ *
+ * @api
  */
 class ParticleOperation implements HasRegistryKey
 {
@@ -420,8 +423,8 @@ class ParticleOperation implements HasRegistryKey
      * forgives it, the branch that enforces it, and the reference that publishes it cannot disagree
      * about its name — the same coupling `SIGNATURE_PARAMETERS` above buys.
      *
-     * The name matches the deleted `RenderingsController`'s `?format` exactly, because ticket 13 moved
-     * three live URLs from that controller onto this surface and a renamed parameter would have broken
+     * The name matches the deleted `RenderingsController`'s `?format` exactly, because three live URLs
+     * moved from that controller onto this surface (ticket 13) and a renamed parameter would have broken
      * every one.
      */
     public const FORMAT_PARAMETER = 'format';
@@ -687,7 +690,8 @@ class ParticleOperation implements HasRegistryKey
      * {@see OperationKind::frameworkParameters()} contributes the kind's (a Task's `?async`), `signed:`
      * contributes {@see SIGNATURE_PARAMETERS}, and `delivery:` contributes {@see FORMAT_PARAMETER} when
      * it enumerates a format axis. The union lives here rather than on the enum because the enum cannot
-     * see a declaration — which is exactly how ticket 95's second bite happened: `rejectInput()` asked
+     * see a declaration — which is exactly how the signed-link defect resurfaced through `input:`
+     * (ticket 95): `rejectInput()` asked
      * the KIND what the framework accepts, the kind had no way to know the mount was signed, and
      * `expires`/`signature` came back as caller input.
      *

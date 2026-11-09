@@ -5,6 +5,8 @@ namespace Splicewire\Beam\Data;
 /**
  * The metadata emitted by a successful ResponseBody. Concrete response declarations add a typed
  * data property; this base deliberately declares no payload and is not a runtime response wrapper.
+ *
+ * @api
  */
 abstract class SuccessResponseData extends BeamData
 {

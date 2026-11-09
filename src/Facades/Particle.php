@@ -13,7 +13,7 @@ use Splicewire\Beam\Surgeon\BareParticleMountAudit;
  *
  * ```php
  * Particle::mount('fragments')->only(['index', 'store'])->ops(true);
- * Particle::relatives('fragments');   // the DECLARED edges — #[ParticleRelative], ticket 50
+ * Particle::relatives('fragments');   // the DECLARED edges — #[ParticleRelative]
  * Particle::relative('fragments', Fragment::class, via: 'media', routes: fn () => …);  // hand-placed
  * ```
  *
@@ -24,8 +24,8 @@ use Splicewire\Beam\Surgeon\BareParticleMountAudit;
  *
  * The estate spells "particle" two ways, and this is the second: **adjectivally, for the REST surface**
  * (`#[ParticleResource]`, `#[ParticleOp]`, `ParticleController`, `_particle` route defaults), as opposed
- * to the record noun `BeamParticle`. Ticket 18 §D5 recorded that caveat when it chose the name, and a
- * pre-flight grep on 2026-08-26 re-confirmed the word is free: no class, facade or alias named
+ * to the record noun `BeamParticle`. That caveat was recorded when the name was chosen (ticket 18 §D5),
+ * and a pre-flight grep on 2026-08-26 re-confirmed the word is free: no class, facade or alias named
  * `Particle` exists anywhere in the estate outside two eval'd surgeon test fixtures.
  *
  * Deliberately NOT registered as a global alias, on {@see Beam}'s precedent: every call site imports
@@ -34,9 +34,8 @@ use Splicewire\Beam\Surgeon\BareParticleMountAudit;
  *
  * ## It is now the ONLY door
  *
- * This docblock used to say the `Route::particle*()` macros "still exist and still work" and that the
- * charter's delete had been declined on measured grounds. Both halves are retired: api-surface-coherence
- * ticket 93 re-measured the estate and **deleted all six macros**.
+ * The `Route::particle*()` macros no longer exist: an earlier decision to keep them was reversed after the
+ * estate was re-measured, and **all six macros were deleted** (api-surface-coherence ticket 93).
  *
  * The reason the delete had been declined was that beam-facade 26 put 16 family packages beyond
  * enumeration ("no local source on this machine"), making a breaking beam-core release unbounded. That
@@ -56,6 +55,7 @@ use Splicewire\Beam\Surgeon\BareParticleMountAudit;
  * @method static void ops(string $uri, string $resourceKey, array|string $ops, array $options = [])
  *
  * @see ParticleMountManager
+ * @api
  */
 class Particle extends Facade
 {

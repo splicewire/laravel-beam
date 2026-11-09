@@ -26,6 +26,8 @@ use Schemastud\DataSchemas\StudData;
  * `src/` builds a bare generator — the dominant grep hit for the class is prose explaining why a site
  * stopped — and the two bare constructions left are both in tests, one of them a negative control
  * that asserts the bare generator THROWS.
+ *
+ * @api
  */
 class BeamData extends StudData
 {

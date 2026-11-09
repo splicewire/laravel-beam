@@ -7,7 +7,11 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Splicewire\Beam\Particle\ParticleResource;
 
-/** Declares that any authenticated actor may read through the resource's separate row boundary. */
+/**
+ * Declares that any authenticated actor may read through the resource's separate row boundary.
+ *
+ * @api
+ */
 class AuthenticatedReadPolicy implements ResourceReadPolicy
 {
     public function inspect(

@@ -18,8 +18,8 @@ use Splicewire\Beam\Particle\Mount\ParticleMounter;
  * reached from `$idConstraint === 'uuid'` at five separate places in that file. `Ulid` and `Int` are
  * therefore **declared-but-unenforced**: they record what the author knows, and they feed
  * {@see ParticleIdConstraintKeyTypeAudit}, which is the instrument that decides whether enforcing them
- * would be safe. Ticket 14 gate 3 is explicit that the flip is *one line, once that audit reads zero*,
- * and is not part of the landing that introduces the enum.
+ * would be safe. Enforcing them is a deliberate later flip — *one line, once that audit reads zero*
+ * (ticket 14 gate 3) — and not part of introducing the enum.
  *
  * The reason for the caution is measured rather than theoretical: `~/Herd/audiostud` declared
  * `'idConstraint' => 'int'` on `operator-customers`, whose model is `HasUuids`, with a provider
@@ -40,6 +40,8 @@ use Splicewire\Beam\Particle\Mount\ParticleMounter;
  * `IdConstraint::from($options['idConstraint'])` reads existing call sites without a translation table
  * during the migration. `Int` is a legal case name — it is `int` the *type* that is reserved, not the
  * identifier — and matching the backing value keeps the two halves from drifting.
+ *
+ * @api
  */
 enum IdConstraint: string
 {

@@ -41,6 +41,8 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * The attribute is DECLARATION-only: it registers the resource into the registry. It does NOT mount routes
  * — routing (uri + middleware group) stays a host concern via `Route::particleResource($uri, $key, only:)`,
  * exactly as `#[ParticleResource]` registers a declaration while the host mounts the admin leaf.
+ *
+ * @api
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 class ParticleResource

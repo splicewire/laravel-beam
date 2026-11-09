@@ -58,6 +58,8 @@ namespace Splicewire\Beam\Nav;
  * A lock on a seat that declares NO entitlement is meaningless and is treated as such: there is no
  * gate for it to soften, so the seat projects ungated and unlocked. {@see isSoftGated()} is the pair
  * of conditions, not either one alone.
+ *
+ * @api
  */
 class NavSection
 {
@@ -80,7 +82,7 @@ class NavSection
      * @param  NavAudience|null  $audience  who the seat is for (ux-walkthrough IA-8, UX-08): `developer` seats are drawn
      *                                      in the Developer zone, `product` seats in the rail; {@see NavAudience} carries
      *                                      the read-only rule that decides it. DEPRECATE-WITH-DEFAULT (lead 17:34Z): a
-     *                                      seat declared before UX-08a omits it, and a required argument fataled every
+     *                                      seat declared before this slot existed omits it, and a required argument fataled every
      *                                      such installed host on update. Omitted, it is `product` and the declaring
      *                                      class is named once in the deprecation log and in `beam:doctor`
      *                                      ({@see \Splicewire\Beam\Doctor\NavSectionAudienceAudit}). Every package
@@ -122,7 +124,7 @@ class NavSection
         }
     }
 
-    /** Who the seat is for: as declared, or `product` when a pre-UX-08a declaration omits it. */
+    /** Who the seat is for: as declared, or `product` when a declaration that predates the slot omits it. */
     public readonly NavAudience $audience;
 
     /** Whether the declaration named its audience; false only for an old-shape seat that took the default. */

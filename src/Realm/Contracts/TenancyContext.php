@@ -23,6 +23,8 @@ namespace Splicewire\Beam\Realm\Contracts;
  *   connection NAME resolve at hosts that never configured it, for models that PIN `central`. This
  *   port is the resolver kind — for readers with no model to pin. A resolver call is not a pin
  *   justification (`Splicewire\Beam\Surgeon\CentralPinJustificationAudit` reads declarations only).
+ *
+ * @api
  */
 interface TenancyContext
 {

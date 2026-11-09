@@ -17,7 +17,7 @@ use Splicewire\Beam\Particle\ParticleOperation;
  * {@see ParticleMounter::op()}. What it was not was *declarable*: ten mount
  * sites across seven trees each restated a verb that belongs to the operation, and the same operation
  * (`beam-ux-entry.body`) had its verb written out five separate times because five hosts mount it.
- * Ticket 11 §A2 settled the direction: the operation knows its own verb, so it says it once.
+ * The direction is settled (ticket 11 §A2): the operation knows its own verb, so it says it once.
  *
  * ## `null` means POST, and that is the whole migration story
  *
@@ -35,6 +35,8 @@ use Splicewire\Beam\Particle\ParticleOperation;
  * ⚠️ **No `Options`/`Head` case, deliberately.** Laravel mounts `HEAD` alongside every `GET` itself and
  * answers `OPTIONS` from the route table; neither is a verb a handler is written for. Adding one would
  * declare a mount the controller cannot serve.
+ *
+ * @api
  */
 enum HttpMethod: string
 {

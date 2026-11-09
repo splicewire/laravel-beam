@@ -46,6 +46,8 @@ use Splicewire\Beam\Realm\Attributes\Realm;
  * realm in its `stack` ({@see effective()}) — a general stack-walk that replaced the retired
  * user↔tenant `collapses()`/`effective()` special-case. The `user` realm's stack is config-driven
  * (`frame.collapse_user_realm`): an app may declare it with or without the tenant in its stack.
+ *
+ * @api
  */
 #[IsRegistry(
     root: 'beam.realm',
@@ -88,7 +90,7 @@ class RealmRegistry implements Gated, RecordsRegistrants, Registry
     /**
      * The operator console — the central, never-tenanted Root realm mounted under `/operator`.
      * Originally the concept was "operator" while the wire key and route stayed `admin` (a stability
-     * call); ADR-0156's 2026-08-07 addendum supersedes that split — both now follow the concept.
+     * call); that split has since been superseded (ADR-0156, 2026-08-07 addendum) — both now follow the concept.
      */
     public function operator(): RealmDefinition
     {

@@ -24,6 +24,8 @@ use Throwable;
  * resource-list gate, the declared particle-operation gate, an explicit open decision, or a named
  * middleware gate. A missing decision stays missing so I6 can reject host-authored navigation and
  * prune package navigation instead of silently treating an omission as public.
+ *
+ * @api
  */
 class SeatGate
 {

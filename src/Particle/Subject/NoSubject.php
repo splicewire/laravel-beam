@@ -25,6 +25,8 @@ use Splicewire\Beam\Particle\ParticleOperation;
  * already had to go there, and pin the order in a test: `Doctor\ParticleSlotCollisionAudit` simulates
  * the THREE-segment `{uri}/{id}/{segment}` slot and cannot see this one. The doctrine's
  * "Where an operation MOUNTS" section carries the same warning.
+ *
+ * @api
  */
 class NoSubject implements ResolvesOperationSubject
 {

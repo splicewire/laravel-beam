@@ -80,6 +80,8 @@ use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
  * Both are real and both get fed the actual requested realm now ({@see project()}) — previously neither
  * ever received one (`AdminResourceRegistry::all()`/`get()` were always called with `$realm = null` from
  * the one real caller, so the overlay/declaration seam existed but never fired).
+ *
+ * @api
  */
 #[IsRegistry(
     root: 'beam.particle.resources',
@@ -151,8 +153,8 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegist
      * and reaches neither of them — which is why the `RealmResourceRegistry` precedent this fold was
      * modelled on did not transfer and had to be rebuilt here (ticket 04 §A0).
      *
-     * Ticket 11 §A12 settled where the includes FIELD lives; it did not settle where contributions
-     * COMPOSE, and the two are different questions.
+     * Where the includes FIELD lives is settled (ticket 11 §A12); where contributions COMPOSE is a
+     * different question, and that settlement does not answer it.
      *
      * ## Still a pure declaration lookup
      *
@@ -552,7 +554,7 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegist
      * behind a green suite. A host that overrides a package binding to change one collaborator will always
      * drop the ones added later. Seed through here; never through the constructor.
      *
-     * ✅ **The flagship's override is DELETED as of particle-manifest-repatriation ticket 03** — with no
+     * ✅ **The flagship's override is DELETED** (particle-manifest-repatriation ticket 03) — with no
      * replacement seam, because the seed it existed to repeat is `config('frame.realms')`, which
      * `BeamServiceProvider` already reads. Its realm map and per-key membership were byte-identical
      * before and after; `contributions` went `NULL` → `ResourceContributionRegistry`. The worked example
@@ -628,9 +630,9 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegist
      * addressable through Frame even for an authorized actor — this is the Frame-membership gate, distinct
      * from authorization. An UNLABELLED typed resource (`frame` null) stays addressable; only an explicit
      * `frame: false` opts out, which is why this is narrower than {@see hasFramedResource()} (that also
-     * excludes unlabelled typed resources). Restores the opt-out that has()/find() lost when they moved to
-     * the readable predicate (herd-frame-convergence ticket 17 flipped before its Phase 2 gate passed);
-     * removing the frame switch entirely is ticket 17 Phase 2, not this change.
+     * excludes unlabelled typed resources). This restores the opt-out that has()/find() lost when they
+     * moved to the readable predicate ahead of their planned second phase (herd-frame-convergence
+     * ticket 17); removing the frame switch entirely belongs to that later phase, not to this method.
      */
     public function hasAddressableResource(string $key): bool
     {

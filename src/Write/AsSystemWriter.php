@@ -33,6 +33,8 @@ namespace Splicewire\Beam\Write;
  *
  * Package suites do not catch this — they bind their own gate, and a testbench host has no policies to
  * disagree with. It surfaces on a real consumer or not at all.
+ *
+ * @api
  */
 trait AsSystemWriter
 {

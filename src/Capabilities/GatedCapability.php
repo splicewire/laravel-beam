@@ -17,13 +17,15 @@ namespace Splicewire\Beam\Capabilities;
  * (ADR-0135's music21 conformance) without being excluded from the registry.
  *
  * Named GATED, not External (app ADR-0208). "External" described the narrower scope this
- * contract had before ADR-0205 made `meter()` nullable — third-party-backed features that
+ * contract had before `meter()` became nullable (ADR-0205) — third-party-backed features that
  * necessarily spend. Once a platform-hosted, deliberately-unmetered capability became
  * declarable, the name described the implementers rather than the contract. `Gated` names the
  * one axis that is always present: everything here requires an entitlement, and only some of
  * it spends. Deliberately NOT the bare `Capability` — three unrelated classes across the estate
  * already carry that name, and taking it in beam core (the tier everything depends on) would
  * put the collision where it is most likely to be felt.
+ *
+ * @api
  */
 interface GatedCapability
 {

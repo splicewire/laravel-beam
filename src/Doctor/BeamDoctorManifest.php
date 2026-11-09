@@ -55,6 +55,8 @@ use Splicewire\Beam\Install\BeamInstallManifest;
  * estate's trusted shell. A console run or a queued refresh has no actor to gate against, so an
  * authorizer pushed here would either sit null forever — dead wiring that reads as a working door — or,
  * worse, narrow a maintenance run by whoever happened to be authenticated when it started.
+ *
+ * @api
  */
 #[IsRegistry(
     root: 'beam.doctor.audits',

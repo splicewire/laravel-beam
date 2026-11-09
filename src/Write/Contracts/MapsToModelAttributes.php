@@ -75,6 +75,8 @@ use Splicewire\Beam\Write\ParticleWriter;
  * {@see UndeclaredWriteMapAudit} reports every `input:`/`editData:` class that
  * declares neither the interface nor the method, and the duck-typed branch is deleted — along with the
  * snake-case fallback — once that count reaches zero.
+ *
+ * @api
  */
 interface MapsToModelAttributes
 {

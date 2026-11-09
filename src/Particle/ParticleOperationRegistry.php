@@ -31,10 +31,10 @@ use Rushing\Popcorn\Registries\Superseded;
  * ({@see HasRegistryKey}), so a one-argument `register($operation)` keeps
  * working and nothing here concatenates a key.
  *
- * ⚠️ **The tracked premise for this migration was wrong, and it is worth not re-deriving.** Both
- * `#[IsRegistry]`'s old note and registry-kernel ticket 05 recorded that `:` is *rejected* by
- * {@see Key}, making this registry *"impossible to migrate by rekeying alone"*. Registry-kernel ticket
- * 30 widened the segment charset and `:` has been legal INSIDE a segment since — `tenants:suspend`
+ * ⚠️ **The recorded premise for this migration was wrong, and it is worth not re-deriving.** It was
+ * once recorded that `:` is *rejected* by {@see Key}, making this registry *"impossible to migrate by
+ * rekeying alone"* (registry-kernel ticket 05). The segment charset has since been widened (registry-kernel
+ * ticket 30) and `:` is legal INSIDE a segment — `tenants:suspend`
  * parses today, as ONE segment. So the blocker had already dissolved; what remained was not a
  * legality problem but a SHAPE one. A one-segment key is flat, and a flat keyspace cannot answer
  * "what operations does this resource have?" from the key, cannot nest a relation scope
@@ -44,6 +44,8 @@ use Rushing\Popcorn\Registries\Superseded;
  *
  * `<resource>.<name>` addresses one operation. Enumerate a resource's operations with
  * `matches('…operations.<resource>')`.
+ *
+ * @api
  */
 #[IsRegistry(
     root: 'beam.particle.operations',
@@ -121,9 +123,8 @@ class ParticleOperationRegistry implements Gated, RecordsRegistrants, RecordsSup
      * branch address, so a resource's operations are a segment-wise `matches()` rather than a scan with
      * a string prefix test.
      *
-     * ⚠️ **This docblock used to say `Route::particleResource()` reads through here. It does not**, and
-     * the claim was describing ticket 01's plan rather than the code (corrected on that ticket's
-     * resolution, 2026-08-26). `ParticleMounter::resource()` mounts the five CRUD verbs off an
+     * ⚠️ **Resource mounting does NOT read through here** (an earlier plan said it would; ticket 01,
+     * corrected 2026-08-26). `ParticleMounter::resource()` mounts the five CRUD verbs off an
      * `in_array($only)` check and never touches this registry — its only registry read is
      * `DataFilter::registry()`. The sole caller is
      * `Splicewire\Beam\Particle\Mount\PendingParticleMount::register()`, i.e. `->ops(true)` on the

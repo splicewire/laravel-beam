@@ -23,6 +23,8 @@ use Spatie\TypeScriptTransformer\TypeScriptTransformerConfigFactory;
  *
  * Requires `spatie/laravel-typescript-transformer`, which every host calling this already installs because
  * its base provider ships there; Beam only suggests it.
+ *
+ * @api
  */
 final class BeamTypeScriptTransformerExtension implements TypeScriptTransformerExtension
 {

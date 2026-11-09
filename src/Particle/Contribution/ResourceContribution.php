@@ -39,14 +39,15 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
  *    relations ride the one list query instead of N per-row loads. `list<string>` is the ordinary case
  *    and folds in {@see ParticleResourceRegistry::get()}, which stays a pure
  *    declaration lookup. The `Closure` form exists for the one job a static list provably cannot do —
- *    a **request-parameterized constrained eager-load** (`with(['bills' => fn ($q) => $q->forPeriod($period)])`,
- *    ticket 05 §A3) — and resolves ONCE PER REQUEST against the facet bag, never per record.
+ *    a **request-parameterized constrained eager-load** (ticket 05 §A3), such as
+ *    `with(['bills' => fn ($q) => $q->forPeriod($period)])` — and resolves ONCE PER REQUEST against the
+ *    facet bag, never per record.
  *  - {@see $value} computes the slice for one record at projection time.
  *
  * ## The facet bag is the third argument, and that is a correction
  *
- * Ticket 04 §A5 ruled both arms take the {@see ReadContext} "which is what carries `filter[period]`".
- * It does not: `ReadContext` is `(includes, cardinality, actor, version)` and its own docblock rules the
+ * An earlier design had both arms take the {@see ReadContext} on the belief that it carries
+ * `filter[period]` (ticket 04 §A5). It does not: `ReadContext` is `(includes, cardinality, actor, version)` and its own docblock rules the
  * facet bag out by name — *"filters/sorts … stay on the request/QueryBuilder (the context owns
  * projection, never selection)"*. So the period rides the **opaque facet array** as a third argument
  * (ticket 05 §A3), the same bag a {@see StreamsRecords} backing is
@@ -60,6 +61,7 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
  * claiming one sub-projection key is a wiring conflict with no correct silent resolution.
  *
  * @see ParticleResource the declaration a contribution attaches to
+ * @api
  */
 class ResourceContribution
 {

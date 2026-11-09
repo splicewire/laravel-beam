@@ -46,6 +46,8 @@ use Rushing\Popcorn\Registries\RegistryKey;
  * {@see BasicRegistry} is held as a FIELD (registry-kernel ticket 01 D1) — its own
  * docblock closes the extending door, and this class publishes caller-facing sugar
  * (`get()`/`byEntitlement()`/`all()`) that no kernel base could supply.
+ *
+ * @api
  */
 #[IsRegistry(
     root: 'beam.capabilities',

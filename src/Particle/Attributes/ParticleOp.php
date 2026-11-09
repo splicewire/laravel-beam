@@ -66,6 +66,8 @@ use Splicewire\Beam\Routing\IdConstraint;
  * EXPRESSION: `new` is legal in one since PHP 8.1, a static factory call (`Subject::record()`) is not and
  * fatals at parse. With 44 declaration sites across the estate that decides the spelling once, for this
  * twin and the runtime one alike.
+ *
+ * @api
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 class ParticleOp
@@ -77,13 +79,13 @@ class ParticleOp
      * @param  class-string|null  $model  ⚠️ **DEPRECATED** (particle-operation-surface ticket 18) — an op
      *                                    names a `resource:`, the resource names its `backing:`, and the
      *                                    model is a fact about the backing. Omit it; declare a
-     *                                    `#[ParticleResource]` for the key instead. It was documented as the
-     *                                    fallback for *"the live `Sharing::attachTo()` /
-     *                                    `Resources::attachTo()` / `market-products.*` shape"* — a count of
-     *                                    declaration sites in source rather than of registered operations.
-     *                                    ⚠️ The "0 of 107 registered operations" census this line used to
-     *                                    quote was **stale and mis-scoped** — see {@see ParticleOperation},
-     *                                    which carries the ruling, the migration's shape, and the
+     *                                    `#[ParticleResource]` for the key instead. It was once documented
+     *                                    as the fallback for the `Sharing::attachTo()` /
+     *                                    `Resources::attachTo()` / `market-products.*` shape, but that
+     *                                    rested on a count of declaration sites in source rather than of
+     *                                    registered operations. ⚠️ A single package-wide census of this
+     *                                    slot is stale and mis-scoped — see {@see ParticleOperation},
+     *                                    which carries the decision, the migration's shape, and the
      *                                    re-measured per-host figures
      * @param  string|false|null  $ability  the authorization token checked before the op runs
      *                                      (deny-default); `false` declares the op ungated DELIBERATELY;

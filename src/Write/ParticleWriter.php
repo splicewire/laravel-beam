@@ -58,12 +58,14 @@ use Splicewire\Beam\Write\Stages\ValidateStage;
  *
  * ## Deliberately NOT a registry — do not declare `#[IsRegistry]` on it
  *
- * It used to carry a manifest descriptor and was undescribed by registry-kernel ticket 07 D5. It is bound
+ * It no longer carries a manifest descriptor (registry-kernel ticket 07 D5). It is bound
  * with `bind()`, not as a singleton, and has no `register()` — nothing accumulates into it, so a second
  * resolution starts from the same shipped defaults. The `$stages` list is CONSTRUCTOR-SEEDED, which is a
  * composition seam and not a keyspace: you insert a pipe by constructing this writer differently, not by
  * registering into a live object. The stage-ordering hint the descriptor carried is the paragraph above,
  * kept here on purpose so undescribing it lost nothing.
+ *
+ * @api
  */
 class ParticleWriter
 {

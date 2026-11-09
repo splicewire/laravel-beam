@@ -60,12 +60,14 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  * {@see $navOrder}, {@see $routeName}, {@see $layout}, {@see $readOnly}, {@see $deletable},
  * {@see $editable}, {@see $showable}) and can project itself into Frame's agnostic contract via
  * {@see toResourceDefinition()}. These were previously carried by a separate admin-resource subtype,
- * which RDU-01 merged UP into this one class and RDU-07 deleted.
+ * which has since been merged up into this one class and deleted (RDU-01, RDU-07).
  *
  * A resource is **framed** — i.e. it lights up the `@schemastud/frame` editor in addition to REST — when
  * {@see isFramed()} is true (a non-empty {@see $label}, unless overridden by the explicit {@see $frame}
  * boolean). A REST-only surface leaves `label` empty; it stays a plain particle resource. Beam depends
  * DOWN on frame (ADR-0156), so this class may reference `Schemastud\Frame\*` directly.
+ *
+ * @api
  */
 class ParticleResource implements HasRegistryKey
 {
@@ -74,8 +76,8 @@ class ParticleResource implements HasRegistryKey
     /**
      * The key this declaration registers under — {@see $key}, verbatim.
      *
-     * The seam registry-kernel ticket 01 D2 built for exactly this entry (its docblock names
-     * `$resource->key` as one of the three self-keying exemplars), and what lets
+     * This is the self-keying seam the registry kernel provides for exactly this entry (registry-kernel
+     * ticket 01 D2 names `$resource->key` as one of its three exemplars), and what lets
      * {@see AttributeRegistrar} fill
      * {@see ParticleResourceRegistry} from a `#[ParticleResource]` scan without the kernel deriving a
      * key from a class name — which it refuses to do, loudly, rather than guessing (ticket 53).
@@ -150,11 +152,11 @@ class ParticleResource implements HasRegistryKey
      *                              the nav heading and never was** — see `$section`.
      * @param  string|null  $icon  nav icon key
      * @param  string|null  $section  host sitemap section this resource auto-attaches into; null = not in primary nav.
-     *                                ⚠️ **NOT deprecated, and api-surface-coherence ticket 45 measured why.**
-     *                                Ticket 01 ruled that `$section` collapses into the group tree and that nav
-     *                                derives its heading from the group's ROOT ancestor, on the premise that
-     *                                *"nav grouping and doc grouping were never two taxonomies — nav just cut a
-     *                                level higher"*. Measured against the flagship host, they are two
+     *                                ⚠️ **NOT deprecated, and NOT derivable from `$group`** (api-surface-coherence
+     *                                ticket 45). It is tempting to collapse `$section` into the group tree and
+     *                                derive the nav heading from the group's ROOT ancestor, on the premise that
+     *                                nav grouping and doc grouping are one taxonomy cut a level apart (ticket
+     *                                01). Measured against the flagship host, they are two
      *                                taxonomies: nav's sections are `studio · calendar · knowledge · compliance ·
      *                                circuits · threads · system` (tenant) + `platform · market` (operator) —
      *                                **nine**, carrying entitlement gates, icons and hrefs — against the group
@@ -198,7 +200,7 @@ class ParticleResource implements HasRegistryKey
      *                                 **Why this is a declaration slot and not a host-side map.** It replaces
      *                                 `App\Frame\FrameResourceRegistry` at the flagship — a constructor-seeded
      *                                 `key => handler` table that had accumulated 19 explicit rows. That class
-     *                                 was the residue of the ADR-0156 fold (tower-api-dissolution #06-#18), which
+     *                                 was the residue of an earlier handler fold (ADR-0156; tower-api-dissolution #06-#18), which
      *                                 collapsed 18 bespoke per-resource handlers onto the one generic handler and
      *                                 left the table behind to say so. Its own docblock had already conceded the
      *                                 rest of its job away: `keysForRealm()` was delegated to
@@ -382,9 +384,9 @@ class ParticleResource implements HasRegistryKey
      * ADR-0002). `query:` and `policy:` are server-side inputs on the same terms (ADR-0004): the filter
      * capability and the read/write gates read them off the object; the wire carries neither. `data:`,
      * `editData:` and `createResultData:` likewise stay class-strings here; frame projects each onto the
-     * wire as the generated type's dot-form name. So the manifest never contradicts ADR-0212 ("backed, not
-     * modelled") in the browser, while the declaration's `modelClass()` still reaches the one reader
-     * that needs it. `ParticleResourceRegistryTest` pins both halves.
+     * wire as the generated type's dot-form name. So the manifest never exposes a model to the browser —
+     * resources are backed, not modelled (ADR-0212) — while the declaration's `modelClass()` still
+     * reaches the one reader that needs it. `ParticleResourceRegistryTest` pins both halves.
      *
      * @param  string|null  $realm  The Frame realm requesting this projection; used to select the matching
      *                              mounted operation URLs while preserving neutral legacy routes.

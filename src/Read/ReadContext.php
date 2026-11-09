@@ -21,6 +21,8 @@ use Splicewire\Beam\Read\Contracts\ParticleHydrator;
  * `allowedFields` reflection yet; a `depth` knob — path length already IS depth; filters/sorts — they
  * stay on the request/QueryBuilder (the context owns *projection*, never *selection*); field-level read
  * authz — an optional `ReadGate` decorator, not the base.
+ *
+ * @api
  */
 class ReadContext
 {

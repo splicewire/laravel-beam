@@ -55,6 +55,8 @@ use Splicewire\Beam\Schema\SchemaId;
  * `beam_particle` ({@see getMorphClass()}), not the FQCN — so the eventual class rename (T07)
  * leaves existing version rows resolvable. The beam provider registers the alias additively
  * (`Relation::morphMap`, never `enforceMorphMap` — a host has many class-string morphs).
+ *
+ * @api
  */
 class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionable
 {

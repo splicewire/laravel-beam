@@ -63,6 +63,8 @@ use Splicewire\Beam\Write\ParticleWriter;
  * The ONE app-coupling this surface used to carry — the app's `Splicewire\Beam\Data\ResponseBody` — is hoisted behind
  * the {@see ResponseEnvelope} port (ADR-0116): beam-core builds its `{ data: … }` JSON through the seam,
  * and a host binds its own envelope adapter so its responses stay byte-compatible.
+ *
+ * @api
  */
 class ParticleController extends Controller
 {
@@ -502,7 +504,7 @@ class ParticleController extends Controller
      * schema the connection resolves to, plus the middleware on each host's mount" — and one host mounted
      * one of them centrally with neither. Prose nominates; only a predicate, a policy, a tenancy
      * initializer, or a hard realm entitlement the caller holds authorizes, and this is where the four
-     * are read. The fourth was added 2026-09-23 by owner ruling: a realm gate already refuses everyone
+     * are read. The fourth was added 2026-09-23 by owner decision: a realm gate already refuses everyone
      * else at the socket, and without it every policy-less operator-realm resource refused its own
      * operators ({@see RealmEntitlementResourceGate::entitledThroughRealm()}).
      *
@@ -511,7 +513,7 @@ class ParticleController extends Controller
      * Whether a host's mount carries tenancy, and whether a policy is bound there, are facts about the
      * HOST — so the mount registers and the host boots regardless (AGENTS.md: a check whose answer depends
      * on the host must not throw; the 2026-08-26 event-catalog repair is the shape). The first cut of this
-     * ruling refused the mount at boot and took `~/Herd/splicewire-app` and `~/Herd/audiostud` down with
+     * gate refused the mount at boot and took `~/Herd/splicewire-app` and `~/Herd/audiostud` down with
      * it; this is the corrected shape, and {@see UngatedResourceReadAudit} is the
      * advisory that tells a host which mounts would answer 403 before a caller finds out.
      *
@@ -830,8 +832,8 @@ class ParticleController extends Controller
      * nobody contributes to, which is all but a handful estate-wide.
      *
      * ⚠️ This fires on the LIST path too (`index()` maps it over the page), so the value arm is a
-     * per-row call site. That is a known, accepted cost of this seam rather than an oversight: ticket 04
-     * disposed of it explicitly, and the includes arm — folded upstream in
+     * per-row call site. That is a known, accepted cost of this seam rather than an oversight: it was
+     * disposed of explicitly (ticket 04), and the includes arm — folded upstream in
      * {@see ParticleResourceRegistry::get()} and {@see ParticleListQuery} — is what keeps the slice's
      * RELATIONS off the per-row path.
      *

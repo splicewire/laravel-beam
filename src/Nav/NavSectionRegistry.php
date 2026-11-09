@@ -51,11 +51,13 @@ use Splicewire\Beam\Realm\RealmRegistry;
  *
  * ## No admission gate, deliberately
  *
- * There is no opt-in list a host must add a package to before its seats appear. The owner's ruling is
+ * There is no opt-in list a host must add a package to before its seats appear. The rule is
  * *"installed means enabled"*, and the existing `config/frame.php` realm list is the kill switch: a
  * realm the host does not ship gets no seats by the no-op above, and a resource absent from a realm is
  * already not surfaced. Nav does not get a second switch. Do not add one here without reversing that
- * ruling first.
+ * owner decision first.
+ *
+ * @api
  */
 #[IsRegistry(
     root: 'beam.nav.sections',

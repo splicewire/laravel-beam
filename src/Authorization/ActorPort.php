@@ -16,6 +16,8 @@ namespace Splicewire\Beam\Authorization;
  *
  * {@see GuardActorAdapter} is the default binding (the Laravel guard). A transport with no guard binds
  * its own — that is the whole point of the port.
+ *
+ * @api
  */
 interface ActorPort
 {
