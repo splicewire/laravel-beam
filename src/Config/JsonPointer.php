@@ -2,12 +2,43 @@
 
 namespace Splicewire\Beam\Config;
 
+use InvalidArgumentException;
+
 /**
  * RFC 6901 pointers into a config root. Config keys are addressed by pointer, never by dot path, because keys
  * contain dots: `app.meters` is keyed `google.cse.query` (config-sections ticket 01, finding 6).
+ *
+ * The pointer is the PUBLIC address: on the wire, in override rows, and in the ladder. A DataOverlay JSONPath
+ * exists only at the one place a tier's ops are applied to a document, through {@see self::toJsonPath()}
+ * (ADR-0245 decision 2).
  */
 class JsonPointer
 {
+    /**
+     * The concrete DataOverlay JSONPath for a pointer: every segment bracket-quoted, so a dotted key stays one
+     * segment (`/google.cse.query/unit_cost_usd` → `$['google.cse.query']['unit_cost_usd']`).
+     *
+     * DataOverlay's concrete-target parser (`schemastud/laravel-data-schemas` `src/Overlay/ConcreteTarget.php`)
+     * has no escape for a quote or a closing bracket inside a quoted segment, so a key holding either cannot be
+     * addressed, and is refused here by name rather than turned into a path that names a different node.
+     *
+     * @throws InvalidArgumentException
+     */
+    public static function toJsonPath(string $pointer): string
+    {
+        $path = '$';
+
+        foreach (self::segments($pointer) as $segment) {
+            if (str_contains($segment, "'") || str_contains($segment, ']')) {
+                throw new InvalidArgumentException(sprintf('Config key [%s] in [%s] holds a quote or a closing bracket, which a DataOverlay JSONPath cannot address.', $segment, $pointer));
+            }
+
+            $path .= "['{$segment}']";
+        }
+
+        return $path;
+    }
+
     /** @param list<string|int> $segments */
     public static function from(array $segments): string
     {

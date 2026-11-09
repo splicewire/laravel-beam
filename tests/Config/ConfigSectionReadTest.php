@@ -115,6 +115,22 @@ class ConfigSectionReadTest extends TestCase
         }
     }
 
+    public function test_under_config_cache_an_unseen_variable_is_unknown_never_file_default(): void
+    {
+        // Cached config means .env was never loaded, so absence from the process proves nothing.
+        $this->app->when(ConfigSectionReader::class)->needs('$configCached')->give(true);
+
+        $this->assertNull($this->keys($this->read('widgets'))['/driver']->env->set);
+
+        putenv('BEAM_FIXTURE_WIDGETS_DRIVER=redis');
+
+        try {
+            $this->assertTrue($this->keys($this->read('widgets'))['/driver']->env->set, 'a variable the process sees is set, cached or not');
+        } finally {
+            putenv('BEAM_FIXTURE_WIDGETS_DRIVER');
+        }
+    }
+
     public function test_a_map_root_with_dotted_names_reads_host_provenance_per_leaf(): void
     {
         $row = $this->read('fleet.gauges');
