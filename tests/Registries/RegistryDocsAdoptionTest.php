@@ -24,7 +24,7 @@ class RegistryDocsAdoptionTest extends TestCase
         $report = RegistryDocsCheck::forPackage(dirname(__DIR__, 2))->run();
 
         $this->assertSame([], $report->failures(), $report->summary());
-        $this->assertCount(19, $report->coverage, 'declared roots: '.implode(', ', array_keys($report->coverage)));
+        $this->assertCount(20, $report->coverage, 'declared roots: '.implode(', ', array_keys($report->coverage)));
         $this->assertSame(
             ['beam.doctor.facade-scope'],
             array_keys(array_filter($report->coverage, fn (string $kind) => $kind === 'exempt')),

@@ -66,9 +66,11 @@ use Splicewire\Beam\Collections\CollectionResolutionScope;
 use Splicewire\Beam\Collections\CollectionResourceContextNodes;
 use Splicewire\Beam\Collections\CollectionSchemaResolver;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
+use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\BeamSeedCommand;
+use Splicewire\Beam\Console\ConfigSectionSchemasCommand;
 use Splicewire\Beam\Console\ConvergencePreflightCommand;
 use Splicewire\Beam\Console\DocblockCommand;
 use Splicewire\Beam\Console\FrameCacheCommand;
@@ -695,6 +697,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // byte. Unlike RealmRegistry it has no realm-creation verb — an overlay can only enrich a realm
         // RealmRegistry already ships, never conjure a new realm/tile.
         $this->app->singleton(RealmOverlayRegistry::class, fn () => new RealmOverlayRegistry);
+
+        // Config Sections (ADR-0245) — the typed description of every config root a package or host declares,
+        // served by the `beam-config` particle resource. A SINGLETON so a package (or the host) registering its
+        // sections from its own provider mutates the instance the backing reads. Ships EMPTY ⇒ inert.
+        $this->app->singleton(ConfigSectionRegistry::class, fn () => new ConfigSectionRegistry);
 
         // The package-facing NAV SEAT registry. A `#[ParticleResource(section:)]` declaration says which
         // section a resource sits UNDER; until now nothing could SEAT that section, so 11 of the family's
@@ -1948,6 +1955,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 ParticleResourcesCommand::class,
                 // localization 07: every rung tried for a key, a locale and a realm, and the one that answered.
                 LangRungsCommand::class,
+                // Config Sections' committed JSON Schemas (ADR-0245): regeneration writes, `--check` only reads.
+                ConfigSectionSchemasCommand::class,
             ]);
 
             // The estate-POLICY surgeon commands relocated DOWN from surgeon (they hard-code estate
