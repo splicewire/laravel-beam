@@ -29,7 +29,7 @@ class BeamRegistriesRecordRegistrantsTest extends TestCase
     ];
 
     /** The number of Beam-owned roots this harness describes, minus the exemptions. */
-    private const COVERED = 18;
+    private const COVERED = 19;
 
     /** @return array<string, object> root => owner, for every root whose owner is a Beam class */
     private function beamOwners(): array
