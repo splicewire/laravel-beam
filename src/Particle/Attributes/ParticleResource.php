@@ -77,7 +77,7 @@ class ParticleResource
      * resolved from `public static` convention methods (attributes can't carry closures); these scalar
      * manifest fields are carried directly.
      * @param  string  $label  nav label; a non-empty label marks the resource framed (navigable)
-     * @param  'enriched'|'bare'  $form  per-resource default form mode
+     * @param  'enriched'|'bare'  $form  per-resource default form mode; defaults to `enriched`, and any value outside FormMode is refused at registration
      * @param  class-string|null  $editData  rare escape-hatch edit DTO (input-shape divergence)
      * @param  string|null  $policy  ability/policy key the injected can() resolves against
      * @param  class-string|null  $query  data-filters query class the ListShell facets bar rides (manifest)
@@ -106,7 +106,7 @@ class ParticleResource
         public array $includes = [],
         public int $perPage = 20,
         public string $label = '',
-        public string $form = 'bare',
+        public string $form = 'enriched',
         public ?string $editData = null,
         public ?string $policy = null,
         /** @var class-string<ResourceReadPolicy>|null */

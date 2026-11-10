@@ -22,6 +22,7 @@ use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\Superseded;
+use Schemastud\Frame\Registry\FormMode;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Doctor\ParticleRouteResourceAudit;
@@ -429,6 +430,10 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegist
                 ParticleResource::READ_BOUNDARY_GLOBAL,
             ));
         }
+
+        // The form mode is checked here, at registration, against frame's one list (ruling 05),
+        // not later when the definition is projected.
+        FormMode::fromDeclaration($resource->form, $resource->key);
 
         $registered = $this->lookup($resource->key);
         if ($registered !== null && $registered->readPolicy !== $resource->readPolicy) {

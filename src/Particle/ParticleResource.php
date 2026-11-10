@@ -141,7 +141,7 @@ class ParticleResource implements HasRegistryKey
      * non-empty {@see $label} is {@see isFramed() framed} and projects into Frame via
      * {@see toResourceDefinition()}. A REST-only resource leaves them at their defaults.
      * @param  string  $label  nav label; a non-empty label marks the resource {@see isFramed() framed} (navigable)
-     * @param  string  $form  per-resource default form mode: 'enriched' | 'bare'
+     * @param  string  $form  per-resource default form mode: 'enriched' (the default) | 'bare'; any other value is refused at registration (Schemastud\Frame\Registry\FormMode)
      * @param  class-string|null  $editData  rare escape-hatch edit DTO (input-shape divergence)
      * @param  string|null  $policy  ability/policy key the injected can() resolves against
      * @param  class-string|null  $query  data-filters query class the ListShell facets bar rides (manifest)
@@ -270,7 +270,7 @@ class ParticleResource implements HasRegistryKey
         public ?Closure $scope = null,
         public ?Closure $operationScope = null,
         public string $label = '',
-        public string $form = 'bare',
+        public string $form = 'enriched',
         public ?string $editData = null,
         public ?string $policy = null,
         /** @var class-string<ResourceReadPolicy>|null */

@@ -109,6 +109,18 @@ class ParticleResourceRegistryTest extends TestCase
         $registry->register(new ParticleResourceRuntime(key: 'widgets', backing: 'App\\Models\\Widget'));
     }
 
+    /** frame-foundation 17: `enriched` is the default form mode, and any value outside frame's FormMode is refused at registration. */
+    public function test_the_form_mode_defaults_to_enriched_and_an_unknown_one_is_refused_at_registration(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register(new ParticleResourceRuntime(key: 'widgets', backing: 'App\\Models\\Widget'));
+        $this->assertSame('enriched', $registry->get('widgets')->form);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Resource [gadgets] declares form mode [raw]; a form mode is one of: enriched, bare.');
+        $registry->register(new ParticleResourceRuntime(key: 'gadgets', backing: 'App\\Models\\Gadget', form: 'raw'));
+    }
+
     public function test_it_stores_a_declaration_and_projects_at_build_time(): void
     {
         $registry = new ParticleResourceRegistry;
