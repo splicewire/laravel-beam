@@ -84,6 +84,38 @@ class ParticleGeneratorTest extends TestCase
 
     // ── what gets emitted ───────────────────────────────────────────────────────────────────────────
 
+    public function test_a_generated_resource_presents_its_derived_label_and_a_list_column(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'ScaffoldPack', '--model' => 'Lyric'])
+            ->expectsOutputToContain('no findings')->assertSuccessful();
+
+        $resource = $this->app->make(ParticleResourceRegistry::class)->definition('scaffold-packs');
+        $this->assertSame('Scaffold packs', $resource->nav->label);
+        $block = (new \Schemastud\Frame\Registry\ContextManifest)->forResource($resource->data);
+        $this->assertArrayHasKey('list-column', $block['byNode']['id']);
+    }
+
+    public function test_a_label_override_and_an_explicitly_empty_label_are_checked(): void
+    {
+        foreach (['NamedFrame' => 'Our records', 'HiddenFrame' => ''] as $name => $label) {
+            $this->artisan('splicewire:beam:make:particle-resource', ['name' => $name, '--model' => 'Lyric', '--label' => $label])
+                ->expectsOutputToContain('no findings')->assertSuccessful();
+            $this->assertStringContainsString('label: '.var_export($label, true).',', $this->read('app/Data/'.$name.'Data.php'));
+        }
+        $this->assertStringContainsString('addressable and not presented', $this->read('app/Data/HiddenFrameData.php'));
+    }
+
+    public function test_a_published_resource_stub_missing_its_label_or_column_fails_verification(): void
+    {
+        $stub = File::get(dirname(__DIR__, 2).'/stubs/particle-resource.stub');
+        File::ensureDirectoryExists($this->host.'/stubs');
+        foreach (['UnlabelledFrame' => '    label: {{ label }},', 'ColumnlessFrame' => '        #[Column]'] as $name => $removed) {
+            File::put($this->host.'/stubs/particle-resource.stub', str_replace($removed, '', $stub));
+            $this->artisan('splicewire:beam:make:particle-resource', ['name' => $name, '--model' => 'Lyric'])
+                ->assertFailed();
+        }
+    }
+
     public function test_the_resource_generator_emits_a_read_data_class_and_the_write_dto_its_input_slot_names(): void
     {
         $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Lyric'])->assertSuccessful();

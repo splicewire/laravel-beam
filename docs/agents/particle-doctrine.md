@@ -37,6 +37,8 @@ routes (the ⚠️ below). For the third
 site, `splicewire:beam:make:page {realm}/{name}` emits an Inertia page's `#[TypeScript]` props Data class, the
 invokable action carrying `#[ResponseFromData]` (`--request=<Data>` adds `#[RequestFromData]`) that renders a Data
 object, the typed `.tsx` page, and the route line.
+The resource generator emits a label and an id list column; `--label=` deliberately keeps it addressable and not
+presented. Its check reads frame's context block; column declarations are in `schemastud/laravel-frame`'s `docs/attributes.md`.
 
 **A registered schema is not a fourth site.** A JSON Schema a tenant registers at runtime never declares a
 resource. It may type one member of a Data class declared at one of the three sites: a Record's fields, or a

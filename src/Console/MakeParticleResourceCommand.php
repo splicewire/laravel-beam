@@ -6,6 +6,7 @@ use Illuminate\Console\GeneratorCommand;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Schemastud\Frame\Registry\ContextManifest;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Surgeon\UnseatedNavSectionAudit;
@@ -15,6 +16,8 @@ use Throwable;
 /**
  * `splicewire:beam:make:particle-resource` — mints a conformant `#[ParticleResource]` surface: the read
  * projection Data class carrying the attribute, plus the write DTO its `input:` slot names.
+ * The read projection presents a label derived from its key and an id list column. `--label=` opts out of
+ * presentation explicitly; verification reads the emitted class and frame's context block for both declarations.
  *
  * ## Two files, because the resource has two shapes
  * `data:` and `input:` are the resource's read and write slots, and a generator that emitted only the read
@@ -214,7 +217,28 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
         $read = $this->loadEmitted()[array_key_first($this->emitted)];
         $this->laravel->make(AttributedParticleDiscovery::class)->discover(classes: [$read]);
 
-        return $this->undeclaredWhenMounted(fn () => Particle::mount($this->resolvedKey, $this->resolvedKey));
+        $findings = $this->undeclaredWhenMounted(fn () => Particle::mount($this->resolvedKey, $this->resolvedKey));
+        $resource = $this->laravel->make(\Splicewire\Beam\Particle\ParticleResourceRegistry::class)->find($this->resolvedKey);
+        if ($resource?->label !== $this->resourceLabel()) {
+            $findings[] = 'The emitted resource must declare its label (use --label= for an addressable resource that is not presented).';
+        }
+        $block = (new ContextManifest)->forResource($read);
+        $hasColumn = false;
+        foreach ($block['byNode'] as $contexts) {
+            $hasColumn = $hasColumn || array_key_exists('list-column', $contexts);
+        }
+        if (! $hasColumn) {
+            $findings[] = 'The emitted resource must declare at least one list-column participant (add #[Column] to a property).';
+        }
+
+        return $findings;
+    }
+
+    protected function resourceLabel(): string
+    {
+        $label = $this->option('label');
+
+        return is_string($label) ? $label : ucfirst(str_replace(['-', '_'], ' ', $this->resolvedKey));
     }
 
     /**
@@ -228,6 +252,8 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
         return [
             'key' => $this->resolvedKey,
             'uri' => $this->resolvedKey,
+            'label' => var_export($this->resourceLabel(), true),
+            'labelComment' => $this->resourceLabel() === '' ? "    // This resource is addressable and not presented.\n" : '',
             'model' => class_basename($this->resolvedModel),
             'namespacedModel' => $this->resolvedModel,
             'inputClass' => class_basename($this->inputClass),
@@ -478,6 +504,7 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
         return [
             ['model', 'm', InputOption::VALUE_REQUIRED, 'The Eloquent model the resource resolves — a bare name resolves under App\Models\, a namespaced one is used as given (default: App\Models\<Name>)'],
             ['key', 'k', InputOption::VALUE_REQUIRED, 'The registry key and data-filters resource key (default: the kebab-cased plural of <Name>)'],
+            ['label', null, InputOption::VALUE_REQUIRED, 'Display label derived from the key by default; --label= keeps the resource addressable and not presented'],
             ['force', 'f', InputOption::VALUE_NONE, 'Overwrite the read Data class if it already exists'],
             ['summary', 's', InputOption::VALUE_NONE, 'Also emit a summary provider (App\\Particle\\Summaries\\<Name>SummaryProvider) implementing ResourceSummaryProvider, and print the summaryProvider: line to add to the attribute'],
             ['filters', null, InputOption::VALUE_NONE, 'Also emit App\\Data\\Filters\\<Name>FilterData from the model\'s actual table columns (#[Filterable]/#[Sortable]), naming the resource by its key'],

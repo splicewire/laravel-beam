@@ -3,6 +3,7 @@
 namespace {{ namespace }};
 
 use {{ namespacedModel }};
+use Schemastud\Frame\Attributes\Column;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 
@@ -18,6 +19,9 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
  *
  *     Particle::mount('{{ uri }}', '{{ key }}');
  *
+ * Frame attributes: schemastud/laravel-frame docs/attributes.md.
+ * Add #[Column] to each property the list should display.
+ *
  * The closures an attribute cannot carry are resolved by CONVENTION from `public static` methods on THIS
  * class, each optional — add them when you need them:
  *
@@ -29,6 +33,7 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
  */
 #[ParticleResource(
     key: '{{ key }}',
+{{ labelComment }}    label: {{ label }},
     backing: {{ model }}::class,
     input: {{ inputSlot }},
     readOnly: {{ readOnly }},
@@ -41,8 +46,9 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
 class {{ class }} extends Data
 {
     public function __construct(
-        // Replace with the columns this resource projects. Declare the default sort on the property that
+        // Add #[Column] to each property to list. Declare the default sort on the property that
         // carries it via `#[Sortable(default: true)]` — there is no attribute-level sort knob.
+        #[Column]
         public int $id,
     ) {}
 }
