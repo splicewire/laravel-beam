@@ -21,7 +21,7 @@ final class TypeScriptTransformerServiceProvider extends TypeScriptTransformerAp
 
 **Fixed** — inside the extension (`src/Codegen/BeamTypeScriptTransformerExtension.php:37-45`); a host never repeats them:
 1. `DeclaredParticleTransformedProvider`, seeded by `DeclaredParticleTypes` and `DeclaredRouteTypes` — the host's
-   **declared reach**;
+   **declared reach**, including public-read projections and contribution slices;
 2. `LaravelDataTypeScriptTransformerExtension` (`DataClassTransformer`, the laravel-data providers,
    `CarbonInterface` → `string`);
 3. `EnumTransformer`;
@@ -62,8 +62,8 @@ frontend holds, so it carries its own declaration-name census.
 
 Reach for these in order:
 
-1. **Declared reach.** Every particle SHAPE slot and every route-declared type seeds a walk through the Data classes and
-   enums it references. Route-declared types come from `->beam()->returns()`/`->streams()` and from
+1. **Declared reach.** Every particle SHAPE slot (including `publicRead`), every registered contribution DTO, and every route-declared
+   type seeds a walk through the Data classes and enums it references. Route-declared types come from `->beam()->returns()`/`->streams()` and from
    `#[ResponseFromData]`/`#[StreamsFromData]`. A type reached this way needs no directory: declare the shape, and its
    types follow.
 2. **`app_path()`.** Every `BaseData` and enum under it emits. No attribute selects.

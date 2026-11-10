@@ -33,6 +33,7 @@ use Splicewire\Beam\Codegen\DeclaredParticleTransformedProvider;
 use Splicewire\Beam\Codegen\DeclaredParticleTypes;
 use Splicewire\Beam\Codegen\DeclaredRouteTypes;
 use Splicewire\Beam\Codegen\PackageTypeRoots;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -223,7 +224,7 @@ class BeamTypeScriptTransformerExtensionTest extends TestCase
         // Nothing else declares anything: empty particle registries, empty roots outside the fixture's directory.
         $config = fn (Writer $writer, Router $router) => $this->factory()
             ->extension(new BeamTypeScriptTransformerExtension(
-                new DeclaredParticleTypes($particles, $operations),
+                new DeclaredParticleTypes($particles, $operations, new ResourceContributionRegistry),
                 new PackageTypeRoots([]),
                 new DeclaredRouteTypes($router, $returns),
             ))

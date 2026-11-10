@@ -47,8 +47,8 @@ class FrameResourceTypesGeneratorTest extends TestCase
         $resources = app(ParticleResourceRegistry::class);
         $resources->register(new ParticleResource(key: 'zeta', backing: Model::class, data: MapRow::class, publicRead: MapRow::class));
         $resources->register(new ParticleResource(key: 'alpha', backing: Model::class, data: MapRow::class, editData: MapEdit::class, createResultData: MapCreated::class, publicRead: MapPublic::class));
-        // Also seeds the public/slice classes into the transformer, without making either addressable.
-        $resources->register(new ParticleResource(key: 'rest-only', backing: Model::class, data: MapPublic::class, input: MapSlice::class, frame: false));
+        // Public and slice DTOs must be discovered from their own declarations, not this unframed resource.
+        $resources->register(new ParticleResource(key: 'rest-only', backing: Model::class, data: MapRow::class, frame: false));
         $resources->register(new ParticleResource(key: 'subject-only', backing: Model::class));
         app(ResourceContributionRegistry::class)->register(new ResourceContribution(
             key: 'alpha', as: 'extra', data: MapSlice::class, value: fn (): ?MapSlice => null,
@@ -79,7 +79,9 @@ class FrameResourceTypesGeneratorTest extends TestCase
         $this->fixtures();
         foreach ([false, true] as $modules) {
             $this->app->instance(TypeScriptTransformerConfig::class, $this->transformer($modules));
-            $this->artisan('splicewire:beam:generate:client')->assertSuccessful();
+            $this->artisan('splicewire:beam:generate:client')
+                ->doesntExpectOutputToContain('Frame resource [alpha]')
+                ->assertSuccessful();
             $ts = file_get_contents($this->directory.'/client/frame-resources.ts');
             $ref = fn (string $name): string => $modules ? "import('../types/FrameMap').{$name}" : "FrameMap.{$name}";
             $this->assertStringContainsString('export interface FrameResources {', $ts);

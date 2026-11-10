@@ -5,6 +5,8 @@ namespace Splicewire\Beam\Codegen;
 use ReflectionClass;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
+use Splicewire\Beam\Particle\Contribution\ResourceContribution;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -31,6 +33,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  *
  * ## Registries in, class-strings out
  *
+ * Resource public-read projections and registered contribution DTOs are declarations too.
  * The same split {@see ContributedTypesGenerator} uses: no filesystem, no config reads, no container.
  * {@see declared()} is reflection-free as well, so it is assertable from hand-registered fixtures. Only
  * {@see partition()} reflects, because "did this class ASK to be exported" is a fact about the class
@@ -61,11 +64,12 @@ class DeclaredParticleTypes
     public function __construct(
         protected ParticleResourceRegistry $resources,
         protected ParticleOperationRegistry $operations,
+        protected ResourceContributionRegistry $contributions,
     ) {}
 
     /**
-     * Every DTO class-string the two particle registries declare, mapped to the declaration slots that
-     * named it.
+     * Every DTO class-string the resource, operation and contribution registries declare, mapped to the
+     * declaration slots that named it.
      *
      * Deduplicated by class (one Data class commonly serves several resources and ops) with registration
      * order preserved, and the slot list is what makes a failure legible — a bare class name leaves the
@@ -102,6 +106,7 @@ class DeclaredParticleTypes
             $note($resource->input, "resource [{$resource->key}] input:");
             $note($resource->editData, "resource [{$resource->key}] editData:");
             $note($resource->createResultData, "resource [{$resource->key}] createResultData:");
+            $note($resource->publicRead, "resource [{$resource->key}] publicRead:");
         }
 
         foreach ($this->operations->all() as $operation) {
@@ -140,6 +145,12 @@ class DeclaredParticleTypes
                 foreach (is_array($payloads) ? $payloads : [$payloads] as $payload) {
                     $note($payload, "operation [{$key}] output: [{$event}]");
                 }
+            }
+        }
+
+        foreach ($this->contributions->unfiltered()->matches('beam.particle.resource-contributions') as $contribution) {
+            if ($contribution instanceof ResourceContribution) {
+                $note($contribution->data, "contribution [{$contribution->key}.{$contribution->as}] data:");
             }
         }
 

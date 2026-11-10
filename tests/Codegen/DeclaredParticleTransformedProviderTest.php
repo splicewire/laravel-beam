@@ -19,6 +19,7 @@ use Spatie\TypeScriptTransformer\Writers\GlobalNamespaceWriter;
 use Splicewire\Beam\Codegen\DeclaredParticleTransformedProvider;
 use Splicewire\Beam\Codegen\DeclaredParticleTypes;
 use Splicewire\Beam\Codegen\DeclaredRouteTypes;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -65,7 +66,7 @@ class DeclaredParticleTransformedProviderTest extends TestCase
 
     private function particleTypes(): DeclaredParticleTypes
     {
-        return new DeclaredParticleTypes($this->particles, $this->operations);
+        return new DeclaredParticleTypes($this->particles, $this->operations, new ResourceContributionRegistry);
     }
 
     private function routeTypes(): DeclaredRouteTypes

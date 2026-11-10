@@ -7,6 +7,7 @@ use Spatie\LaravelData\Data;
 use Splicewire\Beam\Codegen\DeclaredParticleTypes;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
+use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -62,7 +63,7 @@ class OperationErrorsTest extends TestCase
         $ops = new ParticleOperationRegistry;
         $ops->register($this->op([422 => ErrorsFixtureRefusalData::class]));
 
-        $declared = (new DeclaredParticleTypes(new ParticleResourceRegistry, $ops))->declared();
+        $declared = (new DeclaredParticleTypes(new ParticleResourceRegistry, $ops, new ResourceContributionRegistry))->declared();
 
         $this->assertSame(['operation [errors-fixtures.dispatch] errors: [422]'], $declared[ErrorsFixtureRefusalData::class]);
     }
