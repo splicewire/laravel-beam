@@ -92,6 +92,7 @@ use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
+use Splicewire\Beam\Doctor\FramedDeclarationAudit;
 use Splicewire\Beam\Doctor\GlobalReadBoundaryAudit;
 use Splicewire\Beam\Doctor\GuestReadablePublicReadAudit;
 use Splicewire\Beam\Doctor\IdentifierLabelAudit;
@@ -1186,6 +1187,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // frame draws them, counted warn-level on the same schedule, plus declared affordances frame cannot
         // place (a `ParentSubject` op). Registry-side, like the two above.
         $manifest->register('splicewire/laravel-beam', UndeclaredAffordanceAudit::class);
+        $manifest->register('splicewire/laravel-beam', FramedDeclarationAudit::class, gate: false);
         $manifest->register('splicewire/laravel-beam', UndeclaredOperationSummaryAudit::class);
         // A declared `IdConstraint` measured against the model's REAL key type
         // (particle-operation-surface 14 gate 1). Advisory, because a key type is a fact about the
