@@ -271,6 +271,23 @@ list-only over REST and `queryableBacking()` still refuses it by name for the re
 way gets its filter panel from `DeclaresFilterVocabulary`. Model reading: `splicewire/tower`
 `src/Particle/Backing/ActivityBacking.php` — a REST-mounted composite — and beam ADR-0221.
 
+## Putting a resource on screen
+
+Declare the resource with `#[ParticleResource]`, give it a `label`, and put frame's `#[Column]` on the
+Data properties the list should show. The particle generator supplies a label and an id column.
+Beam's `ParticleResourceRegistryAdapter` projects the declaration into frame's registry; a host does
+not attach a second producer. A custom CRUD implementation goes in the resource's `handler:` slot.
+
+Frame's [attribute reference](https://github.com/schemastud/laravel-frame/blob/main/docs/attributes.md)
+covers all nine attributes, their contexts and wire output. The default form mode is `enriched`,
+which keeps declared widgets;
+choose `bare` deliberately when the form should use its plain controls.
+
+Commit the host's `resources/frame/vocabulary.json`, generated from its kit's widget registry with
+`pnpm frame:vocabulary --write`. Beam's doctor reports advisory findings: `FramedDeclarationAudit`
+owns `frame.vocabulary`, `frame.widget-name`, `frame.widget-node-type` and `frame.projection`;
+`FrameWireKeysAudit` owns `frame.wire-keys`. Both audits live under `Splicewire\Beam\Doctor`.
+
 ## What a declaration buys — the generation chain
 
 This is *why* you declare. One declaration feeds four consumers, so the UI is locked to the backend by
