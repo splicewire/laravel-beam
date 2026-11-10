@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Codegen;
 
 use Illuminate\Support\Str;
+use LogicException;
 use Rushing\Codegen\Contracts\Generator;
 use Rushing\Popcorn\Binding;
 
@@ -53,15 +54,22 @@ class TsClientGenerator implements Generator
         $files = [];
         $files['routes.ts'] = $this->renderRoutes($tenantMap, $adminMap);
 
-        $typed = $this->disambiguateRealmDomains(array_merge(
+        $typed = array_merge(
             $this->typedEntries($tenantMap, 'tenant'),
             $this->typedEntries($adminMap, 'operator'),
-        ));
+        );
 
         $streamed = array_merge(
             $this->streamEntries($tenantMap, 'tenant'),
             $this->streamEntries($adminMap, 'operator'),
         );
+
+        // Both emitters share the same domain/file namespace; a stream may collide with a typed route too.
+        $entries = $this->disambiguateRealmDomains($this->disambiguateTransportDomains([...$typed, ...$streamed]));
+        $typedCount = count($typed);
+        $typed = array_slice($entries, 0, $typedCount);
+        $streamed = array_slice($entries, $typedCount);
+        $this->assertDistinctClientNames($typed, $streamed);
 
         $files = $this->emitHooks($files, $typed);
         $files = $this->emitStreamHooks($files, $streamed);
@@ -210,10 +218,6 @@ class TsClientGenerator implements Generator
     // ── typed entries (verbatim) ─────────────────────────────────────────────────────────────────
 
     /**
-     * @param  array<string, array{path: string, methods: list<string>, returns?: string, returnsMany?: bool}>  $map
-     * @return list<array<string, mixed>>
-     */
-    /**
      * Realm-qualify a domain key ONLY where the two realms actually collide on it.
      *
      * `typedEntries()` strips the realm prefix — correct for the route NAME, which is realm-qualified
@@ -251,31 +255,130 @@ class TsClientGenerator implements Generator
      * for the same reason. If a collapsed host should ever emit one merged domain, that is a deliberate
      * change with its own test — against a knob that would first have to be built.
      *
-     * @param  list<array<string, mixed>>  $typed
+     * @param  list<array<string, mixed>>  $entries
      * @return list<array<string, mixed>>
      */
-    private function disambiguateRealmDomains(array $typed): array
+    private function disambiguateRealmDomains(array $entries): array
     {
         $realmsPerDomain = [];
-        foreach ($typed as $entry) {
+        foreach ($entries as $entry) {
             $realmsPerDomain[$entry['domainKey']][$entry['realm']] = true;
         }
 
-        foreach ($typed as $i => $entry) {
+        foreach ($entries as $i => $entry) {
             $realm = (string) $entry['realm'];
-
-            if ($realm === 'tenant' || count($realmsPerDomain[$entry['domainKey']]) < 2) {
-                continue;
+            if ($realm !== 'tenant' && count($realmsPerDomain[$entry['domainKey']]) > 1) {
+                $entries[$i] = $this->withDomain($entry, $realm.'-'.$entry['domainKey']);
             }
-
-            $domainSlug = $realm.'-'.$entry['domainKey'];
-            $action = Str::studly(substr((string) $entry['hookName'], strlen('use'.Str::studly((string) $entry['domainKey']))));
-
-            $typed[$i]['domainKey'] = $domainSlug;
-            $typed[$i]['hookName'] = 'use'.Str::studly($domainSlug).$action;
         }
 
-        return $typed;
+        return $entries;
+    }
+
+    /**
+     * Keep an existing short WEB name; qualify an API family only when generated names collide in its realm/domain.
+     * An API-only host (including its committed imports) therefore emits exactly the previous names.
+     *
+     * @param  list<array<string, mixed>>  $entries
+     * @return list<array<string, mixed>>
+     */
+    private function disambiguateTransportDomains(array $entries): array
+    {
+        $names = [];
+        $collisions = [];
+        foreach ($entries as $entry) {
+            $realm = $entry['realm'];
+            $domain = $entry['domainKey'];
+            foreach ($this->clientIdentifiers($entry) as $name) {
+                $names[$realm][$domain][$name][$this->transportPrefix($entry)] = true;
+                $families = $names[$realm][$domain][$name];
+                if (isset($families['']) && count($families) > 1) {
+                    $collisions[$realm][$domain] = true;
+                }
+            }
+        }
+        foreach ($entries as $i => $entry) {
+            $prefix = $this->transportPrefix($entry);
+            if ($prefix !== '' && isset($collisions[$entry['realm']][$entry['domainKey']])) {
+                $entries[$i] = $this->withDomain($entry, $prefix.'-'.$entry['domainKey']);
+            }
+        }
+
+        return $entries;
+    }
+
+    /** @param array<string, mixed> $entry */
+    private function transportPrefix(array $entry): string
+    {
+        $prefix = $entry['realm'] === 'operator' ? 'api.operator.' : 'api.v1.';
+
+        return str_starts_with($entry['name'], $prefix) ? str_replace('.', '-', rtrim($prefix, '.')) : '';
+    }
+
+    /** @param array<string, mixed> $entry */
+    private function withDomain(array $entry, string $domain): array
+    {
+        $segments = explode('.', $entry['name']);
+        $stem = Str::studly($domain).Str::studly(array_pop($segments));
+        $entry['domainKey'] = $domain;
+        $entry['hookName'] = 'use'.$stem.(isset($entry['streams']) ? 'Stream' : '');
+        if (isset($entry['streams'])) {
+            $entry['eventTypeName'] = $stem.'StreamEvent';
+        }
+
+        return $entry;
+    }
+
+    /**
+     * Refuse secondary collisions rather than merge two client bindings or silently overwrite a file.
+     * Reservations span all route-derived hooks, Vars, stores, state and stream types, not just one file.
+     * DTO aliases retain their existing separately documented basename-warning policy.
+     *
+     * @param  list<array<string, mixed>>  $typed
+     * @param  list<array<string, mixed>>  $streamed
+     */
+    private function assertDistinctClientNames(array $typed, array $streamed): void
+    {
+        $files = [];
+        $identifiers = [];
+        $reserve = function (string $name, array $entry) use (&$identifiers): void {
+            if (isset($identifiers[$name])) {
+                throw new LogicException("Client identifier [{$name}] collides between routes [{$identifiers[$name]}] and [{$entry['name']}].");
+            }
+            $identifiers[$name] = $entry['name'];
+        };
+        foreach ([...$typed, ...$streamed] as $entry) {
+            $family = [$entry['realm'], $entry['originalDomainKey']];
+            $file = 'hooks/'.$entry['domainKey'].'.ts';
+            if (isset($files[$file]) && $files[$file]['family'] !== $family) {
+                throw new LogicException("Client file [{$file}] collides between routes [{$files[$file]['route']}] and [{$entry['name']}].");
+            }
+            $files[$file] = ['family' => $family, 'route' => $entry['name']];
+            foreach ($this->clientIdentifiers($entry) as $identifier) {
+                $reserve($identifier, $entry);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $entry
+     * @return list<string>
+     */
+    private function clientIdentifiers(array $entry): array
+    {
+        $names = [$entry['hookName']];
+        if (isset($entry['streams'])) {
+            $names[] = $entry['eventTypeName'];
+        } elseif ($entry['isWrite']) {
+            if ($entry['params'] !== [] || ($entry['writeVerb'] !== 'delete' && $entry['input'] !== false)) {
+                $names[] = substr($entry['hookName'], 3).'Vars';
+            }
+        } elseif ((bool) ($this->options['emit_stores'] ?? false) && $entry['params'] === []) {
+            $names[] = $entry['hookName'].'Store';
+            $names[] = Str::studly(substr($entry['hookName'], 3)).'State';
+        }
+
+        return $names;
     }
 
     private function typedEntries(array $map, string $realm): array
@@ -304,6 +407,7 @@ class TsClientGenerator implements Generator
                 'returns' => $entry['returns'],
                 'responseExpression' => ($entry['returnsBody'] ?? false) ? 'res.data' : 'res.data.data',
                 'domainKey' => $domainSlug,
+                'originalDomainKey' => $domainSlug,
                 'hookName' => 'use'.Str::studly($domainSlug).Str::studly($action),
                 'params' => $paramMatches[1],
                 // tutorial-dx 03: a TS type path, false (no body) or null (undeclared: the body stays unknown).
@@ -348,6 +452,7 @@ class TsClientGenerator implements Generator
                 'name' => $name,
                 'realm' => $realm,
                 'domainKey' => $domainSlug,
+                'originalDomainKey' => $domainSlug,
                 'hookName' => 'use'.Str::studly($domainSlug).Str::studly($action).'Stream',
                 'eventTypeName' => Str::studly($domainSlug).Str::studly($action).'StreamEvent',
                 'params' => $paramMatches[1],
