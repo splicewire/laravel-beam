@@ -16,12 +16,12 @@ it('keeps both twin query endpoints with distinct hooks and stores while retaini
         {
             return [
                 'api.v1.beam-ux-entry.body' => [
-                    'path' => 'api/v1/entries/{entry}/body',
+                    'path' => 'api/v1/entries/body',
                     'methods' => ['GET'],
                     'returns' => 'App.Data.EntryBody',
                 ],
                 'beam-ux-entry.body' => [
-                    'path' => 'entries/{entry}/body',
+                    'path' => 'entries/body',
                     'methods' => ['GET'],
                     'returns' => 'App.Data.EntryBody',
                 ],
@@ -40,14 +40,14 @@ it('keeps both twin query endpoints with distinct hooks and stores while retaini
     ])
         ->and($result['stats']['typed'])->toBe(2)
         ->and($files['routes.ts'])
-        ->toContain("'api.v1.beam-ux-entry.body'", 'api/v1/entries/{entry}/body')
-        ->toContain("'beam-ux-entry.body'", 'entries/{entry}/body');
+        ->toContain("'api.v1.beam-ux-entry.body'", 'api/v1/entries/body')
+        ->toContain("'beam-ux-entry.body'", 'entries/body');
 
     expect($files['hooks/beam-ux-entry.ts'])
-        ->toContain('export function useBeamUxEntryBody(', "queryKey: ['beam-ux-entry.body', params]", "route('beam-ux-entry.body', params)")
-        ->not->toContain('useApiV1BeamUxEntryBody', "route('api.v1.beam-ux-entry.body', params)")
+        ->toContain('export function useBeamUxEntryBody(', "queryKey: ['beam-ux-entry.body']", "route('beam-ux-entry.body')")
+        ->not->toContain('useApiV1BeamUxEntryBody', "route('api.v1.beam-ux-entry.body')")
         ->and($files['hooks/api-v1-beam-ux-entry.ts'])
-        ->toContain('export function useApiV1BeamUxEntryBody(', "queryKey: ['api.v1.beam-ux-entry.body', params]", "route('api.v1.beam-ux-entry.body', params)")
+        ->toContain('export function useApiV1BeamUxEntryBody(', "queryKey: ['api.v1.beam-ux-entry.body']", "route('api.v1.beam-ux-entry.body')")
         ->not->toContain('export function useBeamUxEntryBody(');
 
     expect($files['stores/beam-ux-entry.ts'])
