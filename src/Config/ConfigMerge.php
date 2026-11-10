@@ -2,10 +2,13 @@
 
 namespace Splicewire\Beam\Config;
 
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
+
 /**
  * How an override combines with the value it covers (ADR-0245). Declared per key; inert until an override tier
  * exists, and recorded now so a section's declaration does not change when one does.
  */
+#[TypeScript]
 enum ConfigMerge: string
 {
     /** The override replaces the value below it. */
