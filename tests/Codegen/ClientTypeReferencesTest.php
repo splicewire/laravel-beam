@@ -98,6 +98,35 @@ class ClientTypeReferencesTest extends TestCase
         $this->assertSame([], (new Filesystem)->allFiles($this->directory));
     }
 
+    /** frame-foundation 12 (ruling 03 slice 2), module writer: a class list resolves to module imports, and what cannot be referenced is reported, not thrown. */
+    public function test_a_class_list_resolves_through_the_module_writer_and_reports_what_it_cannot(): void
+    {
+        $classes = [WriterRootData::class, str_replace('\\', '.', WriterInputData::class), 'Missing\\NeverEmittedData'];
+
+        $result = (new ClientTypeReferences)->resolveClasses($classes, $this->directory.'/sdk', $this->config(true));
+
+        $this->assertSame(['name' => 'RenamedResult', 'module' => '../types/Wire/Results'], $result['resolved'][WriterRootData::class]);
+        $this->assertArrayHasKey(str_replace('\\', '.', WriterInputData::class), $result['resolved']);
+        $this->assertSame(['Missing\\NeverEmittedData' => 'is not emitted by the configured TypeScript transformer'], $result['unresolved']);
+
+        // A module type that is not exported cannot be imported: reported with its reason.
+        $unexported = (new ClientTypeReferences)->resolveClasses([WriterRootData::class], $this->directory.'/sdk', $this->config(true, exported: false));
+        $this->assertSame([], $unexported['resolved']);
+        $this->assertSame([WriterRootData::class => 'is not exported by its TypeScript module'], $unexported['unresolved']);
+        $this->assertSame([], (new Filesystem)->allFiles($this->directory));
+    }
+
+    /** frame-foundation 12 (ruling 03 slice 2), global-namespace writer: the same list resolves to ambient names. */
+    public function test_a_class_list_resolves_through_the_global_namespace_writer_and_reports_what_it_cannot(): void
+    {
+        $classes = [WriterRootData::class, 'Missing\\NeverEmittedData'];
+
+        $result = (new ClientTypeReferences)->resolveClasses($classes, $this->directory.'/sdk', $this->config(false));
+
+        $this->assertSame(['name' => 'Wire.Results.RenamedResult'], $result['resolved'][WriterRootData::class]);
+        $this->assertSame(['Missing\\NeverEmittedData' => 'is not emitted by the configured TypeScript transformer'], $result['unresolved']);
+    }
+
     public function test_command_uses_the_hosts_configured_writer(): void
     {
         $this->app->instance(TypeScriptTransformerConfig::class, $this->config(true));
