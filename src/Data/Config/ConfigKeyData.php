@@ -4,10 +4,10 @@ namespace Splicewire\Beam\Data\Config;
 
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Config\ConfigEffect;
-use Splicewire\Beam\Config\ConfigMerge;
-use Splicewire\Beam\Config\ConfigTier;
 use Splicewire\Beam\Data\BeamData;
+use Splicewire\Beam\Enums\ConfigEffect;
+use Splicewire\Beam\Enums\ConfigMerge;
+use Splicewire\Beam\Enums\ConfigTier;
 
 /**
  * One leaf key of a Config Section with its provenance (ADR-0242).

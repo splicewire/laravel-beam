@@ -3,15 +3,15 @@
 namespace Splicewire\Beam\Tests\Config;
 
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
-use Splicewire\Beam\Config\ConfigEffect;
 use Splicewire\Beam\Config\ConfigFileScanner;
 use Splicewire\Beam\Config\ConfigSectionReader;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\ConfigSectionSchema;
-use Splicewire\Beam\Config\ConfigTier;
 use Splicewire\Beam\Config\RegisteredConfigSection;
 use Splicewire\Beam\Data\Config\ConfigKeyData;
 use Splicewire\Beam\Data\Config\ConfigSectionData;
+use Splicewire\Beam\Enums\ConfigEffect;
+use Splicewire\Beam\Enums\ConfigTier;
 use Splicewire\Beam\Tests\Fixtures\Config\GaugesSection;
 use Splicewire\Beam\Tests\Fixtures\Config\WidgetsSection;
 use Splicewire\Beam\Tests\TestCase;

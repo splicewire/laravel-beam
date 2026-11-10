@@ -35,9 +35,9 @@ them, and `#[ConfigKey]` says how each one behaves:
 use Schemastud\DataSchemas\Attributes\Title;
 use Splicewire\Beam\Config\Attributes\ConfigKey;
 use Splicewire\Beam\Config\Attributes\ConfigRoot;
-use Splicewire\Beam\Config\ConfigEffect;
+use Splicewire\Beam\Enums\ConfigEffect;
 use Splicewire\Beam\Config\ConfigSection;
-use Splicewire\Beam\Config\ConfigTier;
+use Splicewire\Beam\Enums\ConfigTier;
 
 #[ConfigRoot(root: 'acme.widgets', title: 'Widgets')]
 class WidgetsSection extends ConfigSection

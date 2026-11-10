@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Config;
 
+use Splicewire\Beam\Enums\ConfigTier;
+
 /**
  * The Override Ladder as a pure fold (ADR-0242), in the style of tower's `SourceWeights`: tiers in, effective
  * values and per-key provenance out. No container, no `config()`, no file reads; {@see ConfigSectionReader} hands

@@ -9,6 +9,8 @@ use ReflectionProperty;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Config\Attributes\ConfigKey;
 use Splicewire\Beam\Config\Attributes\ConfigRoot;
+use Splicewire\Beam\Enums\ConfigEffect;
+use Splicewire\Beam\Enums\ConfigTier;
 
 /**
  * The typed description of one config root (ADR-0242): which keys it has, their shapes, and how each behaves on
