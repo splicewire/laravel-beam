@@ -94,6 +94,9 @@ Reach for these in order:
 A running `typescript:transform --watch` does not see a root that was just declared or removed. Restart it, or save the
 provider file. Edits *inside* a declared directory are seen live.
 
+Generated endpoint names preserve full route identity while disambiguating colliding client domains; see
+[client route naming](client-route-naming.md).
+
 The route-derived client references name only types the tree emits. Each is a route-declared type, which declared
 reach seeds, so those references resolve by construction.
 
