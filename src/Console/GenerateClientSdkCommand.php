@@ -7,6 +7,7 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Process;
 use Spatie\TypeScriptTransformer\TypeScriptTransformerConfig;
 use Splicewire\Beam\Codegen\ClientTypeReferences;
+use Splicewire\Beam\Codegen\FrameResourceTypesGenerator;
 use Splicewire\Beam\Codegen\RouteManifestModelSource;
 use Splicewire\Beam\Codegen\TsClientGenerator;
 use Splicewire\Beam\Source\RouteManifestSource;
@@ -59,9 +60,20 @@ class GenerateClientSdkCommand extends Command
             ],
         ]);
 
+        $frameGenerator = $this->container->make(FrameResourceTypesGenerator::class);
+        $entries = $frameGenerator->derive();
+        $frameReferences = $this->container->bound(TypeScriptTransformerConfig::class)
+            ? (new ClientTypeReferences)->resolveClasses($frameGenerator->classes($entries), $dir, $this->container->make(TypeScriptTransformerConfig::class))
+            : ['resolved' => [], 'unresolved' => []];
+        $frame = $frameGenerator->render($entries, $frameReferences['resolved'], $frameReferences['unresolved']);
+        $result['files']['frame-resources.ts'] = $frame['contents'];
+
         $this->writeFiles($dir, $result['files'], (bool) config('beam.client.emit_stores', false));
 
         foreach ($result['warnings'] ?? [] as $warning) {
+            $this->components->warn($warning);
+        }
+        foreach ($frame['warnings'] as $warning) {
             $this->components->warn($warning);
         }
 

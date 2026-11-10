@@ -94,8 +94,17 @@ Reach for these in order:
 A running `typescript:transform --watch` does not see a root that was just declared or removed. Restart it, or save the
 provider file. Edits *inside* a declared directory are seen live.
 
-The client generator names only types the tree emits. Every type it references is a route-declared type, which declared
-reach seeds, so its references resolve by construction.
+The route-derived client references name only types the tree emits. Each is a route-declared type, which declared
+reach seeds, so those references resolve by construction.
+
+`splicewire:beam:generate:client` also writes `frame-resources.ts` into `beam.client.out_dir`, under either writer.
+Its `FrameResources` interface maps every addressable particle key to `row`, `edit`, `createResult` and `actions`.
+Rows inline contributions and include a distinct declared `publicRead` class as a union arm; unresolved classes
+become `Record<string, unknown>` with a warning naming the key and class. This artifact imports nothing from frame.
+A host opts into key-based types in a `.ts` module with `import type { FrameResources } from '@/generated/frame-resources';`
+and `declare module '@schemastud/frame' { interface FrameResourceMap extends FrameResources {} }`. Keep that module
+in the host's TypeScript program; a host without it retains untyped rows. This map does not type save payloads.
+Commit the file with every client regeneration. See ADR-0242 for projection limits and widening a variable row.
 
 One gap remains. A route served by an invokable controller (`Route::get('/x', XController::class)`) is invisible to every
 route reader until `RouteReturnType` reads `Class` as `Class@__invoke` (ts-transformer-convergence ticket 07). Its
