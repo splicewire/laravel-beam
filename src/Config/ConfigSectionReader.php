@@ -29,7 +29,9 @@ use Throwable;
  * A host root may live in its own file (`config/app/meters.php` for `app.meters`) or as a key of a parent file
  * (`config/splicewire.php['retrieval']` for `splicewire.retrieval`); the deepest existing file wins.
  *
- * Secrets never leave here: a secret key's value and every layer value are replaced by null, and `set` says
+ * Secrets never leave here: a secret key's value and every layer value are replaced by null, and so is a secret
+ * nested inside any compound value (a host that replaces a map ancestor makes the fold emit that ancestor, with the
+ * package's whole map as a layer, as one leaf), and `set` says
  * whether it has one. Values a JSON wire cannot carry (an object a config file instantiates) are described by
  * class, never serialized.
  */
@@ -117,14 +119,19 @@ class ConfigSectionReader
             default => null,
         };
 
+        // Every value leaves through redactAt() at the key's own pointer, so a COMPOUND value (an ancestor the host
+        // replaced, which the fold emits as one leaf) is redacted member by member against its descendants'
+        // declarations; a non-secret pointer never carries a secret below it.
+        $segments = JsonPointer::segments($resolved->pointer);
+
         return new ConfigKeyData(
             pointer: $resolved->pointer,
-            value: $secret ? null : $this->wire($resolved->value),
+            value: $this->redactAt($section, $segments, $resolved->value),
             tier: $resolved->tier,
             hostShadowsPackage: $resolved->hostShadowsPackage,
             layers: array_map(fn (ConfigLayerValue $layer): ConfigLayerData => new ConfigLayerData(
                 tier: $layer->tier,
-                value: $secret ? null : $this->wire($layer->value),
+                value: $this->redactAt($section, $segments, $layer->value),
                 source: $layer->source,
                 shadowed: $layer->shadowed,
                 removed: $layer->removed,
@@ -194,18 +201,31 @@ class ConfigSectionReader
     protected function redacted(string $section, array $values, array $path = []): array
     {
         foreach ($values as $key => $value) {
-            $here = [...$path, (string) $key];
-
-            if ($section::keyDeclaration($here)->secret) {
-                $values[$key] = null;
-            } elseif (is_array($value)) {
-                $values[$key] = $this->redacted($section, $value, $here);
-            } else {
-                $values[$key] = $this->wire($value);
-            }
+            $values[$key] = $this->redactAt($section, [...$path, (string) $key], $value);
         }
 
         return $values;
+    }
+
+    /**
+     * A value addressed by `$segments`, fit for the wire: null when that pointer is declared secret, and otherwise,
+     * for an array, each member redacted at its own pointer, so a secret declared anywhere below survives in no
+     * compound value (an ancestor's layer included).
+     *
+     * @param  class-string<ConfigSection>  $section
+     * @param  list<string>  $segments
+     */
+    protected function redactAt(string $section, array $segments, mixed $value): mixed
+    {
+        if ($section::keyDeclaration($segments)->secret) {
+            return null;
+        }
+
+        if (is_array($value)) {
+            return $this->redacted($section, $value, $segments);
+        }
+
+        return $this->wire($value);
     }
 
     /** A value the JSON wire can carry: an object is named by its class, never serialized. */
