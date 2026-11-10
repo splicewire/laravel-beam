@@ -3,9 +3,9 @@
 namespace Splicewire\Beam\Config\Attributes;
 
 use Attribute;
-use Splicewire\Beam\Config\ConfigEffect;
-use Splicewire\Beam\Config\ConfigMerge;
-use Splicewire\Beam\Config\ConfigTier;
+use Splicewire\Beam\Enums\ConfigEffect;
+use Splicewire\Beam\Enums\ConfigMerge;
+use Splicewire\Beam\Enums\ConfigTier;
 
 /**
  * Declares how one key of a Config Section behaves on the Override Ladder (ADR-0245). Placed on a property of a

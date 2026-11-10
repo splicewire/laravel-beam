@@ -10,6 +10,8 @@ use Splicewire\Beam\Data\Config\ConfigLayerData;
 use Splicewire\Beam\Data\Config\ConfigSectionCountsData;
 use Splicewire\Beam\Data\Config\ConfigSectionData;
 use Splicewire\Beam\Data\Config\ConfigSectionFilesData;
+use Splicewire\Beam\Enums\ConfigEffect;
+use Splicewire\Beam\Enums\ConfigTier;
 use Throwable;
 
 /**

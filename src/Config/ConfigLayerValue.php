@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Config;
 
+use Splicewire\Beam\Enums\ConfigTier;
+
 /**
  * One tier's value for one key. `shadowed` marks a package value the host's top-level copy hides; `removed` marks
  * a key a provider took out of `config()`.

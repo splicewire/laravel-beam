@@ -5,7 +5,7 @@ namespace Splicewire\Beam\Tests\Config;
 use PHPUnit\Framework\TestCase;
 use Splicewire\Beam\Config\ConfigLadder;
 use Splicewire\Beam\Config\ConfigLayerValue;
-use Splicewire\Beam\Config\ConfigTier;
+use Splicewire\Beam\Enums\ConfigTier;
 
 /**
  * The ladder is a pure fold, so here the fold IS the external behaviour: tiers in, effective values and per-key

@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Config;
 
+use Splicewire\Beam\Enums\ConfigTier;
+
 /**
  * One leaf key's place on the ladder: the value it resolves to, the tier that set it, and every tier's value
  * bottom-up.
