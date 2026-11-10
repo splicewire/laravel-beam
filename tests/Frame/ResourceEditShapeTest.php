@@ -71,7 +71,7 @@ class ResourceEditShapeTest extends TestCase
         $properties = $schema['properties'];
         $this->assertSame(['artifact'], array_keys($properties));
         $this->assertSame('object', $properties['artifact']['type']);
-        $this->assertSame('json', $properties['artifact']['x-stud-widget']);
+        $this->assertSame('json', $properties['artifact']['x-widget']);
         $artifact = ['$id' => 'https://example.test/schemas/shape/1', 'type' => 'object', 'properties' => []];
         $row = $this->postJson('/frame/resources/schemas', ['artifact' => $artifact])->assertSuccessful()->json('data');
         $this->assertSame($artifact, $row['artifact']);
