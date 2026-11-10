@@ -283,10 +283,14 @@ covers all nine attributes, their contexts and wire output. The default form mod
 which keeps declared widgets;
 choose `bare` deliberately when the form should use its plain controls.
 
-Commit the host's `resources/frame/vocabulary.json`, generated from its kit's widget registry with
-`pnpm frame:vocabulary --write`. Beam's doctor reports advisory findings: `FramedDeclarationAudit`
+Commit the host's `resources/frame/vocabulary.json`. The `pnpm frame:vocabulary --write` command
+and `frame-vocabulary` bin arrive with ticket 33 and are not yet shipped; the starter script is
+ticket 39. Until then, write the file by hand or leave it absent, which makes the doctor's name
+checks inconclusive. The planned command generates it from the kit's widget registry.
+Beam's doctor reports advisory findings: `FramedDeclarationAudit`
 owns `frame.vocabulary`, `frame.widget-name`, `frame.widget-node-type` and `frame.projection`;
-`FrameWireKeysAudit` owns `frame.wire-keys`. Both audits live under `Splicewire\Beam\Doctor`.
+`FrameWireKeysAudit` will own `frame.wire-keys` with ticket 40 (not yet shipped). Both audit
+classes belong under `Splicewire\Beam\Doctor`.
 
 ## What a declaration buys — the generation chain
 
