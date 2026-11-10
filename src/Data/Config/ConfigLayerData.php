@@ -3,8 +3,8 @@
 namespace Splicewire\Beam\Data\Config;
 
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
-use Splicewire\Beam\Config\ConfigTier;
 use Splicewire\Beam\Data\BeamData;
+use Splicewire\Beam\Enums\ConfigTier;
 
 /**
  * One tier's value for one key, bottom-up, as the Config area's cascade shows it (ADR-0245). `shadowed` is a

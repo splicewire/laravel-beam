@@ -1,6 +1,6 @@
 <?php
 
-namespace Splicewire\Beam\Config;
+namespace Splicewire\Beam\Enums;
 
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 

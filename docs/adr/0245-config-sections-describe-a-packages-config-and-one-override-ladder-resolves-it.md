@@ -119,6 +119,10 @@ exists (ticket 05), with three ops. **These are config ops, not DataOverlay ops*
 
 ### 3. Tiers and the ceiling
 
+The ladder's vocabulary is three backed enums in `Splicewire\Beam\Enums` (`ConfigTier`, `ConfigEffect`, `ConfigMerge`),
+beside beam's other enums, because a host's TypeScript tree reflects a package enum only from a scanned `src/Enums`
+directory; declared in `src/Config` they emitted as `undefined` on every `beam-config` row.
+
 `ConfigTier` orders the ladder. A key's `ceiling` is the highest tier that may override it, declared by the package. An
 operator may only **narrow** it (a lock, operator data) and never widen it, so what a tenant can change is governed by
 code review. The default ceiling is `host`: not overridable at runtime.
