@@ -5,6 +5,9 @@ use Splicewire\Beam\Models\BeamParticle;
 
 return [
 
+    // Package-owned root (ADR-0243); the expand batch mounts it alongside the old root.
+    'api_root' => 'beam/core',
+
     /*
     |--------------------------------------------------------------------------
     | beam substrate
