@@ -147,11 +147,18 @@ class BeamTranslator extends Translator
      */
     public function choiceIn(?string $realm, string $key, mixed $number, array $replace = [], ?string $locale = null): string
     {
-        $resolved = $this->resolve($key, $locale ?: $this->locale, true, $realm);
+        $locale = $locale ?: $this->locale;
+
+        // A JSON (sentence-keyed) line answers a plural exactly as it answers get(): first, for the requested locale,
+        // which is then the answering locale whose rules select the form.
+        $json = $this->jsonLine($key, $locale);
+        $resolved = $json !== null
+            ? new ResolvedLine($json, LocaleChain::canonical($locale), null, 'json')
+            : $this->resolve($key, $locale, true, $realm);
         $line = $resolved?->line;
 
         if (! is_string($line)) {
-            $line = $this->handleMissingTranslationKey($key, $replace, $locale ?: $this->locale, true);
+            $line = $this->handleMissingTranslationKey($key, $replace, $locale, true);
         }
 
         if (is_countable($number)) {
@@ -162,7 +169,7 @@ class BeamTranslator extends Translator
             $replace['count'] = $number;
         }
 
-        $selectorLocale = PluralLocale::forSelector($resolved->sourceLocale ?? ($locale ?: $this->locale));
+        $selectorLocale = PluralLocale::forSelector($resolved->sourceLocale ?? $locale);
 
         return $this->makeReplacements($this->getSelector()->choose($line, $number, $selectorLocale), $replace);
     }
@@ -224,9 +231,8 @@ class BeamTranslator extends Translator
         $locale = $locale ?: $this->locale;
 
         // A JSON (sentence-keyed) line is the framework's: it is tried first, for the requested locale, as before.
-        $this->load('*', '*', $locale);
-        $json = $this->loaded['*']['*'][$locale][$key] ?? null;
-        if (is_string($json)) {
+        $json = $this->jsonLine($key, $locale);
+        if ($json !== null) {
             return $this->makeReplacements($json, $replace);
         }
 
@@ -269,18 +275,23 @@ class BeamTranslator extends Translator
     protected function walk(string|array $keys, string $locale, bool $fallback, ?string $realm, ?array &$trace = null): ?ResolvedLine
     {
         $parsed = [];
+        $groups = [];
         foreach ((array) $keys as $key) {
             [$namespace, $group, $item] = $this->parseKey($key);
             if ($item !== null) {
                 $parsed[] = [$namespace, $group, $item];
+            } else {
+                // A key with no item names a whole group (`messages`, `ns::messages`), as it does for the framework.
+                $groups[] = [$namespace, $group];
             }
-        }
-        if ($parsed === []) {
-            return null;
         }
 
         $realms = $realm === null ? [] : $this->realmChain($realm);
         $locales = $fallback ? $this->localeArray($locale) : [$locale];
+
+        if ($parsed === []) {
+            return $groups === [] ? null : $this->walkGroup($groups[0][0], $groups[0][1], $locales, $realms, $trace);
+        }
 
         foreach ($locales as $candidate) {
             $isSource = LocaleChain::canonical($candidate) === $this->sourceLanguage;
@@ -311,6 +322,62 @@ class BeamTranslator extends Translator
         }
 
         return null;
+    }
+
+    /**
+     * A whole-group read: at the first locale in the chain where the base or any realm rung holds lines, the base
+     * group with each realm rung merged over it, least specific first, so the requested realm wins key by key. Like the
+     * framework, a group read never merges across locales. A realm's configured labels are single lines, not a group
+     * file, so they answer `resources.<key>.label` lookups and are not merged into a whole-group read.
+     *
+     * @param  list<string>  $locales
+     * @param  list<string>  $realms  most to least specific
+     * @param  list<array{locale: string, realm: ?string, origin: string, hit: bool}>|null  $trace
+     */
+    protected function walkGroup(string $namespace, string $group, array $locales, array $realms, ?array &$trace = null): ?ResolvedLine
+    {
+        foreach ($locales as $candidate) {
+            $merged = $this->groupAt($namespace, $group, $candidate);
+            $this->note($trace, $candidate, null, 'file', $merged !== []);
+            $answeredBy = null;
+
+            foreach (array_reverse($realms) as $rung) {
+                $lines = $this->groupAt($namespace, $rung.'/'.$group, $candidate);
+                $this->note($trace, $candidate, $rung, 'file', $lines !== []);
+                if ($lines !== []) {
+                    $merged = array_replace_recursive($merged, $lines);
+                    $answeredBy = $rung;
+                }
+            }
+
+            if ($merged !== []) {
+                return new ResolvedLine($merged, LocaleChain::canonical($candidate), $answeredBy, 'file');
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * One locale's whole group file, as loaded (empty when absent).
+     *
+     * @return array<array-key, mixed>
+     */
+    protected function groupAt(string $namespace, string $group, string $locale): array
+    {
+        $this->load($namespace, $group, $locale);
+        $lines = $this->loaded[$namespace][$group][$locale] ?? [];
+
+        return is_array($lines) ? $lines : [];
+    }
+
+    /** The requested locale's JSON (sentence-keyed) line for a key, as the framework looks it up, or null. */
+    protected function jsonLine(string $key, string $locale): ?string
+    {
+        $this->load('*', '*', $locale);
+        $line = $this->loaded['*']['*'][$locale][$key] ?? null;
+
+        return is_string($line) ? $line : null;
     }
 
     /**
@@ -346,7 +413,10 @@ class BeamTranslator extends Translator
             return null;
         }
 
-        $label = call_user_func($this->realmLabelResolver, $realm, $m[1]);
+        // The key's identity segment writes a registry key's dots as `/` (ruling 01 §2); the registry is addressed by
+        // the registry key itself, so decode it back. A registry key never contains `/` (Popcorn rejects it), so the
+        // decoding is exact. The catalog key's spelling is unchanged.
+        $label = call_user_func($this->realmLabelResolver, $realm, str_replace('/', '.', $m[1]));
 
         return is_string($label) && $label !== '' ? $label : null;
     }
