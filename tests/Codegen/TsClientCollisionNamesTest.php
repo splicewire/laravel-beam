@@ -12,15 +12,18 @@ uses(TestCase::class);
 
 function collisionClient(array $tenant, array $operator = [], array $options = []): array
 {
-    $source = fn (array $routes): RouteManifestSource => new class($routes) implements RouteManifestSource
-    {
-        public function __construct(private array $routes) {}
-
-        public function toArray(): array
+    $source = fn (array $routes): RouteManifestSource => new class ($routes) implements RouteManifestSource
         {
-            return $this->routes;
-        }
-    };
+            public function __construct(private array $routes)
+            {
+                //
+            }
+
+            public function toArray(): array
+            {
+                return $this->routes;
+            }
+        };
     $model = (new RouteManifestModelSource($source($tenant), $source($operator)))->model()->toArray();
 
     return (new TsClientGenerator)->invoke(['model' => $model, 'options' => $options + ['emit_stores' => true]]);
@@ -83,7 +86,7 @@ it('uses one domain decision for a route exposing both typed and streamed result
     $files = collisionClient(['api.v1.entries.watch' => $entry, 'entries.watch' => $entry])['files'];
 
     expect($files['hooks/api-v1-entries.ts'])->toContain('useApiV1EntriesWatch(', 'useApiV1EntriesWatchStream(', 'ApiV1EntriesWatchStreamEvent')
-        ->and(substr_count($files['hooks/api-v1-entries.ts'], "import { api }"))->toBe(1)
+        ->and(substr_count($files['hooks/api-v1-entries.ts'], 'import { api }'))->toBe(1)
         ->and($files['stores/api-v1-entries.ts'])->toContain('ApiV1EntriesWatchState', 'useApiV1EntriesWatchStore');
 });
 
@@ -114,7 +117,7 @@ it('leaves noncolliding API-only and mixed transport names short', function () {
 it('retains existing cross-realm qualification and client bindings for typed endpoints', function () {
     $files = collisionClient(['entries.index' => collisionRead()], ['api.operator.entries.index' => collisionRead()])['files'];
 
-    expect($files['hooks/entries.ts'])->toContain('useEntriesIndex(', "import { api }", "route('entries.index')")
+    expect($files['hooks/entries.ts'])->toContain('useEntriesIndex(', 'import { api }', "route('entries.index')")
         ->and($files['hooks/operator-entries.ts'])->toContain('useOperatorEntriesIndex(', "import { operatorApi }", "operatorRoute('api.operator.entries.index')")
         ->and($files['stores/operator-entries.ts'])->toContain('OperatorEntriesIndexState', 'useOperatorEntriesIndexStore');
 });
