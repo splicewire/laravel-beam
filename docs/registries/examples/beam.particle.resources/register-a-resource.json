@@ -35,7 +35,6 @@
         "data": "Splicewire.Beam.Tests.Fixtures.Backing.ArmRowData",
         "creatable": false,
         "editData": null,
-        "form": "bare",
         "nav": {
             "label": "Review items",
             "group": null,
@@ -44,6 +43,7 @@
             "navOrder": null,
             "routeName": null
         },
+        "form": "enriched",
         "layout": null,
         "deletable": false,
         "editable": false,

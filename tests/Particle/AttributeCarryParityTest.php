@@ -204,7 +204,8 @@ class CarryFixtureOp
     includes: ['tags'],
     perPage: 50,
     label: 'Carry fixtures',
-    form: 'sheet',
+    // Deliberately plain-data: exercise the nondefault legal form mode in this carry fixture.
+    form: 'bare',
     editData: CarryFixtureInput::class,
     policy: CarryFixturePolicy::class,
     readPolicy: CarryFixturePolicy::class,
