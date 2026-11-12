@@ -35,6 +35,7 @@ use Rushing\Surgeon\Operation\Operation;
 use Rushing\Surgeon\Operation\SuggestsOperations;
 use Rushing\Versioning\Contracts\RecordReconciler;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
+use Schemastud\DataSchemas\Contracts\SchemaText;
 use Schemastud\DataSchemas\Generators\Generator;
 use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
@@ -155,8 +156,11 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\MigrationFiles;
+use Splicewire\Beam\Localization\BeamSchemaText;
 use Splicewire\Beam\Localization\BeamTranslator;
+use Splicewire\Beam\Localization\DeclaredText;
 use Splicewire\Beam\Localization\TextNamespaces;
+use Splicewire\Beam\Localization\TranslatedPropertyTextStrategy;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Models\BeamSubmission;
@@ -1089,6 +1093,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             return $beam;
         });
 
+        // localization 09: laravel-data-schemas' display-text hook (class and enum titles, a class's description, enum
+        // case labels) resolves through the ladder. Its `singletonIf` identity default yields to this binding.
+        $this->app->singleton(DeclaredText::class);
+        $this->app->singleton(SchemaText::class, BeamSchemaText::class);
+
         // Packages shipping a `lang/` directory are hinted as soon as the translator exists (never refusing at boot).
         $this->app->afterResolving('translator', function ($translator, $app): void {
             if ($translator instanceof BeamTranslator) {
@@ -1809,6 +1818,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
     public function packageBooted(): void
     {
+        // localization 09: a property's title and description resolve through the ladder. Appended at boot, after every
+        // provider has merged `data-schemas.strategies`, under the estate's in_array guard (the frame precedent).
+        $strategies = (array) config('data-schemas.strategies', []);
+        if (! in_array(TranslatedPropertyTextStrategy::class, $strategies, true)) {
+            config(['data-schemas.strategies' => [...$strategies, TranslatedPropertyTextStrategy::class]]);
+        }
+
         if (! $this->app->make(Gate::class)->has(Particle\Backing\ActorOwnedParticleAccess::WRITE)) {
             $this->app->make(Gate::class)->define(Particle\Backing\ActorOwnedParticleAccess::WRITE,
                 [Particle\Backing\ActorOwnedParticleAccess::class, 'permits']);
