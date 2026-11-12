@@ -115,6 +115,23 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
 
         $base = Str::replaceLast('Data', '', class_basename($this->getNameInput()));
 
+        $ownership = $this->option('ownership');
+        if (! in_array($ownership, ['actor', 'workspace', 'central'], true)) {
+            $this->components->error('--ownership must be actor, workspace or central.');
+
+            return self::FAILURE;
+        }
+        if ($ownership !== 'actor' && ($this->option('model') || $this->option('read-only'))) {
+            $this->components->error('--ownership selects writable Data-declared particle storage; omit --model and --read-only.');
+
+            return self::FAILURE;
+        }
+        if ($ownership !== 'actor' && trim((string) $this->option('write-ability')) === '') {
+            $this->components->error('Shared particle storage requires --write-ability.');
+
+            return self::FAILURE;
+        }
+
         $model = $this->option('model');
         if (! $this->option('read-only') && ! $model && ($this->option('filters') || $this->option('cascade-policy'))) {
             $this->components->error('--filters and --cascade-policy inspect a dedicated model; select it explicitly with --model.');
@@ -235,6 +252,11 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
         if ($resource?->label !== $this->resourceLabel()) {
             $findings[] = 'The emitted resource must declare its label (use --label= for an addressable resource that is not presented).';
         }
+        if ($resource !== null && is_string($resource->backing)
+            && is_a($resource->backing, \Splicewire\Beam\Particle\Backing\WorkspaceSharedParticleBacking::class, true)
+            && ($resource->policy === null || $resource->policy === '' || $resource->readPolicy !== \Splicewire\Beam\Particle\Backing\SharedParticleAccess::class)) {
+            $findings[] = 'Shared particle storage must declare its write ability and SharedParticleAccess read policy.';
+        }
         $block = (new ContextManifest)->forResource($read);
         $hasColumn = false;
         foreach ($block['byNode'] as $contexts) {
@@ -274,6 +296,15 @@ PHP;
         $readClass = class_basename($this->qualifyClass($this->getNameInput()));
         $readOnly = (bool) $this->option('read-only');
         $owned = ! $readOnly && ! $this->option('model');
+        $backing = match ($this->option('ownership')) {
+            'workspace' => \Splicewire\Beam\Particle\Backing\WorkspaceSharedParticleBacking::class,
+            'central' => \Splicewire\Beam\Particle\Backing\CentralParticleBacking::class,
+            default => \Splicewire\Beam\Particle\Backing\ActorOwnedParticleBacking::class,
+        };
+        $ability = trim((string) $this->option('write-ability'));
+        $authorization = $this->option('ownership') === 'actor'
+            ? "    policy: \\Splicewire\\Beam\\Particle\\Backing\\ActorOwnedParticleAccess::WRITE,\n    readPolicy: \\Splicewire\\Beam\\Particle\\Backing\\ActorOwnedParticleAccess::class,\n"
+            : '    policy: '.var_export($ability, true).",\n    readPolicy: \\Splicewire\\Beam\\Particle\\Backing\\SharedParticleAccess::class,\n";
 
         return [
             'key' => $this->resolvedKey,
@@ -282,9 +313,9 @@ PHP;
             'labelComment' => $this->resourceLabel() === '' ? "    // This resource is addressable and not presented.\n" : '',
             'model' => $owned ? 'BeamParticle' : class_basename($this->resolvedModel),
             'namespacedModel' => $owned ? \Splicewire\Beam\Models\BeamParticle::class : $this->resolvedModel,
-            'backing' => $owned ? '\\Splicewire\\Beam\\Particle\\Backing\\ActorOwnedParticleBacking' : class_basename($this->resolvedModel),
+            'backing' => $owned ? '\\'.$backing : class_basename($this->resolvedModel),
             'idType' => $owned ? 'string' : 'int',
-            'authorizationLine' => $owned ? "    policy: \\Splicewire\\Beam\\Particle\\Backing\\ActorOwnedParticleAccess::WRITE,\n    readPolicy: \\Splicewire\\Beam\\Particle\\Backing\\ActorOwnedParticleAccess::class,\n" : '',
+            'authorizationLine' => $owned ? $authorization : '',
             'inputClass' => class_basename($this->inputClass),
             // tutorial-dx 06: every decision slot written out, an omission and a decision not spelled alike.
             'inputSlot' => $readOnly ? 'false' : class_basename($this->inputClass).'::class',
@@ -531,6 +562,8 @@ PHP;
     protected function getOptions(): array
     {
         return [
+            ['ownership', null, InputOption::VALUE_REQUIRED, 'Stored particle owner: actor (default), workspace, or central', 'actor'],
+            ['write-ability', null, InputOption::VALUE_REQUIRED, 'Required write/read ability for workspace or central storage'],
             ['model', 'm', InputOption::VALUE_REQUIRED, 'The Eloquent model the resource resolves — a bare name resolves under App\Models\, a namespaced one is used as given (omit for actor-owned shared particle storage)'],
             ['key', 'k', InputOption::VALUE_REQUIRED, 'The registry key and data-filters resource key (default: the kebab-cased plural of <Name>)'],
             ['label', null, InputOption::VALUE_REQUIRED, 'Display label derived from the key by default; --label= keeps the resource addressable and not presented'],

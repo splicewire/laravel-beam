@@ -568,3 +568,7 @@ is always allowed. Command abilities exist only for the **MCP projection** — t
 Do not rename things *toward* "Particle" to signal alignment. The word's value is that it names
 something specific — registry-reachable, permission-bearing, codegen-visible. Every non-particle
 borrowing it makes the audits harder to write and the term less useful to the next agent.
+
+## Shared Data-declared particle storage
+
+ActorOwnedParticleBacking stays the per-user default. WorkspaceSharedParticleBacking and CentralParticleBacking select shared ownership by backing type, without a discriminator on ParticleResource. Declare an explicit write ability and SharedParticleAccess read policy; reads check the same ability, and no mode grants guests access. Workspace identity comes from TenancyContext, never the request payload. Central storage uses its central connection even with a tenant initialized. The generator offers --ownership=actor|workspace|central and requires --write-ability for shared modes. These types reuse the existing schema and write pipeline; envelope fields remain server-managed.

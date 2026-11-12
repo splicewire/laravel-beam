@@ -40,7 +40,7 @@ class ActorOwnedParticleBacking extends EloquentBacking implements AcceptsPayloa
         'created_at', 'createdAt', 'updated_at', 'updatedAt',
     ];
 
-    private ParticleResource $resource;
+    protected ParticleResource $resource;
 
     private Request $request;
 
@@ -85,8 +85,8 @@ class ActorOwnedParticleBacking extends EloquentBacking implements AcceptsPayloa
      */
     public function query(array $filters): Builder
     {
-        $owner = $this->request->user() === null ? null : ActorOwnedParticleAccess::owner($this->request->user());
-        $query = parent::query($filters)->where('source_tier', SourceWriteTier::Local->value)->where('schema_ref', $this->binding());
+        $owner = $this->request->user() === null ? null : $this->ownerFor($this->request->user());
+        $query = $this->particle()->newQuery()->where('source_tier', SourceWriteTier::Local->value)->where('schema_ref', $this->binding());
 
         return $owner === null ? $query->whereRaw('1 = 0') : $query
             ->where('meta->owner->type', $owner['type'])->where('meta->owner->id', $owner['id']);
@@ -101,7 +101,26 @@ class ActorOwnedParticleBacking extends EloquentBacking implements AcceptsPayloa
 
     public function newRecord(): WritableRecord
     {
-        return new WritableRecord(new BeamParticle(['schema_ref' => $this->binding()]));
+        return new WritableRecord($this->particle()->fill(['schema_ref' => $this->binding()]));
+    }
+
+    protected function particle(): BeamParticle
+    {
+        return new BeamParticle;
+    }
+
+    /** Trusted envelope identity; shared backings override this, never the write pipeline. */
+    public function ownerFor(Authenticatable $actor): array
+    {
+        return ActorOwnedParticleAccess::owner($actor);
+    }
+
+    public function owns(Authenticatable $actor, BeamParticle $record): bool
+    {
+        $owner = $this->ownerFor($actor);
+
+        return ($record->meta['owner']['type'] ?? null) === $owner['type']
+            && ($record->meta['owner']['id'] ?? null) === $owner['id'];
     }
 
     /** Merge only projection inputs; schema, owner and provenance stay in the server envelope. */

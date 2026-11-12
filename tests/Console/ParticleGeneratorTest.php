@@ -748,6 +748,34 @@ class ParticleGeneratorTest extends TestCase
         $this->assertNoFindingsFor('api/bridges');
     }
 
+    public function test_each_storage_mode_passes_the_generators_own_verification(): void
+    {
+        foreach (['actor' => 'ActorOwnedParticleBacking', 'workspace' => 'WorkspaceSharedParticleBacking', 'central' => 'CentralParticleBacking'] as $mode => $backing) {
+            $name = ucfirst($mode).'Storage';
+            $options = ['name' => $name, '--ownership' => $mode];
+            if ($mode !== 'actor') {
+                $options['--write-ability'] = 'storage.manage';
+            }
+            $this->artisan('splicewire:beam:make:particle-resource', $options)->assertSuccessful();
+            $read = $this->read('app/Data/'.$name.'Data.php');
+            $this->assertStringContainsString($backing.'::class', $read);
+            if ($mode !== 'actor') {
+                $this->assertStringContainsString("policy: 'storage.manage'", $read);
+                $this->assertStringContainsString('SharedParticleAccess::class', $read);
+            }
+        }
+    }
+
+    public function test_shared_storage_refuses_without_a_named_ability_before_emitting_files(): void
+    {
+        foreach (['workspace', 'central'] as $mode) {
+            $name = ucfirst($mode).'WithoutAbility';
+            $this->artisan('splicewire:beam:make:particle-resource', ['name' => $name, '--ownership' => $mode])
+                ->expectsOutputToContain('requires --write-ability')->assertFailed();
+            $this->assertFileDoesNotExist($this->host.'/app/Data/'.$name.'Data.php');
+        }
+    }
+
     public function test_owned_default_refuses_public_read_without_an_explicit_backing_choice(): void
     {
         $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'PublicOwned', '--public' => true])

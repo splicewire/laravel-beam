@@ -20,7 +20,7 @@ class ActorOwnedParticleWriteStage implements WriteStage
         $model = $context->model;
         if (! $this->backing->hasWritePolicy() || ! $model instanceof BeamParticle || ! $context->actor instanceof Authenticatable
             || $context->actor !== $this->backing->request()->user()
-            || ($model->exists && ! ActorOwnedParticleAccess::owns($context->actor, $model))
+            || ($model->exists && ! $this->backing->owns($context->actor, $model))
             || $model->getAttribute('schema_ref') !== $this->backing->binding()
             || ! $this->backing->permitsWrite($model, $context->actor)) {
             throw WriteNotAuthorized::for($model);
@@ -29,7 +29,7 @@ class ActorOwnedParticleWriteStage implements WriteStage
         $context->payload = array_replace($model->exists ? $model->getAttribute('payload') : [], $context->payload);
         if (! $model->exists) {
             $meta = $model->getAttribute('meta') ?? [];
-            $meta['owner'] = ActorOwnedParticleAccess::owner($context->actor);
+            $meta['owner'] = $this->backing->ownerFor($context->actor);
             $model->setAttribute('meta', $meta);
         }
         $model->setAttribute('schema_id', $schema['$id']);
