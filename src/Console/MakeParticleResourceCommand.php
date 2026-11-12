@@ -131,6 +131,11 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
 
             return self::FAILURE;
         }
+        if ($ownership === 'actor' && $this->option('write-ability') !== null) {
+            $this->components->error('--write-ability is for workspace or central ownership.');
+
+            return self::FAILURE;
+        }
 
         $model = $this->option('model');
         if (! $this->option('read-only') && ! $model && ($this->option('filters') || $this->option('cascade-policy'))) {
@@ -139,7 +144,7 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             return self::FAILURE;
         }
         if (! $this->option('read-only') && ! $model && $this->option('public')) {
-            $this->components->error('Actor-owned storage has no Public Read. Use --model for a deliberately public model-backed resource.');
+            $this->components->error(($ownership === 'actor' ? 'Actor-owned' : 'Shared').' storage has no Public Read. Use --model for a deliberately public model-backed resource.');
 
             return self::FAILURE;
         }
@@ -254,7 +259,9 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
         }
         if ($resource !== null && is_string($resource->backing)
             && is_a($resource->backing, \Splicewire\Beam\Particle\Backing\WorkspaceSharedParticleBacking::class, true)
-            && ($resource->policy === null || $resource->policy === '' || $resource->readPolicy !== \Splicewire\Beam\Particle\Backing\SharedParticleAccess::class)) {
+            && ($resource->policy === null || $resource->policy === ''
+                || $resource->policy !== trim((string) $this->option('write-ability'))
+                || $resource->readPolicy !== \Splicewire\Beam\Particle\Backing\SharedParticleAccess::class)) {
             $findings[] = 'Shared particle storage must declare its write ability and SharedParticleAccess read policy.';
         }
         $block = (new ContextManifest)->forResource($read);

@@ -27,15 +27,15 @@ class ApiRootTest extends TestCase
         $this->assertSame('stud/frame', ApiRoot::for('fixture.frame.api_root', 'frame', 'stud'));
     }
 
-    public function test_an_earlier_site_catch_all_refuses_by_name_before_mounting(): void
+    public function test_an_earlier_site_catch_all_refuses_by_name(): void
     {
         $router = $this->app->make(Router::class);
         $router->get('{path?}', fn () => 'site')->where('path', '.*')->name('site.catch-all');
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('site.catch-all');
-        ApiRoot::mount($router, 'fixture.api_root', 'widgets', function (): void {
-            $this->fail('The catch-all must refuse before registering package routes.');
+        ApiRoot::mount($router, 'fixture.api_root', 'widgets', function (Router $router): void {
+            $router->get('ping', fn () => 'unreachable');
         });
     }
 
@@ -58,7 +58,31 @@ class ApiRootTest extends TestCase
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('operator.spa');
         $router->prefix('operator')->group(function (Router $router): void {
-            ApiRoot::mount($router, 'fixture.api_root', 'widgets', fn () => null);
+            ApiRoot::mount($router, 'fixture.api_root', 'widgets', function (Router $router): void {
+                $router->get('ping', fn () => 'unreachable');
+            });
         });
+    }
+
+    public function test_fallback_other_domain_and_other_method_do_not_shadow(): void
+    {
+        $router = $this->app->make(Router::class);
+        $router->fallback(fn () => 'fallback');
+        $router->domain('other.test')->get('{path}', fn () => 'other')->where('path', '.*');
+        $router->post('{postPath}', fn () => 'post only')->where('postPath', '.*');
+        $router->domain('package.test')->group(function (Router $router): void {
+            ApiRoot::mount($router, 'fixture.api_root', 'widgets', function (Router $router): void {
+                $router->get('ping', fn () => ['ok' => true]);
+            });
+        });
+        $this->getJson('http://package.test/beam/widgets/ping')->assertOk()->assertJsonPath('ok', true);
+    }
+
+    public function test_null_and_empty_config_keep_the_package_default(): void
+    {
+        foreach ([null, '', '/'] as $value) {
+            config(['fixture.api_root' => $value]);
+            $this->assertSame('beam/widgets', ApiRoot::for('fixture.api_root', 'widgets'));
+        }
     }
 }

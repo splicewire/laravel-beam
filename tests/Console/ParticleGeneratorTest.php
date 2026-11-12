@@ -776,6 +776,16 @@ class ParticleGeneratorTest extends TestCase
         }
     }
 
+    public function test_shared_verification_refuses_a_host_stub_that_omits_the_ability(): void
+    {
+        File::ensureDirectoryExists($this->host.'/stubs');
+        $stub = (string) file_get_contents(__DIR__.'/../../stubs/particle-resource.stub');
+        File::put($this->host.'/stubs/particle-resource.stub', str_replace('{{ authorizationLine }}', '', $stub));
+        $this->artisan('splicewire:beam:make:particle-resource', [
+            'name' => 'BrokenShared', '--ownership' => 'workspace', '--write-ability' => 'storage.manage',
+        ])->assertFailed();
+    }
+
     public function test_owned_default_refuses_public_read_without_an_explicit_backing_choice(): void
     {
         $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'PublicOwned', '--public' => true])

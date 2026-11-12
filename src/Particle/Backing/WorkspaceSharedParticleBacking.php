@@ -26,15 +26,19 @@ class WorkspaceSharedParticleBacking extends ActorOwnedParticleBacking
     {
         $this->authorizeShared($actor);
         $tenancy = app(TenancyContext::class);
-        if (! $tenancy->isMultiTenant()) {
-            return ['type' => 'workspace', 'id' => 'host'];
-        }
         $id = $tenancy->currentTenantId();
-        if (! $tenancy->isActive() || $id === null || (string) $id === '') {
+        if ($tenancy->isActive()) {
+            if ($id === null || (string) $id === '') {
+                throw new AuthorizationException('Workspace-shared particles require a trusted workspace identity.');
+            }
+
+            return ['type' => 'workspace', 'id' => 'tenant:'.$id];
+        }
+        if ($tenancy->isMultiTenant()) {
             throw new AuthorizationException('Workspace-shared particles require an initialized workspace.');
         }
 
-        return ['type' => 'workspace', 'id' => 'tenant:'.$id];
+        return ['type' => 'workspace', 'id' => 'host'];
     }
 
     protected function authorizeShared(Authenticatable $actor): void

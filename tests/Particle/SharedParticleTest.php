@@ -138,7 +138,7 @@ class SharedParticleTest extends TestCase
         $this->getJson('/central-notes')->assertForbidden();
         $this->getJson('/frame/resources/central-notes')->assertForbidden();
         $this->postJson('/central-notes', ['name' => 'refused'])->assertForbidden();
-        $this->postJson('/frame/resources/central-notes/records', ['name' => 'refused'])->assertForbidden();
+        $this->postJson('/frame/resources/central-notes', ['name' => 'refused'])->assertForbidden();
         $this->app['auth']->forgetGuards();
         $this->getJson('/central-notes')->assertForbidden();
         $this->postJson('/central-notes', ['name' => 'guest'])->assertForbidden();
@@ -147,7 +147,7 @@ class SharedParticleTest extends TestCase
 
     public function test_forged_owner_and_schema_are_refused_in_both_transports(): void
     {
-        foreach (['/shared-notes', '/central-notes', '/frame/resources/shared-notes/records', '/frame/resources/central-notes/records'] as $path) {
+        foreach (['/shared-notes', '/central-notes', '/frame/resources/shared-notes', '/frame/resources/central-notes'] as $path) {
             foreach (['owner', 'meta', 'schema_ref', 'schemaRef', 'schema_id', 'id'] as $field) {
                 $this->postJson($path, ['name' => 'forged', $field => 'caller-chosen'])->assertUnprocessable();
             }
@@ -167,6 +167,28 @@ class SharedParticleTest extends TestCase
         $this->tenancy->multi = true;
         $this->getJson('/shared-notes')->assertForbidden();
         $this->postJson('/shared-notes', ['name' => 'no tenant'])->assertForbidden();
+    }
+
+    public function test_active_tenants_remain_isolated_without_a_resolvable_central_split(): void
+    {
+        $this->tenancy->multi = false;
+        $id = $this->postJson('/shared-notes', ['name' => 'tenant a'])->assertCreated()->json('data.id');
+        $this->assertSame(['type' => 'workspace', 'id' => 'tenant:a'], BeamParticle::findOrFail($id)->meta['owner']);
+        $this->workspace('b', 'shared_a');
+        $this->getJson('/shared-notes/'.$id)->assertNotFound();
+        $this->getJson('/frame/resources/shared-notes')->assertOk()->assertJsonPath('total', 0);
+    }
+
+    public function test_central_record_reads_with_a_schema_registry_following_the_default_connection(): void
+    {
+        $schemas = new DatabaseSchemaRegistry;
+        $this->app->instance(SchemaRegistry::class, $schemas);
+        $this->app->instance(SchemaTargetResolver::class, new RegistrySchemaTargetResolver($schemas));
+        $id = $this->postJson('/central-notes', ['name' => 'tenant registry'])->assertCreated()->json('data.id');
+        $this->workspace('b', 'shared_b');
+        $this->assertSame([], $schemas->versionsFor('https://example.test/shared/central'));
+        $this->getJson('/central-notes/'.$id)->assertOk()->assertJsonPath('data.name', 'tenant registry');
+        $this->getJson('/frame/resources/central-notes/records/'.$id)->assertOk()->assertJsonPath('data.name', 'tenant registry');
     }
 }
 
