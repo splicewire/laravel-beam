@@ -116,6 +116,16 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
         $base = Str::replaceLast('Data', '', class_basename($this->getNameInput()));
 
         $model = $this->option('model');
+        if (! $this->option('read-only') && ! $model && ($this->option('filters') || $this->option('cascade-policy'))) {
+            $this->components->error('--filters and --cascade-policy inspect a dedicated model; select it explicitly with --model.');
+
+            return self::FAILURE;
+        }
+        if (! $this->option('read-only') && ! $model && $this->option('public')) {
+            $this->components->error('Actor-owned storage has no Public Read. Use --model for a deliberately public model-backed resource.');
+
+            return self::FAILURE;
+        }
         $this->resolvedModel = $this->qualifyModel(is_string($model) && $model !== '' ? $model : $base);
 
         $key = $this->option('key');
@@ -153,6 +163,9 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             $this->writeCompanion('stubs/particle-resource-input.stub', $this->inputClass, [
                 'key' => $this->resolvedKey,
                 'readClass' => class_basename($qualified),
+                'inputName' => $this->option('model') ? 'public ?string $name = null,' : 'public string|\\Spatie\\LaravelData\\Optional|null $name = new \\Spatie\\LaravelData\\Optional,',
+                'inputContract' => $this->option('model') ? ' implements \\Splicewire\\Beam\\Write\\Contracts\\MapsToModelAttributes' : '',
+                'inputMapping' => $this->option('model') ? $this->modelInputMapping() : '',
             ]);
         }
 
@@ -160,7 +173,7 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             $this->summaryClass = $this->rootNamespace().'Particle\\Summaries\\'.$base.'SummaryProvider';
             $this->writeCompanion('stubs/particle-summary-provider.stub', $this->summaryClass, [
                 'key' => $this->resolvedKey,
-                'model' => class_basename($this->resolvedModel),
+                'model' => ! $this->option('model') && ! $this->option('read-only') ? 'BeamParticle' : class_basename($this->resolvedModel),
                 'readClass' => class_basename($qualified),
             ]);
         }
@@ -234,6 +247,18 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
         return $findings;
     }
 
+    protected function modelInputMapping(): string
+    {
+        return <<<'PHP'
+
+    /** @return array<string, mixed> DTO fields mapped to dedicated model columns. */
+    public function toModelAttributes(): array
+    {
+        return ['name' => $this->name];
+    }
+PHP;
+    }
+
     protected function resourceLabel(): string
     {
         $label = $this->option('label');
@@ -248,14 +273,18 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
     {
         $readClass = class_basename($this->qualifyClass($this->getNameInput()));
         $readOnly = (bool) $this->option('read-only');
+        $owned = ! $readOnly && ! $this->option('model');
 
         return [
             'key' => $this->resolvedKey,
             'uri' => $this->resolvedKey,
             'label' => var_export($this->resourceLabel(), true),
             'labelComment' => $this->resourceLabel() === '' ? "    // This resource is addressable and not presented.\n" : '',
-            'model' => class_basename($this->resolvedModel),
-            'namespacedModel' => $this->resolvedModel,
+            'model' => $owned ? 'BeamParticle' : class_basename($this->resolvedModel),
+            'namespacedModel' => $owned ? \Splicewire\Beam\Models\BeamParticle::class : $this->resolvedModel,
+            'backing' => $owned ? '\\Splicewire\\Beam\\Particle\\Backing\\ActorOwnedParticleBacking' : class_basename($this->resolvedModel),
+            'idType' => $owned ? 'string' : 'int',
+            'authorizationLine' => $owned ? "    policy: \\Splicewire\\Beam\\Particle\\Backing\\ActorOwnedParticleAccess::WRITE,\n    readPolicy: \\Splicewire\\Beam\\Particle\\Backing\\ActorOwnedParticleAccess::class,\n" : '',
             'inputClass' => class_basename($this->inputClass),
             // tutorial-dx 06: every decision slot written out, an omission and a decision not spelled alike.
             'inputSlot' => $readOnly ? 'false' : class_basename($this->inputClass).'::class',
@@ -502,7 +531,7 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
     protected function getOptions(): array
     {
         return [
-            ['model', 'm', InputOption::VALUE_REQUIRED, 'The Eloquent model the resource resolves — a bare name resolves under App\Models\, a namespaced one is used as given (default: App\Models\<Name>)'],
+            ['model', 'm', InputOption::VALUE_REQUIRED, 'The Eloquent model the resource resolves — a bare name resolves under App\Models\, a namespaced one is used as given (omit for actor-owned shared particle storage)'],
             ['key', 'k', InputOption::VALUE_REQUIRED, 'The registry key and data-filters resource key (default: the kebab-cased plural of <Name>)'],
             ['label', null, InputOption::VALUE_REQUIRED, 'Display label derived from the key by default; --label= keeps the resource addressable and not presented'],
             ['force', 'f', InputOption::VALUE_NONE, 'Overwrite the read Data class if it already exists'],

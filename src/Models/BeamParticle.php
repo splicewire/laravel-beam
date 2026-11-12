@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use LogicException;
 use Rushing\Versioning\Concerns\ReconcilesPayloadOnRead;
 use Rushing\Versioning\Concerns\Versionable as VersionableTrait;
 use Rushing\Versioning\Contracts\MigratesSnapshotOnRestore;
@@ -155,6 +156,26 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
      */
     public function restoreVersionSnapshot(array $snapshot): void
     {
+        $currentMeta = $this->getAttribute('meta') ?? [];
+        if (isset($currentMeta['owner'])) {
+            if (SchemaId::from($snapshot['schema_ref'] ?? '')->recordType()
+                !== SchemaId::from($this->getAttribute('schema_ref'))->recordType()) {
+                throw new LogicException('An owned particle cannot restore another schema binding.');
+            }
+            $snapshot['schema_ref'] = $this->getAttribute('schema_ref');
+        }
+        // Content restores never change principal or workflow authority, including ownerless workflows.
+        if (is_array($snapshot['meta'] ?? null) || $currentMeta !== []) {
+            $meta = $snapshot['meta'] ?? [];
+            foreach (['owner', 'workflow'] as $managed) {
+                unset($meta[$managed]);
+                if (array_key_exists($managed, $currentMeta)) {
+                    $meta[$managed] = $currentMeta[$managed];
+                }
+            }
+            $snapshot['meta'] = $meta;
+        }
+
         $this->forceFill([
             'schema_ref' => $snapshot['schema_ref'] ?? null,
             'schema_id' => $snapshot['schema_id'] ?? null,

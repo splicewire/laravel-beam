@@ -80,9 +80,18 @@ class ParticleResourceFlagsTest extends TestCase
 
     // ── --filters ───────────────────────────────────────────────────────────────────────────────────
 
+    public function test_model_reading_flags_require_an_explicit_model_choice(): void
+    {
+        foreach (['--filters', '--cascade-policy'] as $option) {
+            $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Owned', $option => true])
+                ->expectsOutputToContain('select it explicitly with --model')->assertFailed();
+        }
+        $this->assertFileDoesNotExist($this->host.'/app/Data/OwnedData.php');
+    }
+
     public function test_filters_emit_a_filter_data_class_from_the_models_actual_columns(): void
     {
-        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Track', '--filters' => true])
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Track', '--model' => 'Track', '--filters' => true])
             ->assertSuccessful();
 
         $source = File::get($this->host.'/app/Data/Filters/TrackFilterData.php');
@@ -124,7 +133,7 @@ class ParticleResourceFlagsTest extends TestCase
             $table->timestamps();
         });
 
-        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Vinyl', '--filters' => true])
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Vinyl', '--model' => 'Vinyl', '--filters' => true])
             ->expectsOutputToContain("'discover' => ['classes' => [\\App\\Data\\Filters\\VinylFilterData::class]]")
             ->assertSuccessful();
 
@@ -154,7 +163,7 @@ class ParticleResourceFlagsTest extends TestCase
     {
         $command = Artisan::all()['splicewire:beam:make:particle-resource'];
 
-        $this->assertSame(0, Artisan::call('splicewire:beam:make:particle-resource', ['name' => 'Track', '--filters' => true, '--summary' => true]));
+        $this->assertSame(0, Artisan::call('splicewire:beam:make:particle-resource', ['name' => 'Track', '--model' => 'Track', '--filters' => true, '--summary' => true]));
         $this->assertFileExists($this->host.'/app/Data/Filters/TrackFilterData.php');
         File::delete($this->host.'/app/Data/Filters/TrackFilterData.php');
 
@@ -174,7 +183,7 @@ class ParticleResourceFlagsTest extends TestCase
 
     public function test_filters_refuse_when_the_models_table_does_not_resolve(): void
     {
-        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Ghost', '--filters' => true])
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Ghost', '--model' => 'Ghost', '--filters' => true])
             ->expectsOutputToContain('ghosts')
             ->assertFailed();
 
@@ -189,7 +198,7 @@ class ParticleResourceFlagsTest extends TestCase
     {
         $before = File::get($this->host.'/app/Models/Track.php');
 
-        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Track', '--cascade-policy' => true])
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Track', '--model' => 'Track', '--cascade-policy' => true])
             ->expectsOutputToContain('use Rushing\PermissionCascade\Attributes\UseCascadePolicy;')
             ->expectsOutputToContain('#[UseCascadePolicy]')
             ->expectsOutputToContain('CascadePolicyRegistrar')

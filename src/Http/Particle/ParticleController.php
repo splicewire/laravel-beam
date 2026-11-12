@@ -25,14 +25,18 @@ use Splicewire\Beam\Authorization\RowAuthorization;
 use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
+use Splicewire\Beam\Particle\Backing\AcceptsPayloadWrites;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\EnrichesProjectedRecords;
+use Splicewire\Beam\Particle\Backing\ProjectsPayload;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\Backing\SuppliesParticleWriter;
+use Splicewire\Beam\Particle\Backing\UsesActorOwnership;
 use Splicewire\Beam\Particle\Backing\WritesRecords;
 use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
+use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -40,8 +44,10 @@ use Splicewire\Beam\Particle\Subject\ResourceRecordLookup;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
+use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ModelAttributeMapper;
 use Splicewire\Beam\Write\ParticleWriter;
+use Splicewire\Beam\Write\PolicyWriteGate;
 
 /**
  * The generic REST controller every model-backed resource can ride instead of hand-rolling
@@ -193,9 +199,9 @@ class ParticleController extends Controller
      * {@see streamedIndex()}, because a list needs no builder. Show/update/destroy and a relative mount
      * still do, and still come through this assertion.
      */
-    protected function queryableBacking(ParticleResource $resource): QueriesRecords
+    protected function queryableBacking(ParticleResource $resource, ?Request $request = null): QueriesRecords
     {
-        $backing = $resource->backing();
+        $backing = $resource->backing($request);
 
         if (! $backing instanceof QueriesRecords) {
             throw new RuntimeException(
@@ -215,9 +221,9 @@ class ParticleController extends Controller
      * so a resource declaring `creatable` against a non-writing backing never boots. Reaching this
      * throw means a store arrived for a resource that declared no create affordance at all.
      */
-    protected function writableBacking(ParticleResource $resource): WritesRecords
+    protected function writableBacking(ParticleResource $resource, ?Request $request = null): WritesRecords
     {
-        $backing = $resource->backing();
+        $backing = $resource->backing($request);
 
         if (! $backing instanceof WritesRecords) {
             throw new RuntimeException(
@@ -305,7 +311,7 @@ class ParticleController extends Controller
      *  - a `Model` — the declaration's own `project:`/`data:` projection AND the contribution fold, so a
      *    model-bearing arm reads exactly as the same model would through the queried path;
      *  - anything else — the declaration's `data:` class named constructor, matching
-     *    {@see \Splicewire\Beam\Particle\ParticleFrameResourceHandler::streamedIndex()} so the two
+     *    {@see ParticleFrameResourceHandler::streamedIndex()} so the two
      *    transports project one row the same way.
      *
      * @param  array<string, mixed>  $facets
@@ -335,7 +341,9 @@ class ParticleController extends Controller
         // ADR-0230: the declared Public Read and scoped lookup admit a guest. A signed-in reader meets the model policy;
         // refused, with a Public Read declared, they still receive what a guest would (0230-…md:68-69): the record is
         // looked up again inside the Public Read's scope (a private record still 404s) and projected through its Data.
-        if ($request->user() !== null) {
+        if ($resource->backing($request) instanceof UsesActorOwnership) {
+            ResourceReadGuard::forApp()->inspectRead($resource, $request)->authorize();
+        } elseif ($request->user() !== null) {
             $own = Gate::inspect('view', $model);
             if ($own->denied()) {
                 if ($resource->publicRead === null) {
@@ -378,7 +386,7 @@ class ParticleController extends Controller
         // requirement is asserted — everything from `$resource->prepare` down through `ParticleWriter`,
         // the write gate and `BeamParticlePersisted` is still Model-typed, and 07 scopes that migration
         // out as a map. It refuses with `WriteSubjectNotEloquent`, not a TypeError, so the gap is legible.
-        $model = $this->newRelativeModel($request) ?? $this->writableBacking($resource)->newRecord()->model();
+        $model = $this->newRelativeModel($request) ?? $this->writableBacking($resource, $request)->newRecord()->model();
         if ($resource->prepare !== null) {
             ($resource->prepare)($model, $input, $request->user());
         }
@@ -407,7 +415,12 @@ class ParticleController extends Controller
     {
         $resource = $this->particleResource($request);
         $model = $this->findParticle($resource, $this->subjectId($request, $id), $request);
-        $this->authorize('delete', $model);
+        if ($resource->backing($request) instanceof UsesActorOwnership) {
+            abort_if($resource->policy === null, 403);
+            Gate::forUser($request->user())->authorize($resource->policy, $model);
+        } else {
+            $this->authorize('delete', $model);
+        }
         $model->delete();
 
         return $this->envelope->item(null);
@@ -542,7 +555,7 @@ class ParticleController extends Controller
         if ($via instanceof Closure) {
             $resource = $this->particleResource($request);
 
-            return $via($relative, $this->queryableBacking($resource)->query([]));
+            return $via($relative, $this->queryableBacking($resource, $request)->query([]));
         }
 
         return $relative->{$via}()->getQuery();
@@ -574,15 +587,19 @@ class ParticleController extends Controller
      */
     protected function writeParticle(ParticleResource $resource, Model $model, mixed $input, mixed $actor, ?Request $request = null): Model
     {
-        $attributes = $this->toAttributes($input);
+        $attributes = ($payloadBacking = $resource->backing($request)) instanceof AcceptsPayloadWrites
+            ? $payloadBacking::payload($input) : $this->toAttributes($input);
 
         if ($request !== null) {
             $attributes = $this->withoutStructuralColumns($request, $attributes);
         }
 
-        $backing = $resource->backing();
+        $backing = $resource->backing($request);
+        $gate = $backing instanceof UsesActorOwnership && get_class($this->writer->gate()) === GateWriteGate::class
+            ? new PolicyWriteGate(Gate::getFacadeRoot(), $resource->policy)
+            : $this->writer->gate();
         $writer = $backing instanceof SuppliesParticleWriter
-            ? $backing->writer($this->writer->gate())
+            ? $backing->writer($gate)
             : $this->writer;
 
         return $writer->write($model, $attributes, $actor, $this->afterHook($resource, $input));
@@ -669,7 +686,7 @@ class ParticleController extends Controller
         // show/update/destroy can only reach a child hanging off the bound parent — a cross-parent id
         // 404s (never resolves). Absent a relative, `$query` is the unscoped base — today's exact code path.
         $query = ($request !== null ? $this->relativeBaseQuery($request) : null)
-            ?? $this->queryableBacking($resource)->query([]);
+            ?? $this->queryableBacking($resource, $request)->query([]);
 
         // Row-level READ authorization for CRUD subject resolution (ADR-0156 §83 — the `scope`
         // closure), plus the declared `includes` and `routeKey`. Operations use the same collaborator
@@ -699,6 +716,10 @@ class ParticleController extends Controller
      */
     protected function parseInput(ParticleResource $resource, Request $request): mixed
     {
+        if ($resource->backing($request) instanceof AcceptsPayloadWrites) {
+            $resource->backing($request)::assertInput($request->all());
+        }
+
         if ($resource->input === false) {
             $this->rejectInput($resource, $request);
 
@@ -858,7 +879,9 @@ class ParticleController extends Controller
             : ($resource->project !== null
                 ? ($resource->project)($model)
                 : ($resource->data !== null
-                    ? $resource->data::from($model)
+                    ? ($resource->backing() instanceof ProjectsPayload
+                        ? $resource->backing()::project($resource, $model)
+                        : $resource->data::from($model))
                     : $this->hydrator->project($model, $ctx)));
 
         return $this->contributions()->apply($resource->key, $data, $model, $ctx, $filters);

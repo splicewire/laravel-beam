@@ -91,6 +91,35 @@ class ParticleWriterTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_schema_declared_empty_map_is_validated_as_an_object_without_changing_storage(): void
+    {
+        $this->allowWrites();
+        $this->app->instance(SchemaTargetResolver::class, new class implements SchemaTargetResolver
+        {
+            public function targetFor(string $recordType, ?int $version = null): array
+            {
+                return ['type' => 'object', 'properties' => ['inputs' => ['type' => 'object', 'additionalProperties' => ['type' => 'number']]], 'required' => ['inputs']];
+            }
+        });
+        $record = $this->writer()->write(new BeamParticle(['schema_ref' => 'example/maps/1']), ['inputs' => []]);
+        $stored = \Illuminate\Support\Facades\DB::table(Beam::table('particles'))->where('id', $record->getKey())->value('payload');
+        $this->assertSame(['inputs' => []], json_decode($stored, true, flags: JSON_THROW_ON_ERROR));
+    }
+
+    public function test_a_real_list_is_still_refused_for_a_declared_object_map(): void
+    {
+        $this->allowWrites();
+        $this->app->instance(SchemaTargetResolver::class, new class implements SchemaTargetResolver
+        {
+            public function targetFor(string $recordType, ?int $version = null): array
+            {
+                return ['type' => 'object', 'properties' => ['inputs' => ['type' => 'object', 'additionalProperties' => ['type' => 'number']]], 'required' => ['inputs']];
+            }
+        });
+        $this->expectException(PayloadRejected::class);
+        $this->writer()->write(new BeamParticle(['schema_ref' => 'example/maps/1']), ['inputs' => [10]]);
+    }
+
     public function test_a_conforming_payload_persists_and_emits_the_event(): void
     {
         $this->allowWrites();

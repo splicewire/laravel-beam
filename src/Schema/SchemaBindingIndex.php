@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Schema;
 
 use InvalidArgumentException;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Particle\Backing\UsesActorOwnership;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 
@@ -33,6 +34,23 @@ class SchemaBindingIndex
         return null;
     }
 
+    /** Trusted declarations bypass actor filtering; the transport still authorizes the resource.
+     * @return class-string|null
+     */
+    public function declaredDataClassFor(string $binding): ?string
+    {
+        $identity = SchemaId::from($binding)->recordType();
+        $declared = $this->resources->unfiltered();
+        foreach ($declared->keys() as $key) {
+            $resource = $declared->resolve($key);
+            if ($resource instanceof ParticleResource && $this->bindingFor($resource) === $identity) {
+                return $resource->data;
+            }
+        }
+
+        return null;
+    }
+
     /** Validate before the owning registry mutates; registration is never actor-filtered. */
     public function assertCanRegister(ParticleResource $incoming): void
     {
@@ -55,7 +73,12 @@ class SchemaBindingIndex
             }
 
             if ($existing->schemaRef === null && $incoming->schemaRef === null) {
-                continue; // Sharing a read Data class is not claiming an explicit schema twice.
+                $owned = UsesActorOwnership::class;
+                $incomingOwned = is_string($incoming->backing) ? is_a($incoming->backing, $owned, true) : $incoming->backing instanceof $owned;
+                $existingOwned = is_string($existing->backing) ? is_a($existing->backing, $owned, true) : $existing->backing instanceof $owned;
+                if (! $incomingOwned && ! $existingOwned) {
+                    continue; // Ordinary read projections can still be shared by several resource surfaces.
+                }
             }
 
             if ($this->bindingFor($existing) === $binding) {

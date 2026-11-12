@@ -91,7 +91,8 @@ class ScopedReadAuthenticationAudit implements DoctorAudit
 
     private function scopeWithoutAuthority(ParticleResource $resource): bool
     {
-        return $this->guard->scoped($resource) === true
+        return ! $resource->declaresPublicRead()
+            && $this->guard->scoped($resource) === true
             && $resource->readPolicy === null
             && $this->guard->declaredReadAbility($resource) === null
             && $this->guard->policyBound($resource) !== true;

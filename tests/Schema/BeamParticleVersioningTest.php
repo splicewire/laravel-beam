@@ -257,6 +257,68 @@ class BeamParticleVersioningTest extends TestCase
         $this->assertSame(['title' => 'Original', 'body' => 'B', 'summary' => 'S'], $restored->payload);
     }
 
+    public function test_content_restore_preserves_current_principal_and_workflow_authority(): void
+    {
+        $record = BeamParticle::create([
+            'schema_ref' => self::CHEAP_REF,
+            'payload' => ['title' => 'Original', 'body' => 'B', 'summary' => 'S'],
+            'meta' => ['owner' => ['type' => 'users', 'id' => 'old'], 'workflow' => ['marking' => 'draft', 'version' => 'v1'], 'note' => 'old'],
+        ]);
+        $version = $record->snapshotVersion('old-authority');
+        $record->meta = ['owner' => ['type' => 'users', 'id' => 'current'], 'workflow' => ['marking' => 'published', 'version' => 'v2'], 'note' => 'new'];
+        $record->payload = ['title' => 'Changed', 'body' => 'B', 'summary' => 'S'];
+        $record->save();
+        $record->restoreVersion($version->id);
+        $restored = $record->fresh();
+        $this->assertSame('Original', $restored->payload['title']);
+        $this->assertSame(['type' => 'users', 'id' => 'current'], $restored->meta['owner']);
+        $this->assertSame(['marking' => 'published', 'version' => 'v2'], $restored->meta['workflow']);
+        $this->assertSame('old', $restored->meta['note']);
+    }
+
+    public function test_ownerless_workflow_state_does_not_rewind_on_content_restore(): void
+    {
+        $record = BeamParticle::create([
+            'schema_ref' => self::CHEAP_REF, 'payload' => ['title' => 'Before', 'body' => 'B', 'summary' => 'S'],
+            'meta' => ['workflow' => ['marking' => 'draft', 'version' => 'v1']],
+        ]);
+        $snapshot = $record->snapshotVersion('draft');
+        $record->meta = ['workflow' => ['marking' => 'published', 'version' => 'v2']];
+        $record->payload = ['title' => 'After', 'body' => 'B', 'summary' => 'S'];
+        $record->save();
+        $record->restoreVersion($snapshot->id);
+        $this->assertSame('Before', $record->fresh()->payload['title']);
+        $this->assertSame(['marking' => 'published', 'version' => 'v2'], $record->fresh()->meta['workflow']);
+    }
+
+    public function test_revision_revert_preserves_current_principal_and_workflow_authority(): void
+    {
+        $record = BeamParticle::create(['schema_ref' => self::CHEAP_REF, 'payload' => ['title' => 'Before', 'body' => 'B', 'summary' => 'S'], 'meta' => ['owner' => ['type' => 'users', 'id' => 'before'], 'workflow' => ['marking' => 'draft']]]);
+        $before = ['payload' => $record->payload, 'meta' => $record->meta];
+        $record->payload = ['title' => 'After', 'body' => 'B', 'summary' => 'S'];
+        $record->meta = ['owner' => ['type' => 'users', 'id' => 'current'], 'workflow' => ['marking' => 'published']];
+        $record->save();
+        $revision = $record->recordRevision($before, ['payload' => $record->payload, 'meta' => $record->meta], 'edit');
+        $record->revertTo($revision);
+        $this->assertSame('Before', $record->fresh()->payload['title']);
+        $this->assertSame(['type' => 'users', 'id' => 'current'], $record->fresh()->meta['owner']);
+        $this->assertSame(['marking' => 'published'], $record->fresh()->meta['workflow']);
+    }
+
+    public function test_owned_content_restore_refuses_a_different_schema(): void
+    {
+        $record = BeamParticle::create(['schema_ref' => self::CHEAP_REF, 'payload' => ['title' => 'Keep', 'body' => 'B', 'summary' => 'S'], 'meta' => ['owner' => ['type' => 'users', 'id' => 'owner']]]);
+        $snapshot = $record->toVersionSnapshot();
+        $snapshot['schema_ref'] = self::EXPENSIVE_REF;
+        try {
+            $record->restoreVersionSnapshot($snapshot);
+            $this->fail('Owned snapshot crossed its schema binding.');
+        } catch (\LogicException) {
+            $this->assertSame(self::CHEAP_REF, $record->fresh()->schema_ref);
+            $this->assertSame('Keep', $record->fresh()->payload['title']);
+        }
+    }
+
     public function test_restoring_an_old_snapshot_lands_a_current_shaped_payload(): void
     {
         $record = BeamParticle::create([

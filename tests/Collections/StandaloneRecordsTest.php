@@ -20,6 +20,7 @@ class StandaloneRecordsTest extends TestCase
         Schema::create(Beam::table('particles'), function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('schema_ref');
+            $table->json('meta')->nullable();
             $table->string('source_tier');
         });
     }

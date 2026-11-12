@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Spatie\Activitylog\Contracts\Activity;
 use Splicewire\Beam\Activity\ActivityRecorder;
+use Splicewire\Beam\Models\BeamParticle;
 
 /**
  * **Reversible attribute revisions** — the generic reversibility port, backed by
@@ -92,10 +93,16 @@ class RevisionRecorder extends ActivityRecorder
 
         $before = $subject->only(array_keys($entry->old));
 
-        $subject->forceFill($entry->old)->save();
+        $restored = $entry->old;
+        if ($subject instanceof BeamParticle && (isset($subject->meta['owner']) || isset($subject->meta['workflow']))) {
+            $subject->restoreVersionSnapshot(array_replace($subject->toVersionSnapshot(), $entry->old));
+            $restored = $subject->only(array_keys($entry->old));
+        } else {
+            $subject->forceFill($entry->old)->save();
+        }
 
         // Append-only: the reversal is itself recorded, grouped with the intent it undoes.
-        $this->record($subject, $before, $entry->old, 'revert', $entry->correlation);
+        $this->record($subject, $before, $restored, 'revert', $entry->correlation);
 
         return $subject;
     }

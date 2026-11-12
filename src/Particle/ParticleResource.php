@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Particle;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use RuntimeException;
 use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
@@ -21,6 +22,7 @@ use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Filters\BeamResourceFilterProvider;
 use Splicewire\Beam\Frame\ParticleResourceActions;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
+use Splicewire\Beam\Particle\Backing\BindsResource;
 use Splicewire\Beam\Particle\Backing\EloquentBacking;
 use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
 use Splicewire\Beam\Particle\Backing\ResourceBacking;
@@ -331,9 +333,13 @@ class ParticleResource implements HasRegistryKey
      * Resolution is per-call and happens at REQUEST time, never at boot, so a backing may take
      * constructor injection (the tenant connection, its sub-source repos).
      */
-    public function backing(): ResourceBacking
+    public function backing(?Request $request = null): ResourceBacking
     {
-        return (new BackingResolver)->resolve($this->backing);
+        $backing = (new BackingResolver)->resolve($this->backing);
+
+        return $backing instanceof BindsResource
+            ? $backing->forResource($this, $request ?? app(Request::class))
+            : $backing;
     }
 
     /**

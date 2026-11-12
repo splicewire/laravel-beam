@@ -126,17 +126,18 @@ class ParticleGeneratorTest extends TestCase
         $input = $this->read('app/Data/LyricInputData.php');
 
         $this->assertStringContainsString("key: 'lyrics',", $read);
-        $this->assertStringContainsString('backing: Lyric::class,', $read);
+        $this->assertStringContainsString('backing: \\Splicewire\\Beam\\Particle\\Backing\\ActorOwnedParticleBacking::class,', $read);
+        $this->assertStringContainsString('ActorOwnedParticleAccess::WRITE,', $read);
+        $this->assertStringContainsString('public string $id,', $read);
         // BOTH shape slots, present and pointing at real emitted classes — the whole point of the ticket.
         // tutorial-dx 06: `data:` is omitted, because naming the annotated class there says what omitting it says.
         $this->assertStringNotContainsString('data: LyricData::class,', $read);
         $this->assertStringContainsString('input: LyricInputData::class,', $read);
-        $this->assertStringContainsString('use App\Models\Lyric;', $read);
+        $this->assertStringContainsString('use Splicewire\Beam\Models\BeamParticle;', $read);
 
-        // The write DTO carries the `toModelAttributes()` convention the controller looks for; without it the
-        // surface silently falls back to a snake-map of whatever arrived, which is a shape nobody declared.
+        // Shared storage keeps business names; no model-column map belongs in this default.
         $this->assertStringContainsString('class LyricInputData extends Data', $input);
-        $this->assertStringContainsString('public function toModelAttributes(): array', $input);
+        $this->assertStringNotContainsString('public function toModelAttributes(): array', $input);
     }
 
     /**
@@ -144,6 +145,48 @@ class ParticleGeneratorTest extends TestCase
      * slot set to `null` (authenticated-only) with its guidance, so an author decides guest access rather than
      * inheriting it, and `splicewire:beam:doctor` still finds the slot to count.
      */
+    public function test_a_fresh_generated_default_stores_without_an_application_model(): void
+    {
+        \Illuminate\Support\Facades\Schema::create(\Splicewire\Beam\Facades\Beam::table('schemas'), function (\Illuminate\Database\Schema\Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('schema_id')->unique();
+            $table->string('schema_name');
+            $table->integer('version');
+            $table->string('fingerprint');
+            $table->json('artifact');
+            $table->timestamps();
+        });
+        \Illuminate\Support\Facades\Schema::create(\Splicewire\Beam\Facades\Beam::table('particles'), function (\Illuminate\Database\Schema\Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('schema_ref')->nullable();
+            $table->string('schema_id')->nullable();
+            $table->string('migration_status')->nullable();
+            $table->string('head_version')->nullable();
+            $table->string('source_tier')->default('local');
+            $table->json('payload');
+            $table->json('meta')->nullable();
+            $table->timestamps();
+        });
+        $this->app['config']->set('data-schemas.registry_directory', $this->host.'/storage/schema-registry');
+        $this->app->forgetInstance(\Schemastud\DataSchemas\Contracts\SchemaRegistry::class);
+        $this->assertInstanceOf(\Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry::class, app(\Schemastud\DataSchemas\Contracts\SchemaRegistry::class));
+        $actor = new \Illuminate\Foundation\Auth\User;
+        $actor->id = 1;
+        $this->actingAs($actor);
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'FreshStored'])->assertSuccessful();
+        Particle::mount('fresh-storeds', 'fresh-storeds');
+        $row = $this->postJson('/fresh-storeds', ['name' => 'generated'])->assertCreated()->json('data');
+        $particle = \Splicewire\Beam\Models\BeamParticle::findOrFail($row['id']);
+        $this->assertSame(['name' => 'generated'], $particle->payload);
+        $this->assertSame('1', $particle->meta['owner']['id']);
+        $this->assertFileDoesNotExist($this->host.'/app/Models/FreshStored.php');
+        $this->getJson('/fresh-storeds/'.$row['id'])->assertOk();
+        $this->patchJson('/fresh-storeds/'.$row['id'], [])->assertOk();
+        $this->assertSame('generated', $particle->fresh()->payload['name']);
+        $this->patchJson('/fresh-storeds/'.$row['id'], ['name' => null])->assertOk();
+        $this->assertNull($particle->fresh()->payload['name']);
+    }
+
     public function test_the_resource_generator_emits_an_explicit_null_public_read_slot(): void
     {
         $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'Lyric'])->assertSuccessful();
@@ -703,6 +746,14 @@ class ParticleGeneratorTest extends TestCase
         $this->assertNotContains('POST api/bridges', $verbs, '01: a bare mount derives its verbs from the declaration');
         $this->assertContains('GET api/bridges', $verbs);
         $this->assertNoFindingsFor('api/bridges');
+    }
+
+    public function test_owned_default_refuses_public_read_without_an_explicit_backing_choice(): void
+    {
+        $this->artisan('splicewire:beam:make:particle-resource', ['name' => 'PublicOwned', '--public' => true])
+            ->expectsOutputToContain('Actor-owned storage has no Public Read')->assertFailed();
+
+        $this->assertFileDoesNotExist($this->host.'/app/Data/PublicOwnedData.php');
     }
 
     public function test_public_names_the_read_class_as_the_public_read(): void

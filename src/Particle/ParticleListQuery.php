@@ -27,7 +27,7 @@ class ParticleListQuery
         if ($context?->publicProjection && $context->actor !== null && $context->resource === $resource->key) {
             $this->assertPublicQuery($resource, $filters, $request);
         }
-        $query = $this->backingQuery($resource, $filters);
+        $query = $this->backingQuery($resource, $filters, $request);
         $query = $this->scoped($query, $resource, $request);
         $query = $this->publicScoped($query, $resource, $request);
         if ($relative !== null) {
@@ -71,7 +71,7 @@ class ParticleListQuery
     public function authorizationBases(ParticleResource $resource, Request $request): array
     {
         $request = FilterQuerySelection::scopeRequest($request);
-        $bases = [$this->scoped($this->backingQuery($resource, []), $resource, $request)];
+        $bases = [$this->scoped($this->backingQuery($resource, [], $request), $resource, $request)];
         $resolver = app(ResourceFilterDefinition::class);
         $definition = $resolver->definition($resource->key);
         if ($definition !== null) {
@@ -116,9 +116,9 @@ class ParticleListQuery
         return $query->whereIn($key, $ids);
     }
 
-    private function backingQuery(ParticleResource $resource, array $filters): Builder
+    private function backingQuery(ParticleResource $resource, array $filters, Request $request): Builder
     {
-        $backing = $resource->backing();
+        $backing = $resource->backing($request);
         if (! $backing instanceof QueriesRecords) {
             throw new RuntimeException("Resource [{$resource->key}] backing does not implement ".QueriesRecords::class.'.');
         }

@@ -22,12 +22,17 @@ use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Particle\Backing\AcceptsPayloadWrites;
 use Splicewire\Beam\Particle\Backing\EnrichesProjectedRecords;
+use Splicewire\Beam\Particle\Backing\ProjectsPayload;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Backing\ResolvesRecord;
+use Splicewire\Beam\Particle\Backing\ResourceBacking;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\Backing\SuppliesParticleWriter;
 use Splicewire\Beam\Particle\Backing\Unpaged;
+use Splicewire\Beam\Particle\Backing\UsesActorOwnership;
+use Splicewire\Beam\Particle\Backing\WritesRecords;
 use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
@@ -37,6 +42,7 @@ use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Write\ModelAttributeMapper;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\PolicyWriteGate;
+use Splicewire\Beam\Write\WriteNotAuthorized;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
@@ -199,7 +205,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
     protected function enrichProjected(ResourceDefinition $definition, array $rows): array
     {
         $resource = $this->resource($definition);
-        $backing = $resource?->backing();
+        $backing = $resource?->backing($this->contextRequest($resource));
 
         return $backing instanceof EnrichesProjectedRecords
             ? $backing->enrich($rows, $this->contextRequest($resource)->user())
@@ -298,12 +304,16 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         $this->contextRequest($this->resource($definition));
         $this->assertWritable($definition, 'store');
 
+        $resource = $this->resource($definition);
         $modelClass = $definition->model;
-        $model = new $modelClass;
+        $model = $resource === null ? new $modelClass : $this->backing($definition, WritesRecords::class)->newRecord()->model();
 
+        if (($backing = $this->resource($definition)?->backing($this->contextRequest($this->resource($definition)))) instanceof AcceptsPayloadWrites) {
+            $backing::assertInput($input);
+        }
         $parsed = $this->parseInput($definition, $input);
         $this->prepare($definition, $model, $parsed);
-        $model = $this->writer($definition)->write($model, $this->toAttributes($parsed), $this->actorBound ? $this->boundActor : auth()->user(), $this->afterHook($definition, $parsed));
+        $model = $this->writer($definition)->write($model, $this->writePayload($definition, $parsed), $this->actorBound ? $this->boundActor : auth()->user(), $this->afterHook($definition, $parsed));
 
         return $this->projectRead($definition, $model);
     }
@@ -325,9 +335,12 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
             unset($input['id']);
         }
 
+        if (($backing = $this->resource($definition)?->backing($this->contextRequest($this->resource($definition)))) instanceof AcceptsPayloadWrites) {
+            $backing::assertInput($input);
+        }
         $parsed = $this->parseInput($definition, $input);
         $this->prepare($definition, $model, $parsed);
-        $model = $this->writer($definition)->write($model, $this->toAttributes($parsed), $this->actorBound ? $this->boundActor : auth()->user(), $this->afterHook($definition, $parsed));
+        $model = $this->writer($definition)->write($model, $this->writePayload($definition, $parsed), $this->actorBound ? $this->boundActor : auth()->user(), $this->afterHook($definition, $parsed));
 
         return $this->projectRead($definition, $model->refresh());
     }
@@ -337,7 +350,14 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         $this->contextRequest($this->resource($definition));
         $this->assertWritable($definition, 'destroy');
 
-        $this->find($definition, $id)->delete();
+        $model = $this->find($definition, $id);
+        $resource = $this->resource($definition);
+        $backing = $resource?->backing($this->contextRequest($resource));
+        if ($backing instanceof UsesActorOwnership
+            && (! $resource->policy || ! $this->gate->forUser($this->contextRequest($resource)->user())->allows($resource->policy, $model))) {
+            throw WriteNotAuthorized::for($model);
+        }
+        $model->delete();
     }
 
     // ---- internals -----------------------------------------------------------------------------------
@@ -400,13 +420,13 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
     {
         $resource = $this->resource($definition);
 
-        return $resource !== null && ! $resource->backing() instanceof QueriesRecords;
+        return $resource !== null && ! $resource->backing($this->contextRequest($resource)) instanceof QueriesRecords;
     }
 
     /**
      * This resource's backing, asserted to carry the given capability.
      *
-     * @template T of \Splicewire\Beam\Particle\Backing\ResourceBacking
+     * @template T of ResourceBacking
      *
      * @param  class-string<T>  $capability
      * @return T
@@ -421,7 +441,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
             );
         }
 
-        $backing = $resource->backing();
+        $backing = $resource->backing($this->contextRequest($resource));
 
         if (! $backing instanceof $capability) {
             throw new RuntimeException(
@@ -493,7 +513,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
     protected function writer(ResourceDefinition $definition): ParticleWriter
     {
         $gate = new PolicyWriteGate($this->actorBound ? $this->gate->forUser($this->boundActor) : $this->gate, $definition->policy);
-        $backing = $this->resource($definition)?->backing();
+        $backing = $this->resource($definition)?->backing($this->contextRequest($this->resource($definition)));
         if ($backing instanceof SuppliesParticleWriter) {
             return $backing->writer($gate);
         }
@@ -504,6 +524,18 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
             $this->acceptance,
             $this->events,
         );
+    }
+
+    /** Keep JSON business names; an explicit model backing still uses the model-attribute mapper.
+     * @return array<string, mixed>
+     */
+    protected function writePayload(ResourceDefinition $definition, mixed $input): array
+    {
+        $resource = $this->resource($definition);
+        $backing = $resource?->backing($this->contextRequest($resource));
+
+        return $backing instanceof AcceptsPayloadWrites
+            ? $backing::payload($input) : $this->toAttributes($input);
     }
 
     protected function prepare(ResourceDefinition $definition, Model $model, mixed $input): void
@@ -587,7 +619,9 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         } else {
             /** @var class-string<Data> $dataClass */
             $dataClass = $definition->data;
-            $data = $dataClass::from($model);
+            $data = $resource?->backing($this->contextRequest($resource)) instanceof ProjectsPayload
+                ? $resource->backing($this->contextRequest($resource))::project($resource, $model, $dataClass)
+                : $dataClass::from($model);
         }
 
         $context = ReadContext::fromRequest($this->contextRequest($resource));
@@ -633,7 +667,12 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         /** @var class-string<Data> $editClass */
         $editClass = $definition->editData ?? $definition->data;
 
-        return $this->withId($editClass::from($model)->toArray(), $model);
+        $resource = $this->resource($definition);
+        $data = $resource?->backing($this->contextRequest($resource)) instanceof ProjectsPayload
+            ? $resource->backing($this->contextRequest($resource))::project($resource, $model, $editClass)
+            : $editClass::from($model);
+
+        return $this->withId($data->toArray(), $model);
     }
 
     /**

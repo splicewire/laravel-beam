@@ -152,11 +152,14 @@ value here, never an exception* — an unknown key, or one whose backing declare
 flagship 2026-08-29: **44 registered resources, 2 of them with a null model** (`members`,
 `review-queue`), and both read correctly rather than throwing.
 
-### Beam ships THREE backings, and two of them are not Eloquent
+### Model, stored-payload and collection backings
 
-`EloquentBacking` is the ordinary case and needs no declaration. The other two landed with
-composite-backing ticket 03, and between them they are how a multi-source list stops being hand-rolled
-per resource:
+`EloquentBacking` wraps an explicitly selected model. A new writable resource defaults to
+`ActorOwnedParticleBacking`, which stores declared business payload in BeamParticle and requires explicit
+read/write authorization. It composes the existing schema binding and writer engines; see
+[actor-owned storage](../actor-owned-particles.md). Schema-authored Collections use
+`Splicewire\Beam\Collections\CollectionBacking` in `src/Collections/` (distinct from the in-memory collection
+arm below) and their existing catalog. Multi-source lists use these backing capabilities:
 
 - **`CompositeBacking`** — N arms read as one ordered, cursor-paged list. Implements `StreamsRecords`,
   `ResolvesRecord` and `DeclaresFilterVocabulary`; **declines `BacksModel` and `WritesRecords`** (a

@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Particle;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Schemastud\Frame\Contracts\WriteSubjectResolver;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
@@ -34,7 +35,7 @@ class ParticleWriteSubjectResolver implements WriteSubjectResolver
     {
         $resource = $this->particles->find($definition->key);
 
-        if ($resource === null || ! $resource->backing() instanceof QueriesRecords) {
+        if ($resource === null || ! $resource->backing(app(Request::class)) instanceof QueriesRecords) {
             $model = $definition->model;
 
             if ($model !== null) {
@@ -49,6 +50,6 @@ class ParticleWriteSubjectResolver implements WriteSubjectResolver
             RecordKey::assertValidFor($model, $id);
         }
 
-        return $this->scopes->scoped($resource->backing()->query([]), $resource)->find($id);
+        return $this->scopes->scoped($resource->backing(app(Request::class))->query([]), $resource)->find($id);
     }
 }

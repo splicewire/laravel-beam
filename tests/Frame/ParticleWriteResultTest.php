@@ -92,6 +92,16 @@ class ParticleWriteResultTest extends TestCase
         $this->assertDatabaseCount('frame_write_records', 2);
     }
 
+    public function test_manifest_only_store_keeps_its_model_construction_fallback(): void
+    {
+        $definition = clone $this->resource->toResourceDefinition();
+        $definition->key = 'manifest-only';
+        $created = $this->app->make(ParticleFrameResourceHandler::class)->store($definition, ['email' => 'manifest@example.test']);
+        $this->assertSame('manifest@example.test', $created['email']);
+        $this->assertNotNull($created['id']);
+        $this->assertDatabaseHas('frame_write_records', ['id' => $created['id'], 'email' => 'manifest@example.test']);
+    }
+
     public function test_frame_create_returns_the_persisted_identity_when_dedupe_ignores_a_repeat(): void
     {
         $handler = $this->app->make(ParticleFrameResourceHandler::class);

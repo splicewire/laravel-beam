@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
+use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Particle\Backing\ProjectsPayload;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Summary\BeamResourceSummaryProvider;
 
@@ -99,7 +101,9 @@ class ScopedIndexQuery
         /** @var class-string<Data> $dataClass */
         $dataClass = $definition->data;
 
-        return $dataClass::from($item);
+        return $resource?->backing() instanceof ProjectsPayload && $item instanceof BeamParticle
+            ? $resource->backing()::project($resource, $item, $dataClass)
+            : $dataClass::from($item);
     }
 
     /**

@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Write\Stages;
 use Closure;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
+use Splicewire\Beam\Schema\JsonDocumentShape;
 use Splicewire\Beam\Write\Contracts\WriteStage;
 use Splicewire\Beam\Write\PayloadRejected;
 use Splicewire\Beam\Write\WriteContext;
@@ -29,7 +30,9 @@ class ValidateStage implements WriteStage
         $recordType = $context->recordType();
         if ($recordType !== null) {
             $targetSchema = $this->targets->targetFor($recordType);
-            if ($targetSchema !== [] && ! $this->acceptance->accepts($context->payload, $targetSchema)) {
+            // Restore schema-declared empty objects only for acceptance; persisted payload stays unchanged.
+            $document = (new JsonDocumentShape)->restore($context->payload, $targetSchema);
+            if ($targetSchema !== [] && ! $this->acceptance->accepts(is_array($document) ? $document : $context->payload, $targetSchema)) {
                 throw PayloadRejected::for($recordType);
             }
         }

@@ -7,26 +7,14 @@ use Spatie\LaravelData\Data;
 /**
  * The WRITE DTO for the `{{ key }}` particle resource — the `input:` slot of {{ readClass }}.
  *
- * `toModelAttributes()` is the app convention `ParticleController` looks for: it maps the parsed input onto
- * model columns. Absent this class the controller falls back to a snake-case map of whatever arrived, which
- * is a shape nobody declared — that fallback is what this class exists to replace.
+ * Declared business fields persist in shared particle payloads by default.
+ * With an explicit --model backing, the generated write map names its model columns.
  */
-class {{ class }} extends Data
+class {{ class }} extends Data{{ inputContract }}
 {
     public function __construct(
         // Replace with the fields this resource accepts on store/update.
-        public ?string $name = null,
+        {{ inputName }}
     ) {}
-
-    /**
-     * The write map: DTO field ⇒ model column.
-     *
-     * @return array<string, mixed>
-     */
-    public function toModelAttributes(): array
-    {
-        return [
-            'name' => $this->name,
-        ];
-    }
+{{ inputMapping }}
 }

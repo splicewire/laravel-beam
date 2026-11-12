@@ -50,6 +50,34 @@ class ScopedReadAuthenticationAuditTest extends TestCase
         $this->assertStringContainsString('GET api/gadgets', $findings[0]->detail);
     }
 
+    public function test_declared_public_read_is_authority_for_a_scoped_public_mount(): void
+    {
+        $resources = new ParticleResourceRegistry;
+        $resources->register(new ParticleResource(
+            key: 'gadgets',
+            backing: Gadget::class,
+            data: GadgetData::class,
+            scope: fn ($query) => $query->where('user_id', 1),
+            publicRead: GadgetData::class,
+            frame: false,
+        ));
+
+        Route::get('api/gadgets', [ParticleController::class, 'index'])
+            ->defaults(ParticleController::RESOURCE, 'gadgets')
+            ->name('gadgets.index');
+        Route::get('frame/resources/{resource}', [FrameResourceController::class, 'index'])
+            ->name('frame.resources.index');
+
+        $audit = new ScopedReadAuthenticationAudit(
+            app(Router::class),
+            $resources,
+            ResourceReadGuard::forApp(),
+        );
+
+        $this->assertSame([], $audit->keys());
+        $this->assertSame(DoctorStatus::Pass, $audit->run()[0]->status);
+    }
+
     public function test_authentication_makes_the_same_scoped_mount_safe_without_hiding_it_from_the_census(): void
     {
         $resources = new ParticleResourceRegistry;

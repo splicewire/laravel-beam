@@ -123,6 +123,7 @@ class SchemaBindingIndexTest extends TestCase
         $index = new SchemaBindingIndex($registry);
 
         $this->assertNull($index->dataClassFor(self::STEM));
+        $this->assertSame(BindingArticleData::class, $index->declaredDataClassFor(self::STEM));
         $authorizer->allowed = true;
         $this->assertSame(BindingArticleData::class, $index->dataClassFor(self::STEM));
         $authorizer->allowed = false;

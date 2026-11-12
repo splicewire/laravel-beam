@@ -19,6 +19,8 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
  *
  *     Particle::mount('{{ uri }}', '{{ key }}');
  *
+ * Shared storage derives its binding from this Data class. Before renaming persisted Data,
+ * declare a stable versioned schemaRef and plan the data migration.
  * Frame attributes: schemastud/laravel-frame docs/attributes.md.
  * Add #[Column] to each property the list should display.
  *
@@ -34,10 +36,10 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
 #[ParticleResource(
     key: '{{ key }}',
 {{ labelComment }}    label: {{ label }},
-    backing: {{ model }}::class,
+    backing: {{ backing }}::class,
     input: {{ inputSlot }},
     readOnly: {{ readOnly }},
-{{ sectionLine }}    // ADR-0230 Public Read — declared EXPLICITLY, never silent. A guest (a null actor) is refused on every
+{{ authorizationLine }}{{ sectionLine }}    // ADR-0230 Public Read — declared EXPLICITLY, never silent. A guest (a null actor) is refused on every
     // read path UNLESS this names the Data class a guest may read: `{{ class }}::class` when every field it
     // projects is public, or a narrower Data class. Leave `null` for an authenticated-only resource — do not
     // delete the slot: `splicewire:beam:doctor` counts a guest-reachable resource that declares none.
@@ -49,6 +51,6 @@ class {{ class }} extends Data
         // Add #[Column] to each property to list. Declare the default sort on the property that
         // carries it via `#[Sortable(default: true)]` — there is no attribute-level sort knob.
         #[Column]
-        public int $id,
+        public {{ idType }} $id,
     ) {}
 }

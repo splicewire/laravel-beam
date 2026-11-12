@@ -28,6 +28,7 @@ class CollectionUniqueWriteTest extends TestCase
         Schema::create(Beam::table('particles'), function (Blueprint $table): void {
             $table->string('id')->primary();
             $table->string('schema_ref');
+            $table->json('meta')->nullable();
             $table->string('source_tier')->default('local');
             $table->json('payload');
         });

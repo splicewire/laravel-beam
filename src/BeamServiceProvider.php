@@ -379,7 +379,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // tutorial-dx 03: an operation's context exists only while that operation validates its input (the controller
         // binds the instance for that window). Anywhere else, refuse to build one rather than autowire a context with no
         // subject, so a `rules(OperationContext $operation)` used outside an operation fails loudly instead of lying.
-        $this->app->bind(\Splicewire\Beam\Particle\OperationContext::class, fn () => throw new \LogicException(
+        $this->app->bind(Particle\OperationContext::class, fn () => throw new \LogicException(
             'An OperationContext exists only while a particle operation validates its input: a rules() that asks for one '
             .'is being resolved outside an operation (tutorial-dx 03).'
         ));
@@ -640,7 +640,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             if ($this->app->make(ResourceActionAuthorizer::class) instanceof DenyingResourceActionAuthorizer) {
                 $this->app->bind(ResourceActionAuthorizer::class, ParticleActionAuthorizer::class);
             }
+            // Replace only Frame's concrete default; an explicitly supplied host authorizer remains authoritative.
+            if (get_class($this->app->make(\Schemastud\Frame\Authorization\ResourceAuthorizer::class)) === \Schemastud\Frame\Authorization\ResourceAuthorizer::class) {
+                $this->app->bind(\Schemastud\Frame\Authorization\ResourceAuthorizer::class, Particle\OwnedParticleResourceAuthorizer::class);
+            }
         });
+        $this->app->singleton(Particle\Backing\OwnedRecordExclusion::class);
+        $this->app->tag(Particle\Backing\OwnedRecordExclusion::class, Collections\StandaloneRecordExclusion::class);
 
         // The projection of opted-in ops onto frame's `actions:` reads the router once per request.
         $this->app->scoped(ParticleResourceActions::class);
@@ -1715,6 +1721,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
     public function packageBooted(): void
     {
+        if (! $this->app->make(Gate::class)->has(Particle\Backing\ActorOwnedParticleAccess::WRITE)) {
+            $this->app->make(Gate::class)->define(Particle\Backing\ActorOwnedParticleAccess::WRITE,
+                [Particle\Backing\ActorOwnedParticleAccess::class, 'permits']);
+        }
+
         // `Hook` binds its authorization HERE, in the package that owns the model, the way taxonomy binds
         // `Silo`/`Tag` and knowledge binds `Fragment` (the host's policy map stays empty on purpose). Until
         // this line existed the model carried NO policy, and the estate read that absence four ways at
