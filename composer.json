@@ -121,7 +121,8 @@
         "lint:check": "pint --parallel --test",
         "types:check": "phpstan analyse --memory-limit=1G",
         "test": "@php vendor/bin/pest",
-        "docs:examples": "@php tests/regenerate-data-examples.php"
+        "docs:examples": "@php tests/regenerate-data-examples.php",
+        "lang:plural-fixture": "@php tests/regenerate-plural-fixture.php"
     },
     "repositories": [
         {

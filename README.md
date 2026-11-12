@@ -263,6 +263,33 @@ app(RealmResourceRegistry::class)->override('tokens', 'user', new RealmResourceO
 INERT by default: with no overlay configured for a `(realm, key)`, every realm gets the identical
 projection — a simple spin-up is untouched.
 
+## Localization — beam binds the host's translator (localization 07)
+
+**Installing beam replaces the host application's `translator`.** Beam's provider `extend()`s the framework's binding
+with `Splicewire\Beam\Localization\BeamTranslator`, keeping the framework's loader, locale and fallback, so `__()`,
+`trans_choice()`, Blade's `@lang` and every validation message in the host walk beam's ladder. This is a host-wide
+effect, by design: one ladder answers every lookup.
+
+- **The ladder.** The locale chain is the outer loop: the requested locale, its parent languages (`es-MX` → `es`), then
+  the fallback. The realm chain is the inner loop: the realm, its stack from most to least specific, then the base. A
+  realm rung is a sparse subdirectory, `lang/<locale>/<realm>/<group>.php` (`lang/vendor/<ns>/<locale>/<realm>/…` for
+  a package's line).
+- **A realm's configured label is its English rung line.** `beam.core.realm_resource_overrides.<realm>.<key>.label`
+  answers `resources.<key>.label` at that realm, in English only, just below that rung's file. Existing overrides keep
+  rendering as they did (localization ruling 05).
+- **The realm** is read from the current request's `realm` route parameter at each lookup, and never stored. Code that
+  holds a realm passes it: `app('translator')->getIn($realm, $key)`, `->choiceIn(...)`. No realm means the base.
+- **Plurals** are selected by the rules of the locale whose line answered, not the locale asked for.
+- **Package namespaces.** A package's translator namespace is its composer name less the vendor and a leading
+  `laravel-`, or its `extra.beam.lang-namespace`. Two packages that shorten to one name are refused until one declares
+  its own.
+- **Where a string comes from:** `php artisan beam:lang:rungs <key> --locale=<locale> --realm=<realm>`.
+- **The plural fixture** (`tests/Fixtures/Localization/plural-selector.json`) records the installed framework's plural
+  rules; `PluralFixtureTest` fails if a framework upgrade changes them. Regenerate with
+  `composer lang:plural-fixture -- --write` after reading the change.
+
+How to write text: [`docs/agents/user-facing-text.convention.md`](docs/agents/user-facing-text.convention.md).
+
 ## Mounting the particle surface
 
 The generic particle surface ({@see ParticleController} / {@see ParticleOperationController}) is mounted

@@ -3,6 +3,7 @@
 namespace Splicewire\Beam;
 
 use Closure;
+use Composer\Autoload\ClassLoader;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
@@ -11,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
+use ReflectionClass;
 use Rushing\DataFilters\Contracts\ResourceModelResolver;
 use Rushing\DataFilters\DataFilterManager;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
@@ -21,6 +23,7 @@ use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Rushing\PermissionCascade\Support\CascadePolicyRegistrar;
 use Rushing\Popcorn\Concerns\ChainsTraitMethods;
 use Rushing\Popcorn\Contracts\ChainsTraitMethods as ChainsTraitMethodsContract;
+use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\Registrant;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
 use Rushing\Popcorn\Registries\RegistryIndex;
@@ -72,6 +75,7 @@ use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\GenerateContributedTypesCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
+use Splicewire\Beam\Console\LangRungsCommand;
 use Splicewire\Beam\Console\MakePageCommand;
 use Splicewire\Beam\Console\MakeParticleBackingCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
@@ -151,6 +155,8 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Http\PublicIntakeController;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\MigrationFiles;
+use Splicewire\Beam\Localization\BeamTranslator;
+use Splicewire\Beam\Localization\TextNamespaces;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Models\BeamSchema;
 use Splicewire\Beam\Models\BeamSubmission;
@@ -189,6 +195,7 @@ use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
+use Splicewire\Beam\Realm\RealmResourceOverride;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
 use Splicewire\Beam\Routing\RouteActionMetadataReader;
 use Splicewire\Beam\Routing\RouteMetadataReader;
@@ -371,6 +378,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
     public function packageRegistered(): void
     {
+        // localization 07: the application translator is beam's ladder (locale outer, realm inner; ruling 05 §2).
+        // {@see self::registerLocalization()}
+        $this->registerLocalization();
+
         // Core pins a LITERAL connection name on {@see \Splicewire\Beam\Models\CentralActivityLog};
         // make that name resolve everywhere before anything can resolve the model.
         // {@see self::registerCentralConnectionAlias()}
@@ -1019,6 +1030,83 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         }
 
         config(['database.connections.central' => $block]);
+    }
+
+    /**
+     * localization 07: the application's translator becomes {@see BeamTranslator}, the ladder every lookup walks (the
+     * locale chain outside, the realm chain inside; ruling 05 §2). It is an `extend()` of the framework's own binding,
+     * so the loader, locale and fallback the framework configured are kept, and `__()`, `trans_choice()`, Blade and the
+     * validator all resolve this instance. Binding a host's translator from a package is a host-wide effect: the
+     * README's install notes say so.
+     *
+     * - The default realm is read from the CURRENT request's `realm` route parameter at each lookup, never stored.
+     * - A realm's stack comes from {@see RealmRegistry}; its configured resource label from {@see RealmResourceRegistry}
+     *   at that realm's exact address, its own overlay only, never the stack-merged one.
+     * - {@see TextNamespaces} owns translator namespaces (ruling 01 §3): a package shipping a `lang/` directory is
+     *   hinted when the translator is first built, any other on first use.
+     */
+    protected function registerLocalization(): void
+    {
+        $this->app->singleton(TextNamespaces::class, fn ($app): TextNamespaces => TextNamespaces::fromComposer(
+            self::vendorDirectory(),
+            self::rootComposerJson(),
+            // The CURRENT translator at each hint, not the one that existed when this was built.
+            static fn () => $app->make('translator'),
+        ));
+
+        $this->app->extend('translator', function ($translator, $app) {
+            if ($translator instanceof BeamTranslator) {
+                return $translator;
+            }
+
+            $beam = new BeamTranslator($translator->getLoader(), $translator->getLocale());
+            $beam->setFallback($translator->getFallback());
+
+            $beam->resolveRealmsUsing(
+                static function () use ($app): ?string {
+                    if (! $app->bound('request')) {
+                        return null;
+                    }
+                    $route = $app['request']->route();
+                    $realm = $route === null ? null : $route->parameter('realm');
+
+                    return is_string($realm) ? $realm : null;
+                },
+                static fn (string $realm): array => $app->bound(RealmRegistry::class)
+                    ? (array) ($app->make(RealmRegistry::class)->tryResolve($realm)->stack ?? [])
+                    : [],
+            );
+
+            $beam->resolveRealmLabelsUsing(static function (string $realm, string $resourceKey) use ($app): ?string {
+                if (! $app->bound(RealmResourceRegistry::class) || Key::tryParse($realm.'.'.$resourceKey) === null) {
+                    return null;
+                }
+                $override = $app->make(RealmResourceRegistry::class)->tryResolve($realm.'.'.$resourceKey);
+
+                return $override instanceof RealmResourceOverride ? $override->label : null;
+            });
+
+            return $beam;
+        });
+
+        // Packages shipping a `lang/` directory are hinted as soon as the translator exists (never refusing at boot).
+        $this->app->afterResolving('translator', function ($translator, $app): void {
+            if ($translator instanceof BeamTranslator) {
+                $app->make(TextNamespaces::class)->hintShipped();
+            }
+        });
+    }
+
+    /** The directory composer installed this host's packages into. */
+    private static function vendorDirectory(): string
+    {
+        return dirname((string) (new ReflectionClass(ClassLoader::class))->getFileName(), 2);
+    }
+
+    /** The root package's composer.json: the host application, or the package itself under its own tests. */
+    private static function rootComposerJson(): string
+    {
+        return dirname(self::vendorDirectory()).'/composer.json';
     }
 
     /**
@@ -1834,6 +1922,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 // and a screen over that set would have to reimplement the host's secure-by-omission nav
                 // gate or disclose resources the viewer is denied. A shell already holds the host.
                 ParticleResourcesCommand::class,
+                // localization 07: every rung tried for a key, a locale and a realm, and the one that answered.
+                LangRungsCommand::class,
             ]);
 
             // The estate-POLICY surgeon commands relocated DOWN from surgeon (they hard-code estate
