@@ -24,7 +24,7 @@ class TypeScriptUnknownResolutionAuditTest extends TestCase
         $dts = <<<'TS'
         export type WorkflowCatalogData = {
         blueprintSchema: Record<string, any>,
-        guards: Splicewire.Tower.Data.GuardCatalogEntryData[],
+        guards: Splicewire.Beam.Workflows.Data.GuardCatalogEntryData[],
         types: Splicewire.Beam.Workflows.Data.WorkflowTypeOptionData[],
         canAuthor: boolean,
         };

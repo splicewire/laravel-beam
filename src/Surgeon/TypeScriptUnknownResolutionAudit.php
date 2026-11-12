@@ -10,12 +10,11 @@ use Rushing\Doctor\Finding;
  * authors a property typed `unknown`/`unknown[]` — so that residue in `generated.d.ts` reliably
  * means Spatie's `TypeScriptTransformer` silently gave up resolving a docblock element type
  * (`@var SomeClass[]`), rather than erroring. The traced root cause: a bare, unqualified class
- * name in a `@var` hint that lives outside the declaring file's own namespace/imports — most
- * often a lower-tier DTO (e.g. `laravel-beam-workflows`) legitimately unable to `use`-import a
- * higher-tier class (e.g. `splicewire/tower`'s `GuardCatalogEntryData`) per the estate's declared
- * tier topology. The fix is a fully-qualified docblock reference (`@var \Fully\Qualified\Class[]`)
- * — pure comment text, no `use` import, no composer dependency, doesn't cross the topology
- * boundary — which this audit doesn't prescribe, it only surfaces the residue.
+ * name in a `@var` hint that lives outside the declaring file's own namespace/imports. Resolve
+ * the reference to its authoritative declared class and ensure that class can be loaded by the
+ * consuming package. A qualified docblock alone does not make a higher-tier declaration available
+ * in a standalone installation. This audit surfaces the residue; ownership and dependency choices
+ * belong to the package rather than a mechanical rewrite.
  *
  * Scoped to the single artifact both the app's own consumers and every `@splicewire/_resources`
  * bundle slice ultimately derive from (`TransformTypesStage` slices bundle files FROM this file
