@@ -46,6 +46,7 @@ use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceActionAuthorizer;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
 use Schemastud\Frame\Contracts\ResourceSchemaResolver;
+use Schemastud\Frame\Contracts\WidgetLabel;
 use Schemastud\Frame\Contracts\WriteSubjectResolver;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
@@ -158,6 +159,7 @@ use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Install\MigrationFiles;
 use Splicewire\Beam\Localization\BeamSchemaText;
 use Splicewire\Beam\Localization\BeamTranslator;
+use Splicewire\Beam\Localization\BeamWidgetLabel;
 use Splicewire\Beam\Localization\DeclaredText;
 use Splicewire\Beam\Localization\TextNamespaces;
 use Splicewire\Beam\Localization\TranslatedPropertyTextStrategy;
@@ -1097,6 +1099,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // case labels) resolves through the ladder. Its `singletonIf` identity default yields to this binding.
         $this->app->singleton(DeclaredText::class);
         $this->app->singleton(SchemaText::class, BeamSchemaText::class);
+
+        // localization 10: laravel-frame's widget-context label hook (a column's header) resolves by ruling 01 §6.
+        // Its `singletonIf` identity default yields to this binding.
+        $this->app->singleton(WidgetLabel::class, BeamWidgetLabel::class);
 
         // Packages shipping a `lang/` directory are hinted as soon as the translator exists (never refusing at boot).
         $this->app->afterResolving('translator', function ($translator, $app): void {

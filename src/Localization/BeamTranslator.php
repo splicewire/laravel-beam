@@ -249,14 +249,33 @@ class BeamTranslator extends Translator
     }
 
     /**
-     * The ladder. `$trace`, when given, collects every rung tried.
+     * The first of several keys the ladder answers, keys being tried INNERMOST: at each locale (outer) and each realm
+     * rung (inner), every key in order before the next rung. A column label's chain is this (ruling 01 §6): its context
+     * key, then its property's title key, at each rung.
      *
+     * @param  list<string>  $keys
+     */
+    public function resolveFirst(array $keys, ?string $locale = null, bool $fallback = true, ?string $realm = null): ?ResolvedLine
+    {
+        return $keys === [] ? null : $this->walk($keys, $locale ?: $this->locale, $fallback, $realm);
+    }
+
+    /**
+     * The ladder. `$trace`, when given, collects every rung tried. With several keys, each rung tries them in order.
+     *
+     * @param  string|list<string>  $keys
      * @param  list<array{locale: string, realm: ?string, origin: string, hit: bool}>|null  $trace
      */
-    protected function walk(string $key, string $locale, bool $fallback, ?string $realm, ?array &$trace = null): ?ResolvedLine
+    protected function walk(string|array $keys, string $locale, bool $fallback, ?string $realm, ?array &$trace = null): ?ResolvedLine
     {
-        [$namespace, $group, $item] = $this->parseKey($key);
-        if ($item === null) {
+        $parsed = [];
+        foreach ((array) $keys as $key) {
+            [$namespace, $group, $item] = $this->parseKey($key);
+            if ($item !== null) {
+                $parsed[] = [$namespace, $group, $item];
+            }
+        }
+        if ($parsed === []) {
             return null;
         }
 
@@ -267,23 +286,27 @@ class BeamTranslator extends Translator
             $isSource = LocaleChain::canonical($candidate) === $this->sourceLanguage;
 
             foreach ($realms as $rung) {
-                $line = $this->lineAt($namespace, $rung.'/'.$group, $candidate, $item);
-                $this->note($trace, $candidate, $rung, 'file', $line !== null);
-                if ($line !== null) {
-                    return new ResolvedLine($line, LocaleChain::canonical($candidate), $rung, 'file');
-                }
+                foreach ($parsed as [$namespace, $group, $item]) {
+                    $line = $this->lineAt($namespace, $rung.'/'.$group, $candidate, $item);
+                    $this->note($trace, $candidate, $rung, 'file', $line !== null);
+                    if ($line !== null) {
+                        return new ResolvedLine($line, LocaleChain::canonical($candidate), $rung, 'file');
+                    }
 
-                if ($isSource && ($label = $this->realmLabel($group, $item, $rung)) !== null) {
-                    $this->note($trace, $candidate, $rung, 'config', true);
+                    if ($isSource && ($label = $this->realmLabel($group, $item, $rung)) !== null) {
+                        $this->note($trace, $candidate, $rung, 'config', true);
 
-                    return new ResolvedLine($label, LocaleChain::canonical($candidate), $rung, 'config');
+                        return new ResolvedLine($label, LocaleChain::canonical($candidate), $rung, 'config');
+                    }
                 }
             }
 
-            $line = $this->lineAt($namespace, $group, $candidate, $item);
-            $this->note($trace, $candidate, null, 'file', $line !== null);
-            if ($line !== null) {
-                return new ResolvedLine($line, LocaleChain::canonical($candidate), null, 'file');
+            foreach ($parsed as [$namespace, $group, $item]) {
+                $line = $this->lineAt($namespace, $group, $candidate, $item);
+                $this->note($trace, $candidate, null, 'file', $line !== null);
+                if ($line !== null) {
+                    return new ResolvedLine($line, LocaleChain::canonical($candidate), null, 'file');
+                }
             }
         }
 

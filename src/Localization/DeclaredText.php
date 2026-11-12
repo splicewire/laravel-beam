@@ -44,6 +44,26 @@ final class DeclaredText
     }
 
     /**
+     * The first of several derived keys the ladder answers, keys tried innermost at each rung (ruling 01 §6), or
+     * `$default` when every rung misses. Null keys (a refused owner) are dropped.
+     *
+     * @param  list<?string>  $keys
+     */
+    public function resolveFirst(array $keys, ?string $default, ?string $realm = null): ?string
+    {
+        $translator = app('translator');
+        $keys = array_values(array_filter($keys, static fn (?string $k): bool => $k !== null));
+
+        if ($keys === [] || ! $translator instanceof BeamTranslator) {
+            return $default;
+        }
+
+        $line = $translator->resolveFirst($keys, null, true, $realm ?? $translator->requestRealm())?->line;
+
+        return is_string($line) ? $line : $default;
+    }
+
+    /**
      * {@see key()} then {@see resolve()}.
      *
      * @param  'data'|'enums'  $kind
