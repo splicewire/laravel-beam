@@ -12,18 +12,18 @@ uses(TestCase::class);
 
 function collisionClient(array $tenant, array $operator = [], array $options = []): array
 {
-    $source = fn (array $routes): RouteManifestSource => new class ($routes) implements RouteManifestSource
+    $source = fn (array $routes): RouteManifestSource => new class($routes) implements RouteManifestSource
+    {
+        public function __construct(private array $routes)
         {
-            public function __construct(private array $routes)
-            {
-                //
-            }
+            //
+        }
 
-            public function toArray(): array
-            {
-                return $this->routes;
-            }
-        };
+        public function toArray(): array
+        {
+            return $this->routes;
+        }
+    };
     $model = (new RouteManifestModelSource($source($tenant), $source($operator)))->model()->toArray();
 
     return (new TsClientGenerator)->invoke(['model' => $model, 'options' => $options + ['emit_stores' => true]]);
@@ -118,7 +118,7 @@ it('retains existing cross-realm qualification and client bindings for typed end
     $files = collisionClient(['entries.index' => collisionRead()], ['api.operator.entries.index' => collisionRead()])['files'];
 
     expect($files['hooks/entries.ts'])->toContain('useEntriesIndex(', 'import { api }', "route('entries.index')")
-        ->and($files['hooks/operator-entries.ts'])->toContain('useOperatorEntriesIndex(', "import { operatorApi }", "operatorRoute('api.operator.entries.index')")
+        ->and($files['hooks/operator-entries.ts'])->toContain('useOperatorEntriesIndex(', 'import { operatorApi }', "operatorRoute('api.operator.entries.index')")
         ->and($files['stores/operator-entries.ts'])->toContain('OperatorEntriesIndexState', 'useOperatorEntriesIndexStore');
 });
 
@@ -154,7 +154,7 @@ it('refuses a secondary transport-qualified file collision and names both routes
 it('refuses a realm-qualified file collision even when the action names differ', function () {
     expect(fn () => collisionClient(['entries.index' => collisionRead(), 'operator-entries.other' => collisionRead()],
         ['api.operator.entries.index' => collisionRead()]))->toThrow(LogicException::class,
-        'Client file [hooks/operator-entries.ts] collides between routes [operator-entries.other] and [api.operator.entries.index].');
+            'Client file [hooks/operator-entries.ts] collides between routes [operator-entries.other] and [api.operator.entries.index].');
 });
 
 it('refuses duplicate derived exports across different files instead of overwriting an identifier', function () {
