@@ -107,6 +107,23 @@ class HookHttpSurfaceTest extends TestCase
 
     // ── GET /hooks/events, at both exposures (12 §3) ────────────────────────────────────────────
 
+    public function test_mounting_hooks_keeps_one_root_catalog_and_other_resources_keep_their_own(): void
+    {
+        Particle::mount('hooks')->only(['index']);
+        Particle::mount('mounted-compositions', 'compositions')->only(['index']);
+        Route::getRoutes()->refreshNameLookups();
+
+        $catalogs = collect(Route::getRoutes()->getRoutes())
+            ->filter(fn ($route) => str_ends_with($route->uri(), 'hooks/events'))
+            ->map(fn ($route) => $route->uri());
+
+        $this->assertNotContains('hooks/hooks/events', $catalogs);
+        $this->assertSame(1, $catalogs->filter(fn ($uri) => $uri === 'hooks/events')->count());
+        $this->assertContains('mounted-compositions/hooks/events', $catalogs);
+        $this->getJson('/hooks/events')->assertOk()->assertJsonPath('data.resource', null);
+        $this->getJson('/mounted-compositions/hooks/events')->assertOk()->assertJsonPath('data.resource', 'compositions');
+    }
+
     public function test_the_root_catalog_projects_every_registered_event_type(): void
     {
         $body = $this->getJson('/hooks/events')->assertOk()->json('data');

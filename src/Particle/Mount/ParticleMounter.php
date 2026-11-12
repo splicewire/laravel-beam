@@ -160,7 +160,8 @@ class ParticleMounter
         //
         // Mounted with the literal segments FIRST for the same reason the filter block is, though the
         // two-segment `hooks/events` tail is not swallowable by `{uri}/{id}` in any case.
-        if ($options['hookEvents'] ?? true) {
+        // Hooks already has the root catalog; a scoped copy would be hooks/hooks/events.
+        if ($options['hookEvents'] ?? ($resourceKey !== 'hooks')) {
             $this->resourceHookEvents($router, $resourceKey, $uri, $name);
         }
 
