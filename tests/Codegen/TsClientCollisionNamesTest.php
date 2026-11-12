@@ -114,6 +114,22 @@ it('leaves noncolliding API-only and mixed transport names short', function () {
         ->and($mixed)->not->toHaveKey('hooks/api-v1-entries.ts');
 });
 
+it('keeps all actions of a colliding API domain in its qualified module', function () {
+    $files = collisionClient([
+        'api.v1.entries.index' => collisionRead('api/v1/entries'),
+        'entries.index' => collisionRead(),
+        'api.v1.entries.show' => collisionRead('api/v1/entries/{entry}'),
+    ])['files'];
+
+    expect($files['hooks/api-v1-entries.ts'])->toContain('export function useApiV1EntriesIndex(', 'export function useApiV1EntriesShow(',
+        "queryKey: ['api.v1.entries.index']", "queryKey: ['api.v1.entries.show', params]",
+        "route('api.v1.entries.index')", "route('api.v1.entries.show', params)")
+        ->not->toContain('export function useEntriesIndex(', 'export function useEntriesShow(')
+        ->and($files['hooks/entries.ts'])->toContain('export function useEntriesIndex(', "queryKey: ['entries.index']", "route('entries.index')")
+        ->not->toContain('useApiV1Entries', 'useEntriesShow(', 'api.v1.entries.')
+        ->and($files['routes.ts'])->toContain("'api.v1.entries.index'", "'api.v1.entries.show'", "'entries.index'");
+});
+
 it('retains existing cross-realm qualification and client bindings for typed endpoints', function () {
     $files = collisionClient(['entries.index' => collisionRead()], ['api.operator.entries.index' => collisionRead()])['files'];
 
