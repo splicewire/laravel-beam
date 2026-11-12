@@ -14,6 +14,7 @@ use Spatie\LaravelData\Support\DataConfig;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Events\EventTypeRegistry;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
@@ -222,17 +223,16 @@ class HookSubscriptionReach
         }
 
         if ($type === null || $id === null) {
-            throw ValidationException::withMessages([
-                $this->inputName('subjectType') => 'Supply both '.$this->inputName('subjectType').' and '.$this->inputName('subjectId').', or neither.',
+            throw CodedValidationException::for($this->inputName('subjectType'), HookSubscriptionError::SubjectPairIncomplete, [
+                'type' => $this->inputName('subjectType'),
+                'id' => $this->inputName('subjectId'),
             ]);
         }
 
         $class = Relation::getMorphedModel($type) ?? $type;
 
         if (! is_string($class) || ! class_exists($class) || ! is_subclass_of($class, Model::class)) {
-            throw ValidationException::withMessages([
-                $this->inputName('subjectType') => "`{$type}` is not a model this host knows.",
-            ]);
+            throw CodedValidationException::for($this->inputName('subjectType'), HookSubscriptionError::SubjectTypeUnknown, ['type' => $type]);
         }
 
         $this->requireUsableKey($class, $id);
@@ -243,15 +243,11 @@ class HookSubscriptionReach
             // The fence, not the check — see the docblock. Nothing about the failing statement is
             // repeated to the caller: they supplied an id, and "this is not a usable id" is the
             // whole of what they are owed.
-            throw ValidationException::withMessages([
-                $this->inputName('subjectId') => 'Not a usable id for a '.class_basename($class).'.',
-            ]);
+            throw CodedValidationException::for($this->inputName('subjectId'), HookSubscriptionError::SubjectIdUnusable, ['model' => class_basename($class)]);
         }
 
         if ($subject === null) {
-            throw ValidationException::withMessages([
-                $this->inputName('subjectId') => 'No such record to subscribe against.',
-            ]);
+            throw CodedValidationException::for($this->inputName('subjectId'), HookSubscriptionError::SubjectNotFound);
         }
 
         return $subject;
@@ -291,9 +287,7 @@ class HookSubscriptionReach
             return;
         }
 
-        throw ValidationException::withMessages([
-            $this->inputName('subjectId') => 'Not a usable id for a '.class_basename($class).' — that record is keyed by integer.',
-        ]);
+        throw CodedValidationException::for($this->inputName('subjectId'), HookSubscriptionError::SubjectIdNotInteger, ['model' => class_basename($class)]);
     }
 
     /** The validation envelope names the same input field the host accepted. */
@@ -323,10 +317,7 @@ class HookSubscriptionReach
             return;
         }
 
-        throw ValidationException::withMessages([
-            'events' => 'Not in the event catalog: '.implode(', ', $unknown)
-                .'. Legal names: '.(implode(', ', $this->catalog->names()) ?: '(this host publishes none)').'.',
-        ]);
+        throw HookSubscriptionError::unknownEvents($unknown, $this->catalog->names());
     }
 
     /**

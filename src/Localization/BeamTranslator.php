@@ -87,6 +87,23 @@ class BeamTranslator extends Translator
         unset($this->loaded[$namespace]);
     }
 
+    /** The current request's realm, as a lookup with no explicit realm would read it; null when there is none. */
+    public function requestRealm(): ?string
+    {
+        return $this->currentRealm();
+    }
+
+    /**
+     * Laravel's `:name` replacement (case-aware, one pass) on a line this translator did not load: a coded error's
+     * declared English when the ladder missed.
+     *
+     * @param  array<string, mixed>  $replace
+     */
+    public function replaceIn(string $line, array $replace): string
+    {
+        return $this->makeReplacements($line, $replace);
+    }
+
     /**
      * @param  string  $key
      * @param  array<string, mixed>  $replace

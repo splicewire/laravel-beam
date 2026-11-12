@@ -4,11 +4,11 @@ namespace Splicewire\Beam\Webhooks;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Events\EventTypeRegistry;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Webhooks\Data\CreatedHookData;
 use Throwable;
@@ -24,21 +24,19 @@ class CreateHookSubscription
 
     public function create(HookInputData $input, Request $request): CreatedHookData
     {
+        // Coded refusals (localization 13): a stable code beside a localized message; the English is unchanged.
         if ($input->endpoint === null || trim($input->endpoint) === '') {
-            throw ValidationException::withMessages(['endpoint' => 'An endpoint is required to subscribe.']);
+            throw CodedValidationException::for('endpoint', HookSubscriptionError::EndpointRequired);
         }
 
         $events = array_values(array_unique($input->events ?? []));
         if ($events === []) {
-            throw ValidationException::withMessages(['events' => 'Name at least one event to subscribe to. GET hooks/events lists them.']);
+            throw CodedValidationException::for('events', HookSubscriptionError::EventsRequired);
         }
 
         $unknown = array_values(array_filter($events, fn (string $name) => ! $this->catalog->has($name)));
         if ($unknown !== []) {
-            throw ValidationException::withMessages([
-                'events' => 'Not in the event catalog: '.implode(', ', $unknown)
-                    .'. Legal names: '.(implode(', ', $this->catalog->names()) ?: '(this host publishes none)').'.',
-            ]);
+            throw HookSubscriptionError::unknownEvents($unknown, $this->catalog->names());
         }
 
         $subject = $this->reach->resolveSubject(

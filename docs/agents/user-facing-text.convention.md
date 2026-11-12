@@ -45,6 +45,28 @@ Plural counts are non-negative by contract. For negative counts, Laravel 12.x an
 fixture does not cover them.
 To see which rung answers a key: `php artisan beam:lang:rungs <key> --locale=<locale> --realm=<realm>`.
 
+## Errors a client can receive (localization 13)
+
+**Text is user-facing when a renderer puts it in a response body, a notification, a mail or a view.** Everything else
+is developer text and is not translated: a `LogicException` that means "beam was misused", console and doctor output, a
+log line.
+
+- **A user-facing error is a coded error:**
+  - a string-backed enum implementing `CodedError` with the `IsCodedError` trait;
+  - each case's **value is its stable wire code**, and its English is declared on the case with `#[Message('…')]`;
+  - its key is derived (`<ns>::enums.<Enum>.cases.<Case>.message`), so it is translatable and overridable like any
+    declared text.
+- **To refuse,** `throw CodedValidationException::for($field, MyError::Case, ['name' => $value])`. A JSON request gets a
+  422 `CodedValidationErrorData`: Laravel's `{message, errors}` unchanged, plus `codes` at the same field and position.
+  Clients and tests match `codes`, never the prose.
+- **One sentence per case.** Never glue a message from fragments. A variant (an empty list, a different subject) is its
+  own case with its own whole sentence.
+- **An arbitrary exception string is a diagnostic, never a translation key.** Never `__($e->getMessage())`. A product
+  failure renders a stable, localized, generic coded case chosen from state you know. The raw message stays in the logs,
+  and what the response discloses does not change.
+
+The exemplar is `Splicewire\Beam\Webhooks\HookSubscriptionError`, the hook-subscription create path.
+
 ## Things that go wrong
 
 - A route name with a `/`, or a context with a dot, cannot be keyed and is reported.
