@@ -80,6 +80,10 @@ class RealmOverlayRegistry implements Gated, RecordsRegistrants, Registry
             $overlay = $key;
             $key = $key->realmKey;
         }
+        // localization 11: the overlay remembers its registrant, so its capabilities' text is keyed in that namespace.
+        if ($overlay instanceof RealmOverlay) {
+            $overlay->stampRegistrant($by);
+        }
 
         $this->store->register($key, $overlay, $by, $ability);
 

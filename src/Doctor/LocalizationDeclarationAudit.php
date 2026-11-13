@@ -84,6 +84,10 @@ final class LocalizationDeclarationAudit implements DoctorAudit
     {
         $found = [];
         foreach ($this->catalog->conflicts() as $key => $englishes) {
+            // A nav section's two labels are reported below, by seat, with the realm-rung advice.
+            if (str_contains($key, 'nav.sections.')) {
+                continue;
+            }
             $found[] = Finding::warn(self::DOUBLE_DEFAULT, sprintf('[%s] is declared with %d English defaults: %s. One declaration, one word: move the variant into a realm rung.', $key, count($englishes), self::quoteAll(array_keys($englishes))));
         }
 

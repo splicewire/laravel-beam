@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Ia\RealmProfiles;
+use Splicewire\Beam\Localization\ShellText;
+use Splicewire\Beam\Localization\TextNamespaces;
 
 /**
  * Frame OS ticket 08 (ADR-0013 §4/§5): projects the registered realms into the manifest the frame reads,
@@ -94,10 +96,13 @@ class RealmManifestProjector
 
             $descriptor = [
                 'key' => $key,
-                'title' => (string) ($gate['title'] ?? $this->titleFor($key)),
+                // localization 11: the launcher's title is the realm's label in the request's language; the gate's
+                // configured title (else the headlined key, an English derivation) is its default.
+                'title' => app(ShellText::class)->realmLabel($key, (string) ($gate['title'] ?? $this->titleFor($key))),
                 'routeBase' => $realm->routeBase,
                 'locked' => $locked,
-                'upsell' => $locked ? ($gate['upsell'] ?? null) : null,
+                // localization 11 (coord-lead 21:49Z): upsell copy from beam-owned config reads `beam::realms.<r>.upsell.*`.
+                'upsell' => $locked ? $this->shell()->upsell($gate['upsell'] ?? null, $this->beamPrefix(), $key) : null,
             ];
 
             // Ticket 14: fold any additive satellite/capability overlays onto THIS realm's descriptor,
@@ -138,7 +143,15 @@ class RealmManifestProjector
                     || ($principal !== self::NO_CENTRAL_PRINCIPAL
                         && $this->entitlements->allows($capability->entitlement, $principal));
 
-                $descriptor['capabilities'][] = $capability->project($entitled);
+                // localization 11 (coord-lead 21:49Z): a capability's title and upsell copy are keyed in the
+                // overlay registrant's namespace, defaulting to the declared title (else the key) and the declared copy.
+                $projected = $capability->project($entitled);
+                $shell = $this->shell();
+                $projected['title'] = $shell->capabilityTitle($realmKey, $capability->key, $overlay->registrant(), (string) $projected['title']);
+                if (is_array($projected['upsell'] ?? null)) {
+                    $projected['upsell'] = $shell->upsell($projected['upsell'], $shell->prefixOfRegistrant($overlay->registrant()), $realmKey, $capability->key);
+                }
+                $descriptor['capabilities'][] = $projected;
             }
         }
 
@@ -201,5 +214,16 @@ class RealmManifestProjector
     private function titleFor(string $key): string
     {
         return ucfirst(str_replace(['-', '_'], ' ', $key));
+    }
+
+    private function shell(): ShellText
+    {
+        return app(ShellText::class);
+    }
+
+    /** Beam's key prefix: the gate's upsell is beam-owned config (`beam.core.realms.*`), so its copy is beam's. */
+    private function beamPrefix(): ?string
+    {
+        return app(TextNamespaces::class)->ownerOfPackage('splicewire/laravel-beam')->keyPrefix();
     }
 }

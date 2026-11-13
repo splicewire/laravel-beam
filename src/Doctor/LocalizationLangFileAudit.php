@@ -13,7 +13,7 @@ use Splicewire\Beam\Localization\Catalog\LangFileLines;
  * - `localization.realm-line-without-base`: a realm rung line whose key the base does not define (SPEC: "a realm file
  *   may only shadow a key the base defines"; for a derived key the base is the declaration). A string that exists in
  *   one realm only.
- * - `localization.underived-key`: a line in a derived group (`resources`, `data`, `enums`, `actions`, `nav`, `groups`)
+ * - `localization.underived-key`: a line in a derived group (`resources`, `data`, `enums`, `actions`, `nav`, `groups`, `realms`)
  *   that no declaration derives: a stale or mistyped override that silently answers nothing.
  *
  * Advisory: what is declared depends on what the host has installed.
@@ -26,7 +26,7 @@ final class LocalizationLangFileAudit implements DoctorAudit
 
     public const POPULATION = 'PHP-emitted keys only (client keys join with localization 16): every line in the host\'s '
         .'lang/<locale>, lang/vendor/<ns>/<locale> and each family package\'s lang/<locale> PHP files, base and realm '
-        .'rungs, against the key catalog. Nav and group keys join the catalog with localization 11.';
+        .'rungs, against the key catalog. Nav page titles and group names have no catalog population yet and get no verdict.';
 
     public function __construct(
         private KeyCatalog $catalog,
@@ -49,8 +49,11 @@ final class LocalizationLangFileAudit implements DoctorAudit
         $underived = [];
         foreach ($lines as $line) {
             $isDerived = in_array($line['group'], KeyCatalog::DERIVED_GROUPS, true);
-            // nav and groups have no catalog population yet (localization 11): no verdict on them.
-            if ($isDerived && in_array($line['group'], ['nav', 'groups'], true)) {
+            // Nav sections and realm labels are in the catalog (localization 11). Nav page titles are keyed by their
+            // authoring code (beam-ux's projection, the host's pages) and a group's name is emitted by nothing yet, so
+            // neither has a catalog population: no verdict on them.
+            $item = substr($line['key'], (int) strrpos($line['key'], '::') + (str_contains($line['key'], '::') ? 2 : 0));
+            if ($isDerived && ($line['group'] === 'groups' || str_starts_with($item, 'nav.routes.'))) {
                 continue;
             }
             if ($isDerived && ! isset($known[$line['key']])) {

@@ -101,6 +101,10 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
             $section = $key;
             $key = $key->realm;
         }
+        // localization 11: the seat remembers its registrant, so its header label is keyed in that namespace.
+        if ($section instanceof NavSection) {
+            $section->stampRegistrant($by);
+        }
 
         $this->store->register($key, $section, $by, $ability);
 
@@ -127,6 +131,14 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
         usort($sections, static fn (NavSection $a, NavSection $b): int => NavSection::compare($a, $b) ?: [$a->label, $a->href] <=> [$b->label, $b->href]);
 
         return $this->merged($sections);
+    }
+
+    /** The merged seat keeps the HEADER seat's registrant: its label is the one shown (localization 11). */
+    private static function withRegistrantOf(NavSection $head, NavSection $merged): NavSection
+    {
+        $merged->stampRegistrant($head->registrant());
+
+        return $merged;
     }
 
     /**
@@ -161,7 +173,7 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
 
                 continue;
             }
-            $byKey[$section->key] = $head === null ? $section : new NavSection(
+            $byKey[$section->key] = $head === null ? $section : self::withRegistrantOf($head, new NavSection(
                 key: $head->key,
                 realm: $head->realm,
                 label: $head->label,
@@ -174,7 +186,7 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
                 static: [...$head->static, ...$section->static],
                 lock: $head->lock,
                 overview: $head->overview || $section->overview,
-            );
+            ));
         }
 
         // One list, re-sorted (review-r1): a seat kept apart keeps its projection position, not the end of the rail.

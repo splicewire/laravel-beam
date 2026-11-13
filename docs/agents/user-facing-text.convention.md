@@ -3,7 +3,7 @@
 **The rule.** Declared text stays an English literal on the declaration; never write a key there. Imperative text (an
 abort, a validation message, a notification, a view) uses an explicit key in your package's namespace,
 `<ns>::<group>.<name>`, with its English in `lang/en/<group>.php`, where the group is not `resources`, `data`, `enums`,
-`actions`, `nav` or `groups`. Never use a sentence as a key, and never call `__()` on a value that might be a key or a
+`actions`, `nav`, `groups` or `realms`. Never use a sentence as a key, and never call `__()` on a value that might be a key or a
 literal.
 
 Decided by [ADR-0244](../adr/0244-a-declarations-text-has-a-derived-key-and-imperative-text-an-explicit-one.md)
@@ -24,6 +24,10 @@ key or route name has its dots written `/`.
 | an enum with `#[Title]` and `label()` | `<ns>::enums.C.title`, `.cases.<CaseName>.label` |
 | `ActionAffordance(label:)` on op `o` of resource `r` | `<ns>::actions.r.o.label` |
 | `NavSection(key: 's')`, `NavPage(routeName: 'a.b')` | `<ns>::nav.sections.s.label`, `<ns>::nav.routes.a/b.title` |
+| a realm `r` (its label from `beam.core.realms.r.label`) | `<ns>::realms.r.label`, `<ns>` the realm's registrant (a realm the host declares: `realms.r.label`) |
+| a realm overlay's capability `c` (`title`, `upsell`) | `<ns>::realms.r.capabilities.c.title`, `….upsell.<field>`, `<ns>` the overlay's registrant |
+| a realm gate's upsell (`beam.core.realms.r.gate.upsell`) | `beam::realms.r.upsell.<field>`; copy fields only, never a URL or an identifier |
+| brand copy (`beam.brand.*`; not a declaration) | explicit `beam::brand.tagline`, `.passkey_copy`, `.title_template`; `name` and `legal_entity` are not keyed |
 
 `<ns>` is your composer name less the vendor and a leading `laravel-` (`splicewire/laravel-beam-ux` → `beam-ux`). If two
 installed packages shorten to one name, neither gets derived keys until one declares `extra.beam.lang-namespace` in its

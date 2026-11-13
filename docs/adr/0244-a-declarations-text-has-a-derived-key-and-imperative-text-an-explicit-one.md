@@ -4,7 +4,16 @@ Status: accepted (localization ruling 01, amended, 2026-11-12; owner-overrulable
 the ladder it names keys for.
 
 **Derived keys.** Declared display text is translatable without editing the declaration. Its key is one fixed production
-per kind: `resources`, `data`, `enums`, `actions`, `nav`, `groups`. Identifiers sit at fixed positions between fixed slot
+per kind: `resources`, `data`, `enums`, `actions`, `nav`, `groups`, `realms` (coord-lead rulings 2026-11-13 21:26Z and
+21:49Z on localization 11, extending ruling 01's kind list; the grammar is unchanged):
+
+- a realm's label is `realms.<realm>.label`, in the realm's registering package's namespace;
+- a realm capability's title is `realms.<realm>.capabilities.<capability>.title`, in the overlay registrant's namespace;
+- upsell copy, string fields only (no URL or identifier), is
+  - `beam::realms.<realm>.upsell.<field>` from beam-owned gate config, as brand copy is beam's;
+  - `realms.<realm>.capabilities.<capability>.upsell.<field>` from a capability, in its registrant's namespace.
+
+Identifiers sit at fixed positions between fixed slot
 words, and each identifier is one dot-free segment:
 
 - a registry key, operation name or route name has its dots written `/`;

@@ -12,12 +12,18 @@ use Schemastud\DataSchemas\Attributes\Description;
 use Schemastud\DataSchemas\Attributes\Title;
 use Schemastud\DataSchemas\Contracts\ProvidesEnumLabel;
 use Schemastud\Frame\Attributes\WidgetIn;
+use Splicewire\Beam\Brand\BrandData;
+use Splicewire\Beam\Ia\RealmProfiles;
 use Splicewire\Beam\Localization\CodedError;
 use Splicewire\Beam\Localization\DeclaredText;
 use Splicewire\Beam\Localization\FrameText;
+use Splicewire\Beam\Localization\ShellText;
 use Splicewire\Beam\Localization\TextNamespaces;
+use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Realm\RealmOverlayRegistry;
+use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Schema\IdentifierLabels;
 use Throwable;
 
@@ -37,11 +43,15 @@ final class KeyCatalog
 {
     /** What every command and audit over this catalog read (ticket 12, done-when: each says its population). */
     public const POPULATION = 'PHP-emitted keys only: framed resources and their actions, Data classes and enums reachable '
-        .'from a particle, coded-error enums in family source, and the explicit keys in family and host lang/en files. '
-        .'Client keys join with localization 16; nav and group names with localization 11.';
+        .'from a particle, coded-error enums in family source, realm labels, nav section labels, beam\'s brand copy, and '
+        .'the explicit keys in family and host lang/en files. Client keys join with localization 16; nav page titles '
+        .'with their emitters, and group names when something emits them.';
 
-    /** The groups whose keys are derived from declarations, never written by hand (ADR-0244). */
-    public const DERIVED_GROUPS = ['resources', 'data', 'enums', 'actions', 'nav', 'groups'];
+    /**
+     * The groups whose keys are derived from declarations, never written by hand (ADR-0244). `realms` joined in
+     * localization 11 (coord-lead ruling 21:26Z, extending ruling 01's kind list).
+     */
+    public const DERIVED_GROUPS = ['resources', 'data', 'enums', 'actions', 'nav', 'groups', 'realms'];
 
     /** @var list<CatalogEntry>|null */
     private ?array $entries = null;
@@ -75,7 +85,7 @@ final class KeyCatalog
         $this->columnEqualsTitle = [];
         $byKey = [];
         $defaults = [];
-        foreach ([...$this->resourceEntries(), ...$this->schemaEntries(), ...$this->codedErrorEntries(), ...$this->explicitEntries()] as $entry) {
+        foreach ([...$this->resourceEntries(), ...$this->schemaEntries(), ...$this->codedErrorEntries(), ...$this->shellEntries(), ...$this->explicitEntries()] as $entry) {
             $byKey[$entry->key] ??= $entry;
             $defaults[$entry->key][$entry->english] = $entry->origin;
         }
@@ -256,6 +266,73 @@ final class KeyCatalog
         return $entries;
     }
 
+    /**
+     * The shell's keys (localization 11): each registered realm's label, each nav section's header label (in its header
+     * seat's registrant's namespace), and beam's three brand keys (ruling 01 §3: explicit keys whose English is the
+     * host's configured value; `name` and `legalEntity` are not keyed).
+     *
+     * @return list<CatalogEntry>
+     */
+    private function shellEntries(): array
+    {
+        $entries = [];
+        $shell = app(ShellText::class);
+
+        if (app()->bound(RealmRegistry::class)) {
+            $realms = app(RealmRegistry::class);
+            $profiles = app(RealmProfiles::class);
+            $beamPrefix = $this->namespaces->ownerOfPackage('splicewire/laravel-beam')->keyPrefix();
+            $overlays = app()->bound(RealmOverlayRegistry::class) ? app(RealmOverlayRegistry::class) : null;
+            foreach (array_keys($realms->all()) as $realm) {
+                $this->unrecognised($realms->registrantOf($realm), 'realm '.$realm);
+                $prefix = $shell->prefixOfRegistrant($realms->registrantOf($realm));
+                $this->add($entries, DeclaredText::derive($prefix, 'realms', [$realm], 'label'), $profiles->for($realm)['label'], 'realm '.$realm);
+
+                // A gate's upsell copy is beam-owned config: beam's keys (coord-lead 21:49Z).
+                foreach (self::copyFields($profiles->gate($realm)['upsell'] ?? null) as $field => $english) {
+                    $this->add($entries, DeclaredText::derive($beamPrefix, 'realms', [$realm], 'upsell.'.$field), $english, 'beam.core.realms.'.$realm.'.gate.upsell');
+                }
+
+                // A capability's title and upsell copy, in its overlay registrant's namespace.
+                foreach ($overlays?->for($realm) ?? [] as $overlay) {
+                    $this->unrecognised($overlay->registrant(), 'realm overlay for '.$realm);
+                    $owner = $shell->prefixOfRegistrant($overlay->registrant());
+                    foreach ($overlay->capabilities as $capability) {
+                        $segment = str_replace('.', '/', $capability->key);
+                        $this->add($entries, DeclaredText::derive($owner, 'realms', [$realm], 'capabilities.'.$segment.'.title'), $capability->title ?? $capability->key, 'capability '.$realm.'.'.$capability->key, $capability->title === null);
+                        foreach (self::copyFields($capability->upsell) as $field => $english) {
+                            $this->add($entries, DeclaredText::derive($owner, 'realms', [$realm], 'capabilities.'.$segment.'.upsell.'.$field), $english, 'capability '.$realm.'.'.$capability->key);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (app()->bound(NavSectionRegistry::class)) {
+            $seen = [];
+            foreach (app(NavSectionRegistry::class)->all() as $section) {
+                if (isset($seen[$section->key][$section->label])) {
+                    continue;
+                }
+                $seen[$section->key][$section->label] = true;
+                $this->unrecognised($section->registrant(), 'nav section '.$section->key.' ('.$section->realm.')');
+                $this->add($entries, DeclaredText::derive($shell->prefixOfRegistrant($section->registrant()), 'nav', ['sections', $section->key], 'label'), $section->label, 'nav section '.$section->key.' ('.$section->realm.')');
+            }
+        }
+
+        $beam = $this->namespaces->ownerOfPackage('splicewire/laravel-beam')->keyPrefix();
+        if ($beam !== null) {
+            $brand = BrandData::fromConfig((array) config('beam.brand', []));
+            foreach (['tagline' => $brand->tagline, 'passkey_copy' => $brand->passkeyCopy, 'title_template' => $brand->titleTemplate] as $field => $english) {
+                if ($english !== null) {
+                    $entries[] = new CatalogEntry($beam.'brand.'.$field, $english, 'explicit', 'beam.brand.'.$field);
+                }
+            }
+        }
+
+        return $entries;
+    }
+
     /** @return list<CatalogEntry> */
     private function codedErrorEntries(): array
     {
@@ -312,6 +389,35 @@ final class KeyCatalog
         }
 
         return $entries;
+    }
+
+    /**
+     * An unrecognised registrant (neither the host, a class nor a composer name) has no namespace, so its text has no
+     * derived key (coord-lead ruling 22:06Z) and `localization.unkeyable` reports it.
+     */
+    private function unrecognised(?string $registrant, string $where): void
+    {
+        if (! ShellText::isRecognised($registrant)) {
+            $this->unkeyable[] = ['identity' => (string) $registrant, 'where' => $where, 'reason' => 'a registrant that is neither the host, a class nor a composer name, so its text has no namespace'];
+        }
+    }
+
+    /**
+     * An upsell payload's copy fields (strings a person reads; URLs, paths and identifiers are never keyed).
+     *
+     * @param  array<array-key, mixed>|null  $upsell
+     * @return array<string, string> field (dots written `/`) => English
+     */
+    private static function copyFields(?array $upsell): array
+    {
+        $fields = [];
+        foreach ($upsell ?? [] as $field => $value) {
+            if (is_string($field) && is_string($value) && $value !== '' && ShellText::isCopy($field, $value)) {
+                $fields[str_replace('.', '/', $field)] = $value;
+            }
+        }
+
+        return $fields;
     }
 
     private function derivedKey(string $kind, string $class, string $item): ?string

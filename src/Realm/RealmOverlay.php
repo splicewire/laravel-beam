@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Realm;
 
 use Schemastud\DataSchemas\Overlay\OverlayDocument;
 use Schemastud\DataSchemas\Overlay\OverlayStack;
+use Splicewire\Beam\Localization\Concerns\HasSetOnceRegistrant;
 
 /**
  * Frame OS ticket 14 (ADR-0014 §A2): an ADDITIVE overlay on an EXISTING realm.
@@ -45,6 +46,13 @@ class RealmOverlay
         public array $capabilities = [],
         public ?string $satelliteKey = null,
     ) {}
+
+    /*
+     * Who registered this overlay (the `by:` composer name, or null for the host): stamped ONCE by
+     * {@see RealmOverlayRegistry::register()}. Its capabilities' titles and upsell copy are keyed in that namespace
+     * (localization 11; coord-lead rulings 21:49Z and 22:06Z).
+     */
+    use HasSetOnceRegistrant;
 
     /**
      * Build an overlay from a raw data-schema overlay array (`{overlay, actions}`) plus capability

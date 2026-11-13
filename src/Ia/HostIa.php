@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Ia;
 use Closure;
 use Illuminate\Support\Facades\Route;
 use InvalidArgumentException;
+use Splicewire\Beam\Localization\ShellText;
 use Splicewire\Beam\Realm\Contracts\TenantResolver;
 use Splicewire\Beam\Realm\RealmManifestProjector;
 use Splicewire\Beam\Realm\RealmRegistry;
@@ -64,7 +65,8 @@ final class HostIa
 
             $rows[$key] = new HostRealmData(
                 key: $key,
-                label: $profile['label'],
+                // localization 11: the realm's label in the request's language, the configured label its default.
+                label: app(ShellText::class)->realmLabel($key, $profile['label']),
                 href: $href,
                 surface: $profile['surface'],
                 locked: (bool) ($descriptor['locked'] ?? false),

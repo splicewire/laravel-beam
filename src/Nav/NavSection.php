@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Nav;
 
+use Splicewire\Beam\Localization\Concerns\HasSetOnceRegistrant;
+
 /**
  * A package-declared top-level NAV SEAT — one section a realm's navigation shows at its top level.
  *
@@ -126,6 +128,13 @@ class NavSection
 
     /** Who the seat is for: as declared, or `product` when a declaration that predates the slot omits it. */
     public readonly NavAudience $audience;
+
+    /*
+     * Who registered this seat (the `by:` composer name, or null for the host): stamped ONCE by
+     * {@see NavSectionRegistry::register()}, and carried by {@see NavSectionRegistry::merged()} from the HEADER seat, whose
+     * label is the one shown. The label's key lives in that registrant's namespace (localization 11; ruling 01 §3).
+     */
+    use HasSetOnceRegistrant;
 
     /** Whether the declaration named its audience; false only for an old-shape seat that took the default. */
     public readonly bool $audienceDeclared;
