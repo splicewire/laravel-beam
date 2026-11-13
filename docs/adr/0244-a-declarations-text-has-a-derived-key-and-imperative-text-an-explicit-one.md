@@ -18,7 +18,7 @@ derived key. It renders its literal and is reported. No escaping exists.
 
 - for an attributed declaration, the annotated class's package (longest PSR-4 prefix);
 - for an imperatively registered resource, the data class's package;
-- for an action, the op class's package;
+- for an action, the op class's package, or for a classless op its registering package (localization 08);
 - for a nav section, the header seat's registrant;
 - for a nav page, its authoring code;
 - with none of these, the host, whose derived keys carry no namespace.

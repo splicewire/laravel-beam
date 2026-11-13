@@ -27,6 +27,7 @@ use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Doctor\ParticleRouteResourceAudit;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
+use Splicewire\Beam\Localization\FrameText;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
@@ -840,8 +841,22 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegist
     {
         $definition = $resource->toResourceDefinition($realm);
 
-        return $this->overrides === null
-            ? $definition
-            : $this->overrides->apply($definition, $realm);
+        if ($this->overrides !== null) {
+            $definition = $this->overrides->apply($definition, $realm);
+        }
+
+        // localization 08: the display text resolves HERE, at emit, after the overlay (whose label is that realm's
+        // English rung) — never at registration, so a long-lived worker never serves one request's language to the next.
+        if (! function_exists('app') || ! app()->bound('translator')) {
+            return $definition;
+        }
+
+        return app(FrameText::class)->localize(
+            $definition,
+            $resource,
+            $this->registrantOf($resource->key),
+            app()->bound(ParticleOperationRegistry::class) ? app(ParticleOperationRegistry::class) : null,
+            $realm,
+        );
     }
 }

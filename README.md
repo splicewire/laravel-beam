@@ -288,6 +288,13 @@ effect, by design: one ladder answers every lookup.
   rules; `PluralFixtureTest` fails if a framework upgrade changes them. Regenerate with
   `composer lang:plural-fixture -- --write` after reading the change.
 
+- **The frame manifest reads in the request's language** (localization 08). A resource's label and singular and its
+  actions' labels resolve when the manifest is built, never at registration (`Localization\FrameText`, called from
+  `ParticleResourceRegistry`'s one projection). Their keys are `<ns>::resources.<key>.label`, `.singular` and
+  `<ns>::actions.<resource>.<op>.label`, in the declaring class's package. A label-less resource's headlined key and an
+  inflected singular are English defaults only. A realm's configured label still renders in English and yields to a
+  translation.
+
 How to write text: [`docs/agents/user-facing-text.convention.md`](docs/agents/user-facing-text.convention.md).
 
 ## Localization — a request resolves its locale (localization 06)

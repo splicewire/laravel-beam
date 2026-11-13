@@ -28,20 +28,46 @@ final class DeclaredText
     }
 
     /**
-     * The ladder's answer for a derived key, or `$default` when it misses (or the key is null).
+     * A derived key from an owner's prefix (`<ns>::`, `''` for the host, null when refused): the kind's group, each
+     * identity with its dots written `/` (ruling 01 §2), then the slot. Null when the owner is refused, or when an
+     * identity is empty or holds a `/` (no escaping exists: the literal renders and no key is formed).
+     *
+     * @param  list<string>  $identities
      */
-    public function resolve(?string $key, ?string $default, ?string $realm = null): ?string
+    public static function derive(?string $prefix, string $kind, array $identities, string $slot): ?string
+    {
+        if ($prefix === null) {
+            return null;
+        }
+        foreach ($identities as $identity) {
+            if ($identity === '' || str_contains($identity, '/')) {
+                return null;
+            }
+        }
+
+        return $prefix.$kind.'.'.implode('.', array_map(static fn (string $id): string => str_replace('.', '/', $id), $identities)).'.'.$slot;
+    }
+
+    /**
+     * The one text resolver (localization 08): the ladder's answer for a derived key, or `$default` when it misses (or
+     * the key is null), with `:parameters` replaced in either. `$realm` null reads the request's realm.
+     *
+     * @param  array<string, mixed>  $replace
+     */
+    public function resolve(?string $key, ?string $default, ?string $realm = null, array $replace = []): ?string
     {
         $translator = app('translator');
 
-        if ($key === null || ! $translator instanceof BeamTranslator) {
+        if (! $translator instanceof BeamTranslator) {
             return $default;
         }
 
-        $line = $translator->resolve($key, null, true, $realm ?? $translator->requestRealm())?->line;
+        $line = $key === null ? null : $translator->resolve($key, null, true, $realm ?? $translator->requestRealm())?->line;
 
         // A ladder miss renders the declared literal, presented for the active locale (marked under the pseudo-locale).
-        return is_string($line) ? $line : ($default === null ? null : $translator->present($default));
+        $text = is_string($line) ? $line : ($default === null ? null : $translator->present($default));
+
+        return $text === null || $replace === [] ? $text : $translator->replaceIn($text, $replace);
     }
 
     /**
