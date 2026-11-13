@@ -209,32 +209,46 @@ final class KeyCatalog
                 $this->add($entries, $key('description'), $description, $class);
             }
 
+            // Every public property the class exposes, INHERITED ones included (REVIEW-B6 B3), each keyed by its
+            // DECLARING class: that is the identity the emit hooks use (TranslatedPropertyTextStrategy, BeamWidgetLabel),
+            // so a resource exposing only a child still lists its parent's keys. Two children of one parent list the
+            // parent's key once (entries() keeps one entry per key).
             foreach ($reflection->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
-                if ($property->isStatic() || $property->getDeclaringClass()->getName() !== $class) {
+                if ($property->isStatic()) {
                     continue;
                 }
+                $declaring = $property->getDeclaringClass()->getName();
+                $propertyKey = fn (string $item): ?string => $this->derivedKey('data', $declaring, $item);
                 $name = $property->getName();
+                $where = $declaring.'::$'.$name;
                 foreach ([Title::class => 'title', Description::class => 'description'] as $attribute => $slot) {
                     if (($text = self::attribute($property, $attribute)) !== null) {
-                        $this->add($entries, $key("properties.{$name}.{$slot}"), $text, $class.'::$'.$name);
+                        $this->add($entries, $propertyKey("properties.{$name}.{$slot}"), $text, $where);
                     }
                 }
                 $propertyTitle = self::attribute($property, Title::class);
                 foreach ($property->getAttributes(WidgetIn::class, ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
                     $widget = $attribute->newInstance();
-                    if (! is_string($widget->label) || $widget->label === '') {
-                        continue;
-                    }
                     // A context is one key segment: a dot in it cannot be spelled (ruling 01 §2; no escaping exists).
                     if ($widget->context === '' || str_contains($widget->context, '.') || str_contains($widget->context, '/')) {
-                        $this->unkeyable[] = ['identity' => $widget->context, 'where' => $class.'::$'.$name, 'reason' => 'a widget context the key grammar cannot spell (empty, or holding a . or /)'];
+                        $this->unkeyable[] = ['identity' => $widget->context, 'where' => $where, 'reason' => 'a widget context the key grammar cannot spell (empty, or holding a . or /)'];
 
                         continue;
                     }
-                    if ($propertyTitle !== null && $widget->label === $propertyTitle) {
-                        $this->columnEqualsTitle[] = ['class' => $class, 'property' => $name, 'context' => $widget->context, 'label' => $widget->label];
+                    $label = is_string($widget->label) && $widget->label !== '' ? $widget->label : null;
+                    if ($label !== null && $propertyTitle !== null && $label === $propertyTitle) {
+                        $this->columnEqualsTitle[] = ['class' => $declaring, 'property' => $name, 'context' => $widget->context, 'label' => $label];
                     }
-                    $this->add($entries, $key("properties.{$name}.contexts.{$widget->context}.label"), $widget->label, $class.'::$'.$name);
+                    // A LABEL-LESS context still has a key: the widget-label hook tries it first (ticket 10's chain). Its
+                    // English is what renders without a line: the property's title, else the headlined name the client
+                    // falls back to (an English derivation, a default only); never an invented declaration.
+                    $this->add(
+                        $entries,
+                        $propertyKey("properties.{$name}.contexts.{$widget->context}.label"),
+                        $label ?? $propertyTitle ?? Str::headline($name),
+                        $where,
+                        $label === null && $propertyTitle === null,
+                    );
                 }
             }
         }
