@@ -1074,7 +1074,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                         return null;
                     }
                     $route = $app['request']->route();
-                    $realm = $route === null ? null : $route->parameter('realm');
+                    // Off HTTP (a job, a command, a test) the route can be present but never bound, and
+                    // Route::parameter() then throws "Route is not bound.": that is no realm, so the base answers.
+                    $realm = $route === null || ! $route->hasParameters() ? null : $route->parameter('realm');
 
                     return is_string($realm) ? $realm : null;
                 },

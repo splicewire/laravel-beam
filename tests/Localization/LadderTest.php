@@ -124,6 +124,39 @@ it('answers two realms differently in one process, and the request\'s realm is r
     $this->get('/ladder/greet')->assertSee('Hello')->assertDontSee('operator');
 });
 
+/*
+ * Off HTTP (a job, a console command, a test), the request can carry a route that was never bound: Laravel's
+ * Route::parameter() then throws `LogicException: Route is not bound.`. The realm read must treat that as "no realm"
+ * and fall through to the next rung, the base, so any caller can build a translated message (spatie's
+ * PermissionDoesNotExist builds one through __()). Train B regression, measured as 9 reds in beam-ux's
+ * BeamUxEntryPolicyGateTest at laravel-beam cf0f0f7.
+ */
+it('reads no realm from an unbound route and answers from the base, without throwing', function (): void {
+    ladderLang([
+        'en/messages.php' => ['greet' => 'Hello'],
+        'en/tenant/messages.php' => ['greet' => 'Hello, workspace'],
+    ]);
+    $unbound = new Illuminate\Routing\Route(['GET'], '/ladder/{realm}/greet', fn () => null);
+    app('request')->setRouteResolver(fn () => $unbound);
+    expect($unbound->hasParameters())->toBeFalse();
+
+    expect(__('messages.greet'))->toBe('Hello')
+        ->and(Spatie\Permission\Exceptions\PermissionDoesNotExist::create('entries.publish', 'web')->getMessage())
+        ->toBe('There is no permission named `entries.publish` for guard `web`.');
+});
+
+it('still reads the realm from a bound route', function (): void {
+    ladderLang([
+        'en/messages.php' => ['greet' => 'Hello'],
+        'en/tenant/messages.php' => ['greet' => 'Hello, workspace'],
+    ]);
+    $request = Illuminate\Http\Request::create('/ladder/tenant/greet');
+    $bound = (new Illuminate\Routing\Route(['GET'], '/ladder/{realm}/greet', fn () => null))->bind($request);
+    app('request')->setRouteResolver(fn () => $bound);
+
+    expect(__('messages.greet'))->toBe('Hello, workspace');
+});
+
 it('selects a plural by the rules of the locale that answered (regional to parent)', function (): void {
     ladderLang([
         'en/messages.php' => ['items' => 'one item|:count items'],
