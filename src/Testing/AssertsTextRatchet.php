@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Testing;
 
 use Splicewire\Beam\Localization\Ratchet\TextRatchet;
+use Splicewire\Beam\Localization\Ratchet\TextRatchetExclusions;
 
 /**
  * A package's localization ratchet test (localization 12): the user-facing literals in its response-reaching calls may
@@ -26,5 +27,10 @@ trait AssertsTextRatchet
 
         $this->assertSame([], $describe($result['rose']), 'User-facing literals ROSE: give the new text an explicit key in your namespace (docs/agents/user-facing-text.convention.md).');
         $this->assertSame([], $describe($result['fell']), 'User-facing literals FELL: keep the gain, re-write the baseline with `php artisan beam:lang:ratchet --write`.');
+        $this->assertSame([], $result['invalid'], 'Malformed entries in '.TextRatchetExclusions::FILE.': each needs a file, exactly one of method or line, and a reason.');
+        $this->assertSame([], array_map(
+            static fn (array $e): string => $e['file'].(isset($e['method']) ? '::'.$e['method'] : ':'.$e['line']),
+            $result['stale'],
+        ), 'STALE exclusions in '.TextRatchetExclusions::FILE.' match no text any more: remove them.');
     }
 }

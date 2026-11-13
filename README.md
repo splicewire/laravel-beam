@@ -346,6 +346,53 @@ Currency is never derived from the locale. Set it with `Number::useCurrency()`. 
   - `beam:lang:ratchet [root] [--write]` runs the per-package literal ratchet (`lang-ratchet.json`, tested with
     `Testing\AssertsTextRatchet`).
 
+### The literal ratchet
+
+`lang-ratchet.json` at a package root holds, per file, the user-facing text in `src/` that reaches a person without a
+key. The count may only fall.
+
+**What it counts.** Constant, interpolated (`"… {$x} …"`) and forwarded (`$e->getMessage()`) text in these places:
+- `abort*`: the message argument only;
+- `new …HttpException`;
+- `withMessages`/`withErrors` values;
+- `response()->json` and `new JsonResponse`: the `message`/`error` values;
+- `MailMessage` builders;
+- `Notification` payload values;
+- flash messages;
+- the copy-named arguments (`title`, `message`, `note`, `label`, `description`, `summary`) of `new …Data(…)` and
+  `…Data::from([…])`.
+
+**What it doesn't count:**
+- A concatenation is one hit.
+- A literal inside `__()`/`trans()` is a key, not text.
+- A message forwarded from an exception caught as a `ValidationException` or a `Coded*` exception has already gone
+  through the translator, so it isn't counted.
+
+**Exclusions.** Text that must stay raw is listed in `lang-ratchet-exclusions.json` at the package root, which you
+maintain by hand and review like code. Each entry has a `file`, exactly one of `method` or `line`, and a `reason`:
+
+```json
+{"exclusions": [{"file": "src/Ops/ReplayNotificationStatusOp.php", "method": "assertReplayable",
+                 "reason": "replay diagnostics, ruling 04 raw bytes"}]}
+```
+
+An excluded hit is never silent:
+- the command prints it with its reason;
+- the written baseline lists it under `excluded`.
+
+Two kinds of bad entry fail both the command and `AssertsTextRatchet`:
+- a stale entry, one that matches no text any more;
+- a malformed entry.
+
+**Recorded limitations.** The census doesn't read these, so each package's sweep classifies them by hand:
+- Blade views (a different grammar);
+- text built by a package's own helper (`$this->fail("…")`);
+- a generic `->with()` (it is also eager loading);
+- raw `Response` bodies (a machine boundary, e.g. a webhook);
+- DTO-wrapper fields;
+- `match`/summary arms;
+- a message forwarded through a variable (`abort(422, $reason)`).
+
 How to write text: [`docs/agents/user-facing-text.convention.md`](docs/agents/user-facing-text.convention.md).
 
 ## Mounting the particle surface

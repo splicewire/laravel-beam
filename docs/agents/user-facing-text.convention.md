@@ -86,10 +86,17 @@ The exemplar is `Splicewire\Beam\Webhooks\HookSubscriptionError`, the hook-subsc
 - **The doctor:** `localization.unresolved-literal-key`, `localization.realm-line-without-base`,
   `localization.underived-key`, `localization.coverage` and `localization.english-derivation` (a framed label or
   singular, or an action label, left to English inflection: declare it). Each names the population it read.
-- **The ratchet.** `lang-ratchet.json` at your package root counts literals in response-reaching calls: `abort*`,
-  `HttpException`, `withMessages`/`withErrors`, `response()->json` messages, mail builders and notification payloads.
-  Test it with `AssertsTextRatchet`, and re-write it with `php artisan beam:lang:ratchet --write`. It may only fall.
-  Blade views are not counted yet.
+- **The ratchet.** `lang-ratchet.json` at your package root counts the unkeyed text that reaches a person: constant,
+  interpolated or forwarded text. The count may only fall.
+  - **Where it looks:** `abort*` messages, `HttpException`, `withMessages`/`withErrors`, JSON `message`/`error`, mail
+    builders, notification payloads, flash, and the copy-named arguments of runtime Data objects.
+  - **Testing and updating:** test it with `AssertsTextRatchet`, and re-write it with
+    `php artisan beam:lang:ratchet --write`.
+  - **Text that must stay raw** goes in `lang-ratchet-exclusions.json`. Each entry needs a file, a method or line, and a
+    reason. The ratchet reports every excluded hit, and fails when an entry is stale.
+  - **Not read** (your sweep classifies these by hand): Blade, helper-built text, `->with()`, raw `Response` bodies, DTO
+    wrappers, `match`/summary arms, and variable-forwarded messages. The README section "The literal ratchet" has the
+    details.
 - **For a translator:** `php artisan beam:lang:keys` lists every key a host can emit with its English, and
   `php artisan beam:lang:missing <locale>` exports what a language lacks. The pseudo-locale lacks nothing.
 

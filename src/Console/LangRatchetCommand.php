@@ -47,10 +47,21 @@ class LangRatchetCommand extends Command
         foreach ($result['fell'] as $file => [$was, $is]) {
             $this->warn("FELL {$file}: {$was} → {$is} (re-write the baseline to keep the gain)");
         }
-        if ($result['rose'] === [] && $result['fell'] === []) {
+        // Excluded text is REPORTED with its reviewed reason, never silent.
+        foreach (TextRatchet::excluded($root) as $hit) {
+            $this->line(sprintf('excluded %s:%d%s (%s): %s', $hit['file'], $hit['line'], $hit['method'] === null ? '' : ' '.$hit['method'].'()', $hit['kind'], $hit['reason']));
+        }
+        foreach ($result['invalid'] as $error) {
+            $this->error('INVALID '.$error);
+        }
+        foreach ($result['stale'] as $entry) {
+            $this->error(sprintf('STALE exclusion %s%s matches no text: remove it.', $entry['file'], isset($entry['method']) ? '::'.$entry['method'] : ':'.$entry['line']));
+        }
+        $clean = $result['rose'] === [] && $result['fell'] === [] && $result['stale'] === [] && $result['invalid'] === [];
+        if ($clean) {
             $this->info(sprintf('Unchanged: %d literal%s.', TextRatchet::measure($root)['total'], TextRatchet::measure($root)['total'] === 1 ? '' : 's'));
         }
 
-        return $result['rose'] === [] && $result['fell'] === [] ? self::SUCCESS : self::FAILURE;
+        return $clean ? self::SUCCESS : self::FAILURE;
     }
 }
