@@ -259,3 +259,106 @@ it('reads literal keys from PHP and Blade, skipping a concatenated prefix', func
     expect(array_column(SourceScanner::literalKeys("{$dir}/a.php"), 'key'))->toBe(['beam::a.b', 'beam::c.d', 'beam::e.f'])
         ->and(array_column(SourceScanner::literalKeys("{$dir}/v.blade.php"), 'key'))->toBe(['beam::g.h', 'beam::i.j']);
 });
+
+describe('the declaration checks (RULING-01, Downstream row for 12)', function (): void {
+    /** A host with one framed resource whose data is `$data`, and a nav section registry of its own. */
+    $host = function (string $data): Splicewire\Beam\Nav\NavSectionRegistry {
+        gatesLang([]);
+        app()->instance(ParticleResourceRegistry::class, $resources = new ParticleResourceRegistry);
+        app()->instance(ParticleOperationRegistry::class, new ParticleOperationRegistry);
+        $resources->register(new ParticleResource(
+            key: 'gadgets', backing: Illuminate\Foundation\Auth\User::class, data: $data,
+            label: 'Gadgets', singularLabel: 'Gadget', readOnly: true, frame: true,
+        ), by: 'class:'.$data);
+        app()->instance(Splicewire\Beam\Nav\NavSectionRegistry::class, $sections = new Splicewire\Beam\Nav\NavSectionRegistry);
+
+        return $sections;
+    };
+    $section = fn (string $key, string $realm, string $label): Splicewire\Beam\Nav\NavSection => new Splicewire\Beam\Nav\NavSection(
+        key: $key, realm: $realm, label: $label, icon: 'box', href: '/'.$realm.'/'.$key, order: 1, entitlement: null, permission: null,
+    );
+    $run = fn (): array => app(Splicewire\Beam\Doctor\LocalizationDeclarationAudit::class)->run();
+
+    it('passes a clean host on all four checks', function () use ($host, $run): void {
+        $host(GatesCleanData::class);
+
+        $findings = $run();
+
+        foreach ([Splicewire\Beam\Doctor\LocalizationDeclarationAudit::UNKEYABLE, Splicewire\Beam\Doctor\LocalizationDeclarationAudit::DOUBLE_DEFAULT,
+            Splicewire\Beam\Doctor\LocalizationDeclarationAudit::COLUMN_EQUALS_TITLE, Splicewire\Beam\Doctor\LocalizationDeclarationAudit::NAMESPACE_COLLISION] as $check) {
+            expect(statuses($findings, $check))->toBe(['pass'], $check);
+        }
+        expect(details($findings))->toContain('PHP-emitted keys only');
+    });
+
+    it('reports an unkeyable widget context and a nav section key it cannot spell', function () use ($host, $section, $run): void {
+        $sections = $host(GatesUnkeyableData::class);
+        $sections->register($section('a/b', 'tenant', 'Slashed'));
+
+        $findings = $run();
+
+        expect(statuses($findings, Splicewire\Beam\Doctor\LocalizationDeclarationAudit::UNKEYABLE))->toBe(['warn', 'warn'])
+            ->and(details($findings))->toContain('[list.column]')->toContain('nav section [a/b]');
+    });
+
+    it('reports one nav section seated with two labels', function () use ($host, $section, $run): void {
+        $sections = $host(GatesCleanData::class);
+        $sections->register($section('people', 'tenant', 'People'));
+        $sections->register($section('people', 'operator', 'Members'));
+
+        $findings = $run();
+
+        expect(statuses($findings, Splicewire\Beam\Doctor\LocalizationDeclarationAudit::DOUBLE_DEFAULT))->toBe(['warn'])
+            ->and(details($findings))->toContain('nav section [people]')->toContain('"People"')->toContain('"Members"');
+    });
+
+    it('reports a column label equal to its title', function () use ($host, $run): void {
+        $host(GatesRestatedData::class);
+
+        $findings = $run();
+
+        expect(statuses($findings, Splicewire\Beam\Doctor\LocalizationDeclarationAudit::COLUMN_EQUALS_TITLE))->toBe(['warn'])
+            ->and(details($findings))->toContain('GatesRestatedData::$name')->toContain('"Name"');
+    });
+
+    it('reports two packages that share a translator namespace', function () use ($host, $run): void {
+        $host(GatesCleanData::class);
+        config(['beam.localization.throw_on_contested_namespace' => false]);
+        app()->instance(TextNamespaces::class, new TextNamespaces([
+            ['name' => 'rushing/codegen', 'path' => '/p/a', 'psr4' => ['Rushing\\Codegen\\' => 'src/']],
+            ['name' => 'rushing/laravel-codegen', 'path' => '/p/b', 'psr4' => ['Rushing\\LaravelCodegen\\' => 'src/']],
+        ]));
+
+        $findings = $run();
+
+        expect(statuses($findings, Splicewire\Beam\Doctor\LocalizationDeclarationAudit::NAMESPACE_COLLISION))->toBe(['warn'])
+            ->and(details($findings))->toContain('[codegen]')->toContain('rushing/laravel-codegen');
+    });
+});
+
+#[Schemastud\DataSchemas\Attributes\Title('Gadget')]
+class GatesCleanData extends Spatie\LaravelData\Data
+{
+    public function __construct(
+        #[Schemastud\DataSchemas\Attributes\Title('Name'), Schemastud\Frame\Attributes\Column(label: 'Called')]
+        public string $name = '',
+    ) {}
+}
+
+#[Schemastud\DataSchemas\Attributes\Title('Gadget')]
+class GatesUnkeyableData extends Spatie\LaravelData\Data
+{
+    public function __construct(
+        #[Schemastud\Frame\Attributes\WidgetIn(context: 'list.column', label: 'Odd')]
+        public string $name = '',
+    ) {}
+}
+
+#[Schemastud\DataSchemas\Attributes\Title('Gadget')]
+class GatesRestatedData extends Spatie\LaravelData\Data
+{
+    public function __construct(
+        #[Schemastud\DataSchemas\Attributes\Title('Name'), Schemastud\Frame\Attributes\Column(label: 'Name')]
+        public string $name = '',
+    ) {}
+}

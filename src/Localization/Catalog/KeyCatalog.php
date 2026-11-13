@@ -46,6 +46,15 @@ final class KeyCatalog
     /** @var list<CatalogEntry>|null */
     private ?array $entries = null;
 
+    /** @var list<array{identity: string, where: string, reason: string}> */
+    private array $unkeyable = [];
+
+    /** @var array<string, array<string, string>> */
+    private array $conflicts = [];
+
+    /** @var list<array{class: string, property: string, context: string, label: string}> */
+    private array $columnEqualsTitle = [];
+
     public function __construct(
         private ParticleResourceRegistry $resources,
         private ParticleOperationRegistry $operations,
@@ -62,13 +71,57 @@ final class KeyCatalog
             return $this->entries;
         }
 
+        $this->unkeyable = [];
+        $this->columnEqualsTitle = [];
         $byKey = [];
+        $defaults = [];
         foreach ([...$this->resourceEntries(), ...$this->schemaEntries(), ...$this->codedErrorEntries(), ...$this->explicitEntries()] as $entry) {
             $byKey[$entry->key] ??= $entry;
+            $defaults[$entry->key][$entry->english] = $entry->origin;
         }
         ksort($byKey);
+        $this->conflicts = array_filter($defaults, static fn (array $englishes): bool => count($englishes) > 1);
+        ksort($this->conflicts);
 
         return $this->entries = array_values($byKey);
+    }
+
+    /**
+     * Identities the key grammar cannot spell (ruling 01 §2): no derived key forms, so the literal renders and the text
+     * can never be translated. `localization.unkeyable` reports them.
+     *
+     * @return list<array{identity: string, where: string, reason: string}>
+     */
+    public function unkeyable(): array
+    {
+        $this->entries();
+
+        return $this->unkeyable;
+    }
+
+    /**
+     * Keys declared with more than one English default (one declaration registered twice with two words).
+     *
+     * @return array<string, array<string, string>> key => [english => origin]
+     */
+    public function conflicts(): array
+    {
+        $this->entries();
+
+        return $this->conflicts;
+    }
+
+    /**
+     * Column labels written equal to their property's `#[Title]`: they declare no word of their own (ticket 10 reads
+     * them as no label) and should be removed so the column takes the title, translations included.
+     *
+     * @return list<array{class: string, property: string, context: string, label: string}>
+     */
+    public function columnsEqualToTitle(): array
+    {
+        $this->entries();
+
+        return $this->columnEqualsTitle;
     }
 
     /** @return array<string, CatalogEntry> by key */
@@ -95,6 +148,9 @@ final class KeyCatalog
             $singular = $resource->singularLabel !== '' ? $resource->singularLabel : Str::singular($label);
             $origin = 'resource '.$resource->key;
 
+            if ($prefix !== null && DeclaredText::derive($prefix, 'resources', [$resource->key], 'label') === null) {
+                $this->unkeyable[] = ['identity' => $resource->key, 'where' => $origin, 'reason' => 'a resource key the key grammar cannot spell (empty, or holding a /)'];
+            }
             $this->add($entries, DeclaredText::derive($prefix, 'resources', [$resource->key], 'label'), $label, $origin, $resource->label === '');
             $this->add($entries, DeclaredText::derive($prefix, 'resources', [$resource->key], 'singular'), $singular, $origin, $resource->singularLabel === '');
 
@@ -104,6 +160,9 @@ final class KeyCatalog
                     continue;
                 }
                 $owner = $this->frameText->prefixFor($this->operations->registrantOf($resource->key.'.'.$operation->name), packageRegistrant: true);
+                if ($owner !== null && DeclaredText::derive($owner, 'actions', [$resource->key, $operation->name], 'label') === null) {
+                    $this->unkeyable[] = ['identity' => $operation->name, 'where' => 'action '.$resource->key.'.'.$operation->name, 'reason' => 'an operation name the key grammar cannot spell (empty, or holding a /)'];
+                }
                 $this->add(
                     $entries,
                     DeclaredText::derive($owner, 'actions', [$resource->key, $operation->name], 'label'),
@@ -160,11 +219,22 @@ final class KeyCatalog
                         $this->add($entries, $key("properties.{$name}.{$slot}"), $text, $class.'::$'.$name);
                     }
                 }
+                $propertyTitle = self::attribute($property, Title::class);
                 foreach ($property->getAttributes(WidgetIn::class, ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
                     $widget = $attribute->newInstance();
-                    if (is_string($widget->label) && $widget->label !== '') {
-                        $this->add($entries, $key("properties.{$name}.contexts.{$widget->context}.label"), $widget->label, $class.'::$'.$name);
+                    if (! is_string($widget->label) || $widget->label === '') {
+                        continue;
                     }
+                    // A context is one key segment: a dot in it cannot be spelled (ruling 01 §2; no escaping exists).
+                    if ($widget->context === '' || str_contains($widget->context, '.') || str_contains($widget->context, '/')) {
+                        $this->unkeyable[] = ['identity' => $widget->context, 'where' => $class.'::$'.$name, 'reason' => 'a widget context the key grammar cannot spell (empty, or holding a . or /)'];
+
+                        continue;
+                    }
+                    if ($propertyTitle !== null && $widget->label === $propertyTitle) {
+                        $this->columnEqualsTitle[] = ['class' => $class, 'property' => $name, 'context' => $widget->context, 'label' => $widget->label];
+                    }
+                    $this->add($entries, $key("properties.{$name}.contexts.{$widget->context}.label"), $widget->label, $class.'::$'.$name);
                 }
             }
         }

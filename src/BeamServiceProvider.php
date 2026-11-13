@@ -114,6 +114,7 @@ use Splicewire\Beam\Doctor\IdentifierLabelAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
 use Splicewire\Beam\Doctor\LocalizationCoverageAudit;
+use Splicewire\Beam\Doctor\LocalizationDeclarationAudit;
 use Splicewire\Beam\Doctor\LocalizationEnglishDerivationAudit;
 use Splicewire\Beam\Doctor\LocalizationLangFileAudit;
 use Splicewire\Beam\Doctor\LocalizationUnresolvedLiteralKeyAudit;
@@ -2202,6 +2203,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             LocalizationLangFileAudit::class,
             LocalizationCoverageAudit::class,
             LocalizationEnglishDerivationAudit::class,
+            // RULING-01's Downstream row for 12: unkeyable identities, double defaults, a column equal to its title, and
+            // a namespace collision.
+            LocalizationDeclarationAudit::class,
         ] as $audit) {
             $this->app->make(BeamDoctorManifest::class)->register('splicewire/laravel-beam', $audit);
         }
