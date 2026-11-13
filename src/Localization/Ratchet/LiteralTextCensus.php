@@ -304,10 +304,21 @@ final class LiteralTextCensus
         }
 
         // A message already resolved through the translator is not raw text: a variable caught as a
-        // ValidationException (the framework's, or a CodedValidationException) or another Coded* exception.
+        // ValidationException (the framework's, or a CodedValidationException) or another Coded* exception. A union catch
+        // is skipped only when EVERY arm is one of those (REVIEW-B7 S1): one raw arm can forward display text, whatever
+        // order the arms are spelled in.
         $caught = self::caughtAs($tokens, $i);
+        if ($caught === null) {
+            return true;
+        }
+        foreach (explode('|', $caught) as $type) {
+            $short = substr((string) strrchr('\\'.$type, '\\'), 1);
+            if (! str_ends_with($short, 'ValidationException') && ! str_starts_with($short, 'Coded')) {
+                return true;
+            }
+        }
 
-        return $caught === null || (! str_ends_with($caught, 'ValidationException') && ! str_contains($caught, 'Coded'));
+        return false;
     }
 
     /**
