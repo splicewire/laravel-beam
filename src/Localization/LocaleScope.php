@@ -9,12 +9,14 @@ use Illuminate\Support\Number;
  * The one helper that sets AND restores locale, number formatting, dates and realm together (localization 06, ruling
  * 03 §4). Every request, job and delivery that renders text for a person runs inside one.
  *
- * Entering a scope snapshots each piece of state SEPARATELY, because they are separate: the application and translator
- * locale, `Number`'s static locale, Carbon's locale and the explicit realm. It then sets the application locale (which
+ * Entering a scope snapshots each piece of state SEPARATELY, because they are separate: the application locale, the
+ * translator's own locale (which a host or Octane can set apart from the application's; REVIEW-B6 B2), `Number`'s static
+ * locale, Carbon's locale and the explicit realm. It then sets the application locale (which
  * fires `LocaleUpdated`, moving Carbon and, through beam's listener, `Number`), sets `Number` and Carbon directly as well
  * (carbon's listener exists only where its own Laravel provider is loaded), and
  * enters the realm. Leaving, in `finally` (on return or on a throw), restores the application locale first and only then
- * `Number` and Carbon to their own saved values, since restoring the application locale moves them again. A nested scope
+ * the translator, `Number` and Carbon to their own saved values, since restoring the application locale moves them
+ * again. A nested scope
  * therefore restores its caller's state, not the application default.
  *
  * Currency and timezone are never touched: currency is the host's own policy, and no person or tenant carries a
@@ -57,7 +59,15 @@ final class LocaleScope
     {
         [$set, $realm] = self::context()->realm();
 
-        return new CapturedLocale((string) app()->getLocale(), $set, $realm);
+        // REVIEW-B6 B1: freeze the EFFECTIVE realm. With no entered realm, the translator reads the current request's route,
+        // which a later emit would see changed (a tenant request's output rendered in the next request's operator realm),
+        // so the route-derived realm, a null base included, is captured as an entered one.
+        if (! $set) {
+            $translator = app('translator');
+            $realm = $translator instanceof BeamTranslator ? $translator->requestRealm() : null;
+        }
+
+        return new CapturedLocale((string) app()->getLocale(), true, $realm);
     }
 
     /**
@@ -72,6 +82,9 @@ final class LocaleScope
         $context = self::context();
 
         $previousLocale = (string) $app->getLocale();
+        // REVIEW-B6 B2: the translator's locale is its own state (Octane's FlushLocaleState, a caller's setLocale on the
+        // translator alone): restoring the application locale would overwrite it, so it is saved and restored separately.
+        $previousTranslator = (string) $app->make('translator')->getLocale();
         $previousNumber = (string) Number::defaultLocale();
         $previousCarbon = Carbon::getLocale();
         $previousRealm = $context->realm();
@@ -89,6 +102,7 @@ final class LocaleScope
             return $callback();
         } finally {
             $app->setLocale($previousLocale);
+            $app->make('translator')->setLocale($previousTranslator);
             Number::useLocale($previousNumber);
             if (Carbon::getLocale() !== $previousCarbon) {
                 Carbon::setLocale($previousCarbon);

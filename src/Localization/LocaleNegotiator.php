@@ -8,10 +8,30 @@ namespace Splicewire\Beam\Localization;
  * - Candidates are tried in descending q order (ties keep their header order); q=0 excludes a tag.
  * - Each candidate tries its exact tag, then its parents by right truncation (es-MX → es); the first supported wins.
  * - A wildcard (`*`) chooses nothing: it continues to the next source rather than picking an arbitrary language.
- * - An invalid or unsupported candidate is skipped.
+ * - An invalid or unsupported candidate is skipped, and so is one whose `q` is not a valid qvalue (RFC 9110).
  */
 final class LocaleNegotiator
 {
+    /**
+     * A candidate's weight (RFC 9110 §12.4.2: `qvalue = ( "0" [ "." 0*3DIGIT ] ) / ( "1" [ "." 0*3("0") ] )`): 1 when
+     * no `q` is given; null when a `q` is given but is not a valid qvalue (malformed, above 1, more than three decimals),
+     * which DISCARDS the candidate (REVIEW-B6 S1) rather than promoting it to the maximum.
+     *
+     * @param  list<string>  $parameters
+     */
+    private static function weight(array $parameters): ?float
+    {
+        foreach ($parameters as $parameter) {
+            if (preg_match('/^q\s*=\s*(.*)$/i', $parameter, $m) !== 1) {
+                continue;
+            }
+
+            return preg_match('/^(0(\.\d{0,3})?|1(\.0{0,3})?)$/', trim($m[1])) === 1 ? (float) trim($m[1]) : null;
+        }
+
+        return 1.0;
+    }
+
     /**
      * @param  list<string>  $supported  canonical tags
      */
@@ -25,13 +45,8 @@ final class LocaleNegotiator
         foreach (explode(',', $header) as $position => $part) {
             $pieces = array_map('trim', explode(';', $part));
             $tag = $pieces[0];
-            $q = 1.0;
-            foreach (array_slice($pieces, 1) as $parameter) {
-                if (preg_match('/^q\s*=\s*([01](?:\.\d{0,3})?)$/i', $parameter, $m) === 1) {
-                    $q = (float) $m[1];
-                }
-            }
-            if ($tag === '' || $tag === '*' || $q <= 0.0 || preg_match('/^[A-Za-z]{1,8}(?:[-_][A-Za-z0-9]{1,8})*$/', $tag) !== 1) {
+            $q = self::weight(array_slice($pieces, 1));
+            if ($q === null || $tag === '' || $tag === '*' || $q <= 0.0 || preg_match('/^[A-Za-z]{1,8}(?:[-_][A-Za-z0-9]{1,8})*$/', $tag) !== 1) {
                 continue;
             }
             $candidates[] = ['tag' => $tag, 'q' => $q, 'position' => $position];
