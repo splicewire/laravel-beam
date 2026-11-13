@@ -73,3 +73,20 @@ The exemplar is `Splicewire\Beam\Webhooks\HookSubscriptionError`, the hook-subsc
 - One declaration registered twice with two English words is a defect: move the variant into a realm rung.
 - A column with its own label never borrows its property's translated title.
 - `group:` is an identity, not a word to translate.
+
+## What fails, and what the doctor reports (localization 12)
+
+- **A mistyped key fails its test.** While unit tests run, a namespaced key with no line throws `MissingTranslationKey`,
+  but only in a namespace a splicewire, schemastud or rushing package owns. A host's own keys, sentence keys and
+  third-party namespaces never throw. `beam.localization.throw_on_missing_key` (null: on in tests only) switches it.
+- **The doctor:** `localization.unresolved-literal-key`, `localization.realm-line-without-base`,
+  `localization.underived-key`, `localization.coverage` and `localization.english-derivation` (a framed label or
+  singular, or an action label, left to English inflection: declare it). Each names the population it read.
+- **The ratchet.** `lang-ratchet.json` at your package root counts literals in response-reaching calls: `abort*`,
+  `HttpException`, `withMessages`/`withErrors`, `response()->json` messages, mail builders and notification payloads.
+  Test it with `AssertsTextRatchet`, and re-write it with `php artisan beam:lang:ratchet --write`. It may only fall.
+  Blade views are not counted yet.
+- **For a translator:** `php artisan beam:lang:keys` lists every key a host can emit with its English, and
+  `php artisan beam:lang:missing <locale>` exports what a language lacks. The pseudo-locale lacks nothing.
+
+Until localization 16 these read PHP-emitted keys only; client keys join through the discovered catalog.

@@ -82,6 +82,9 @@ use Splicewire\Beam\Console\GenerateAssetsCommand;
 use Splicewire\Beam\Console\GenerateClientSdkCommand;
 use Splicewire\Beam\Console\GenerateContributedTypesCommand;
 use Splicewire\Beam\Console\HouseStyleCommand;
+use Splicewire\Beam\Console\LangKeysCommand;
+use Splicewire\Beam\Console\LangMissingCommand;
+use Splicewire\Beam\Console\LangRatchetCommand;
 use Splicewire\Beam\Console\LangRungsCommand;
 use Splicewire\Beam\Console\MakePageCommand;
 use Splicewire\Beam\Console\MakeParticleBackingCommand;
@@ -110,6 +113,10 @@ use Splicewire\Beam\Doctor\GuestReadablePublicReadAudit;
 use Splicewire\Beam\Doctor\IdentifierLabelAudit;
 use Splicewire\Beam\Doctor\KeyTypeConformanceAudit;
 use Splicewire\Beam\Doctor\LedgerAheadOfRepositoryAudit;
+use Splicewire\Beam\Doctor\LocalizationCoverageAudit;
+use Splicewire\Beam\Doctor\LocalizationEnglishDerivationAudit;
+use Splicewire\Beam\Doctor\LocalizationLangFileAudit;
+use Splicewire\Beam\Doctor\LocalizationUnresolvedLiteralKeyAudit;
 use Splicewire\Beam\Doctor\MarketingSampleAudit;
 use Splicewire\Beam\Doctor\MigrationOrderingAudit;
 use Splicewire\Beam\Doctor\OpenListResourceAudit;
@@ -165,15 +172,19 @@ use Splicewire\Beam\Install\MigrationFiles;
 use Splicewire\Beam\Localization\BeamSchemaText;
 use Splicewire\Beam\Localization\BeamTranslator;
 use Splicewire\Beam\Localization\BeamWidgetLabel;
+use Splicewire\Beam\Localization\Catalog\KeyCatalog;
+use Splicewire\Beam\Localization\Catalog\LangFileLines;
 use Splicewire\Beam\Localization\Config\LocalizationSection;
 use Splicewire\Beam\Localization\Contracts\BrandLocaleSource;
 use Splicewire\Beam\Localization\Contracts\PersonLocaleSource;
 use Splicewire\Beam\Localization\Contracts\TenantLocaleSource;
 use Splicewire\Beam\Localization\DeclaredText;
+use Splicewire\Beam\Localization\FrameText;
 use Splicewire\Beam\Localization\Http\ResolveLocale;
 use Splicewire\Beam\Localization\LocaleResolver;
 use Splicewire\Beam\Localization\LocaleScope;
 use Splicewire\Beam\Localization\LocalizationContext;
+use Splicewire\Beam\Localization\MissingTranslationKey;
 use Splicewire\Beam\Localization\Sources\NullLocaleSource;
 use Splicewire\Beam\Localization\TextNamespaces;
 use Splicewire\Beam\Localization\TranslatedPropertyTextStrategy;
@@ -220,6 +231,7 @@ use Splicewire\Beam\Realm\RealmResourceRegistry;
 use Splicewire\Beam\Routing\RouteActionMetadataReader;
 use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
+use Splicewire\Beam\Schema\IdentifierLabels;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaLadderMigrator;
 use Splicewire\Beam\Schema\SchemaRegistryRevision;
@@ -1085,6 +1097,20 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // SCOPED: an entered realm never outlives its request or job under Octane or a queue worker.
         $this->app->scoped(LocalizationContext::class);
 
+        // localization 12: every key the host can emit, read from the booted registries each time it is asked for.
+        $this->app->bind(KeyCatalog::class, static fn ($app): KeyCatalog => new KeyCatalog(
+            $app->make(ParticleResourceRegistry::class),
+            $app->make(ParticleOperationRegistry::class),
+            $app->make(IdentifierLabels::class),
+            $app->make(TextNamespaces::class),
+            $app->make(FrameText::class),
+            $app->langPath(),
+        ));
+        $this->app->bind(LangFileLines::class, static fn ($app): LangFileLines => new LangFileLines(
+            $app->make(TextNamespaces::class),
+            $app->langPath(),
+        ));
+
         $this->callAfterResolving(ConfigSectionRegistry::class, static function (ConfigSectionRegistry $sections): void {
             $sections->section(
                 LocalizationSection::class,
@@ -1157,6 +1183,22 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             if ($translator instanceof BeamTranslator) {
                 $app->make(TextNamespaces::class)->hintShipped();
             }
+        });
+
+        // localization 12: a namespaced key with no line fails a test. Applied on every resolution of the translator,
+        // since a test that swaps the lang path forgets it; read at each miss, so a test can switch it off.
+        $this->app->afterResolving('translator', static function ($translator, $app): void {
+            if (! $translator instanceof BeamTranslator) {
+                return;
+            }
+            $translator->handleMissingKeysUsing(static function (string $key, array $replace, ?string $locale) use ($app): string {
+                $switch = config('beam.localization.throw_on_missing_key');
+                if (((bool) ($switch ?? $app->runningUnitTests())) && MissingTranslationKey::guards($key, $app->make(TextNamespaces::class))) {
+                    throw MissingTranslationKey::for($key, $locale ?? (string) $app->getLocale());
+                }
+
+                return $key;
+            });
         });
     }
 
@@ -2028,6 +2070,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 ParticleResourcesCommand::class,
                 // localization 07: every rung tried for a key, a locale and a realm, and the one that answered.
                 LangRungsCommand::class,
+                // localization 12: every key the host can emit, the keys a locale is missing, and the literal ratchet.
+                LangKeysCommand::class,
+                LangMissingCommand::class,
+                LangRatchetCommand::class,
                 // Config Sections' committed JSON Schemas (ADR-0245): regeneration writes, `--check` only reads.
                 ConfigSectionSchemasCommand::class,
             ]);
@@ -2147,6 +2193,18 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             'splicewire/laravel-beam',
             OrphanedGroupWordAudit::class,
         );
+
+        // localization 12: a key cannot ship quietly. Advisory, each stating the population it read (PHP-emitted keys
+        // only until localization 16): a literal key that resolves nowhere, a realm line with no base, a derived-group
+        // line no declaration derives, per-locale coverage, and a framed label that relies on English inflection.
+        foreach ([
+            LocalizationUnresolvedLiteralKeyAudit::class,
+            LocalizationLangFileAudit::class,
+            LocalizationCoverageAudit::class,
+            LocalizationEnglishDerivationAudit::class,
+        ] as $audit) {
+            $this->app->make(BeamDoctorManifest::class)->register('splicewire/laravel-beam', $audit);
+        }
 
         // The OTHER half of the same declaration, and the defect that produced the NavSectionRegistry
         // seam: a `#[ParticleResource(section: '…')]` a package declares and NOTHING seats here, so the

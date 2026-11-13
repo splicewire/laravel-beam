@@ -38,6 +38,35 @@ final class IdentifierLabels
     public function find(): array
     {
         $found = [];
+
+        foreach ($this->reachable() as $class => $kind) {
+            if ($kind === 'enum') {
+                if (is_subclass_of($class, BackedEnum::class) && ! is_subclass_of($class, ProvidesEnumLabel::class)) {
+                    $found[$class] = 'enum';
+                }
+
+                continue;
+            }
+
+            if ((new ReflectionClass($class))->getAttributes(Title::class) === []) {
+                $found[$class] = 'object';
+            }
+        }
+
+        ksort($found);
+
+        return $found;
+    }
+
+    /**
+     * Every Data class and enum reachable from this host's particles, by the same walk {@see find()} reads (also the
+     * localization 12 key catalog's population).
+     *
+     * @return array<class-string, 'data'|'enum'> sorted by class
+     */
+    public function reachable(): array
+    {
+        $reachable = [];
         $seen = [];
         $queue = $this->roots();
 
@@ -49,9 +78,7 @@ final class IdentifierLabels
             $seen[$class] = true;
 
             if (enum_exists($class)) {
-                if (is_subclass_of($class, BackedEnum::class) && ! is_subclass_of($class, ProvidesEnumLabel::class)) {
-                    $found[$class] = 'enum';
-                }
+                $reachable[$class] = 'enum';
 
                 continue;
             }
@@ -60,16 +87,13 @@ final class IdentifierLabels
                 continue;
             }
 
-            $reflection = new ReflectionClass($class);
-            if ($reflection->getAttributes(Title::class) === []) {
-                $found[$class] = 'object';
-            }
-            array_push($queue, ...$this->referenced($reflection));
+            $reachable[$class] = 'data';
+            array_push($queue, ...$this->referenced(new ReflectionClass($class)));
         }
 
-        ksort($found);
+        ksort($reachable);
 
-        return $found;
+        return $reachable;
     }
 
     /** @return list<string> */

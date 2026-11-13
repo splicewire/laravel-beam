@@ -332,6 +332,22 @@ public function middleware(): array                // a job opts in
 Currency is never derived from the locale. Set it with `Number::useCurrency()`. Rationale:
 [ADR-0246](docs/adr/0246-a-request-resolves-its-locale-inside-one-scope.md).
 
+## Localization — the gates (localization 12)
+
+- **In tests, a mistyped family key throws.** Beam's provider makes a namespaced key with no line throw
+  `MissingTranslationKey` while unit tests run, but only in a namespace a splicewire, schemastud or rushing package
+  owns. Your host's own keys and third-party namespaces are never affected. Switch:
+  `beam.localization.throw_on_missing_key`.
+- **The doctor** adds five advisory `localization.*` checks: unresolved literal key, realm line without base,
+  underived key, coverage and English derivation.
+- **Commands:**
+  - `beam:lang:keys` lists every key the host can emit, with its English;
+  - `beam:lang:missing <locale>` exports what a language lacks;
+  - `beam:lang:ratchet [root] [--write]` runs the per-package literal ratchet (`lang-ratchet.json`, tested with
+    `Testing\AssertsTextRatchet`).
+
+How to write text: [`docs/agents/user-facing-text.convention.md`](docs/agents/user-facing-text.convention.md).
+
 ## Mounting the particle surface
 
 The generic particle surface ({@see ParticleController} / {@see ParticleOperationController}) is mounted

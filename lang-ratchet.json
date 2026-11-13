@@ -1,0 +1,15 @@
+{
+    "about": "localization 12 ratchet: user-facing string literals in response-reaching calls. May only fall. Regenerate with `php artisan beam:lang:ratchet --write` (or the package's equivalent); never edit by hand.",
+    "population": "PHP source under src/: literals passed to abort*, HttpException, withMessages/withErrors, response()->json message/error, MailMessage subject/greeting/line/salutation/action, and Notification toArray/toDatabase/toBroadcast values. Blade views are not read (a different grammar; owned by sweeps 21-27).",
+    "total": 17,
+    "files": {
+        "src/Collections/CollectionBacking.php": 2,
+        "src/Collections/CollectionSchemaResolver.php": 3,
+        "src/Collections/CollectionUniqueWrite.php": 3,
+        "src/Filters/SavedFilterService.php": 1,
+        "src/Http/Particle/ParticleOperationController.php": 3,
+        "src/Particle/Backing/ActorOwnedParticleBacking.php": 2,
+        "src/Particle/ParticleFrameResourceHandler.php": 1,
+        "src/Particle/ParticleListQuery.php": 2
+    }
+}

@@ -154,6 +154,28 @@ class BeamTranslator extends Translator
     }
 
     /**
+     * The framework's missing-key hook, made safe for a callback that THROWS (localization 12's gate). The framework
+     * switches the hook off around the callback to prevent loops and back on only after a normal return, so a throw
+     * would leave every later miss on this translator silently unhandled. Restored in `finally`.
+     *
+     * @param  string  $key
+     * @param  array<string, mixed>  $replace
+     * @param  string|null  $locale
+     * @param  bool  $fallback
+     * @return string
+     */
+    protected function handleMissingTranslationKey($key, $replace, $locale, $fallback)
+    {
+        $enabled = $this->handleMissingTranslationKeys;
+
+        try {
+            return parent::handleMissingTranslationKey($key, $replace, $locale, $fallback);
+        } finally {
+            $this->handleMissingTranslationKeys = $enabled;
+        }
+    }
+
+    /**
      * @param  string  $key
      * @param  \Countable|int|float|array<array-key, mixed>  $number
      * @param  array<string, mixed>  $replace

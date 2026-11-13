@@ -46,5 +46,9 @@ class LocalizationSection extends ConfigSection
         #[Title('Throw on a contested namespace'), Description('Whether two packages that shorten to one translator namespace throw where the host is built. Null: throw outside production.')]
         #[ConfigKey(ceiling: ConfigTier::Host, effect: ConfigEffect::Deploy)]
         public ?bool $throw_on_contested_namespace,
+
+        #[Title('Throw on a missing key'), Description('Whether a namespaced key with no line throws instead of rendering the key. Null: throw while unit tests run, never otherwise.')]
+        #[ConfigKey(ceiling: ConfigTier::Host, effect: ConfigEffect::Deploy)]
+        public ?bool $throw_on_missing_key,
     ) {}
 }

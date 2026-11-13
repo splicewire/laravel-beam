@@ -37,4 +37,10 @@ return [
     // reported and its declarations render their literal (false). Null: throw outside production.
     'throw_on_contested_namespace' => null,
 
+    // Whether a NAMESPACED key with no line (`beam::…`, `beam-ux::…`) throws instead of rendering the key itself
+    // (localization 12). Null: throw while unit tests run, never otherwise, so a mistyped key fails its test and never
+    // ships as a raw key. Sentence keys and the framework's own groups are never affected; a derived key's miss renders
+    // its declaration and never reaches this.
+    'throw_on_missing_key' => null,
+
 ];

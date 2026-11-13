@@ -29,7 +29,7 @@ use LogicException;
  */
 final class TextNamespaces
 {
-    /** @var array<string, array{namespace: string, path: string, roots: list<string>, declared: bool}> by package name */
+    /** @var array<string, array{namespace: string, path: string, root: string, roots: list<string>, declared: bool}> by package name */
     private array $packages = [];
 
     /** @var array<string, string> PSR-4 root (trailing `\`) => package name; the host's roots map to '' */
@@ -57,6 +57,7 @@ final class TextNamespaces
             $this->packages[$package['name']] = [
                 'namespace' => $namespace,
                 'path' => rtrim($package['path'], '/').'/lang',
+                'root' => rtrim($package['path'], '/'),
                 'roots' => $roots,
                 'declared' => is_string($declared) && $declared !== '',
             ];
@@ -201,6 +202,60 @@ final class TextNamespaces
     public function namespaceOf(string $package): ?string
     {
         return $this->packages[$package]['namespace'] ?? null;
+    }
+
+    /** The composer vendors whose packages are the family (localization 12: the gate guards only their namespaces). */
+    public const FAMILY_VENDORS = ['splicewire', 'schemastud', 'rushing'];
+
+    /**
+     * The family packages that own `$namespace` (an installed splicewire/schemastud/rushing package, the root library
+     * under test included). Empty for an unnamespaced host key, a third-party vendor namespace, or an unknown one.
+     *
+     * @return list<string>
+     */
+    public function familyOwnersOf(string $namespace): array
+    {
+        $owners = [];
+        foreach ($this->packages as $name => $entry) {
+            if ($entry['namespace'] === $namespace && in_array(strtok($name, '/'), self::FAMILY_VENDORS, true)) {
+                $owners[] = $name;
+            }
+        }
+
+        return $owners;
+    }
+
+    /**
+     * Every installed family package: its translator namespace, its install root and its `lang/` directory.
+     *
+     * @return array<string, array{namespace: string, root: string, lang: string}> by composer name, sorted
+     */
+    public function familyPackages(): array
+    {
+        $family = [];
+        foreach ($this->packages as $name => $entry) {
+            if (in_array(strtok($name, '/'), self::FAMILY_VENDORS, true)) {
+                $family[$name] = ['namespace' => $entry['namespace'], 'root' => $entry['root'], 'lang' => $entry['path']];
+            }
+        }
+        ksort($family);
+
+        return $family;
+    }
+
+    /** @return list<string> every namespace a family package owns, sorted */
+    public function familyNamespaces(): array
+    {
+        $namespaces = [];
+        foreach ($this->packages as $name => $entry) {
+            if (in_array(strtok($name, '/'), self::FAMILY_VENDORS, true)) {
+                $namespaces[$entry['namespace']] = true;
+            }
+        }
+        $namespaces = array_keys($namespaces);
+        sort($namespaces);
+
+        return $namespaces;
     }
 
     private function hint(string $namespace, string $path): bool
