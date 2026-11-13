@@ -13,6 +13,7 @@ use Splicewire\Beam\Localization\DeclaredText;
 use Splicewire\Beam\Localization\FrameText;
 use Splicewire\Beam\Localization\Locales;
 use Splicewire\Beam\Localization\PseudoLocale;
+use Splicewire\Beam\Localization\TextNamespaces;
 use Splicewire\Beam\Particle\ActionAffordance;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -178,6 +179,28 @@ class FrameTextTest extends TestCase
         $this->lines([]);
         $this->app->setLocale('es');
         $this->assertSame('Ops lockers', $this->definition('lockers', 'ops')->nav->label);
+    }
+
+    public function test_a_refused_owner_renders_the_declared_literal_never_the_realm_overlay(): void
+    {
+        // RULING-01:154 — the overlay-merged nav.label is never fed back as the default. A realm's configured label
+        // answers only as that realm's source-language rung, inside the ladder; an owner whose namespace is refused (two
+        // packages shorten to `beam`) has no key and no ladder, so it renders the DECLARED literal in every realm.
+        config(['beam.localization.throw_on_contested_namespace' => false]);
+        $this->app->instance(TextNamespaces::class, new TextNamespaces([
+            ['name' => 'splicewire/laravel-beam', 'path' => dirname(__DIR__, 2), 'psr4' => ['Splicewire\\Beam\\' => 'src/', 'Splicewire\\Beam\\Tests\\' => 'tests/']],
+            ['name' => 'other/beam', 'path' => '/nowhere', 'psr4' => ['Other\\Beam\\' => 'src/']],
+        ], [], fn () => $this->app->make('translator')));
+        $this->app->forgetInstance(DeclaredText::class);
+        $this->lines(['es/resources.php' => ['lockers' => ['label' => 'Taquillas']]]);
+
+        $this->assertNull($this->app->make(FrameText::class)->prefixFor('class:'.FrameTextLockerData::class));
+        $this->assertSame('Lockers', $this->definition('lockers', 'ops')->nav->label);
+        $this->assertSame('Lockers', $this->definition('lockers', 'tenant')->nav->label);
+
+        // ...and in Spanish too: a refused owner's lines cannot answer, so the declaration stands.
+        $this->app->setLocale('es');
+        $this->assertSame('Lockers', $this->definition('lockers', 'ops')->nav->label);
     }
 
     public function test_no_display_field_is_plain_english_under_the_pseudo_locale(): void

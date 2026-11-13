@@ -61,8 +61,14 @@ final class FrameText
         $prefix = $this->prefixFor($registrant, is_string($resource->data) ? $resource->data : null);
         $key = $definition->key;
 
-        $englishLabel = $definition->resolvedLabel();
-        $englishSingular = $definition->resolvedSingularLabel();
+        // The English defaults are the DECLARATION's, never the overlay-merged `nav.label` (ruling 01, RULING-01:154). A
+        // realm's configured label answers only as that realm's source-language rung, inside the ladder, so a refused
+        // owner (no key, no ladder) renders the declared literal. A label-less declaration's headlined key, and an
+        // inflected singular, are English derivations: defaults only.
+        $declaredLabel = $resource->label;
+        $declaredSingular = $resource->singularLabel;
+        $englishLabel = $declaredLabel !== '' ? $declaredLabel : Str::headline($key);
+        $englishSingular = $declaredSingular !== '' ? $declaredSingular : Str::singular($englishLabel);
         $label = (string) $this->text->resolve(DeclaredText::derive($prefix, 'resources', [$key], 'label'), $englishLabel, $realm);
         $singular = (string) $this->text->resolve(DeclaredText::derive($prefix, 'resources', [$key], 'singular'), $englishSingular, $realm);
 
@@ -77,9 +83,10 @@ final class FrameText
         }, $definition->actions);
 
         return $definition->withOverrides(
-            // An empty declaration stays empty (frame derives the same English) unless the text changed.
-            label: $definition->nav->label !== '' || $label !== $englishLabel ? $label : null,
-            singularLabel: $definition->singularLabel !== '' || $singular !== $englishSingular ? $singular : null,
+            // An empty declaration whose text stayed its English derivation stays EMPTY on the wire (frame derives the
+            // same English), so the English manifest is byte-identical; '' is written explicitly, never the overlay's.
+            label: $declaredLabel === '' && $label === $englishLabel ? '' : $label,
+            singularLabel: $declaredSingular === '' && $singular === $englishSingular ? '' : $singular,
             actions: $actions,
         );
     }

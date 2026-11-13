@@ -21,7 +21,11 @@ class RealmResourceOverrideTest extends TestCase
 {
     private function registry(?RealmResourceRegistry $overrides = null): ParticleResourceRegistry
     {
-        $registry = new ParticleResourceRegistry($overrides ?? new RealmResourceRegistry(new RealmRegistry));
+        $overrides ??= new RealmResourceRegistry(new RealmRegistry);
+        // As the provider wires it: ONE overlay registry, read by the projection AND by the translator, whose realm rung
+        // answers an overlay's label (localization 08, ruling 01: never fed back as a post-ladder default).
+        $this->app->instance(RealmResourceRegistry::class, $overrides);
+        $registry = new ParticleResourceRegistry($overrides);
 
         $registry->register(new ParticleResourceRuntime(
             key: 'widgets',
