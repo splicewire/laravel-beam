@@ -4,8 +4,8 @@ namespace Splicewire\Beam\Collections;
 
 use Closure;
 use Illuminate\Support\Arr;
-use Illuminate\Validation\ValidationException;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Models\BeamParticle;
 
 /** Authorized Collection persistence only; callers must authorize before entering this boundary. */
@@ -28,7 +28,7 @@ final class CollectionUniqueWrite
         $connection = $model->getConnection();
 
         if (! $connection->getSchemaBuilder()->hasTable(Beam::table('schemas'))) {
-            throw ValidationException::withMessages(['collection' => 'Unique Collection writes require a registered database schema anchor on the record connection; the schema registry table is absent.']);
+            throw CodedValidationException::for('collection', CollectionError::UniqueNeedsSchemaRegistry);
         }
 
         return $connection->transaction(function () use ($connection, $model, $definition, $refs, $payload, $persist): mixed {
@@ -36,7 +36,7 @@ final class CollectionUniqueWrite
                 ->where('schema_name', $definition->stem())
                 ->orderBy('version')->orderBy('id')->lockForUpdate()->first();
             if ($anchor === null) {
-                throw ValidationException::withMessages(['collection' => 'Unique Collection writes require a registered database schema anchor on the record connection; a filesystem-only schema cannot serialize writes.']);
+                throw CodedValidationException::for('collection', CollectionError::UniqueNeedsDatabaseAnchor);
             }
 
             foreach ($definition->uniqueFields() as $field) {
@@ -52,7 +52,7 @@ final class CollectionUniqueWrite
                     $query->whereKeyNot($model->getKey());
                 }
                 if ($query->exists()) {
-                    throw ValidationException::withMessages([$field => 'This value is already used by another record in the Collection.']);
+                    throw CodedValidationException::for($field, CollectionError::ValueTaken);
                 }
             }
 

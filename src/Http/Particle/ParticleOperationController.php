@@ -3,12 +3,11 @@
 namespace Splicewire\Beam\Http\Particle;
 
 use Closure;
-use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Validation\ValidationException;
 use LogicException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
@@ -16,12 +15,14 @@ use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Data\ResponseBody;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Particle\Emitter;
 use Splicewire\Beam\Particle\OperationCall;
 use Splicewire\Beam\Particle\OperationContext;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleRequestError;
 use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
 use Splicewire\Beam\Particle\Subject\SubjectResolvers;
 use Splicewire\Beam\Rendering\DeclaresDelivery;
@@ -238,9 +239,8 @@ class ParticleOperationController extends Controller
         $accepted = $operation->formats();
 
         if ($accepted !== [] && ! in_array($format, $accepted, true)) {
-            throw ValidationException::withMessages([
-                ParticleOperation::FORMAT_PARAMETER => 'Unsupported format. This operation delivers '
-                    .implode(', ', $accepted).'.',
+            throw CodedValidationException::for(ParticleOperation::FORMAT_PARAMETER, ParticleRequestError::FormatUnsupported, [
+                'accepted' => implode(', ', $accepted),
             ]);
         }
 
@@ -362,9 +362,9 @@ class ParticleOperationController extends Controller
             return;
         }
 
-        throw ValidationException::withMessages(array_fill_keys(
+        throw CodedValidationException::many(array_fill_keys(
             array_values($unexpected),
-            "The `{$operation->name}` operation accepts no input.",
+            [ParticleRequestError::NoInputAccepted, ['operation' => $operation->name]],
         ));
     }
 

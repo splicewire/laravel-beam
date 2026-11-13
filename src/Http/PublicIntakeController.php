@@ -17,8 +17,10 @@ use Splicewire\Beam\Intake\Data\PublicIntakeErrorData;
 use Splicewire\Beam\Intake\Data\PublicIntakeSubmissionData;
 use Splicewire\Beam\Intake\IntakeProvenance;
 use Splicewire\Beam\Intake\PublicIntakeWriteGate;
+use Splicewire\Beam\Localization\CodedNotFoundHttpException;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Models\BeamSubmission;
+use Splicewire\Beam\Particle\ParticleRequestError;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Submissions\RecordsSubmissions;
@@ -26,7 +28,6 @@ use Splicewire\Beam\Validation\SchemaIntakeValidator;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\WriteNotAuthorized;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * The optional generic public intake door (beam-write-pipeline ticket 04): a host accepts anonymous
@@ -95,7 +96,7 @@ class PublicIntakeController
         $stem = isset($slugs[$schema]) && $slugs[$schema] !== '' ? (string) $slugs[$schema] : $schema;
         $targetSchema = $this->targets->targetFor($stem);
         if ($targetSchema === []) {
-            throw new NotFoundHttpException("No public intake schema for [{$schema}].");
+            throw new CodedNotFoundHttpException(ParticleRequestError::IntakeSchemaUnknown, ['schema' => $schema]);
         }
 
         // Strip the honeypot field so it never reaches the payload (defence works with the middleware
@@ -115,7 +116,7 @@ class PublicIntakeController
         $errors = $this->validator->validate($payload, $targetSchema);
         if ($errors !== []) {
             $body = new PublicIntakeErrorData(
-                message: "The submission for [{$schema}] is invalid.",
+                message: ParticleRequestError::IntakeSubmissionInvalid->message(['schema' => $schema]),
                 errors: $errors,
             );
 

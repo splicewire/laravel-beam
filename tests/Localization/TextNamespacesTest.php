@@ -14,8 +14,10 @@ uses(TestCase::class);
 
 function namespacesFixture(array $extra = []): TextNamespaces
 {
+    // beam is the package under test, and since localization 21 it ships `lang/`, which the booted provider hints at its
+    // real path. The fixture names that same root, so its hint agrees with the boot hint instead of contesting it.
     return new TextNamespaces([
-        ['name' => 'splicewire/laravel-beam', 'path' => '/pkgs/beam', 'psr4' => ['Splicewire\\Beam\\' => 'src/']],
+        ['name' => 'splicewire/laravel-beam', 'path' => dirname(__DIR__, 2), 'psr4' => ['Splicewire\\Beam\\' => 'src/']],
         ['name' => 'splicewire/laravel-beam-ux', 'path' => '/pkgs/beam-ux', 'psr4' => ['Splicewire\\Beam\\Ux\\' => 'src/']],
         ['name' => 'schemastud/laravel-data-schemas', 'path' => '/pkgs/ds', 'psr4' => [
             'Schemastud\\DataSchemas\\' => 'src/',

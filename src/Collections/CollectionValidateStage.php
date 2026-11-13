@@ -3,7 +3,7 @@
 namespace Splicewire\Beam\Collections;
 
 use Closure;
-use Illuminate\Validation\ValidationException;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Write\Contracts\WriteStage;
 use Splicewire\Beam\Write\PayloadRejected;
 use Splicewire\Beam\Write\Stages\ValidateStage;
@@ -19,7 +19,7 @@ final class CollectionValidateStage implements WriteStage
         try {
             $context = $this->validate->handle($context, fn (WriteContext $validated): WriteContext => $validated);
         } catch (PayloadRejected $error) {
-            throw ValidationException::withMessages(['fields' => $error->getMessage()]);
+            throw CodedValidationException::for('fields', CollectionError::PayloadRejected, ['type' => $error->recordType()]);
         }
 
         return $next($context);

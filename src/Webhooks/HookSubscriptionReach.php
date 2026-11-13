@@ -11,9 +11,11 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Optional;
 use Spatie\LaravelData\Support\DataConfig;
+use Splicewire\Beam\Authorization\AccessError;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Data\HookInputData;
 use Splicewire\Beam\Events\EventTypeRegistry;
+use Splicewire\Beam\Localization\CodedAuthorizationException;
 use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
@@ -102,7 +104,7 @@ class HookSubscriptionReach
                 $resource = $this->resources->get($key);
                 $backing = $resource->backing();
                 if (! $backing instanceof QueriesRecords) {
-                    throw new AuthorizationException("The subject's population for [{$key}] cannot be queried.");
+                    throw new CodedAuthorizationException(AccessError::HookPopulationUnqueryable, ['key' => $key]);
                 }
 
                 try {
@@ -113,7 +115,7 @@ class HookSubscriptionReach
                         $subject->getKeyName(),
                     );
                 } catch (ModelNotFoundException) {
-                    throw new AuthorizationException("The subject is outside [{$key}]'s read scope.");
+                    throw new CodedAuthorizationException(AccessError::HookOutsideReadScope, ['key' => $key]);
                 }
             }
 

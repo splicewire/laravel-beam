@@ -391,7 +391,10 @@ Two kinds of bad entry fail both the command and `AssertsTextRatchet`:
 - raw `Response` bodies (a machine boundary, e.g. a webhook);
 - DTO-wrapper fields;
 - `match`/summary arms;
-- a message forwarded through a variable (`abort(422, $reason)`).
+- a message forwarded through a variable (`abort(422, $reason)`);
+- a label derived from a code identifier, such as `CompositeBacking::sourceFacet()`'s `Str::headline($armKey)` arm
+  labels. Keying them needs a new derived kind under ruling 01; a composite can override `sourceFacet()` with authored
+  labels. Recorded by localization 21 (coord-lead ruling 23:18Z).
 
 How to write text: [`docs/agents/user-facing-text.convention.md`](docs/agents/user-facing-text.convention.md).
 

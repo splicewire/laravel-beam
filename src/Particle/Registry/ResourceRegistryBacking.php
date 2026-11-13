@@ -194,28 +194,12 @@ class ResourceRegistryBacking implements DeclaresFilterVocabulary, ResolvesRecor
     public function options(string $facet, ?string $search = null): array
     {
         $domain = match ($facet) {
-            'section' => [...$this->distinct(fn (ResourceRegistryEntryData $entry): array => $entry->section === null ? [] : [$entry->section]), ['value' => self::NONE, 'label' => 'Unsectioned']],
-            'realm' => [...$this->distinct(fn (ResourceRegistryEntryData $entry): array => $entry->realms), ['value' => self::NONE, 'label' => 'No realm']],
-            'capability' => [
-                ['value' => 'streams', 'label' => 'Lists (StreamsRecords)'],
-                ['value' => 'queries', 'label' => 'Queries (QueriesRecords)'],
-                ['value' => 'resolves', 'label' => 'Resolves one (ResolvesRecord)'],
-                ['value' => 'writes', 'label' => 'Writes (WritesRecords)'],
-                ['value' => 'vocabulary', 'label' => 'Declares facets'],
-            ],
-            'posture' => [
-                ['value' => 'model-backed', 'label' => 'Model-backed'],
-                ['value' => ModelLessReadPosture::DeclaredAbility->value, 'label' => 'Model-less, gated'],
-                ['value' => ModelLessReadPosture::Undeclared->value, 'label' => 'Model-less, undeclared'],
-            ],
-            'nav' => [
-                ['value' => 'seated', 'label' => 'In a nav'],
-                ['value' => 'unseated', 'label' => 'Not in any nav'],
-            ],
-            'disagreement' => [
-                ['value' => 'some', 'label' => 'Intent exceeds capability'],
-                ['value' => 'none', 'label' => 'Consistent'],
-            ],
+            'section' => [...$this->distinct(fn (ResourceRegistryEntryData $entry): array => $entry->section === null ? [] : [$entry->section]), self::option('section', self::NONE)],
+            'realm' => [...$this->distinct(fn (ResourceRegistryEntryData $entry): array => $entry->realms), self::option('realm', self::NONE)],
+            'capability' => array_map(static fn (string $value): array => self::option('capability', $value), ['streams', 'queries', 'resolves', 'writes', 'vocabulary']),
+            'posture' => array_map(static fn (string $value): array => self::option('posture', $value), ['model-backed', ModelLessReadPosture::DeclaredAbility->value, ModelLessReadPosture::Undeclared->value]),
+            'nav' => array_map(static fn (string $value): array => self::option('nav', $value), ['seated', 'unseated']),
+            'disagreement' => array_map(static fn (string $value): array => self::option('disagreement', $value), ['some', 'none']),
             default => [],
         };
 
@@ -261,6 +245,17 @@ class ResourceRegistryBacking implements DeclaresFilterVocabulary, ResolvesRecor
     private function actor(): ?Authenticatable
     {
         return AuthenticatedActor::from($this->actors);
+    }
+
+    /**
+     * One of beam's own facet options, its label in the request's language (localization 21; coord-lead ruling 23:18Z):
+     * `beam::resource-registry.options.<facet>.<value>`, English in `lang/en/resource-registry.php`.
+     *
+     * @return array{value: string, label: string}
+     */
+    private static function option(string $facet, string $value): array
+    {
+        return ['value' => $value, 'label' => (string) __('beam::resource-registry.options.'.$facet.'.'.$value)];
     }
 
     /**

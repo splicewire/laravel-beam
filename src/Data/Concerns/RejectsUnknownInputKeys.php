@@ -2,8 +2,9 @@
 
 namespace Splicewire\Beam\Data\Concerns;
 
-use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Support\DataConfig;
+use Splicewire\Beam\Localization\CodedValidationException;
+use Splicewire\Beam\Particle\ParticleRequestError;
 
 /** Refuse undeclared top-level DTO input keys instead of silently ignoring them. */
 trait RejectsUnknownInputKeys
@@ -20,12 +21,13 @@ trait RejectsUnknownInputKeys
         $unknown = array_diff_key($properties, $declared);
 
         if ($unknown !== []) {
-            $messages = [];
+            // localization 21: a coded refusal per unknown field (the English unchanged), its code beside the message.
+            $refusals = [];
             foreach (array_keys($unknown) as $key) {
-                $messages[(string) $key] = "Unknown input field [{$key}].";
+                $refusals[(string) $key] = [ParticleRequestError::UnknownInputField, ['field' => (string) $key]];
             }
 
-            throw ValidationException::withMessages($messages);
+            throw CodedValidationException::many($refusals);
         }
 
         return parent::prepareForPipeline($properties);

@@ -16,8 +16,19 @@ use RuntimeException;
  */
 class PayloadRejected extends RuntimeException
 {
+    private string $recordType = '';
+
     public static function for(string $recordType): self
     {
-        return new self("The payload does not conform to the target schema for record type [{$recordType}].");
+        $rejected = new self("The payload does not conform to the target schema for record type [{$recordType}].");
+        $rejected->recordType = $recordType;
+
+        return $rejected;
+    }
+
+    /** The refused record type, so a user-facing caller keys its own message (localization 21) instead of forwarding this one. */
+    public function recordType(): string
+    {
+        return $this->recordType;
     }
 }

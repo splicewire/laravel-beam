@@ -432,6 +432,28 @@ class ResourceRegistryBackingTest extends TestCase
     // ---- helpers -----------------------------------------------------------------------------------
 
     /** Declare the area itself over this backing, as a host would, with the given read gate. */
+    public function test_beams_own_option_labels_serve_identical_english_through_their_keys(): void
+    {
+        // localization 21 (coord-lead ruling 23:18Z): beam::resource-registry.options.<facet>.<value>, English in
+        // lang/en/resource-registry.php. The served English is the literal it replaced, byte for byte.
+        $this->registerArea(policy: null);
+        $this->actor = $this->member();
+        $labels = fn (string $facet): array => array_column($this->backing()->options($facet), 'label', 'value');
+
+        $this->assertSame('Unsectioned', $labels('section')['none']);
+        $this->assertSame('No realm', $labels('realm')['none']);
+        $this->assertSame([
+            'streams' => 'Lists (StreamsRecords)', 'queries' => 'Queries (QueriesRecords)', 'resolves' => 'Resolves one (ResolvesRecord)',
+            'writes' => 'Writes (WritesRecords)', 'vocabulary' => 'Declares facets',
+        ], $labels('capability'));
+        $this->assertSame(['model-backed' => 'Model-backed', 'declared-ability' => 'Model-less, gated', 'undeclared' => 'Model-less, undeclared'], $labels('posture'));
+        $this->assertSame(['seated' => 'In a nav', 'unseated' => 'Not in any nav'], $labels('nav'));
+        $this->assertSame(['some' => 'Intent exceeds capability', 'none' => 'Consistent'], $labels('disagreement'));
+        // A search still matches the label a person reads.
+        $this->assertSame(['undeclared'], array_column($this->backing()->options('posture', 'undeclared'), 'value'));
+        $this->assertSame(['queries'], array_column($this->backing()->options('capability', 'Queries ('), 'value'));
+    }
+
     private function registerArea(?string $policy): void
     {
         $this->registry->register(new ParticleResource(

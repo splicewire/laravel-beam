@@ -3,7 +3,9 @@
 namespace Splicewire\Beam\Write\Dedupe;
 
 use Illuminate\Database\Eloquent\Model;
+use Splicewire\Beam\Authorization\AccessError;
 use Splicewire\Beam\Data\ResponseBody;
+use Splicewire\Beam\Localization\Concerns\RendersCodedError;
 use Splicewire\Beam\Write\PayloadRejected;
 use Splicewire\Beam\Write\WriteNotAuthorized;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -31,10 +33,18 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  */
 class DuplicateRejected extends ConflictHttpException
 {
+    // localization 21: the message is AccessError::DuplicateRejected, with the model class as `:type` (English
+    // unchanged); a JSON request also gets `code: duplicate_rejected`. Still a ConflictHttpException, still 409.
+    use RendersCodedError;
+
     public static function for(Model|string $subject): self
     {
         $type = $subject instanceof Model ? $subject::class : $subject;
 
-        return new self("A capture matching an earlier one was refused for [{$type}].");
+        $rejected = new self(AccessError::DuplicateRejected->message(['type' => $type]));
+        $rejected->error = AccessError::DuplicateRejected;
+        $rejected->params = ['type' => $type];
+
+        return $rejected;
     }
 }

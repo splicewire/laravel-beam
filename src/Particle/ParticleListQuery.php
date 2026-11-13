@@ -4,13 +4,13 @@ namespace Splicewire\Beam\Particle;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Rushing\DataFilters\Reflection\FilterReflector;
 use Schemastud\DataSchemas\Generators\Generator;
 use Splicewire\Beam\Collections\CollectionBacking;
 use Splicewire\Beam\Filters\FilterQuerySelection;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContribution;
@@ -56,13 +56,13 @@ class ParticleListQuery
         $fields = array_keys($schema['properties'] ?? []);
         foreach (array_keys($filters) as $name) {
             if (! in_array($name, $fields, true)) {
-                throw ValidationException::withMessages(['filter' => 'Public projection filters must name a Public Read field.']);
+                throw CodedValidationException::for('filter', ParticleRequestError::PublicFilterNotPublic);
             }
         }
         $sorts = $request->query('sort', '');
         foreach (is_array($sorts) ? $sorts : explode(',', (string) $sorts) as $name) {
             if ($name !== '' && (! is_string($name) || ! in_array(ltrim($name, '-'), $fields, true))) {
-                throw ValidationException::withMessages(['sort' => 'Public projection sorts must name a Public Read field.']);
+                throw CodedValidationException::for('sort', ParticleRequestError::PublicSortNotPublic);
             }
         }
     }

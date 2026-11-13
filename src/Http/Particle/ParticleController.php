@@ -38,6 +38,7 @@ use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleListQuery;
+use Splicewire\Beam\Particle\ParticleRequestError;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\Subject\ResourceRecordLookup;
@@ -778,14 +779,17 @@ class ParticleController extends Controller
             return;
         }
 
+        // localization 21: a coded refusal. The response keeps its shape (`message`, and `errors` with one string per
+        // field) byte-identical in English, and gains `codes` beside it, as CodedValidationErrorData carries them.
+        $error = ParticleRequestError::ResourceAcceptsNoInput;
+        $message = $error->message(['resource' => $resource->key]);
+
         throw new HttpResponseException(
             new JsonResponse(
                 [
-                    'message' => "The `{$resource->key}` resource accepts no input.",
-                    'errors' => array_fill_keys(
-                        $unexpected,
-                        "The `{$resource->key}` resource accepts no input.",
-                    ),
+                    'message' => $message,
+                    'errors' => array_fill_keys($unexpected, $message),
+                    'codes' => array_fill_keys($unexpected, [$error->code()]),
                 ],
                 422,
             ),

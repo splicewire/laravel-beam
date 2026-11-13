@@ -2,13 +2,13 @@
 
 namespace Splicewire\Beam\Collections;
 
-use Illuminate\Validation\ValidationException;
 use LogicException;
 use Schemastud\DataSchemas\Contracts\EnumeratesVersions;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
+use Splicewire\Beam\Localization\CodedNotFoundHttpException;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaId;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /** Transient host dependencies with scope-local memoization by registry identity and revision. */
 final class CollectionSchemaResolver
@@ -23,7 +23,7 @@ final class CollectionSchemaResolver
     public function resolve(string $stem): CollectionDefinition
     {
         if (! filter_var($stem, FILTER_VALIDATE_URL) || SchemaId::from($stem)->version() !== null) {
-            throw ValidationException::withMessages(['collection' => 'Collection must be an absolute, unversioned schema stem.']);
+            throw CodedValidationException::for('collection', CollectionError::StemInvalid);
         }
 
         // Host target policies may change independently of the registry, so only the native
@@ -37,10 +37,10 @@ final class CollectionSchemaResolver
         }
         $schema = $this->targets->targetFor($stem);
         if ($schema === []) {
-            throw new NotFoundHttpException('The current schema target is not available.');
+            throw new CodedNotFoundHttpException(CollectionError::SchemaTargetUnavailable);
         }
         if (! array_key_exists('x-beam-collection', $schema)) {
-            throw new NotFoundHttpException('The current schema does not declare a Collection.');
+            throw new CodedNotFoundHttpException(CollectionError::SchemaHasNoCollection);
         }
 
         $definition = new CollectionDefinition($schema);

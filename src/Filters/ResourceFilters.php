@@ -18,8 +18,10 @@ use Schemastud\Frame\Data\FilterVariantsData;
 use Schemastud\Frame\Data\FilterVariantsResponseData;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\ResourceVisibility;
+use Splicewire\Beam\Localization\CodedNotFoundHttpException;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\DeclaresFilterVocabulary;
+use Splicewire\Beam\Particle\ParticleRequestError;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -62,7 +64,9 @@ class ResourceFilters
     {
         $this->authorize($key);
         $definition = app(ResourceFilterDefinition::class)->definition($key);
-        abort_if($definition === null, 404, "No filter resource registered for [{$key}].");
+        if ($definition === null) {
+            throw new CodedNotFoundHttpException(ParticleRequestError::FilterResourceUnknown, ['key' => $key]);
+        }
 
         $this->authorizeModel($definition->model, $this->particles->find($key));
 

@@ -5,7 +5,6 @@ namespace Splicewire\Beam\Collections;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Rushing\DataFilters\Operators\Exact;
 use Rushing\DataFilters\Operators\Partial;
@@ -14,6 +13,7 @@ use Rushing\DataFilters\Operators\Search;
 use Rushing\DataFilters\Operators\Set;
 use Spatie\QueryBuilder\AllowedSort;
 use Spatie\QueryBuilder\QueryBuilder;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Particle\Backing\AddressedResourceBacking;
 use Splicewire\Beam\Particle\Backing\BacksEloquent;
@@ -87,12 +87,12 @@ class CollectionBacking implements AddressedResourceBacking, BacksModel, Declare
             $sortNames = array_column(array_column($properties, 'x-sort'), 'name');
             foreach (array_keys($filters) as $name) {
                 if (! in_array($name, $filterNames, true)) {
-                    throw ValidationException::withMessages(['filter' => 'Guest filters must name a Public Read field.']);
+                    throw CodedValidationException::for('filter', CollectionError::GuestFilterNotPublic);
                 }
             }
             foreach (explode(',', (string) $this->request->query('sort', '')) as $name) {
                 if ($name !== '' && ! in_array(ltrim($name, '-'), $sortNames, true)) {
-                    throw ValidationException::withMessages(['sort' => 'Guest sort must name a Public Read field.']);
+                    throw CodedValidationException::for('sort', CollectionError::GuestSortNotPublic);
                 }
             }
         }

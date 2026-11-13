@@ -30,6 +30,29 @@ class CodedValidationException extends ValidationException
         return $exception;
     }
 
+    /**
+     * Several fields refused at once (localization 21): each field with its coded error and that error's parameters.
+     *
+     *   throw CodedValidationException::many(['email' => [ParticleRequestError::ServerManagedField, []], …]);
+     *
+     * @param  array<string, array{0: CodedError, 1?: array<string, scalar>}>  $refusals
+     */
+    public static function many(array $refusals): static
+    {
+        $messages = [];
+        $codes = [];
+        foreach ($refusals as $field => $refusal) {
+            [$error, $params] = [$refusal[0], $refusal[1] ?? []];
+            $messages[$field] = $error->message($params);
+            $codes[$field] = [$error->code()];
+        }
+
+        $exception = static::withMessages($messages);
+        $exception->codes = $codes;
+
+        return $exception;
+    }
+
     /** @return array<string, list<string>> */
     public function codes(): array
     {

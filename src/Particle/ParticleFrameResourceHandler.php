@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
-use Illuminate\Validation\ValidationException;
 use LogicException;
 use RuntimeException;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
@@ -22,6 +21,9 @@ use Spatie\LaravelData\Data;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Particle\ParticleController;
+use Splicewire\Beam\Localization\CodedHttpException;
+use Splicewire\Beam\Localization\CodedNotFoundHttpException;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Particle\Backing\AcceptsPayloadWrites;
 use Splicewire\Beam\Particle\Backing\EnrichesProjectedRecords;
 use Splicewire\Beam\Particle\Backing\ProjectsPayload;
@@ -43,7 +45,6 @@ use Splicewire\Beam\Write\ModelAttributeMapper;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\PolicyWriteGate;
 use Splicewire\Beam\Write\WriteNotAuthorized;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * The **one** beam-native implementation of Frame's {@see FrameResourceHandler} port (ADR-0156) — it
@@ -291,7 +292,9 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
 
         $resolved = $this->backing($definition, ResolvesRecord::class)->resolve($id, $filters);
 
-        abort_if($resolved === null, 404, "No '{$definition->key}' record found.");
+        if ($resolved === null) {
+            throw new CodedNotFoundHttpException(ParticleRequestError::RecordNotFound, ['resource' => $definition->key]);
+        }
 
         return array_merge(
             $resolved->record->toArray(),
@@ -329,7 +332,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         // It may round-trip, but it must never select another record or enter the write DTO.
         if (array_key_exists('id', $input)) {
             if ((! is_string($input['id']) && ! is_int($input['id'])) || (string) $input['id'] !== $id) {
-                throw ValidationException::withMessages(['id' => 'The id must match the route record key.']);
+                throw CodedValidationException::for('id', ParticleRequestError::IdMismatch);
             }
 
             unset($input['id']);
@@ -400,10 +403,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         };
 
         if (! $permitted) {
-            throw new HttpException(
-                405,
-                "The '{$action}' action is not supported for the '{$definition->key}' frame resource."
-            );
+            throw new CodedHttpException(405, ParticleRequestError::ActionNotSupported, ['action' => $action, 'resource' => $definition->key]);
         }
     }
 

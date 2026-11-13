@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Validation\ValidationException;
 use LogicException;
 use ReflectionClass;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
@@ -18,7 +17,9 @@ use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Collections\CollectionValidateStage;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Particle\ParticleRequestError;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\SchemaBindingIndex;
@@ -145,7 +146,7 @@ class ActorOwnedParticleBacking extends EloquentBacking implements AcceptsPayloa
     {
         $forbidden = array_intersect(array_keys($input), self::MANAGED_FIELDS);
         if ($forbidden !== []) {
-            throw ValidationException::withMessages(array_fill_keys($forbidden, 'This field is managed by the server.'));
+            throw CodedValidationException::many(array_fill_keys($forbidden, [ParticleRequestError::ServerManagedField, []]));
         }
     }
 
@@ -185,7 +186,7 @@ class ActorOwnedParticleBacking extends EloquentBacking implements AcceptsPayloa
         }
         $target = app(SchemaTargetResolver::class)->targetFor($this->binding());
         if ($target === []) {
-            throw ValidationException::withMessages(['schema' => 'The stored resource schema target is unavailable.']);
+            throw CodedValidationException::for('schema', ParticleRequestError::SchemaTargetUnavailable);
         }
 
         return $target;

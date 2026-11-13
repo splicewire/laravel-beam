@@ -2,11 +2,12 @@
 
 namespace Splicewire\Beam\Particle\Backing;
 
-use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use LogicException;
+use Splicewire\Beam\Authorization\AccessError;
+use Splicewire\Beam\Localization\CodedAuthorizationException;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Realm\Contracts\TenancyContext;
 
@@ -29,13 +30,13 @@ class WorkspaceSharedParticleBacking extends ActorOwnedParticleBacking
         $id = $tenancy->currentTenantId();
         if ($tenancy->isActive()) {
             if ($id === null || (string) $id === '') {
-                throw new AuthorizationException('Workspace-shared particles require a trusted workspace identity.');
+                throw new CodedAuthorizationException(AccessError::WorkspaceIdentityUntrusted);
             }
 
             return ['type' => 'workspace', 'id' => 'tenant:'.$id];
         }
         if ($tenancy->isMultiTenant()) {
-            throw new AuthorizationException('Workspace-shared particles require an initialized workspace.');
+            throw new CodedAuthorizationException(AccessError::WorkspaceUninitialized);
         }
 
         return ['type' => 'workspace', 'id' => 'host'];
