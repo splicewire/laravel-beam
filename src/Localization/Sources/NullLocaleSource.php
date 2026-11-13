@@ -7,7 +7,11 @@ use Splicewire\Beam\Localization\Contracts\BrandLocaleSource;
 use Splicewire\Beam\Localization\Contracts\PersonLocaleSource;
 use Splicewire\Beam\Localization\Contracts\TenantLocaleSource;
 
-/** The default for a slot whose owning package has not contributed its adapter: it states no language. */
+/**
+ * The default for a slot whose owning package has not contributed its adapter: it states no language. Today that's
+ * the person slot (until beam-accounts binds one) and the tenant slot. The brand slot is
+ * {@see ConfigBrandLocaleSource}.
+ */
 final class NullLocaleSource implements BrandLocaleSource, PersonLocaleSource, TenantLocaleSource
 {
     public function locale(?Request $request, mixed $recipient = null): ?string

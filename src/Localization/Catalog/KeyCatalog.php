@@ -309,12 +309,11 @@ final class KeyCatalog
         }
 
         if (app()->bound(NavSectionRegistry::class)) {
-            $seen = [];
+            // Every seat, every owner (REVIEW-B7 B2): two owners may register the same section key and label, in
+            // different realms, and ShellText emits both namespaced keys. entries() dedups by the DERIVED key and keeps
+            // each distinct English for conflicts(), so nothing is suppressed here before the owner is known, and each
+            // seat's registrant is audited.
             foreach (app(NavSectionRegistry::class)->all() as $section) {
-                if (isset($seen[$section->key][$section->label])) {
-                    continue;
-                }
-                $seen[$section->key][$section->label] = true;
                 $this->unrecognised($section->registrant(), 'nav section '.$section->key.' ('.$section->realm.')');
                 $this->add($entries, DeclaredText::derive($shell->prefixOfRegistrant($section->registrant()), 'nav', ['sections', $section->key], 'label'), $section->label, 'nav section '.$section->key.' ('.$section->realm.')');
             }

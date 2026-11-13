@@ -26,9 +26,11 @@ request with no session is an API request. A request with a session, signed in o
 is considered once: at 1 for an API request, at 3 for a browser one.
 
 **Sources are slots.** The person, tenant and brand rungs are `PersonLocaleSource`, `TenantLocaleSource` and
-`BrandLocaleSource`. Beam binds each with `bindIf` to `NullLocaleSource`, which states no language. The owning package
-contributes the real adapter: beam-accounts for the person (ticket 08), tenancy for the tenant (ticket 36), and beam's
-config-backed brand adapter (ticket 11).
+`BrandLocaleSource`. Beam binds each with `bindIf`, so the owning package's adapter wins:
+- the person: `NullLocaleSource` (which states no language) until beam-accounts binds its adapter (ticket 08);
+- the tenant: `NullLocaleSource` until tenancy binds its adapter (ticket 36);
+- the brand: beam's own `ConfigBrandLocaleSource` (ticket 11), which reads `beam.localization.brand_default` and states
+  no language when that is unset.
 
 **Placement.** `Http\ResolveLocale` is placed twice:
 

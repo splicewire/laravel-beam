@@ -173,7 +173,20 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
 
                 continue;
             }
-            $byKey[$section->key] = $head === null ? $section : self::withRegistrantOf($head, new NavSection(
+            if ($head === null) {
+                $byKey[$section->key] = $section;
+
+                continue;
+            }
+            // Each row keeps its contributor (REVIEW-B7 U2): the header's rows, then the joining seat's.
+            $rows = [];
+            foreach (array_keys($head->static) as $i) {
+                $rows[] = $head->staticRowRegistrant($i);
+            }
+            foreach (array_keys($section->static) as $i) {
+                $rows[] = $section->staticRowRegistrant($i);
+            }
+            $merged = self::withRegistrantOf($head, new NavSection(
                 key: $head->key,
                 realm: $head->realm,
                 label: $head->label,
@@ -187,6 +200,8 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
                 lock: $head->lock,
                 overview: $head->overview || $section->overview,
             ));
+            $merged->stampStaticRowRegistrants($rows);
+            $byKey[$section->key] = $merged;
         }
 
         // One list, re-sorted (review-r1): a seat kept apart keeps its projection position, not the end of the rail.

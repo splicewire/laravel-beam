@@ -9,6 +9,7 @@ use Splicewire\Beam\Localization\Contracts\TenantLocaleSource;
 use Splicewire\Beam\Localization\LocaleNegotiator;
 use Splicewire\Beam\Localization\LocaleResolver;
 use Splicewire\Beam\Localization\Locales;
+use Splicewire\Beam\Localization\Sources\ConfigBrandLocaleSource;
 use Splicewire\Beam\Localization\Sources\NullLocaleSource;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -185,8 +186,8 @@ describe('delivery with no request', function (): void {
     });
 });
 
-it('binds every source slot to the inert default until its package contributes one', function (): void {
+it('binds the person and tenant slots to the inert default until their package contributes one, and the brand slot to beam\'s config adapter', function (): void {
     expect(app(PersonLocaleSource::class))->toBeInstanceOf(NullLocaleSource::class)
         ->and(app(TenantLocaleSource::class))->toBeInstanceOf(NullLocaleSource::class)
-        ->and(app(BrandLocaleSource::class))->toBeInstanceOf(NullLocaleSource::class);
+        ->and(app(BrandLocaleSource::class))->toBeInstanceOf(ConfigBrandLocaleSource::class);
 });

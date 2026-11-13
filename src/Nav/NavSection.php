@@ -132,9 +132,35 @@ class NavSection
     /*
      * Who registered this seat (the `by:` composer name, or null for the host): stamped ONCE by
      * {@see NavSectionRegistry::register()}, and carried by {@see NavSectionRegistry::merged()} from the HEADER seat, whose
-     * label is the one shown. The label's key lives in that registrant's namespace (localization 11; ruling 01 §3).
+     * label is the one shown. The label's key lives in that registrant's namespace (localization 11; ruling 01 §3). A
+     * static row's title is keyed by its own contributor ({@see staticRowRegistrant()}).
      */
     use HasSetOnceRegistrant;
+
+    /**
+     * Who contributed each static row, by row index, when that differs from the seat's own registrant: a merged seat
+     * concatenates rows from several seats (REVIEW-B7 U2; ruling 01 §3: a page's title belongs to the code that
+     * authored it, while the section HEADER stays with the header seat). Off the wire; set only by the merge.
+     *
+     * @var array<int, ?string>
+     */
+    private array $rowRegistrants = [];
+
+    /** The registrant whose namespace keys static row `$index`'s title: its contributing seat's, else this seat's. */
+    public function staticRowRegistrant(int $index): ?string
+    {
+        return array_key_exists($index, $this->rowRegistrants) ? $this->rowRegistrants[$index] : $this->registrant();
+    }
+
+    /**
+     * Record each static row's contributor (for {@see NavSectionRegistry::merged()}).
+     *
+     * @param  array<int, ?string>  $registrants  by row index
+     */
+    public function stampStaticRowRegistrants(array $registrants): void
+    {
+        $this->rowRegistrants = $registrants;
+    }
 
     /** Whether the declaration named its audience; false only for an old-shape seat that took the default. */
     public readonly bool $audienceDeclared;

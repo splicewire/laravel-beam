@@ -186,6 +186,7 @@ use Splicewire\Beam\Localization\LocaleResolver;
 use Splicewire\Beam\Localization\LocaleScope;
 use Splicewire\Beam\Localization\LocalizationContext;
 use Splicewire\Beam\Localization\MissingTranslationKey;
+use Splicewire\Beam\Localization\Sources\ConfigBrandLocaleSource;
 use Splicewire\Beam\Localization\Sources\NullLocaleSource;
 use Splicewire\Beam\Localization\TextNamespaces;
 use Splicewire\Beam\Localization\TranslatedPropertyTextStrategy;
@@ -1090,10 +1091,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // localization 06 (ruling 03): request locale resolution. The three source slots default to "states no
         // language" until their owning package contributes an adapter (`bindIf`, so a package's binding wins in either
         // provider order): the person slot to beam-accounts (ticket 08), the tenant slot to the tenancy package
-        // (ticket 36), the brand slot to beam's brand adapter (ticket 11).
+        // (ticket 36). The brand slot is beam's own config-backed adapter (ticket 11, REVIEW-B7 B1): it reads
+        // `beam.localization.brand_default`, null when unset.
         $this->app->bindIf(PersonLocaleSource::class, NullLocaleSource::class);
         $this->app->bindIf(TenantLocaleSource::class, NullLocaleSource::class);
-        $this->app->bindIf(BrandLocaleSource::class, NullLocaleSource::class);
+        $this->app->bindIf(BrandLocaleSource::class, ConfigBrandLocaleSource::class);
         $this->app->bind(LocaleResolver::class);
         // SCOPED: an entered realm never outlives its request or job under Octane or a queue worker.
         $this->app->scoped(LocalizationContext::class);
