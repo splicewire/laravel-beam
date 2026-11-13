@@ -208,6 +208,21 @@ class PublicIntakeRouteTest extends TestCase
         $this->assertDatabaseCount(Beam::table('submissions'), 0);
     }
 
+    /** REVIEW-B8 B2 (localization 21 amend): the invalid-submission summary carries its stable code on the wire. */
+    public function test_an_invalid_submission_carries_its_code_with_unchanged_english_and_is_marked_under_pseudo(): void
+    {
+        $response = $this->postJson('/beam/intake/contact', [])->assertStatus(422);
+        $this->assertSame('The submission for [contact] is invalid.', $response->json('message'));
+        $this->assertSame('intake_submission_invalid', $response->json('code'));
+        $this->assertIsArray($response->json('errors'));
+
+        config(['beam.localization.pseudo' => true]);
+        $this->app->setLocale(\Splicewire\Beam\Localization\Locales::PSEUDO);
+        $pseudo = $this->postJson('/beam/intake/contact', [])->assertStatus(422);
+        $this->assertTrue(\Splicewire\Beam\Localization\PseudoLocale::isMarked((string) $pseudo->json('message')), (string) $pseudo->json('message'));
+        $this->assertSame('intake_submission_invalid', $pseudo->json('code'));
+    }
+
     public function test_a_namespaced_submission_violating_its_vocabulary_is_rejected_with_422(): void
     {
         // Structurally valid (title present, splice:grounding an object) — but the namespaced

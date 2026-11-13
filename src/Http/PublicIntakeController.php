@@ -118,6 +118,7 @@ class PublicIntakeController
             $body = new PublicIntakeErrorData(
                 message: ParticleRequestError::IntakeSubmissionInvalid->message(['schema' => $schema]),
                 errors: $errors,
+                code: ParticleRequestError::IntakeSubmissionInvalid->code(),
             );
 
             // Render the DTO's OWN defended response (RendersJsonSafely) rather than reaching past

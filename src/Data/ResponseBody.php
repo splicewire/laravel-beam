@@ -326,7 +326,8 @@ class ResponseBody extends Data
         return new static(
             success: false,
             statusCode: $status,
-            message: $e->getMessage() ?: 'Server error.',
+            // An exception's own message as it is (never keyed); with none, beam's keyed generic words.
+            message: $e->getMessage() ?: self::genericServerError(),
             errors: config('app.debug')
                 ? ['exception' => $e::class, 'file' => $e->getFile().':'.$e->getLine()]
                 : [],

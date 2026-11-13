@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Intake\Data;
 
 use Schemastud\DataSchemas\Attributes\Description;
+use Spatie\LaravelData\Optional;
 use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Data\BeamData;
@@ -23,9 +24,9 @@ use Splicewire\Beam\Validation\SchemaIntakeValidator;
  * channel.
  *
  * Only the 422 is declared here. The door's 403 (schema not on the public allow-list) and 404 (no such
- * intake schema) render Laravel's own `{message}` body from `AuthorizationException` /
- * `NotFoundHttpException` — framework shapes the door neither owns nor varies, so declaring them would
- * publish a contract beam does not control.
+ * intake schema) render the framework's `{message}` body from `AuthorizationException` /
+ * `NotFoundHttpException`, which beam does not declare. Since localization 21, a JSON request also gets
+ * the stable `code` beside it: `write_not_authorized` and `intake_schema_unknown`.
  */
 #[TypeScript]
 class PublicIntakeErrorData extends BeamData
@@ -40,5 +41,10 @@ class PublicIntakeErrorData extends BeamData
         #[LiteralTypeScriptType('Record<string, string[]>')]
         #[Description('Violations keyed by JSON pointer into the submitted document — `/field`, or the empty string for a root-level violation. NOT a dotted Laravel field path.')]
         public array $errors,
+
+        // localization 21 (REVIEW-B8 B2): the summary's stable machine code, beside its localized `message`. Additive:
+        // a body built without one leaves the member out, so the existing two-member shape holds.
+        #[Description('The stable machine code of the refusal (`intake_submission_invalid`), the same in every language.')]
+        public string|Optional $code = new Optional,
     ) {}
 }

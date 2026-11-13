@@ -25,6 +25,7 @@ use Splicewire\Beam\Authorization\RowAuthorization;
 use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
+use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Particle\Backing\AcceptsPayloadWrites;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\EnrichesProjectedRecords;
@@ -734,12 +735,14 @@ class ParticleController extends Controller
         try {
             return $resource->input::validateAndCreate($request);
         } catch (ValidationException $e) {
-            throw new HttpResponseException(
-                new JsonResponse(
-                    ['message' => $e->getMessage(), 'errors' => $e->errors()],
-                    $e->status,
-                ),
-            );
+            // A coded refusal (localization 21; REVIEW-B8 B1) keeps its `codes` beside Laravel's {message, errors}.
+            // That's additive, the shape of CodedValidationErrorData. A plain one keeps exactly Laravel's two members.
+            $body = ['message' => $e->getMessage(), 'errors' => $e->errors()];
+            if ($e instanceof CodedValidationException && $e->codes() !== []) {
+                $body['codes'] = $e->codes();
+            }
+
+            throw new HttpResponseException(new JsonResponse($body, $e->status));
         }
     }
 

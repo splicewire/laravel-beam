@@ -124,7 +124,7 @@ trait RendersJsonSafely
             json_encode([
                 'success' => false,
                 'message' => $this->jsonSafeString(
-                    is_string($payload['message'] ?? null) ? $payload['message'] : 'Server error.'
+                    is_string($payload['message'] ?? null) ? $payload['message'] : self::genericServerError()
                 ),
             ], JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR) ?: '{"success":false}',
             $status,
@@ -137,6 +137,23 @@ trait RendersJsonSafely
     /**
      * A projection of $value that `json_encode` accepts, whatever $value is.
      */
+    /**
+     * The generic words a client reads when a response has no message of its own: `beam::responses.server_error`, in
+     * the request's language (localization 21; REVIEW-B8 B3). An exception's OWN message is never turned into a key.
+     * This sits on the last-resort path, so it cannot throw: if the translator is unavailable or failing, or the line
+     * is missing, the raw English stands.
+     */
+    protected static function genericServerError(): string
+    {
+        try {
+            $line = __('beam::responses.server_error');
+
+            return is_string($line) && $line !== '' && $line !== 'beam::responses.server_error' ? $line : 'Server error.';
+        } catch (Throwable) {
+            return 'Server error.';
+        }
+    }
+
     protected function toJsonSafeValue(mixed $value, int $depth = 0): mixed
     {
         if ($depth > self::SAFE_ENCODE_MAX_DEPTH) {
