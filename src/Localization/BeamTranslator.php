@@ -87,6 +87,32 @@ class BeamTranslator extends Translator
         unset($this->loaded[$namespace]);
     }
 
+    /**
+     * Text an emit point renders that did NOT come from the catalog (a declared literal, the default when the ladder
+     * missed), presented for the active locale: under the pseudo-locale it is marked like a catalog line, so a
+     * walkthrough sees it resolved; otherwise unchanged.
+     */
+    public function present(string $text, ?string $locale = null): string
+    {
+        return Locales::isPseudo($locale ?: $this->locale) ? PseudoLocale::transform($text) : $text;
+    }
+
+    /**
+     * @param  string|array<array-key, mixed>  $line
+     * @return string|array<array-key, mixed>
+     */
+    private static function pseudoLine(string|array $line): string|array
+    {
+        if (is_string($line)) {
+            return PseudoLocale::transform($line);
+        }
+        array_walk_recursive($line, static function (&$value): void {
+            $value = is_string($value) ? PseudoLocale::transform($value) : $value;
+        });
+
+        return $line;
+    }
+
     /** The current request's realm, as a lookup with no explicit realm would read it; null when there is none. */
     public function requestRealm(): ?string
     {
@@ -274,6 +300,14 @@ class BeamTranslator extends Translator
      */
     protected function walk(string|array $keys, string $locale, bool $fallback, ?string $realm, ?array &$trace = null): ?ResolvedLine
     {
+        // The pseudo-locale (en-XA) is English, marked and padded (localization 06): resolve the source-language line
+        // through the same ladder, then transform it. Its plural rules stay the source language's.
+        if (Locales::isPseudo($locale)) {
+            $line = $this->walk($keys, $this->sourceLanguage, $fallback, $realm, $trace);
+
+            return $line === null ? null : new ResolvedLine(self::pseudoLine($line->line), $line->sourceLocale, $line->realm, $line->origin);
+        }
+
         $parsed = [];
         $groups = [];
         foreach ((array) $keys as $key) {
@@ -374,6 +408,12 @@ class BeamTranslator extends Translator
     /** The requested locale's JSON (sentence-keyed) line for a key, as the framework looks it up, or null. */
     protected function jsonLine(string $key, string $locale): ?string
     {
+        if (Locales::isPseudo($locale)) {
+            $line = $this->jsonLine($key, $this->sourceLanguage);
+
+            return $line === null ? null : PseudoLocale::transform($line);
+        }
+
         $this->load('*', '*', $locale);
         $line = $this->loaded['*']['*'][$locale][$key] ?? null;
 

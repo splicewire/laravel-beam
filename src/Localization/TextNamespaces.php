@@ -15,8 +15,9 @@ use LogicException;
  *   host. So a key never depends on what else a host has installed.
  * - **A shortened name two installed packages share is contested** (in the flagship today, `rushing/codegen` and
  *   `rushing/laravel-codegen` both shorten to `codegen`). A contested namespace is never hinted for either package.
- *   Using one throws where the host is built and is reported in production, as beam already treats a nav-seat
- *   mismatch (`beam.ux.ia.throw`). The declaration then renders its literal. A package that declares its own
+ *   Using one throws where the host is built and is reported in production
+ *   (`beam.localization.throw_on_contested_namespace`; null: throw outside production). The declaration then renders
+ *   its literal. A package that declares its own
  *   namespace leaves the contest.
  * - **The owner of a class** is the package whose PSR-4 root is the longest prefix of the class name
  *   (`Splicewire\Beam\Ux\…` is beam-ux, not beam). A class under the ROOT package is the host's when the root is a
@@ -242,9 +243,8 @@ final class TextNamespaces
     private function refuse(string $package, string $message): TextOwner
     {
         $error = new LogicException($message);
-        // TODO(localization 06): `beam.ux.ia.throw` is a stopgap borrowed from the nav-seat policy. Ticket 06's
-        // localization config section owns this switch once config-sections 02 lands; move the read there.
-        if ((bool) config('beam.ux.ia.throw', ! app()->isProduction())) {
+        // localization 06: the switch is the localization section's own key, no longer the nav-seat policy's.
+        if ((bool) (config('beam.localization.throw_on_contested_namespace') ?? ! app()->isProduction())) {
             throw $error;
         }
         report($error);

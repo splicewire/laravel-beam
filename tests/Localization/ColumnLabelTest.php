@@ -97,3 +97,16 @@ it('translates a column\'s own label through its context key', function (): void
 
     expect(columnLabels()['path'])->toBe('Desde');
 });
+
+it('marks every projected column label under the pseudo-locale (localization 06, the 10 carry-forward)', function (): void {
+    columnLang([]);
+    config(['beam.localization.pseudo' => true]);
+    app()->setLocale(Splicewire\Beam\Localization\Locales::PSEUDO);
+
+    $labels = columnLabels();
+
+    expect(Splicewire\Beam\Localization\PseudoLocale::isMarked((string) $labels['path']))->toBeTrue()
+        ->and(Splicewire\Beam\Localization\PseudoLocale::isMarked((string) $labels['state']))->toBeTrue()
+        // A label-less column stays label-less, so the client still shows the (marked) schema title.
+        ->and($labels['target'])->toBeNull();
+});

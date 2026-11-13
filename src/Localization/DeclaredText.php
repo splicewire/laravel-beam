@@ -40,7 +40,8 @@ final class DeclaredText
 
         $line = $translator->resolve($key, null, true, $realm ?? $translator->requestRealm())?->line;
 
-        return is_string($line) ? $line : $default;
+        // A ladder miss renders the declared literal, presented for the active locale (marked under the pseudo-locale).
+        return is_string($line) ? $line : ($default === null ? null : $translator->present($default));
     }
 
     /**
@@ -60,7 +61,8 @@ final class DeclaredText
 
         $line = $translator->resolveFirst($keys, null, true, $realm ?? $translator->requestRealm())?->line;
 
-        return is_string($line) ? $line : $default;
+        // A ladder miss renders the declared literal, presented for the active locale (marked under the pseudo-locale).
+        return is_string($line) ? $line : ($default === null ? null : $translator->present($default));
     }
 
     /**

@@ -111,6 +111,25 @@ class HookSubscriptionCodedErrorsTest extends TestCase
             ->assertJsonPath('codes.endpoint.0', 'endpoint_required');
     }
 
+    /** localization 06: the 13 carry-forward. Under en-XA every message is marked, its parameters replaced, its code unchanged. */
+    public function test_the_pseudo_locale_marks_every_message_and_never_the_code(): void
+    {
+        $this->app['config']->set('beam.localization.pseudo', true);
+        $this->app->setLocale(\Splicewire\Beam\Localization\Locales::PSEUDO);
+
+        $required = $this->refuse(['endpoint' => 'https://receiver.test/inbox'])
+            ->assertJsonPath('codes.events.0', 'events_required');
+        $this->assertTrue(\Splicewire\Beam\Localization\PseudoLocale::isMarked($required->json('errors.events.0')));
+
+        $unknown = $this->refuse(['endpoint' => 'https://receiver.test/inbox', 'events' => ['tenants.exploded']])
+            ->assertJsonPath('codes.events.0', 'events_unknown');
+        $message = $unknown->json('errors.events.0');
+        $this->assertTrue(\Splicewire\Beam\Localization\PseudoLocale::isMarked($message));
+        $this->assertStringContainsString('tenants.exploded', $message);
+        $this->assertStringContainsString('tenants.provisioned', $message);
+        $this->assertStringNotContainsString(':unknown', $message);
+    }
+
     public function test_a_case_derives_its_key_from_the_case_and_its_code_from_the_value(): void
     {
         $case = HookSubscriptionError::EventsRequired;

@@ -81,3 +81,18 @@ it('answers an enum case label outside schema generation, for a filter (ticket 1
     expect(app(SchemaText::class)->enumCaseLabel(CadenceEnum::Weekly, CadenceEnum::Weekly->label()))->toBe('Cada semana')
         ->and(app(SchemaText::class)->enumCaseLabel(CadenceEnum::Daily, CadenceEnum::Daily->label()))->toBe('Every day');
 });
+
+it('marks every title, description and enum name under the pseudo-locale (localization 06, the 09 carry-forward)', function (): void {
+    formTextLang([]);
+    config(['beam.localization.pseudo' => true]);
+    app()->setLocale(Splicewire\Beam\Localization\Locales::PSEUDO);
+
+    $schema = reminderSchema();
+    $marked = fn (?string $text): bool => $text !== null && Splicewire\Beam\Localization\PseudoLocale::isMarked($text);
+
+    expect($marked($schema['title']))->toBeTrue()
+        ->and($marked($schema['description']))->toBeTrue()
+        ->and($marked($schema['properties']['subject']['title']))->toBeTrue()
+        ->and($marked($schema['properties']['subject']['description']))->toBeTrue()
+        ->and(array_map($marked, $schema['$defs']['CadenceEnum']['enumNames']))->toBe([true, true]);
+});

@@ -57,12 +57,20 @@ it('refuses a namespace two installed packages shorten to, throwing where the ho
 });
 
 it('reports a contested namespace in production and renders the literal (no derived key)', function (): void {
-    config(['beam.ux.ia.throw' => false]);
+    config(['beam.localization.throw_on_contested_namespace' => false]);
 
     $owner = namespacesFixture()->ownerOfClass('Rushing\\Codegen\\Generator');
 
     expect($owner->isRefused())->toBeTrue()
         ->and($owner->keyPrefix())->toBeNull();
+});
+
+it('reads the contest switch from the localization section, not the nav-seat policy (localization 06)', function (): void {
+    // The 07 stopgap borrowed `beam.ux.ia.throw`; the nav-seat switch no longer speaks for localization.
+    config(['beam.ux.ia.throw' => false, 'beam.localization.throw_on_contested_namespace' => null]);
+
+    expect(fn () => namespacesFixture()->ownerOfClass('Rushing\\Codegen\\Generator'))
+        ->toThrow(LogicException::class, 'contested');
 });
 
 it('takes a package out of the contest when it declares extra.beam.lang-namespace', function (): void {

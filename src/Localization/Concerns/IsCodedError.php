@@ -61,7 +61,9 @@ trait IsCodedError
                 ? null
                 : $translator->resolve($key, $locale, true, $realm ?? $translator->requestRealm());
 
-            return $translator->replaceIn(is_string($resolved?->line) ? $resolved->line : $this->defaultMessage(), $params);
+            $line = is_string($resolved?->line) ? $resolved->line : $translator->present($this->defaultMessage());
+
+            return $translator->replaceIn($line, $params);
         }
 
         return strtr($this->defaultMessage(), array_combine(

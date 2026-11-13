@@ -6,12 +6,15 @@ use Closure;
 use Composer\Autoload\ClassLoader;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Foundation\Events\LocaleUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Number;
 use ReflectionClass;
 use Rushing\DataFilters\Contracts\ResourceModelResolver;
 use Rushing\DataFilters\DataFilterManager;
@@ -162,7 +165,16 @@ use Splicewire\Beam\Install\MigrationFiles;
 use Splicewire\Beam\Localization\BeamSchemaText;
 use Splicewire\Beam\Localization\BeamTranslator;
 use Splicewire\Beam\Localization\BeamWidgetLabel;
+use Splicewire\Beam\Localization\Config\LocalizationSection;
+use Splicewire\Beam\Localization\Contracts\BrandLocaleSource;
+use Splicewire\Beam\Localization\Contracts\PersonLocaleSource;
+use Splicewire\Beam\Localization\Contracts\TenantLocaleSource;
 use Splicewire\Beam\Localization\DeclaredText;
+use Splicewire\Beam\Localization\Http\ResolveLocale;
+use Splicewire\Beam\Localization\LocaleResolver;
+use Splicewire\Beam\Localization\LocaleScope;
+use Splicewire\Beam\Localization\LocalizationContext;
+use Splicewire\Beam\Localization\Sources\NullLocaleSource;
 use Splicewire\Beam\Localization\TextNamespaces;
 use Splicewire\Beam\Localization\TranslatedPropertyTextStrategy;
 use Splicewire\Beam\Models\BeamParticle;
@@ -334,7 +346,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             // `webhooks.outbound.{tries,backoff,timeout}` are a stated contract of that
             // ticket. The beam.php-vs-beam/ footgun the nesting rule exists for cannot be
             // caused by a file named `webhooks.php`; see config/webhooks.php's own note.
-            ->hasConfigFile(['beam/core', 'beam/client', 'beam/brand', 'webhooks'])
+            // `beam/localization.php` → `beam.localization.*` (localization 06, ruling 03): the languages a host ships
+            // and how a request's language resolves, declared as the `beam.localization` Config Section.
+            ->hasConfigFile(['beam/core', 'beam/client', 'beam/brand', 'beam/localization', 'webhooks'])
             // beam's base tables ship as PUBLISH-ONLY spatie/laravel-package-tools stubs — the idiomatic
             // pattern for a PackageServiceProvider. `runsMigrations` stays FALSE (the package-tools
             // default), so beam-core does NOT auto-load these at runtime — `vendor:publish
@@ -1060,6 +1074,25 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      */
     protected function registerLocalization(): void
     {
+        // localization 06 (ruling 03): request locale resolution. The three source slots default to "states no
+        // language" until their owning package contributes an adapter (`bindIf`, so a package's binding wins in either
+        // provider order): the person slot to beam-accounts (ticket 08), the tenant slot to the tenancy package
+        // (ticket 36), the brand slot to beam's brand adapter (ticket 11).
+        $this->app->bindIf(PersonLocaleSource::class, NullLocaleSource::class);
+        $this->app->bindIf(TenantLocaleSource::class, NullLocaleSource::class);
+        $this->app->bindIf(BrandLocaleSource::class, NullLocaleSource::class);
+        $this->app->bind(LocaleResolver::class);
+        // SCOPED: an entered realm never outlives its request or job under Octane or a queue worker.
+        $this->app->scoped(LocalizationContext::class);
+
+        $this->callAfterResolving(ConfigSectionRegistry::class, static function (ConfigSectionRegistry $sections): void {
+            $sections->section(
+                LocalizationSection::class,
+                owner: 'splicewire/laravel-beam',
+                packageFile: dirname(__DIR__).'/config/beam/localization.php',
+            );
+        });
+
         $this->app->singleton(TextNamespaces::class, fn ($app): TextNamespaces => TextNamespaces::fromComposer(
             self::vendorDirectory(),
             self::rootComposerJson(),
@@ -1077,6 +1110,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
             $beam->resolveRealmsUsing(
                 static function () use ($app): ?string {
+                    // localization 06: a scope that entered a realm (a job, a delivery, a captured emit point) is the
+                    // answer, a null realm included (the base). Only without one does the request's route speak.
+                    [$entered, $realm] = $app->make(LocalizationContext::class)->realm();
+                    if ($entered) {
+                        return $realm;
+                    }
                     if (! $app->bound('request')) {
                         return null;
                     }
@@ -1119,6 +1158,38 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 $app->make(TextNamespaces::class)->hintShipped();
             }
         });
+    }
+
+    /**
+     * localization 06 (ruling 03 §2, §4): `Number` follows the application locale, and every HTTP request answers
+     * inside a {@see LocaleScope}.
+     *
+     * `ResolveLocale` is placed twice. Prepended to the GLOBAL stack, it runs before routing and before the session, so
+     * a 404, a 419 or an early 401 renders in the reduced resolver's language. Appended to the `web` and `api` groups,
+     * it runs once the session has started, so the person's saved preference and the request's credential count; it
+     * nests inside the global scope and restores to it.
+     */
+    protected function bootLocalization(): void
+    {
+        // `App::setLocale()` moves the translator and Carbon (LocaleUpdated) but never `Number`'s static locale.
+        Event::listen(LocaleUpdated::class, static function (LocaleUpdated $event): void {
+            Number::useLocale($event->locale);
+        });
+
+        if ($this->app->bound(HttpKernel::class)) {
+            $kernel = $this->app->make(HttpKernel::class);
+            if (! $kernel->hasMiddleware(ResolveLocale::class)) {
+                $kernel->prependMiddleware(ResolveLocale::class);
+            }
+        }
+
+        // Only groups the host has: pushing to a missing one would create it.
+        $router = $this->app->make(Router::class);
+        foreach (['web', 'api'] as $group) {
+            if ($router->hasMiddlewareGroup($group)) {
+                $router->pushMiddlewareToGroup($group, ResolveLocale::class);
+            }
+        }
     }
 
     /** The directory composer installed this host's packages into. */
@@ -1855,6 +1926,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // seeded to a host's admin role by the host — a member with no token is denied, which is the
         // cascade's own default).
         CascadePolicyRegistrar::register(Hook::class);
+
+        $this->bootLocalization();
 
         // `BeamSchema` — the same shape, one line later (api-surface-coherence 147). Its docblock had
         // promised a "policy seam (schemas may be permissioned)" since the model was promoted, and

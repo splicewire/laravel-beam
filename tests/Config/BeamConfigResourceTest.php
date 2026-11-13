@@ -61,6 +61,8 @@ class BeamConfigResourceTest extends TestCase
         config()->set('fleet.gauges', require self::FIXTURES.'/host/fleet/gauges.php');
         $this->app->when(ConfigSectionReader::class)->needs('$configDirectory')->give(realpath(self::FIXTURES.'/host'));
 
+        // Only the fixture sections: beam's own (`beam.localization`, localization 06) is proven in its own test.
+        $this->app->instance(ConfigSectionRegistry::class, new ConfigSectionRegistry);
         app(ConfigSectionRegistry::class)
             ->section(WidgetsSection::class, owner: 'acme/widgets', packageFile: realpath(self::FIXTURES.'/package/widgets.php'))
             ->section(GaugesSection::class, owner: 'host');

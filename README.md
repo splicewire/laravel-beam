@@ -290,6 +290,41 @@ effect, by design: one ladder answers every lookup.
 
 How to write text: [`docs/agents/user-facing-text.convention.md`](docs/agents/user-facing-text.convention.md).
 
+## Localization — a request resolves its locale (localization 06)
+
+Every HTTP request answers inside one locale scope. Beam places `Localization\Http\ResolveLocale` first in the global
+stack, so a 404, 419 or early 401 renders in a resolved language. It also places it last in the `web` and `api`
+groups, where the session exists. Configure it in `config/beam/localization.php` (the `beam.localization` Config
+Section):
+
+- **`supported`**: the canonical tags the host ships (`['en', 'es', 'es-MX']`). Null means `app.locale` alone, so
+  nothing changes until you list them. `fallback` is the last rung.
+- **`http_profile`** (off by default): read `Accept-Language` and state `Content-Language`, merge
+  `Vary: Accept-Language`, and make a person- or workspace-chosen response `private`. Off, a request still resolves
+  from saved preference and defaults, and no header is read or written.
+- **`pseudo`**: add `en-XA`, English that is marked, accented and padded. Text that shows up unmarked under it did not
+  come through the catalog.
+
+The order is the API client's header, the person, the browser's header, the tenant, the brand, then the application
+default. A bearer token, or no session, makes a request an API request. The person, tenant and brand sources are
+container slots (`Localization\Contracts\*LocaleSource`); their packages fill them, and until then they state nothing.
+
+Work with no request sets and restores locale, `Number`, Carbon and realm together:
+
+```php
+LocaleScope::run('es', fn () => $mailable->render());
+LocaleScope::runIn('es', 'acme', fn () => …);       // with a realm; null is the base
+$captured = LocaleScope::capture();                // later: $captured->enter(fn () => …)
+
+public function middleware(): array                // a job opts in
+{
+    return [new WithLocaleScope($this->locale, $this->realm)];
+}
+```
+
+Currency is never derived from the locale. Set it with `Number::useCurrency()`. Rationale:
+[ADR-0246](docs/adr/0246-a-request-resolves-its-locale-inside-one-scope.md).
+
 ## Mounting the particle surface
 
 The generic particle surface ({@see ParticleController} / {@see ParticleOperationController}) is mounted
