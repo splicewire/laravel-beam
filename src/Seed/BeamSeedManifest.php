@@ -73,6 +73,9 @@ class BeamSeedManifest implements RecordsRegistrants, Registry
      * @param  class-string  $seederClass  the seeder run via `db:seed --class`
      * @param  int  $order  lower runs first; beam-core registers at 0 (core-first), consumers default to 100
      * @param  ?string  $configGate  a config key that must be truthy to run this step; null ⇒ always runs
+     * @param  string|list<string>  $memberships  what the step writes, for a Seeding Scenario to select it by
+     *                                            (seeding-scenarios 01). Defaults to `baseline`, which every
+     *                                            scenario runs; a demo step says {@see SeedStep::DEMO}
      */
     public function register(
         RegistryKey|string $package,
@@ -81,6 +84,7 @@ class BeamSeedManifest implements RecordsRegistrants, Registry
         ?string $ability = null,
         int $order = 100,
         ?string $configGate = null,
+        string|array $memberships = SeedStep::BASELINE,
     ): static {
         // ⚠️ The key is a COMPOSER PACKAGE NAME — `splicewire/laravel-beam-accounts` — and `/` is not a
         // `Key` character, so a bare string throws. Registry-kernel 58 D5 rules this shape for
@@ -93,7 +97,7 @@ class BeamSeedManifest implements RecordsRegistrants, Registry
         $by ??= Registrant::isVocabulary((string) $package) ? (string) $package : null;
         $this->store->register(
             $package instanceof RegistryKey ? $package : RelativeUriKey::of($package),
-            new SeedStep((string) $package, (string) $seederClass, $order, $configGate),
+            new SeedStep((string) $package, (string) $seederClass, $order, $configGate, $memberships),
             $by,
             $ability,
         );

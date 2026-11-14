@@ -19,6 +19,7 @@ use Splicewire\Beam\Realm\RealmRegistry;
 use Splicewire\Beam\Realm\RealmResourceRegistry;
 use Splicewire\Beam\Schema\SchemaSources;
 use Splicewire\Beam\Seed\BeamSeedManifest;
+use Splicewire\Beam\Seed\SeedingScenarioRegistry;
 use Splicewire\Beam\Surface\GroupRegistry;
 use Splicewire\Beam\Surgeon\AuditScanPaths;
 use Splicewire\Beam\Tests\TestCase;
@@ -57,6 +58,7 @@ class BeamRegistryDeclarationTest extends TestCase
             BeamInstallManifest::class => 'beam.install.steps',
             BeamDoctorManifest::class => 'beam.doctor.audits',
             BeamSeedManifest::class => 'beam.seed.steps',
+            SeedingScenarioRegistry::class => 'beam.seed.scenarios',
             SchemaSources::class => 'schemas.sources',
             AuditScanPaths::class => 'beam.surgeon.scan-paths',
             FacadeConformanceScope::class => 'beam.doctor.facade-scope',
