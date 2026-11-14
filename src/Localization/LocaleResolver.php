@@ -68,6 +68,29 @@ final class LocaleResolver
         return $this->defaults(null, $recipient);
     }
 
+    /**
+     * The named delivery seam (localization 36; ruling 03 §3): resolve THIS recipient's language with no request, then
+     * run `$send` inside a {@see LocaleScope} in it. `$send` receives the locale, to pass on as the Notification's or
+     * Mailable's `->locale($locale)` so the framework scopes its own render the same way. One resolution per
+     * recipient: a send to two people calls this twice. The sender's ambient language never takes part, and the
+     * caller's locale, Number, dates and realm are restored afterwards, on a throw too.
+     *
+     *     $resolver->deliver(new DeliveryRecipient($user, workspace: $tenant), fn (string $locale) =>
+     *         $user->notify((new SomeNotification)->locale($locale)));
+     *
+     * @template T
+     *
+     * @param  mixed  $recipient  a notifiable, or a {@see DeliveryRecipient} naming the workspace the delivery concerns
+     * @param  callable(string): T  $send
+     * @return T
+     */
+    public function deliver(mixed $recipient, callable $send): mixed
+    {
+        $locale = $this->forDelivery($recipient)->locale;
+
+        return LocaleScope::run($locale, static fn () => $send($locale));
+    }
+
     /** API: a bearer token (cookie or not), or no session. Browser: a session, signed in or not. */
     public static function isApiRequest(Request $request): bool
     {
