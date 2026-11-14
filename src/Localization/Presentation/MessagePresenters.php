@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Number;
+use Illuminate\Translation\MessageSelector;
 use Splicewire\Beam\Data\MessageReferenceData;
 use Splicewire\Beam\Localization\BeamTranslator;
 
@@ -52,11 +53,6 @@ final class MessagePresenters
         return $this;
     }
 
-    public function hasAdapter(string $key): bool
-    {
-        return isset($this->adapters[$key]);
-    }
-
     /**
      * Register a known-identity presenter for a family. Presenters are asked in registration order; the first non-null
      * reference wins.
@@ -90,6 +86,15 @@ final class MessagePresenters
         if ($stored !== null) {
             return new PresentedLine($this->renderText($stored), PresentedLine::REFERENCE);
         }
+        if ($storedReference !== null) {
+            // §5: an unknown version or malformed reference keeps the safe legacy field, with a diagnostic. The log is
+            // bounded (version and key only): never the parameters, and nothing reaches the reader.
+            Log::warning('localization: a stored message reference was rejected; showing the legacy text', [
+                'family' => $family,
+                'version' => is_array($storedReference) && is_scalar($storedReference['version'] ?? null) ? $storedReference['version'] : null,
+                'key' => is_array($storedReference) && is_string($storedReference['key'] ?? null) ? mb_substr($storedReference['key'], 0, 200) : null,
+            ]);
+        }
 
         foreach ($this->identities[$family] ?? [] as $present) {
             $reference = $present($identity);
@@ -104,8 +109,9 @@ final class MessagePresenters
     private function renderText(MessageReferenceData $reference): string
     {
         $problem = $this->problemWith($reference);
+        $valid = $problem === null;
         $translator = app('translator');
-        if ($problem === null) {
+        if ($valid) {
             $exists = $translator instanceof BeamTranslator
                 ? $translator->resolve($reference->key, null, true, $translator->requestRealm()) !== null
                 : Lang::has($reference->key);
@@ -120,7 +126,8 @@ final class MessagePresenters
             }
             Log::warning('localization: a message reference could not render; showing its default', ['key' => $reference->key, 'problem' => $problem]);
 
-            return $this->fallback($reference);
+            // A valid reference whose line is missing keeps its declared units; an invalid one gets only safe scalars.
+            return $this->fallback($reference, $valid);
         }
 
         $parameters = $this->displayParameters($reference);
@@ -133,19 +140,42 @@ final class MessagePresenters
             ? $translator->getIn($translator->requestRealm(), $reference->key, $parameters)
             : __($reference->key, $parameters);
 
-        return is_string($line) ? $line : $this->fallback($reference);
+        return is_string($line) ? $line : $this->fallback($reference, true);
     }
 
-    /** The reference's own English default with its scalar parameters: production's safe fallback. */
-    private function fallback(MessageReferenceData $reference): string
+    /**
+     * Production's safe fallback: the reference's own captured English default. Its plural form is selected by the
+     * explicit count under English's rule (the default's source language). A VALID reference keeps its adapter's
+     * display units (`money:USD` stays USD); an invalid one gets only its scalar parameters, and any non-scalar member
+     * renders empty. This path never throws.
+     */
+    private function fallback(MessageReferenceData $reference, bool $valid): string
     {
+        $line = $reference->default;
+        if ($reference->count !== null) {
+            $line = (new MessageSelector)->choose($line, $reference->count, 'en');
+        }
+
         $replace = [];
-        foreach ($reference->parameters as $name => $value) {
-            $replace[$name] = $value === null ? '' : (is_bool($value) ? ($value ? 'true' : 'false') : (string) $value);
+        if ($valid) {
+            foreach ($this->displayParameters($reference) as $name => $value) {
+                $replace[$name] = is_scalar($value) ? (string) $value : '';
+            }
+        } else {
+            foreach ($reference->parameters as $name => $value) {
+                $replace[(string) $name] = match (true) {
+                    is_bool($value) => $value ? 'true' : 'false',
+                    is_scalar($value) => (string) $value,
+                    default => '',
+                };
+            }
+        }
+        if ($reference->count !== null && ! array_key_exists('count', $replace)) {
+            $replace['count'] = (string) $reference->count;
         }
         $translator = app('translator');
 
-        return $translator instanceof BeamTranslator ? $translator->present($translator->replaceIn($reference->default, $replace)) : strtr($reference->default, array_combine(
+        return $translator instanceof BeamTranslator ? $translator->present($translator->replaceIn($line, $replace)) : strtr($line, array_combine(
             array_map(static fn (string $k): string => ':'.$k, array_keys($replace)),
             array_values($replace),
         ) ?: []);
@@ -193,9 +223,30 @@ final class MessagePresenters
             $type === 'float' => is_int($value) || is_float($value),
             $type === 'bool' => is_bool($value),
             str_starts_with($type, 'money:') => is_int($value) || is_float($value),
-            $type === 'date' => is_string($value) && strtotime($value) !== false,
+            $type === 'date' => is_string($value) && self::isIsoDate($value),
             default => false,
         };
+    }
+
+    /**
+     * An ISO 8601 calendar date or date-time (optional seconds, fraction and `Z`/offset), with a real calendar day.
+     * Relative prose (`tomorrow`, `next monday`) is refused, so a stored reference means the same day on every read.
+     */
+    private static function isIsoDate(string $value): bool
+    {
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:[T ]([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?)?$/', $value, $m) !== 1) {
+            return false;
+        }
+
+        return checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+    }
+
+    /** The host's timezone policy: `app.timezone` (no person or tenant carries a timezone). */
+    private static function hostTimezone(): string
+    {
+        $timezone = config('app.timezone');
+
+        return is_string($timezone) && $timezone !== '' ? $timezone : date_default_timezone_get();
     }
 
     /**
@@ -213,7 +264,9 @@ final class MessagePresenters
             $display[$name] = match (true) {
                 $value === null => '',
                 str_starts_with($type, 'money:') => Number::currency((float) $value, in: substr($type, 6), locale: $locale),
-                $type === 'date' => Carbon::parse((string) $value)->locale($locale)->isoFormat('LL'), // @phpstan-ignore method.nonObject (locale(string) returns the instance)
+                // An instant carrying `Z` or an offset is converted to the host's timezone before its calendar day is
+                // taken; a naive value is read in the host's timezone.
+                $type === 'date' => Carbon::parse((string) $value, self::hostTimezone())->setTimezone(self::hostTimezone())->locale($locale)->isoFormat('LL'), // @phpstan-ignore method.nonObject (locale(string) returns the instance)
                 is_bool($value) => $value ? 'true' : 'false',
                 in_array($type, self::SCALARS, true) => $value,
                 default => $value,
