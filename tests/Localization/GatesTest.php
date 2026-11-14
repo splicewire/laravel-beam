@@ -213,7 +213,8 @@ describe('the audits', function (): void {
     it('measures coverage per locale, warning below full and passing at full', function (): void {
         gatesHost();
         gatesLang([]);
-        config(['beam.localization.supported' => ['en', 'es']]);
+        // B11-B6: "full" needs a complete client population too, so the host declares a valid discovered catalog.
+        config(['beam.localization.supported' => ['en', 'es'], 'beam.localization.client_catalog' => dirname(__DIR__).'/Fixtures/Localization/discovered-catalog.json']);
         $partial = app(LocalizationCoverageAudit::class)->run();
 
         $files = [];

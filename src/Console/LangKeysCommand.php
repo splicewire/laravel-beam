@@ -23,15 +23,20 @@ class LangKeysCommand extends Command
         $entries = $catalog->entries();
 
         if ($this->option('json')) {
-            $this->line((string) json_encode([
+            $this->line((string) json_encode(array_filter([
                 'population' => KeyCatalog::POPULATION,
+                // B11-B6, additive: the client population's actual input state.
+                'clientDiscovery' => $catalog->clientDiscovery(),
                 'entries' => array_map(static fn (CatalogEntry $e): array => $e->toArray(), $entries),
-            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            ], static fn ($v): bool => $v !== null), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
             return self::SUCCESS;
         }
 
         $this->line('Population: '.KeyCatalog::POPULATION);
+        if (($partial = $catalog->clientDiscoveryLine()) !== null) {
+            $this->warn($partial);
+        }
         $this->table(['key', 'English', 'source'], array_map(
             static fn (CatalogEntry $e): array => [$e->key, $e->english, $e->source.($e->derivedEnglish ? ' (English derived)' : '')],
             $entries,

@@ -89,6 +89,44 @@ final class KeyCatalog
         return $this->client?->refused() ?? [];
     }
 
+    /**
+     * The CLIENT population's actual input state (B11-B6), for exports and audits to report beside their counts: the
+     * discovery state, its path and problem, the refused namespaces, and whether the client population is PARTIAL (a
+     * missing or invalid catalog, or any refused namespace). Null where no client catalog is bound.
+     *
+     * @return array{state: string, path: string, problem: ?string, refused: array<string, string>, partial: bool}|null
+     */
+    public function clientDiscovery(): ?array
+    {
+        $discovered = $this->clientCatalog();
+        if ($discovered === null) {
+            return null;
+        }
+        $refused = $this->refusedClientNamespaces();
+
+        return [
+            'state' => $discovered->state->value,
+            'path' => $discovered->path,
+            'problem' => $discovered->problem,
+            'refused' => $refused,
+            'partial' => ! $discovered->valid() || $refused !== [],
+        ];
+    }
+
+    /** One line naming a partial client population, or null when it is complete (or none is bound). */
+    public function clientDiscoveryLine(): ?string
+    {
+        $discovery = $this->clientDiscovery();
+        if ($discovery === null || ! $discovery['partial']) {
+            return null;
+        }
+        $line = sprintf('The client population is PARTIAL: the discovered catalog at %s is %s', $discovery['path'], $discovery['state']);
+        $line .= $discovery['problem'] !== null ? ' ('.$discovery['problem'].')' : '';
+        $line .= $discovery['refused'] !== [] ? '; refused namespaces: '.implode(', ', array_keys($discovery['refused'])) : '';
+
+        return $line.'.';
+    }
+
     /** @return list<CatalogEntry> sorted by key, one entry per key */
     public function entries(): array
     {

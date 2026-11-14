@@ -49,6 +49,8 @@ class LangMissingCommand extends Command
                 'locale' => $locale,
                 'realm' => $realm,
                 'note' => $note,
+                // B11-B6, additive: the client population's actual input state.
+                'clientDiscovery' => $catalog->clientDiscovery(),
                 'missing' => array_map(static fn (CatalogEntry $e): array => ['key' => $e->key, 'english' => $e->english], $missing),
             ], static fn ($v): bool => $v !== null), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
@@ -56,6 +58,9 @@ class LangMissingCommand extends Command
         }
 
         $this->line('Population: '.KeyCatalog::POPULATION);
+        if (($partial = $catalog->clientDiscoveryLine()) !== null) {
+            $this->warn($partial);
+        }
         if ($note !== null) {
             $this->info($note);
         }

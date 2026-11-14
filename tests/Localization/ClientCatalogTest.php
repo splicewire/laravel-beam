@@ -75,7 +75,7 @@ it('keeps a hash while nothing changes, and a changed line changes it and invali
     expect(clientResolver()->resolve('es', null)->hash())->toBe($before);
 
     file_put_contents($this->lang.'/vendor/schemastud-ui/es/messages.php', "<?php return ['save' => 'Salvar', 'items' => 'un elemento|:count elementos'];");
-    app()->forgetInstance('translator');
+    // B11-B2: no test-only translator reset; the resolver refreshes the loaded groups itself.
 
     expect(LangFingerprint::translations())->not->toBe($fingerprint)
         ->and(clientResolver()->resolve('es', null)->messages['schemastud-ui::messages.save']->text)->toBe('Salvar')

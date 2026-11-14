@@ -59,9 +59,12 @@ final class LocalizationCoverageAudit implements DoctorAudit
                 $parts[] = sprintf('%d with realm %s', $total - $realmMissing, $realm);
             }
             $text = implode('; ', $parts).'. '.KeyCatalog::POPULATION;
-            $findings[] = $missing === 0
+            $export = $missing === 0 ? '' : sprintf(' Export the %d missing with `php artisan beam:lang:missing %s`.', $missing, $locale);
+            // B11-B6: a partial client population is never read as complete coverage.
+            $partial = $this->catalog->clientDiscoveryLine();
+            $findings[] = $missing === 0 && $partial === null
                 ? Finding::pass(self::CHECK, $text)
-                : Finding::warn(self::CHECK, $text.sprintf(' Export the %d missing with `php artisan beam:lang:missing %s`.', $missing, $locale));
+                : Finding::warn(self::CHECK, $text.$export.($partial === null ? '' : ' '.$partial));
         }
 
         return $findings;

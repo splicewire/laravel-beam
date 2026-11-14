@@ -193,6 +193,33 @@ final class TextNamespaces
         }
     }
 
+    /**
+     * The allocator's contested/hint decision for a package's namespace, asked WITHOUT hinting or refusing (localization
+     * 16 amend; B11-B4): null when the package may own its namespace, else why not. It reads the loader's CURRENT hint,
+     * so a hint another package placed later is seen. {@see ownerOfPackage()} makes the same two checks when it forms a
+     * derived key.
+     */
+    public function refusalFor(string $package): ?string
+    {
+        $entry = $this->packages[$package] ?? null;
+        if ($entry === null) {
+            return sprintf('[%s] is not an installed package.', $package);
+        }
+
+        $namespace = $entry['namespace'];
+        if (isset($this->contested[$namespace])) {
+            return sprintf('The translator namespace [%s] is contested by %s.', $namespace, implode(', ', $this->contested[$namespace]));
+        }
+
+        $existing = $this->translator()?->getLoader()->namespaces()[$namespace] ?? null;
+        $normal = static fn (string $path): string => rtrim(realpath($path) ?: $path, '/');
+        if ($existing !== null && $normal((string) $existing) !== $normal($entry['path'])) {
+            return sprintf('The translator namespace [%s] is hinted at %s, not at [%s]\'s lang path.', $namespace, $existing, $package);
+        }
+
+        return null;
+    }
+
     /** @return array<string, list<string>> */
     public function contested(): array
     {

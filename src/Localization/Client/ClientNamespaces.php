@@ -35,6 +35,10 @@ final class ClientNamespaces
             if ($package['sharesWith'] !== null) {
                 if ($this->namespaces->namespaceOf($package['sharesWith']) !== $namespace) {
                     $refused[$namespace] = "{$package['name']} shares [{$namespace}] with {$package['sharesWith']}, which does not own it on the PHP side.";
+                } elseif (($why = $this->namespaces->refusalFor($package['sharesWith'])) !== null) {
+                    // B11-B4: a sibling is admitted only where the single allocator would let its PHP owner have the
+                    // namespace. sharesWith never waives a contested name or a real hint collision.
+                    $refused[$namespace] = "{$package['name']} shares [{$namespace}] with {$package['sharesWith']}, but the allocator refuses it: {$why}";
                 }
 
                 continue;

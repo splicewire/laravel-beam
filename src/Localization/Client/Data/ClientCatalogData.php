@@ -30,6 +30,23 @@ final class ClientCatalogData extends Data
         public array $messages,
     ) {}
 
+    /**
+     * The wire shape keeps `messages` a map even when empty (B11-B7): `{}`, never `[]`. This is the one serialization
+     * boundary that toArray(), jsonSerialize() and a parent Data's nested transform (the bootstrap's `initial`) share.
+     *
+     * @return array<string, mixed>
+     */
+    public function transform(
+        null|\Spatie\LaravelData\Support\Transformation\TransformationContextFactory|\Spatie\LaravelData\Support\Transformation\TransformationContext $transformationContext = null,
+    ): array {
+        $transformed = parent::transform($transformationContext);
+        if (array_key_exists('messages', $transformed) && $transformed['messages'] === []) {
+            $transformed['messages'] = new \stdClass;
+        }
+
+        return $transformed;
+    }
+
     /** The catalog's content hash: sha256(JCS(this)) in hex. `messages` is always an object, even when empty. */
     public function hash(): string
     {

@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Localization\Client;
 
 use Illuminate\Http\Request;
+use Illuminate\Translation\FileLoader;
+use Illuminate\Translation\Translator;
 use Splicewire\Beam\Localization\BeamTranslator;
 use Splicewire\Beam\Localization\Client\Data\ClientCatalogAddressData;
 use Splicewire\Beam\Localization\Client\Data\ClientCatalogData;
@@ -19,6 +21,13 @@ use Splicewire\Beam\Localization\Client\Data\ClientMessageLineData;
  * **Memoized** in the cache store under ruling 02's full key: (host, collector payload digest, locale, realm,
  * translation fingerprint, config fingerprint), all from {@see LangFingerprint}. It is never a worker-lifetime
  * singleton, and a changed line, config or catalog yields a new key.
+ *
+ * Amend (B11-B2, B11-B5):
+ * - The key also carries the effective namespace admission and the loader's source mapping, so a namespace refused
+ *   after a warm build can never be served from the memo.
+ * - On a miss, a translator whose loaded groups predate the current translation fingerprint has those groups dropped
+ *   before the build (they reload lazily from the files), so a changed line is never rebuilt from stale state.
+ * - A build is stored only when the fingerprint did not move while it ran.
  */
 final class ClientCatalogResolver
 {
@@ -28,6 +37,12 @@ final class ClientCatalogResolver
 
     /** @var array<string, string>|null */
     private ?array $refused = null;
+
+    /** @var \WeakReference<object>|null the translator the admission above was made on (its hints live there) */
+    private ?\WeakReference $admittedOn = null;
+
+    /** @var \WeakMap<Translator, string>|null the translation fingerprint each translator instance last loaded under */
+    private static ?\WeakMap $loadedUnder = null;
 
     public function __construct(private ClientNamespaces $namespaces) {}
 
@@ -47,8 +62,14 @@ final class ClientCatalogResolver
     public function refused(): array
     {
         $discovered = $this->discovered();
+        // Admission hints the translator it runs on, so a different translator instance is admitted again.
+        $translator = app('translator');
+        if ($this->refused === null || $this->admittedOn?->get() !== $translator) {
+            $this->refused = $discovered->valid() ? $this->namespaces->admit($discovered) : [];
+            $this->admittedOn = \WeakReference::create($translator);
+        }
 
-        return $this->refused ??= $discovered->valid() ? $this->namespaces->admit($discovered) : [];
+        return $this->refused;
     }
 
     /** @return array<string, string> the admitted client keys and their English defaults, sorted by key */
@@ -70,13 +91,20 @@ final class ClientCatalogResolver
     public function resolve(string $locale, ?string $realm): ClientCatalogData
     {
         $discovered = $this->discovered();
-        $this->refused();
+        $refused = $this->refused();
+        $fingerprint = LangFingerprint::translations();
         $key = 'beam.client-catalog:'.hash('sha256', implode("\0", [
             self::host(), $discovered->payloadDigest ?? $discovered->state->value, $locale, $realm ?? '',
-            LangFingerprint::translations(), LangFingerprint::config(),
+            $fingerprint, LangFingerprint::config(), self::admission($refused),
         ]));
-        $ttl = (int) config('beam.localization.client_catalog_ttl', 86400);
-        $stored = cache()->remember($key, $ttl, fn (): array => $this->build($locale, $realm));
+        $stored = cache()->get($key);
+        if (! is_array($stored)) {
+            self::refreshTranslator($fingerprint);
+            $stored = $this->build($locale, $realm);
+            if (LangFingerprint::translations() === $fingerprint) {
+                cache()->put($key, $stored, (int) config('beam.localization.client_catalog_ttl', 86400));
+            }
+        }
 
         return new ClientCatalogData(
             version: 1,
@@ -129,6 +157,36 @@ final class ClientCatalogResolver
         }
 
         return ['locale' => $locale, 'realm' => $realm, 'direction' => self::direction($locale), 'messages' => $messages];
+    }
+
+    /**
+     * The effective admission identity: the refused namespaces, and the loader's namespace hints, base paths and JSON
+     * paths exactly as configured (a hint to a missing directory included), in order.
+     *
+     * @param  array<string, string>  $refused
+     */
+    private static function admission(array $refused): string
+    {
+        $loader = app('translator')->getLoader();
+
+        return hash('sha256', json_encode([
+            'refused' => array_keys($refused),
+            'hints' => $loader instanceof FileLoader ? $loader->namespaces() : [],
+            'paths' => $loader instanceof FileLoader ? $loader->paths() : [],
+            'json' => $loader instanceof FileLoader ? $loader->jsonPaths() : [],
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+    }
+
+    /** Drop the translator's loaded groups when they were loaded under another translation fingerprint (B11-B2). */
+    private static function refreshTranslator(string $fingerprint): void
+    {
+        /** @var Translator $translator */
+        $translator = app('translator');
+        self::$loadedUnder ??= new \WeakMap;
+        if ((self::$loadedUnder[$translator] ?? null) !== $fingerprint) {
+            $translator->setLoaded([]);
+            self::$loadedUnder[$translator] = $fingerprint;
+        }
     }
 
     private static function host(): string
