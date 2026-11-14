@@ -10,8 +10,8 @@ excerpt: How each Beam package adds its seeder to splicewire:beam:seed, and how 
 `beam.seed.steps` is the list of seeders `splicewire:beam:seed` runs. Every Beam package that ships
 seed data registers its seeder here from its own service provider, so a host's `DatabaseSeeder`
 calls one command instead of naming each package's seeder by class. Each entry is a `SeedStep`,
-filed under the package's Composer name. It names the seeder class, an order, and an optional config
-gate.
+filed under the package's Composer name. It names the seeder class, an order, the memberships a
+[Seeding Scenario](beam.seed.scenarios) selects it by, and an optional config gate.
 
 {/* registry-facts:start — generated from the #[IsRegistry] declaration; regenerate it, do not edit between these markers. */}
 
@@ -37,7 +37,7 @@ $this->app->make(BeamSeedManifest::class)->register(
     package: 'splicewire/laravel-beam-tenancy',
     seederClass: DemoTenantSeeder::class,
     order: 20,
-    configGate: 'beam.tenancy.demo.seed_tenant',
+    memberships: SeedStep::DEMO,
 );
 ```
 
@@ -46,12 +46,24 @@ steps with the same order run in registration order. That lets the foundational 
 the data that builds on them: [Splicewire](https://splicewire.com/) seeds its system account at
 `10`, before tenancy's demo tenant at `20`.
 
+## Memberships
+
+`memberships` says what kind of data the step writes. Leave it out and the step is a `baseline`
+step, which every [Seeding Scenario](beam.seed.scenarios) runs. A step that fabricates demo subjects
+(users, teams, a tenant) says `SeedStep::DEMO`, and runs only under a scenario that includes `demo`:
+`local`, out of the box. A step never reads the environment itself. Which environment gets demo data
+is the scenario's decision, and a host changes it in `config/beam/seed.php`.
+
+The command reports a step the scenario leaves out as **left out by scenario**, apart from a gated
+skip.
+
 ## Config gates
 
 `configGate` names a config key that must be truthy for the step to run. Leave it out and the step
-always runs. A demo seeder can register unconditionally and still run only where its gate is on,
-such as outside production. The command reports a gated step as **skipped**, with the key that was
-off, so "nothing registered" and "registered but switched off" are distinguishable in its output.
+always runs. Use a gate for "this step cannot run here", such as an estate this host declared
+absent. Don't use it to choose which environment gets demo data; a membership does that. The command
+reports a gated step as **skipped**, with the key that was off, so "nothing registered" and
+"registered but switched off" are distinguishable in its output.
 A seeder that throws or exits non-zero is a failure, not a skip. The rest of the steps still
 run, the data they seeded stays, and the command exits non-zero unless you pass
 `--tolerate-failures`. To keep a seeder from running, use its gate.
@@ -64,8 +76,9 @@ that boots twice never seeds twice.
 
 ## Related registries
 
+- [`beam.seed.scenarios`](beam.seed.scenarios): which of these steps a run takes.
 - [`beam.install.steps`](beam.install.steps): `splicewire:beam:install` runs this seed pass at the
-  end unless you pass `--no-seed`.
+  end unless you pass `--no-seed`, and passes `--scenario` through.
 - [`beam.doctor.audits`](beam.doctor.audits): the doctor-side twin, built the same way.
 
 ## Going deeper

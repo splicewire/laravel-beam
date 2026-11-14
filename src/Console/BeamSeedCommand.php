@@ -3,7 +3,9 @@
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
+use InvalidArgumentException;
 use Splicewire\Beam\Seed\BeamSeedManifest;
+use Splicewire\Beam\Seed\SeedingScenarioRegistry;
 use Splicewire\Beam\Seed\SeedStep;
 use Splicewire\Beam\Write\AsSystemWriter;
 
@@ -41,6 +43,7 @@ class BeamSeedCommand extends Command
     use AsSystemWriter;
 
     protected $signature = 'splicewire:beam:seed
+        {--scenario= : The Seeding Scenario to run (beam.seed.scenarios); else beam.seed.scenario, then the environment\'s, then baseline}
         {--force : Run seeders even in production (passed through to db:seed; splicewire:beam:install spells this --allow-production-migrate)}
         {--tolerate-failures : Exit 0 even when a seeder failed (report only — the pre-ticket-46 behaviour)}';
 
@@ -55,8 +58,29 @@ class BeamSeedCommand extends Command
     /** @var list<string> */
     private array $seeded = [];
 
-    public function handle(BeamSeedManifest $manifest): int
+    /** @var list<string> steps the selected Seeding Scenario left out (not gate skips) */
+    private array $leftOut = [];
+
+    public function handle(BeamSeedManifest $manifest, SeedingScenarioRegistry $scenarios): int
     {
+        // Artisan keeps one instance of a command per application, so a second run in the same process (a test, or
+        // install calling seed) would otherwise count on top of the first.
+        $this->failures = $this->skipped = $this->seeded = $this->leftOut = [];
+
+        try {
+            $selected = $scenarios->select($this->scenarioOption(), (string) $this->getLaravel()->environment());
+        } catch (InvalidArgumentException $e) {
+            // An unknown name given explicitly is an error, never a quiet fall to `baseline`: seeding the wrong set
+            // and reporting success is the failure this command exists to rule out.
+            $this->error('splicewire:beam:seed — '.$e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        // The first line says what was chosen and why, so a log of any run answers "why did (not) the demo team
+        // appear here" without re-deriving the ladder.
+        $this->line("splicewire:beam:seed — scenario {$selected->scenario->name} (selected by {$selected->rung}).");
+
         $steps = $manifest->steps();
 
         if ($steps === []) {
@@ -65,13 +89,31 @@ class BeamSeedCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->asSystemWriter(function () use ($steps): void {
+        $this->asSystemWriter(function () use ($steps, $selected): void {
             foreach ($steps as $step) {
+                $reason = $selected->scenario->leftOutBecause($step);
+
+                if ($reason !== null) {
+                    // Reported apart from a gated skip: a scenario choosing not to run a step is policy; a gate
+                    // being off is "this step cannot run here".
+                    $this->line("splicewire:beam:seed → {$step->package}: left out by scenario {$selected->scenario->name} ({$reason})");
+                    $this->leftOut[] = $step->seeder;
+
+                    continue;
+                }
+
                 $this->runStep($step);
             }
         });
 
         return $this->report();
+    }
+
+    private function scenarioOption(): ?string
+    {
+        $option = $this->option('scenario');
+
+        return is_string($option) && $option !== '' ? $option : null;
     }
 
     /**
@@ -84,10 +126,11 @@ class BeamSeedCommand extends Command
     {
         $this->newLine();
         $this->line(sprintf(
-            'splicewire:beam:seed — %d seeded, %d skipped (gate off), %d FAILED.',
+            'splicewire:beam:seed — %d seeded, %d skipped (gate off), %d FAILED, %d left out by the scenario.',
             count($this->seeded),
             count($this->skipped),
             count($this->failures),
+            count($this->leftOut),
         ));
 
         if ($this->failures === []) {

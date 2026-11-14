@@ -256,6 +256,9 @@ use Splicewire\Beam\Schema\SchemaLadderMigrator;
 use Splicewire\Beam\Schema\SchemaRegistryRevision;
 use Splicewire\Beam\Schema\SchemaSources;
 use Splicewire\Beam\Seed\BeamSeedManifest;
+use Splicewire\Beam\Seed\SeedingScenario;
+use Splicewire\Beam\Seed\SeedingScenarioRegistry;
+use Splicewire\Beam\Seed\SeedStep;
 use Splicewire\Beam\Source\Contracts\ForeignSourceProjector;
 use Splicewire\Beam\Source\LadderForeignSourceProjector;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
@@ -379,7 +382,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             // caused by a file named `webhooks.php`; see config/webhooks.php's own note.
             // `beam/localization.php` → `beam.localization.*` (localization 06, ruling 03): the languages a host ships
             // and how a request's language resolves, declared as the `beam.localization` Config Section.
-            ->hasConfigFile(['beam/core', 'beam/client', 'beam/brand', 'beam/localization', 'webhooks'])
+            // `beam/seed.php` → `beam.seed.*` (seeding-scenarios 01): the host's Seeding Scenario and its overrides.
+            ->hasConfigFile(['beam/core', 'beam/client', 'beam/brand', 'beam/localization', 'beam/seed', 'webhooks'])
             // beam's base tables ship as PUBLISH-ONLY spatie/laravel-package-tools stubs — the idiomatic
             // pattern for a PackageServiceProvider. `runsMigrations` stays FALSE (the package-tools
             // default), so beam-core does NOT auto-load these at runtime — `vendor:publish
@@ -1020,6 +1024,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // seeds the whole family's package-owned data. beam-core never learns a consumer's name; each step
         // may carry a config gate so a demo-only seeder fires only where its gate is on.
         $this->app->singleton(BeamSeedManifest::class);
+
+        // Its twin, the Seeding Scenarios that choose which of those steps a run takes (seeding-scenarios 01).
+        // beam-core ships the two every host has: `baseline`, and `local`, the one environment that gets demo
+        // data by default. Any other environment gets `baseline` unless its host names a scenario for it
+        // (owner ruling 5); a host's `config/beam/seed.php` overrides both.
+        $this->app->singleton(SeedingScenarioRegistry::class, static fn (): SeedingScenarioRegistry => (new SeedingScenarioRegistry)
+            ->register(SeedStep::BASELINE, new SeedingScenario(SeedStep::BASELINE), by: 'splicewire/laravel-beam')
+            ->register('local', new SeedingScenario('local', include: [SeedStep::DEMO]), by: 'splicewire/laravel-beam'));
 
         // The index of indexes has MOVED to `Rushing\Popcorn\Registries\RegistryIndex`, bound by
         // `laravel-popcorn`'s own provider (registry-kernel tickets 04, 20, 21). Beam does not bind it: the
