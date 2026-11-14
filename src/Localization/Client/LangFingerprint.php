@@ -54,7 +54,10 @@ final class LangFingerprint
         }
         ksort($lines);
 
-        $rows = ['sources'."\0".implode("\0", $directories)];
+        // The EFFECTIVE source list, ordered and NOT de-duplicated, per role: re-adding a path the loader already has moves
+        // its precedence (FileLoader merges in list order), so the same directory set in another order is another answer
+        // (B11 confirmation). The content rows below scan each existing directory once.
+        $rows = ['sources'."\0".json_encode(self::sources(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)];
         foreach ($lines as $path => $hash) {
             $rows[] = $path."\0".$hash;
         }
@@ -69,6 +72,25 @@ final class LangFingerprint
             'realms' => self::plain(config('beam.core.realms', [])),
             'localization' => self::plain(config('beam.localization', [])),
         ]);
+    }
+
+    /**
+     * Every source the loader reads, by role, in the loader's own order, duplicates kept, as configured (a path to a
+     * missing directory included, since creating it changes the answer).
+     *
+     * @return array{lang: string, base: string, paths: list<mixed>, hints: array<string, mixed>, json: list<mixed>}
+     */
+    private static function sources(): array
+    {
+        $loader = app('translator')->getLoader();
+
+        return [
+            'lang' => app()->langPath(),
+            'base' => base_path('lang'),
+            'paths' => $loader instanceof FileLoader ? array_values($loader->paths()) : [],
+            'hints' => $loader instanceof FileLoader ? $loader->namespaces() : [],
+            'json' => $loader instanceof FileLoader ? array_values($loader->jsonPaths()) : [],
+        ];
     }
 
     /** @return list<string> */
