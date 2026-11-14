@@ -77,7 +77,8 @@ class BeamInstallCommand extends Command
         {--travel= : Shift every migration THIS RUN publishes by a relative amount ("-1 year", "+2 days"), keeping their order. Governs fresh/reset databases only; absolute dates are refused}
         {--schema-authority= : The origin that serves this host\'s schemas (writes SCHEMA_BASE_URI to .env). "false" opts out of versioned $ids; unset ⇒ asked interactively when the schema belt is installed and the authority is undeclared}
         {--skip-preflight : Skip the convergence preflight and let migrate meet any shape conflict one table at a time}
-        {--no-seed : Skip the package-registered seed pass (splicewire:beam:seed) at the end of the install}';
+        {--no-seed : Skip the package-registered seed pass (splicewire:beam:seed) at the end of the install}
+        {--scenario= : The Seeding Scenario the seed pass runs (passed through to splicewire:beam:seed --scenario)}';
 
     protected $description = 'Interactively configure + install the whole beam stack (core-first) from the self-registration manifest.';
 
@@ -829,7 +830,13 @@ class BeamInstallCommand extends Command
             // (a failed demo seeder should not strand a host mid-install); it just stops claiming success.
             // The seed pass takes the same production-write waiver as `migrate` above, never `--force`
             // (beam-facade 190): `splicewire:beam:seed --force` is `db:seed --force`, a production waiver.
-            $code = $this->call('splicewire:beam:seed', $this->productionWriteWaiver());
+            // `--scenario` passes straight through (seeding-scenarios 01), so an installer chooses the seed set the
+            // same way a later `splicewire:beam:seed` run would; unset, the seed command climbs its own ladder.
+            $scenario = $this->option('scenario');
+            $code = $this->call('splicewire:beam:seed', array_merge(
+                $this->productionWriteWaiver(),
+                is_string($scenario) && $scenario !== '' ? ['--scenario' => $scenario] : [],
+            ));
 
             if ($code !== self::SUCCESS) {
                 $this->seedingFailed = true;

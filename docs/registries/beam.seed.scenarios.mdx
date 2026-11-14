@@ -1,0 +1,100 @@
+---
+title: Seeding scenarios
+segment: beam.seed.scenarios
+nav_order: 4
+excerpt: Choose which seed steps splicewire:beam:seed runs on a host, by name, without editing a seeder.
+---
+
+# Seeding scenarios
+
+`beam.seed.scenarios` holds the named **Seeding Scenarios** `splicewire:beam:seed` chooses between. A scenario
+is a name plus `include` and `exclude` lists. Each list names step coordinates
+(`splicewire/laravel-beam-accounts`) or memberships (`demo`); a step's memberships are set when it is
+[registered](beam.seed.steps#memberships).
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration; regenerate it, do not edit between these markers. */}
+
+- **Root:** `beam.seed.scenarios`
+- **Entries:** `Splicewire\Beam\Seed\SeedingScenario`
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
+- **Population:** Optional — an empty registry is normal
+- **Order:** `4` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Seed\SeedingScenarioRegistry`
+
+{/* registry-facts:end */}
+
+<RegistryRegistrants root="beam.seed.scenarios" />
+
+## What a scenario runs
+
+- Every scenario runs the `baseline` steps. You can leave out one baseline step only by naming its
+  coordinate in `exclude`. Naming the `baseline` membership in `exclude` is an error.
+- Any other step runs when its coordinate or one of its memberships is in `include`, and none of its
+  memberships is in `exclude`.
+
+Beam ships two scenarios:
+
+| name | runs |
+|---|---|
+| `baseline` | baseline steps only |
+| `local` | baseline steps and `demo` steps |
+
+## Which scenario a run uses
+
+The registry declares its selection ladder (`rungs()`). The first rung that answers wins:
+
+1. `--scenario=` on `splicewire:beam:seed`, or on `splicewire:beam:install`, which passes it through.
+2. `beam.seed.scenario`, from `BEAM_SEED_SCENARIO`.
+3. The scenario named after `app()->environment()`, if there is one.
+4. `baseline`.
+
+A name given on rung 1 or 2 that nothing defines is an error; the command exits non-zero and seeds
+nothing. An environment with no scenario of its name gets `baseline`. So `production`, `staging` and
+`testing` get no demo data unless a scenario says otherwise.
+
+The command's first line names the scenario and the rung that chose it. A step the scenario leaves
+out is reported as **left out by scenario**, separately from a step skipped because its config gate
+is off.
+
+## Overriding a scenario on your host
+
+`config/beam/seed.php`'s `scenarios` key overrides a package's scenario of the same name wholesale,
+and can add new names:
+
+```php
+return [
+    'scenario' => env('BEAM_SEED_SCENARIO'),
+
+    'scenarios' => [
+        // Demo data on staging too.
+        'staging' => ['include' => ['demo']],
+
+        // Local demo data, without the demo tenant.
+        'local' => ['include' => ['demo'], 'exclude' => ['splicewire/laravel-beam-tenancy']],
+    ],
+];
+```
+
+## Registering a scenario from a package
+
+From your provider:
+
+```php
+use Splicewire\Beam\Seed\SeedingScenario;
+use Splicewire\Beam\Seed\SeedingScenarioRegistry;
+
+$this->app->make(SeedingScenarioRegistry::class)
+    ->register('preview', new SeedingScenario('preview', include: ['demo']));
+```
+
+A host's scenario of the same name still wins.
+
+## Related registries
+
+- [`beam.seed.steps`](beam.seed.steps): the steps a scenario chooses from.
+
+## Going deeper
+
+The source is
+[`SeedingScenarioRegistry`](https://github.com/splicewire/laravel-beam/blob/main/src/Seed/SeedingScenarioRegistry.php)
+and [`SeedingScenario`](https://github.com/splicewire/laravel-beam/blob/main/src/Seed/SeedingScenario.php).
