@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Localization\Concerns;
 
+use Illuminate\Container\Container;
 use LogicException;
 use ReflectionEnumBackedCase;
 use Splicewire\Beam\Localization\Attributes\Message;
@@ -53,10 +54,14 @@ trait IsCodedError
      */
     public function message(array $params = [], ?string $locale = null, ?string $realm = null): string
     {
-        $translator = app('translator');
-        $key = $this->translationKey();
+        // Where no translator is bound (a bare container: a pure unit test, a diagnostic path outside a booted app), the
+        // declared English stands with its parameters, as 21's last-resort encoder does. Nothing is resolved from the
+        // container then (localization 23, the beam-ux tots legs; coord-lead 01:04Z).
+        $container = Container::getInstance();
+        $translator = $container->bound('translator') ? $container->make('translator') : null;
 
         if ($translator instanceof BeamTranslator) {
+            $key = $this->translationKey();
             $resolved = $key === null
                 ? null
                 : $translator->resolve($key, $locale, true, $realm ?? $translator->requestRealm());
