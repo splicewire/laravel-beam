@@ -70,7 +70,8 @@ final class LocaleResolver
 
     /**
      * The named delivery seam (localization 36; ruling 03 §3): resolve THIS recipient's language with no request, then
-     * run `$send` inside a {@see LocaleScope} in it. `$send` receives the locale, to pass on as the Notification's or
+     * run `$send` inside a {@see LocaleScope} in it AND in the delivery's own realm: the {@see DeliveryRecipient}'s
+     * explicit realm, else the base (null). It never inherits the sender's realm (range review B12-1). `$send` receives the locale, to pass on as the Notification's or
      * Mailable's `->locale($locale)` so the framework scopes its own render the same way. One resolution per
      * recipient: a send to two people calls this twice. The sender's ambient language never takes part, and the
      * caller's locale, Number, dates and realm are restored afterwards, on a throw too.
@@ -87,8 +88,9 @@ final class LocaleResolver
     public function deliver(mixed $recipient, callable $send): mixed
     {
         $locale = $this->forDelivery($recipient)->locale;
+        $realm = $recipient instanceof DeliveryRecipient ? $recipient->realm : null;
 
-        return LocaleScope::run($locale, static fn () => $send($locale));
+        return LocaleScope::runIn($locale, $realm, static fn () => $send($locale));
     }
 
     /** API: a bearer token (cookie or not), or no session. Browser: a session, signed in or not. */

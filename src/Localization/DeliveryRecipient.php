@@ -15,12 +15,15 @@ namespace Splicewire\Beam\Localization;
  * - `notifiable`: the recipient (a notifiable model, an anonymous mail route, or null).
  * - `workspace`: the workspace the delivery concerns (for example the invitation's team or tenant), or null for the
  *   bootstrapped delivery context.
+ * - `realm`: the realm the delivery renders in, explicitly (ruling 03 §3: "carry an explicit realm or null/base"). Null
+ *   is the base rung. A delivery NEVER inherits the sender's realm (range review B12-1).
  */
 final readonly class DeliveryRecipient
 {
     public function __construct(
         public mixed $notifiable,
         public mixed $workspace = null,
+        public ?string $realm = null,
     ) {}
 
     /** The bare recipient, whether or not it was wrapped. */

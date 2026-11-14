@@ -164,3 +164,23 @@ it('delivers to two recipients and survives an exception in one worker, restorin
         ->and(app(LocalizationContext::class)->realm())->toBe([false, null])
         ->and(Number::defaultCurrency())->toBe('EUR');
 });
+
+it('enters the delivery\'s own realm, explicit or base, never the sender\'s, and restores the sender on success and on a throw (B12-1)', function (): void {
+    $resolver = app(LocaleResolver::class);
+    $realm = fn (): array => app(LocalizationContext::class)->realm();
+
+    [$base, $declared, $after] = LocaleScope::runIn('es', 'operator', function () use ($resolver, $realm): array {
+        $base = $resolver->deliver(new DeliveryPerson('ana', 'de'), fn (): array => $realm());
+        $declared = $resolver->deliver(new DeliveryRecipient(new DeliveryPerson('ana', 'de'), realm: 'tenant'), fn (): array => $realm());
+        try {
+            $resolver->deliver(new DeliveryRecipient(new DeliveryPerson('ana', 'de')), fn () => throw new RuntimeException('boom'));
+        } catch (RuntimeException) {
+        }
+
+        return [$base, $declared, [$realm(), app()->getLocale()]];
+    });
+
+    expect($base)->toBe([true, null], 'an undeclared delivery renders on the base rung')
+        ->and($declared)->toBe([true, 'tenant'], 'a declared delivery realm is entered')
+        ->and($after)->toBe([[true, 'operator'], 'es'], 'the sender\'s realm and locale are restored after a throw');
+});
