@@ -17,7 +17,8 @@ namespace Splicewire\Beam\Localization\Client;
 final class DiscoveredCatalog
 {
     /** The collector's reserved derived groups (messages/bin/collect.mjs validItem), mirrored for admission parity. */
-    private const RESERVED_GROUPS = ['resources', 'data', 'enums', 'actions', 'nav', 'groups'];
+    // The derived (beam-reserved) first groups; the same list as schemastud's collect.mjs (47810c9e added realms).
+    private const RESERVED_GROUPS = ['resources', 'data', 'enums', 'actions', 'nav', 'groups', 'realms'];
 
     /**
      * @param  list<array{name: string, namespace: string, sharesWith: ?string, catalogDigest: string}>  $packages

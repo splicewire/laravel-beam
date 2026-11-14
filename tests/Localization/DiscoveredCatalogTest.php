@@ -88,3 +88,24 @@ it('refuses JSON the bridge never admits (a duplicate key), whatever its digest'
 
     expect(DiscoveredCatalog::read($path)->state)->toBe(DiscoveryState::Invalid);
 });
+
+/*
+ * The PHP twin of schemastud's collect.mjs 47810c9e: `realms` is a derived (beam-reserved) first group, like resources,
+ * data, enums, actions, nav and groups. A package or host key starting there is refused; `realms` as a later segment
+ * (`messages.realms`) is ordinary.
+ */
+it('refuses a package or host key whose first group is the reserved realms', function (string $key): void {
+    $catalog = DiscoveredCatalog::read(discoveredVariant(function (array &$d) use ($key): void {
+        $d['payload']['messages'][$key] = ['default' => 'X', 'owner' => 'p'];
+    }));
+
+    expect($catalog->state)->toBe(DiscoveryState::Invalid)->and($catalog->problem)->toContain($key);
+})->with(['package key' => ['frame::realms.operator.label'], 'host key' => ['realms.operator.label']]);
+
+it('keeps realms valid as a later segment: messages.realms is an ordinary key', function (string $key): void {
+    $catalog = DiscoveredCatalog::read(discoveredVariant(function (array &$d) use ($key): void {
+        $d['payload']['messages'][$key] = ['default' => 'Realms', 'owner' => 'p'];
+    }));
+
+    expect($catalog->state)->toBe(DiscoveryState::Valid)->and($catalog->defaults)->toHaveKey($key);
+})->with(['package control' => ['frame::messages.realms'], 'host control' => ['messages.realms']]);
