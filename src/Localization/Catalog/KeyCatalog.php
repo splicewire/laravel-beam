@@ -42,10 +42,12 @@ use Throwable;
 final class KeyCatalog
 {
     /** What every command and audit over this catalog read (ticket 12, done-when: each says its population). */
-    public const POPULATION = 'PHP-emitted keys only: framed resources and their actions, Data classes and enums reachable '
-        .'from a particle, coded-error enums in family source, realm labels, nav section labels, beam\'s brand copy, and '
-        .'the explicit keys in family and host lang/en files. Client keys join with localization 16; nav page titles '
-        .'with their emitters, and group names when something emits them.';
+    public const POPULATION = 'Two populations. PHP-emitted: framed resources and their actions, Data classes and enums '
+        .'reachable from a particle, coded-error enums in family source, realm labels, nav section labels, beam\'s brand copy, '
+        .'and the explicit keys in family and host lang/en files. CLIENT (localization 16): every admitted key of the host\'s '
+        .'discovered client catalog (resources/beam/messages.json) with its English default, JS-only packages included; a '
+        .'missing or invalid catalog is reported, never counted as complete. Nav page titles join with their emitters, and '
+        .'group names when something emits them.';
 
     /**
      * The groups whose keys are derived from declarations, never written by hand (ADR-0244). `realms` joined in
@@ -72,7 +74,20 @@ final class KeyCatalog
         private TextNamespaces $namespaces,
         private FrameText $frameText,
         private string $hostLangPath,
+        private ?\Splicewire\Beam\Localization\Client\ClientCatalogResolver $client = null,
     ) {}
+
+    /** The discovered client catalog behind the CLIENT population (localization 16), or null where none is bound. */
+    public function clientCatalog(): ?\Splicewire\Beam\Localization\Client\DiscoveredCatalog
+    {
+        return $this->client?->discovered();
+    }
+
+    /** @return array<string, string> client namespaces refused admission (ruling 01 §3), with why */
+    public function refusedClientNamespaces(): array
+    {
+        return $this->client?->refused() ?? [];
+    }
 
     /** @return list<CatalogEntry> sorted by key, one entry per key */
     public function entries(): array
@@ -85,7 +100,7 @@ final class KeyCatalog
         $this->columnEqualsTitle = [];
         $byKey = [];
         $defaults = [];
-        foreach ([...$this->resourceEntries(), ...$this->schemaEntries(), ...$this->codedErrorEntries(), ...$this->shellEntries(), ...$this->explicitEntries()] as $entry) {
+        foreach ([...$this->resourceEntries(), ...$this->schemaEntries(), ...$this->codedErrorEntries(), ...$this->shellEntries(), ...$this->explicitEntries(), ...$this->clientEntries()] as $entry) {
             $byKey[$entry->key] ??= $entry;
             $defaults[$entry->key][$entry->english] = $entry->origin;
         }
@@ -352,6 +367,27 @@ final class KeyCatalog
                     }
                 }
             }
+        }
+
+        return $entries;
+    }
+
+    /**
+     * The CLIENT population (localization 16; ruling 02 §3): each admitted key of the discovered client catalog with its
+     * English default. A JS-only package has equal standing. Empty only when the catalog is missing or invalid, which
+     * {@see clientCatalog()} reports.
+     *
+     * @return list<CatalogEntry>
+     */
+    private function clientEntries(): array
+    {
+        if ($this->client === null || ! $this->client->discovered()->valid()) {
+            return [];
+        }
+        $owners = $this->client->discovered()->defaults;
+        $entries = [];
+        foreach ($this->client->defaults() as $key => $english) {
+            $entries[] = new CatalogEntry($key, $english, 'client', 'client catalog: '.$owners[$key]['owner']);
         }
 
         return $entries;

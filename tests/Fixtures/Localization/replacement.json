@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "line": ":name / :NAME / :Name",
+      "parameters": { "name": "ada" },
+      "expected": "ada / ADA / Ada"
+    },
+    {
+      "line": ":name",
+      "parameters": { "name": ":countries", "countries": "places" },
+      "expected": ":countries"
+    },
+    {
+      "line": ":count / :countries",
+      "parameters": { "count": 2, "countries": "places" },
+      "expected": "2 / places"
+    },
+    {
+      "line": ":name",
+      "parameters": { "name": "a|b" },
+      "expected": "a|b"
+    },
+    {
+      "line": ":nil/:no/:yes",
+      "parameters": { "nil": null, "no": false, "yes": true },
+      "expected": "//1"
+    }
+  ]
+}

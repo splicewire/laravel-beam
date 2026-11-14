@@ -43,4 +43,16 @@ return [
     // its declaration and never reaches this.
     'throw_on_missing_key' => null,
 
+    // The client catalog (localization 16; ruling 02 §3–§4). It's the file `schemastud-messages collect --out
+    // resources/beam/messages.json --write` writes; beam reads it, validates its digest, and serves the resolved
+    // catalog at GET beam/localization/catalog/{locale}/{realm?}.
+    'client_catalog' => 'resources/beam/messages.json',
+
+    // Seconds a resolved catalog stays memoized. The memo key already includes the catalog digest and the content
+    // fingerprints of every lang file and the realm config, so a change never waits for this to expire.
+    'client_catalog_ttl' => 86400,
+
+    // The catalog endpoint's middleware: the host's own authorization for its beam routes (no new permission surface).
+    'client_catalog_middleware' => ['web'],
+
 ];

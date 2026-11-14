@@ -24,7 +24,7 @@ uses(TestCase::class);
 
 /*
  * localization 12 — the gates. The key catalog, the two commands and each doctor audit, with one fixture each fails
- * and one it passes; every command and audit names the population it read (PHP-emitted keys only, until 16).
+ * and one it passes; every command and audit names the population it read (two populations since 16: PHP-emitted and CLIENT).
  */
 
 function gatesTmp(): string
@@ -124,7 +124,7 @@ describe('the commands', function (): void {
         $json = json_decode(Artisan::output(), true);
 
         expect($json['population'])->toBe(KeyCatalog::POPULATION)
-            ->and($json['population'])->toContain('PHP-emitted keys only')
+            ->and($json['population'])->toContain('Two populations')->toContain('CLIENT (localization 16)')
             ->and(array_column($json['entries'], 'english', 'key'))->toHaveKey('beam::resources.reminders.label', 'Reminders');
     });
 
@@ -203,7 +203,7 @@ describe('the audits', function (): void {
 
         expect(statuses($clean, LocalizationLangFileAudit::REALM))->toBe(['pass'])
             ->and(statuses($clean, LocalizationLangFileAudit::UNDERIVED))->toBe(['pass'])
-            ->and(details($clean))->toContain('PHP-emitted keys only')
+            ->and(details($clean))->toContain('PHP-emitted and CLIENT keys')
             ->and(statuses($dirty, LocalizationLangFileAudit::REALM))->toBe(['warn'])
             ->and(details($dirty))->toContain('beam::messages.only_here')
             ->and(statuses($dirty, LocalizationLangFileAudit::UNDERIVED))->toBe(['warn'])
@@ -232,7 +232,7 @@ describe('the audits', function (): void {
         expect(statuses($partial, LocalizationCoverageAudit::CHECK))->toBe(['warn'])
             ->and(details($partial))->toContain('beam:lang:missing es')
             ->and(statuses($full, LocalizationCoverageAudit::CHECK))->toBe(['pass'])
-            ->and(details($full))->toContain('PHP-emitted keys only')
+            ->and(details($full))->toContain('Two populations')
             ->and(statuses($none, LocalizationCoverageAudit::CHECK))->toBe(['inconclusive']);
     });
 

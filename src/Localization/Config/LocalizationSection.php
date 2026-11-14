@@ -21,6 +21,7 @@ class LocalizationSection extends ConfigSection
 {
     /**
      * @param  list<string>|null  $supported
+     * @param  list<string>  $client_catalog_middleware
      */
     public function __construct(
         #[Title('Supported languages'), Description('Canonical locale tags (es-MX) this host ships. Negotiation only ever chooses one of these. Null: app.locale alone.')]
@@ -50,5 +51,17 @@ class LocalizationSection extends ConfigSection
         #[Title('Throw on a missing key'), Description('Whether a namespaced key with no line throws instead of rendering the key. Null: throw while unit tests run, never otherwise.')]
         #[ConfigKey(ceiling: ConfigTier::Host, effect: ConfigEffect::Deploy)]
         public ?bool $throw_on_missing_key,
+
+        #[Title('Discovered client catalog'), Description('Where the host carries the client catalog that schemastud-messages collect writes (relative to the app root). Localization 16.')]
+        #[ConfigKey(ceiling: ConfigTier::Host, effect: ConfigEffect::Deploy)]
+        public string $client_catalog,
+
+        #[Title('Client catalog memo lifetime'), Description('Seconds a resolved client catalog stays memoized. Its key already changes with every line, config or catalog change.')]
+        #[ConfigKey(ceiling: ConfigTier::Host, effect: ConfigEffect::Deploy)]
+        public int $client_catalog_ttl,
+
+        #[Title('Client catalog route middleware'), Description('The middleware the catalog endpoint runs under: the host\'s own authorization for its beam routes.')]
+        #[ConfigKey(ceiling: ConfigTier::Host, effect: ConfigEffect::Deploy)]
+        public array $client_catalog_middleware,
     ) {}
 }

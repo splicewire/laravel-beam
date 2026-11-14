@@ -24,7 +24,7 @@ final class LocalizationLangFileAudit implements DoctorAudit
 
     public const UNDERIVED = 'localization.underived-key';
 
-    public const POPULATION = 'PHP-emitted keys only (client keys join with localization 16): every line in the host\'s '
+    public const POPULATION = 'PHP-emitted and CLIENT keys (localization 16: the discovered catalog\'s, JS-only packages included): every line in the host\'s '
         .'lang/<locale>, lang/vendor/<ns>/<locale> and each family package\'s lang/<locale> PHP files, base and realm '
         .'rungs, against the key catalog. Nav page titles and group names have no catalog population yet and get no verdict.';
 

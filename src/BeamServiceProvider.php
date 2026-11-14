@@ -1108,7 +1108,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             $app->make(TextNamespaces::class),
             $app->make(FrameText::class),
             $app->langPath(),
+            $app->make(Localization\Client\ClientCatalogResolver::class),
         ));
+        // localization 16: per request (it reads the discovered catalog once, then memoizes catalogs in the cache store).
+        $this->app->scoped(Localization\Client\ClientCatalogResolver::class);
         $this->app->bind(LangFileLines::class, static fn ($app): LangFileLines => new LangFileLines(
             $app->make(TextNamespaces::class),
             $app->langPath(),
@@ -2077,6 +2080,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 LangKeysCommand::class,
                 LangMissingCommand::class,
                 LangRatchetCommand::class,
+                // localization 16: the translation content fingerprint the client catalog memo keys on.
+                Console\LangFingerprintCommand::class,
                 // Config Sections' committed JSON Schemas (ADR-0245): regeneration writes, `--check` only reads.
                 ConfigSectionSchemasCommand::class,
             ]);
@@ -2204,6 +2209,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             LocalizationUnresolvedLiteralKeyAudit::class,
             LocalizationLangFileAudit::class,
             LocalizationCoverageAudit::class,
+            // localization 16: the discovered client catalog's state, refused namespaces and admitted population.
+            Doctor\LocalizationClientCatalogAudit::class,
             LocalizationEnglishDerivationAudit::class,
             // RULING-01's Downstream row for 12: unkeyable identities, double defaults, a column equal to its title, and
             // a namespace collision.
@@ -2338,6 +2345,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         if (config('beam.core.intake.enabled', false)) {
             $this->registerIntakeRoute();
         }
+
+        // localization 16: the client catalog endpoint, and its fingerprint artifact in optimize / optimize:clear.
+        $this->registerClientCatalogRoute();
+        $this->optimizes(optimize: 'beam:lang:fingerprint', clear: 'beam:lang:fingerprint --clear', key: 'beam-lang-fingerprint');
 
         // Attributed-realm registration (realm-architecture ticket 08 slice D). Realms are ~4
         // (admin·tenant·user·docs), so a filesystem scan is overkill — register the configured
@@ -2817,6 +2828,17 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      * and — when enabled, as the publishable config ships it — the honeypot. The `{schema}` param is a schema stem/ref, so it may
      * contain slashes.
      */
+    /**
+     * Mount GET beam/localization/catalog/{locale}/{realm?} onto the client catalog endpoint (localization 16), under the
+     * host's configured middleware: its own authorization for its beam routes.
+     */
+    protected function registerClientCatalogRoute(): void
+    {
+        Route::get('beam/localization/catalog/{locale}/{realm?}', Localization\Client\Http\ClientCatalogController::class)
+            ->middleware((array) config('beam.localization.client_catalog_middleware', ['web']))
+            ->name('beam.localization.catalog');
+    }
+
     protected function registerIntakeRoute(): void
     {
         $middleware = ['throttle:'.config('beam.core.intake.throttle', '5,1')];
