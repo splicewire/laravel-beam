@@ -1096,6 +1096,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bindIf(PersonLocaleSource::class, NullLocaleSource::class);
         $this->app->bindIf(TenantLocaleSource::class, NullLocaleSource::class);
         $this->app->bindIf(BrandLocaleSource::class, ConfigBrandLocaleSource::class);
+        // localization 37 (RULING-04 §4–§5): the ONE registry every package contributes its product-key adapters and
+        // known-identity presenters to; persisted and broadcast lines render through it in the reader's scope.
+        $this->app->singleton(Localization\Presentation\MessagePresenters::class);
         $this->app->bind(LocaleResolver::class);
         // SCOPED: an entered realm never outlives its request or job under Octane or a queue worker.
         $this->app->scoped(LocalizationContext::class);
