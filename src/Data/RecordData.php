@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Data;
 
 use Illuminate\Database\Eloquent\Builder;
 use Schemastud\DataSchemas\Attributes\Title;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Collections\CollectionBacking;
 use Splicewire\Beam\Collections\CollectionInputData;
@@ -19,6 +20,7 @@ use Splicewire\Beam\Schema\SchemaId;
     label: 'Records', readPolicy: AuthenticatedReadPolicy::class,
     publicRead: PublicRecordData::class, editData: RecordData::class)]
 #[Title('Record')]
+#[TypeScript]
 class RecordData extends CollectionRecordData
 {
     public static function fromModel(BeamParticle $model): self

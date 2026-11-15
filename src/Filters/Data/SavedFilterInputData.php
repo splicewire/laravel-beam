@@ -8,11 +8,13 @@ use Schemastud\DataSchemas\Attributes\Description;
 use Schemastud\DataSchemas\Attributes\MapValues;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Optional;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Data\Concerns\RejectsUnknownInputKeys;
 use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
 
 /** The saved-filter create shape; every new view declares its target resource. */
+#[TypeScript]
 class SavedFilterInputData extends BeamData implements MapsToModelAttributes
 {
     use RejectsUnknownInputKeys;

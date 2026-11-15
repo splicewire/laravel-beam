@@ -8,6 +8,7 @@ use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\Validation\ActiveUrl;
 use Spatie\LaravelData\Attributes\Validation\Url;
 use Spatie\LaravelData\Optional;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Data\Concerns\RejectsUnknownInputKeys;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Webhooks\HookSubscriptionReach;
@@ -86,6 +87,7 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  * generator (`66e2dff`) — a particle-declared DTO inside beam that skipped it was the one shape
  * beam's own doctrine could not describe.
  */
+#[TypeScript]
 class HookInputData extends BeamData implements MapsToModelAttributes
 {
     use RejectsUnknownInputKeys;

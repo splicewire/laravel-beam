@@ -9,6 +9,7 @@ use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Data\ResourceCapabilitiesData;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\WithTransformer;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Filters\SavedFilterResourceHandler;
 use Splicewire\Beam\Filters\SavedFilterService;
@@ -24,6 +25,7 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
     frame: true,
     handler: SavedFilterResourceHandler::class,
 )]
+#[TypeScript]
 class SavedFilterData extends BeamData
 {
     /** @param array<string, mixed> $queryParameters */

@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Data;
 use Illuminate\Database\Eloquent\Builder;
 use Schemastud\Frame\Attributes\Column;
 use Spatie\LaravelData\Attributes\MapName;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Authorization\GitRepoReadPolicy;
 use Splicewire\Beam\Models\GitRepo;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
@@ -32,6 +33,7 @@ use Splicewire\Beam\Storage\GitRepoRegistrar;
     readOnly: true,
     readPolicy: GitRepoReadPolicy::class,
 )]
+#[TypeScript]
 class GitRepoData extends BeamData
 {
     // Read projection, camel on the wire (owner ruling 2026-10-09 18:18Z; docs/agents/wire-name.convention.md):

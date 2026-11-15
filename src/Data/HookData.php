@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Data;
 use Illuminate\Database\Eloquent\Builder;
 use Schemastud\Frame\Attributes\Column;
 use Spatie\LaravelData\Attributes\MapName;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Authorization\ModelOrOperatorReadPolicy;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
@@ -66,6 +67,7 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
     // moves who draws the button, never whether the write is open.
     createAffordance: 'host',
 )]
+#[TypeScript]
 class HookData extends BeamData
 {
     // Read projection, camel on the wire (owner ruling 2026-10-09 18:18Z; docs/agents/wire-name.convention.md):

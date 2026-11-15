@@ -7,6 +7,7 @@ use Schemastud\DataSchemas\Attributes\MapValues;
 use Schemastud\DataSchemas\Lifecycle\SchemaFingerprint;
 use Schemastud\DataSchemas\Lifecycle\SchemaRegistryConflict;
 use Schemastud\Frame\Attributes\Widget;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 use Splicewire\Beam\Schema\SchemaId;
 use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
@@ -35,6 +36,7 @@ use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
  * generator (`66e2dff`) — a particle-declared DTO inside beam that skipped it was the one shape
  * beam's own doctrine could not describe.
  */
+#[TypeScript]
 class BeamSchemaInputData extends BeamData implements MapsToModelAttributes
 {
     /**
