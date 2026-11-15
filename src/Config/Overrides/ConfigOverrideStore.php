@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Config\Overrides;
 
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -38,13 +39,28 @@ use Throwable;
  */
 class ConfigOverrideStore
 {
+    /**
+     * The section schema and the acceptance gate are resolved on first VALIDATION, never at construction. The overlay
+     * builds this store on every boot ({@see ConfigOverlay::sync()} from the provider's `booted()` hook), and reading the
+     * published layers needs neither. Resolving them eagerly built the Schemastud `Generator` chain in every boot,
+     * including boots that register only some providers, where `Generator` (an interface) has no binding.
+     */
     public function __construct(
         protected ConfigSectionRegistry $sections,
-        protected ConfigSectionSchema $schemas,
-        protected AcceptanceGate $gate,
+        protected Container $container,
         protected VersionStore $versions,
         protected ConfigOverrideCounter $counter,
     ) {}
+
+    protected function schemas(): ConfigSectionSchema
+    {
+        return $this->container->make(ConfigSectionSchema::class);
+    }
+
+    protected function gate(): AcceptanceGate
+    {
+        return $this->container->make(AcceptanceGate::class);
+    }
 
     /**
      * @param  list<array{pointer: string, op: string|ConfigOverrideOp, value?: mixed}>  $ops
@@ -80,10 +96,10 @@ class ConfigOverrideStore
                 $pending[] = [$pointer, $op, $value, $secret];
             }
 
-            $schema = $this->schemas->for($registered->section);
+            $schema = $this->schemas()->for($registered->section);
             $candidate = $this->governed($this->document($base, $draft, $pending), $schema);
 
-            if (! $this->gate->accepts($candidate, $schema)) {
+            if (! $this->gate()->accepts($candidate, $schema)) {
                 throw ConfigOverrideRefusal::because('ops', "The draft for {$root} does not validate against its section schema.");
             }
 

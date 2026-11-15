@@ -12,7 +12,8 @@ use Illuminate\Contracts\Cache\Repository;
  * the host's default store), which every process must share and which must not be tenant-tagged.
  *
  * An absent key reads as 0, so a fresh or flushed cache still applies what is published. A store that throws is
- * reported to the caller, which then falls back to the package and host tiers rather than failing boot.
+ * reported to the caller: {@see ConfigOverlay::sync()} then reads the published layer UNCACHED (root ruling df42bf60,
+ * amending PRD:224), so the operator tier keeps applying; the cache is an optimisation, never the tier's gate.
  */
 class ConfigOverrideCounter
 {

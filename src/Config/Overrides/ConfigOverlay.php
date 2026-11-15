@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Config\Overrides;
 
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Log;
 use Schemastud\DataSchemas\Overlay\JsonPathMutator;
 use Splicewire\Beam\Config\JsonPointer;
@@ -18,8 +19,14 @@ use Throwable;
  * - Each `set` / explicit `null` is applied in pointer order through DataOverlay's `override` (an upsert at a concrete
  *   path, {@see JsonPointer::toJsonPath()}); an `unset` is the absence of an entry and is never sent to DataOverlay.
  * - {@see sync()} is what the three hooks call. It re-applies only when the published-version counter has moved since
- *   it last applied. A counter store or an override store that cannot be read restores the base configuration and
- *   applies nothing: config falls back to the package and host tiers, and the failure is logged, never thrown.
+ *   it last applied. Nothing it meets is thrown (root ruling df42bf60, 2026-11-15, amending PRD:224):
+ *   - a counter CACHE that cannot be read skips the cache, not the tier: the published layer is read uncached on every
+ *     call until the cache answers again, so the operator tier keeps applying (a published `review_required` stays
+ *     required). One warning is logged per failure streak;
+ *   - an override STORE that cannot be read (or cannot be built) restores the base configuration and applies nothing:
+ *     config falls back to the package and host tiers, and the failure is logged.
+ * - The store is resolved inside that guard, never at construction, so a boot without the store's bindings falls back
+ *   instead of failing.
  */
 class ConfigOverlay
 {
@@ -31,28 +38,41 @@ class ConfigOverlay
 
     protected ?int $appliedAt = null;
 
+    /** Whether the current counter-cache failure streak has been logged. */
+    protected bool $uncachedWarned = false;
+
     public function __construct(
-        protected ConfigOverrideStore $store,
+        protected Container $container,
         protected ConfigOverrideCounter $counter,
     ) {}
 
-    /** Re-apply when the counter moved; fall back to the base configuration when either store cannot be read. */
+    /**
+     * Re-apply when the counter moved, or on every call while the counter cache cannot be read; fall back to the base
+     * configuration only when the override store cannot be read.
+     */
     public function sync(): void
     {
         try {
             $counter = $this->counter->current();
+            $this->uncachedWarned = false;
         } catch (Throwable $e) {
-            $this->fallBack('the override counter cache could not be read', $e);
+            $counter = null;
 
-            return;
+            if (! $this->uncachedWarned) {
+                $this->uncachedWarned = true;
+                Log::warning('[beam] the config override counter cache could not be read; reading the published overrides uncached until it answers.', [
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
 
-        if ($this->appliedAt === $counter) {
+        if ($counter !== null && $this->appliedAt === $counter) {
             return;
         }
 
         try {
-            $layers = $this->store->publishedLayers();
+            $layers = $this->container->make(ConfigOverrideStore::class)->publishedLayers();
         } catch (Throwable $e) {
             $this->fallBack('the override store could not be read', $e);
 
@@ -61,6 +81,7 @@ class ConfigOverlay
 
         $this->restore();
         $this->apply($layers);
+        // Uncached (null): nothing to compare against, so the next call reads the published layer again.
         $this->appliedAt = $counter;
     }
 

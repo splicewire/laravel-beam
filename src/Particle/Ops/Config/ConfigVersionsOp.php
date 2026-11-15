@@ -4,6 +4,8 @@ namespace Splicewire\Beam\Particle\Ops\Config;
 
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
+use Splicewire\Beam\Config\ConfigSectionAccess;
+use Splicewire\Beam\Config\Overrides\ConfigOverrideScope;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
 use Splicewire\Beam\Data\Config\ConfigSectionRefInputData;
 use Splicewire\Beam\Data\Config\ConfigVersionData;
@@ -17,8 +19,8 @@ use Splicewire\Beam\Particle\Subject\NoSubject;
     resource: 'beam-config',
     name: 'versions',
     kind: OperationKind::Read,
-    ability: 'entitlement:os.operate',
-    abilityModel: false,
+    ability: ConfigSectionAccess::OPERATE,
+    abilityModel: ConfigOverrideScope::class,
     input: ConfigSectionRefInputData::class,
     output: ConfigVersionsData::class,
     subject: NoSubject::class,

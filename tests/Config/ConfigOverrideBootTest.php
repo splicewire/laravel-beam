@@ -9,6 +9,7 @@ use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Facade;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\Overrides\ConfigOverlay;
@@ -17,8 +18,9 @@ use Splicewire\Beam\Tests\Fixtures\Config\PanelsSection;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
- * config-sections ticket 05: a console command sees a published override at boot; a missing cache or an unreachable
- * store falls back to the package and host tiers and never fails boot; `config:cache` caches the package and host tiers
+ * config-sections ticket 05: a console command sees a published override at boot; an unreadable counter cache is skipped
+ * and the published layer read uncached (root ruling df42bf60); an unreachable store falls back to the package and host
+ * tiers; neither ever fails boot; `config:cache` caches the package and host tiers
  * only and boots unchanged. The store lives in a FILE SQLite database here, so a second application booted in the
  * same test reads what the first one published, as a separate process would.
  */
@@ -95,20 +97,35 @@ class ConfigOverrideBootTest extends TestCase
         $this->assertFalse($this->bootAnotherProcess('panels.enabled'), 'every other key keeps its host value');
     }
 
-    public function test_an_unreadable_counter_cache_falls_back_to_the_package_and_host_tiers_without_failing(): void
+    /**
+     * Root ruling df42bf60 (2026-11-15, amending PRD:224): a counter CACHE that cannot be read is skipped, not the tier.
+     * The published layer is read uncached, so the operator tier keeps applying, and one warning says so.
+     */
+    public function test_an_unreadable_counter_cache_is_skipped_and_the_operator_tier_still_applies_uncached(): void
     {
         $this->publishTitle('From the operator');
         app(ConfigOverlay::class)->sync();
         $this->assertSame('From the operator', config('panels.title'));
 
+        Log::spy();
         Cache::extend('unreachable', fn () => new Repository(new UnreachableCacheStore));
         config()->set('cache.stores.unreachable', ['driver' => 'unreachable']);
         config()->set('beam.core.config_overrides.cache_store', 'unreachable');
 
         app(ConfigOverlay::class)->sync();
 
-        $this->assertSame('Panels', config('panels.title'), 'the package value is back; nothing threw');
-        $this->assertFalse(config('panels.enabled'), 'the host value is back');
+        $this->assertSame('From the operator', config('panels.title'), 'the operator tier wins; nothing threw');
+        $this->assertFalse(config('panels.enabled'), 'a key with no override keeps its host value');
+
+        // A publish while the cache is down cannot move the counter (the store logs that), yet the next sync sees it:
+        // the read is uncached.
+        $this->publishTitle('Published while the cache is down');
+        app(ConfigOverlay::class)->sync();
+        $this->assertSame('Published while the cache is down', config('panels.title'));
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message): bool => str_contains($message, 'reading the published overrides uncached'))
+            ->once();
     }
 
     public function test_an_unreachable_store_falls_back_and_never_fails_boot(): void
@@ -117,9 +134,13 @@ class ConfigOverrideBootTest extends TestCase
         config()->set('database.connections.central', ['driver' => 'sqlite', 'database' => '/nonexistent/beam-config.sqlite', 'prefix' => '']);
         DB::purge('central');
         Cache::store('array')->increment('beam:config-overrides:published');
+        Log::spy();
 
         app(ConfigOverlay::class)->sync();
         $this->assertSame('Panels', config('panels.title'));
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message): bool => str_contains($message, 'the override store could not be read; config falls back to the package and host tiers'))
+            ->once();
 
         // The next process boots on an unreachable store: it must boot, on the package and host tiers.
         $this->app['config']->set('database.connections.testing.database', '/nonexistent/beam-config.sqlite');

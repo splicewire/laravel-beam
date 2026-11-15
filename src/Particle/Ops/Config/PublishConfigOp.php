@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Particle\Ops\Config;
 
 use Illuminate\Http\Request;
+use Splicewire\Beam\Config\ConfigSectionAccess;
+use Splicewire\Beam\Config\Overrides\ConfigOverrideScope;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
 use Splicewire\Beam\Data\Config\ConfigSectionData;
 use Splicewire\Beam\Data\Config\ConfigSectionRefInputData;
@@ -20,8 +22,8 @@ use Splicewire\Beam\Particle\Subject\NoSubject;
     resource: 'beam-config',
     name: 'publish',
     kind: OperationKind::Write,
-    ability: 'entitlement:os.operate',
-    abilityModel: false,
+    ability: ConfigSectionAccess::OPERATE,
+    abilityModel: ConfigOverrideScope::class,
     input: ConfigSectionRefInputData::class,
     output: ConfigSectionData::class,
     subject: NoSubject::class,

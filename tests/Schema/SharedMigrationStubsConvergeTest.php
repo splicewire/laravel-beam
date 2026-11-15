@@ -45,6 +45,9 @@ class SharedMigrationStubsConvergeTest extends TestCase
         // `Beam::table()` like every other core table, so a retrofit host's one prefix override follows
         // here too. The two names are deliberately not the same string.
         'beam_hooks',
+        // config-sections 05: `create_beam_config_overrides_table` creates both, through `Beam::table()`.
+        'beam_config_overrides',
+        'beam_config_scopes',
     ];
 
     protected function tearDown(): void

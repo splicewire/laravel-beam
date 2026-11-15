@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Particle\Ops\Config;
 
 use Illuminate\Http\Request;
+use Splicewire\Beam\Config\ConfigSectionAccess;
+use Splicewire\Beam\Config\Overrides\ConfigOverrideScope;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
 use Splicewire\Beam\Data\Config\ConfigSaveDraftInputData;
 use Splicewire\Beam\Data\Config\ConfigSectionData;
@@ -23,8 +25,8 @@ use Splicewire\Beam\Particle\Subject\NoSubject;
     resource: 'beam-config',
     name: 'save-draft',
     kind: OperationKind::Write,
-    ability: 'entitlement:os.operate',
-    abilityModel: false,
+    ability: ConfigSectionAccess::OPERATE,
+    abilityModel: ConfigOverrideScope::class,
     input: ConfigSaveDraftInputData::class,
     output: ConfigSectionData::class,
     subject: NoSubject::class,

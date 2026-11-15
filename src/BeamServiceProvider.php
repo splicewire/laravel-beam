@@ -5,12 +5,13 @@ namespace Splicewire\Beam;
 use Closure;
 use Composer\Autoload\ClassLoader;
 use Illuminate\Contracts\Auth\Access\Gate;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
-use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\LocaleUpdated;
+use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Router;
@@ -71,6 +72,7 @@ use Splicewire\Beam\Collections\CollectionResolutionScope;
 use Splicewire\Beam\Collections\CollectionResourceContextNodes;
 use Splicewire\Beam\Collections\CollectionSchemaResolver;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
+use Splicewire\Beam\Config\ConfigSectionAccess;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\Overrides\ConfigOverlay;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideCounter;
@@ -1276,8 +1278,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      * - global middleware ({@see ApplyConfigOverrides}), prepended so routing and the session read them;
      * - a `JobProcessing` listener, so a long-lived worker re-applies before its next job when the counter moved.
      *
-     * None of them can fail boot or a request: a store or a cache that cannot be read falls back to the package and
-     * host tiers ({@see ConfigOverlay::sync()}).
+     * None of them can fail boot or a request ({@see ConfigOverlay::sync()}): a counter cache that cannot be read is
+     * skipped and the published layer read uncached, so the operator tier still applies; only an override store that
+     * cannot be read falls back to the package and host tiers (root ruling df42bf60, amending PRD:224).
      */
     protected function bootConfigOverrides(): void
     {
@@ -2026,6 +2029,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         if (! $this->app->make(Gate::class)->has(Particle\Backing\ActorOwnedParticleAccess::WRITE)) {
             $this->app->make(Gate::class)->define(Particle\Backing\ActorOwnedParticleAccess::WRITE,
                 [Particle\Backing\ActorOwnedParticleAccess::class, 'permits']);
+        }
+
+        // config-sections 05: the operator-tier ops on `beam-config` ask this ability, which asks the resource's own
+        // declared policy ({@see ConfigSectionAccess::permits()}). A host that defines it first keeps its definition.
+        if (! $this->app->make(Gate::class)->has(ConfigSectionAccess::OPERATE)) {
+            $this->app->make(Gate::class)->define(ConfigSectionAccess::OPERATE,
+                static fn (?Authenticatable $actor = null, mixed $subject = null): bool => ConfigSectionAccess::permits($actor));
         }
 
         // `Hook` binds its authorization HERE, in the package that owns the model, the way taxonomy binds
