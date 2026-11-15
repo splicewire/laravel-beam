@@ -7,6 +7,7 @@ use Composer\Autoload\ClassLoader;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\LocaleUpdated;
@@ -1227,17 +1228,26 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             Number::useLocale($event->locale);
         });
 
-        if ($this->app->bound(HttpKernel::class)) {
-            $kernel = $this->app->make(HttpKernel::class);
-            if (! $kernel->hasMiddleware(ResolveLocale::class)) {
-                $kernel->prependMiddleware(ResolveLocale::class);
-            }
+        $kernel = $this->app->bound(HttpKernel::class) ? $this->app->make(HttpKernel::class) : null;
+        if ($kernel !== null && ! $kernel->hasMiddleware(ResolveLocale::class)) {
+            $kernel->prependMiddleware(ResolveLocale::class);
         }
 
         // Only groups the host has: pushing to a missing one would create it.
+        //
+        // The group entry goes into the KERNEL's own group list whenever the kernel keeps one. The kernel is the source
+        // of truth for the router's groups: every kernel mutator (`appendMiddlewareToGroup`, `prependToMiddlewarePriority`,
+        // `setMiddlewareGroups`, …) ends in `syncMiddlewareToRouter()`, which rewrites the router's groups from the kernel's
+        // lists. A router-only push is therefore dropped by any provider that mutates the kernel after this one boots.
+        // laravel-beam-tenancy's `makeTenancyMiddlewareHighestPriority()` does exactly that, so on a tenancy host
+        // (commerce) the person's saved language was never applied (localization 44a; 06/36 follow-up).
+        // `appendMiddlewareToGroup` is in_array-guarded and syncs to the router itself, so nothing is registered twice.
         $router = $this->app->make(Router::class);
+        $groups = $kernel instanceof FoundationHttpKernel ? $kernel->getMiddlewareGroups() : null;
         foreach (['web', 'api'] as $group) {
-            if ($router->hasMiddlewareGroup($group)) {
+            if ($groups !== null && array_key_exists($group, $groups)) {
+                $kernel->appendMiddlewareToGroup($group, ResolveLocale::class);
+            } elseif ($router->hasMiddlewareGroup($group)) {
                 $router->pushMiddlewareToGroup($group, ResolveLocale::class);
             }
         }
