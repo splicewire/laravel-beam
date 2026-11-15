@@ -28,6 +28,7 @@ key or route name has its dots written `/`.
 | a realm overlay's capability `c` (`title`, `upsell`) | `<ns>::realms.r.capabilities.c.title`, `….upsell.<field>`, `<ns>` the overlay's registrant |
 | a realm gate's upsell (`beam.core.realms.r.gate.upsell`) | `beam::realms.r.upsell.<field>`; copy fields only, never a URL or an identifier |
 | brand copy (`beam.brand.*`; not a declaration) | explicit `beam::brand.tagline`, `.passkey_copy`, `.title_template`; `name` and `legal_entity` are not keyed |
+| `#[ConfigRoot(root: 'a.b', title:, description:)]` (ADR-0244 amendment, localization 41, **proposed**) | `<ns>::config.a/b.title`, `.description`, `<ns>` the registered section's owner (a host section: `config.a/b.title`); the section's keys keep the `data` rows above, `C` each property's DECLARING class at any depth, in that class's owner's namespace (the section or `entries:` class only starts the traversal; an inherited property keeps its declaring class's key); a map root's own entry description is its `entries:` class's `data.E.description`; only the root's title/description follow the winning registry entry; config VALUES are never keyed here |
 
 `<ns>` is your composer name less the vendor and a leading `laravel-` (`splicewire/laravel-beam-ux` → `beam-ux`). If two
 installed packages shorten to one name, neither gets derived keys until one declares `extra.beam.lang-namespace` in its
