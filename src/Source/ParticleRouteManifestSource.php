@@ -9,6 +9,8 @@ use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Routing\RouteMetadataReader;
+use Splicewire\Beam\Routing\RouteRequestType;
+use Splicewire\Beam\Routing\RouteReturnType;
 use Splicewire\Beam\Routing\RouteVisibility;
 
 /**
@@ -16,6 +18,8 @@ use Splicewire\Beam\Routing\RouteVisibility;
  * Tower-backed source (its `Tenant`/`AdminRouteManifest`), a satellite has no Tower: it mounts particle
  * routes directly (`Route::particleResource($uri, $key, only:)` from a host provider). This source reads
  * those MOUNTED routes off the live route table and reconstructs the enriched manifest the generator wants.
+ * Named controller routes also enter when they explicitly declare an operationId and a success response
+ * or stream through the doctrine's attributes. See docs/client-route-manifest.md for that publication contract.
  *
  * How it works:
  *   1. Walk the live route table; keep every route whose action targets {@see ParticleController} (a CRUD
@@ -42,12 +46,21 @@ use Splicewire\Beam\Routing\RouteVisibility;
  */
 class ParticleRouteManifestSource implements RouteManifestSource
 {
+    private RouteReturnType $returnTypes;
+
+    private RouteRequestType $requestTypes;
+
     public function __construct(
         private Router $router,
         private ParticleResourceRegistry $registry,
         private ParticleOperationRegistry $operations,
         private RouteMetadataReader $meta,
-    ) {}
+        ?RouteReturnType $returnTypes = null,
+        ?RouteRequestType $requestTypes = null,
+    ) {
+        $this->returnTypes = $returnTypes ?? new RouteReturnType($registry, $operations, $meta);
+        $this->requestTypes = $requestTypes ?? new RouteRequestType;
+    }
 
     public function toArray(): array
     {
@@ -55,6 +68,10 @@ class ParticleRouteManifestSource implements RouteManifestSource
 
         foreach ($this->router->getRoutes() as $route) {
             if (! $this->isParticleRoute($route)) {
+                if (($name = $route->getName()) !== null && ($entry = $this->declaredControllerEntry($route)) !== null) {
+                    $manifest[$name] = $entry;
+                }
+
                 continue;
             }
 
@@ -109,6 +126,55 @@ class ParticleRouteManifestSource implements RouteManifestSource
     }
 
     /**
+     * A named controller API opts in through its existing explicit operationId and the doctrine's
+     * response/stream declaration site. Neither a controller's name nor its URL implies publication.
+     *
+     * @return array{path: string, methods: list<string>, returns?: string, returnsMany?: bool, returnsBody?: true, streams?: array<string, list<string>>, input?: string}|null
+     */
+    private function declaredControllerEntry(Route $route): ?array
+    {
+        if ($route->getName() === '' || $this->meta->visibility($route) === RouteVisibility::Deprecated) {
+            return null;
+        }
+
+        $operationId = $this->meta->operationId($route);
+
+        if ($operationId === null || trim($operationId) === '') {
+            return null;
+        }
+
+        $responseClass = $this->returnTypes->fromResponseAttribute($route);
+
+        if ($responseClass === null && $this->returnTypes->fromStreamsAttribute($route) === []) {
+            return null;
+        }
+
+        $entry = ['path' => ltrim($route->uri(), '/'), 'methods' => $this->readMethods($route)];
+        // The trio declares the delivery kind. A resource association or bare return override must
+        // not turn a method-declared event stream into a resource-row response.
+        $response = $responseClass === null ? null : $this->returnTypes->for($route);
+
+        if ($response !== null) {
+            $entry['returns'] = $response['type'];
+            $entry['returnsMany'] = $response['many'];
+            if (! empty($response['returnsBody'])) {
+                $entry['returnsBody'] = true;
+            }
+        } else {
+            $entry['streams'] = array_map(
+                fn (array $classes) => array_map($this->toTsType(...), $classes),
+                $this->returnTypes->streamsFor($route) ?? [],
+            );
+        }
+
+        if (($input = $this->requestTypes->fromRequestAttribute($route)) !== null) {
+            $entry['input'] = $this->toTsType($input);
+        }
+
+        return $entry;
+    }
+
+    /**
      * A route belongs to us when its action targets the generic {@see ParticleController} (a CRUD verb) OR
      * the {@see ParticleOperationController} (a named operation).
      *
@@ -137,7 +203,11 @@ class ParticleRouteManifestSource implements RouteManifestSource
         return false;
     }
 
-    /** The HTTP verbs Laravel exposes, minus the framework-auto `HEAD`. */
+    /**
+     * The HTTP verbs Laravel exposes, minus the framework-auto `HEAD`.
+     *
+     * @return list<string>
+     */
     private function readMethods(Route $route): array
     {
         return array_values(array_filter($route->methods(), fn (string $m) => $m !== 'HEAD'));

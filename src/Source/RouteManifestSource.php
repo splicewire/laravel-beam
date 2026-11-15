@@ -21,7 +21,7 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
  * Entry keys:
  *   - `path`        (required) the URI, `{param}`-templated, with NO leading slash — read off the live table.
  *   - `methods`     (required) the HTTP verbs (`['GET']`, `['POST']`, …).
- *   - `visibility`  (required) the route's exposure tier, `'public'` or `'internal'` (default when
+ *   - `visibility`  (optional) the route's exposure tier, `'public'` or `'internal'` (default when
  *                    undeclared). Orthogonal to `returns`/codegen — has no consumer in the generator itself;
  *                    exists for future public/private API-surface tooling to read.
  *   - `returns`     (optional) the response Data class as a TypeScript type path — the class's REAL
@@ -32,6 +32,8 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
  *   - `returnsMany` (optional) true ⇒ the hook/store yields `Splicewire.Tower.Data.X[]` (a list/index endpoint).
  *   - `returnsBody` (optional) true ⇒ `returns` describes the complete HTTP body. When absent,
  *                    hooks and stores retain the particle/legacy envelope payload projection.
+ *   - `input`       (optional) the declared request DTO as a TypeScript type path, or `false` for
+ *                    an explicit no-body declaration. Absent means undeclared, never a guessed DTO.
  *   - `streams`     (optional) an SSE route's event map — wire `event:` name → list of TS-qualified event
  *                    DTOs. Mutually exclusive with `returns` in practice; the generator emits a
  *                    discriminated-union type plus a `useSseStream` hook per entry.
@@ -47,7 +49,7 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
 interface RouteManifestSource
 {
     /**
-     * @return array<string, array{path: string, methods: list<string>, visibility: string, returns?: string, returnsMany?: bool, returnsBody?: bool, streams?: array<string, list<string>>, unresolved?: bool}>
+     * @return array<string, array{path: string, methods: list<string>, visibility?: string, returns?: string, returnsMany?: bool, returnsBody?: bool, input?: string|false, streams?: array<string, list<string>>, unresolved?: bool}>
      */
     public function toArray(): array;
 }

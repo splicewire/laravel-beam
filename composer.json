@@ -38,7 +38,8 @@
         "rushing/laravel-surgeon": "*",
         "rushing/php-package-topology": "dev-main",
         "wikimedia/composer-merge-plugin": "^2.1",
-        "spatie/laravel-typescript-transformer": "^3.3"
+        "spatie/laravel-typescript-transformer": "^3.3",
+        "splicewire/laravel-beam-versioning": "*"
     },
     "suggest": {
         "spatie/laravel-typescript-transformer": "to call `BeamTypeScriptTransformerExtension` from a host's TypeScriptTransformerServiceProvider"
@@ -192,6 +193,10 @@
         {
             "type": "git",
             "url": "https://github.com/schemastud/php-json-ns.git"
+        },
+        {
+            "type": "git",
+            "url": "https://github.com/splicewire/laravel-beam-versioning.git"
         }
     ]
 }

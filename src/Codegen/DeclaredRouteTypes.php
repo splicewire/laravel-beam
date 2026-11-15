@@ -6,6 +6,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Splicewire\Beam\Routing\BeamRouteAction;
 use Splicewire\Beam\Routing\RouteMetadataReader;
+use Splicewire\Beam\Routing\RouteRequestType;
 use Splicewire\Beam\Routing\RouteReturnType;
 
 /**
@@ -19,10 +20,12 @@ use Splicewire\Beam\Routing\RouteReturnType;
  *  - the response: an explicit `->beam()->returns()`, else the lowest-2xx `#[ResponseFromData]` on the controller
  *    method (an error body never counts);
  *  - the streams: an explicit `->beam()->streams()`, else the method's `#[StreamsFromData]`, every variant of
- *    every event.
+ *    every event;
+ *  - the request: `#[RequestFromData]` on the controller method, so a generated mutation's input
+ *    is emitted through the same configured transformers as its response.
  *
  * Not read: a particle operation's `output:` and a resource's `data`, which {@see DeclaredParticleTypes} already
- * seeds, and `#[RequestFromData]`, which no reader seeds yet.
+ * seeds.
  *
  * The router is read in {@see declared()}, never in the constructor, so routes registered after this object is
  * built are seen.
@@ -33,6 +36,7 @@ final class DeclaredRouteTypes
         private Router $router,
         private RouteReturnType $returns,
         private ?RouteMetadataReader $meta = null,   // defaults to BeamRouteAction::reader()
+        private ?RouteRequestType $requests = null,
     ) {}
 
     /**
@@ -44,6 +48,7 @@ final class DeclaredRouteTypes
     public function declared(): array
     {
         $meta = $this->meta ?? BeamRouteAction::reader();
+        $requests = $this->requests ?? new RouteRequestType;
         $declared = [];
 
         $note = function (mixed $class, string $slot) use (&$declared): void {
@@ -61,6 +66,7 @@ final class DeclaredRouteTypes
             $label = $route->getName() ?? $route->uri();
 
             $note($meta->returns($route) ?: $this->returns->fromResponseAttribute($route), "route [{$label}] returns:");
+            $note($requests->fromRequestAttribute($route), "route [{$label}] input:");
 
             $streams = $meta->streams($route) ?: $this->returns->fromStreamsAttribute($route);
 

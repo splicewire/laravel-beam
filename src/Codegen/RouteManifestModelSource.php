@@ -39,7 +39,9 @@ class RouteManifestModelSource
     }
 
     /**
-     * @param  array<string, array{path: string, methods: list<string>, returns?: string, returnsMany?: bool, returnsBody?: bool, streams?: list<string>}>  $manifest
+     * The adapter validates optional metadata from sources before forwarding it into codegen facets.
+     *
+     * @param  array<string, array{path: string, methods?: list<string>, returns?: string, returnsMany?: bool, returnsBody?: bool, input?: mixed, streams?: array<string, list<string>>}>  $manifest
      */
     private function addRealm(CodegenModel $model, array $manifest, string $realm): void
     {
