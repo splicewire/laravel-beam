@@ -49,6 +49,7 @@ class ConfigSectionData extends BeamData
      * @param  array<array-key, mixed>  $values  the effective values, secrets redacted to null
      * @param  list<ConfigKeyData>  $keys
      * @param  list<string>  $shadowedPackageKeys  package leaves the host's top-level copy hides
+     * @param  list<ConfigOverrideData>  $overrides  the operator tier's sparse draft (ticket 05)
      */
     public function __construct(
         public string $id,
@@ -66,5 +67,8 @@ class ConfigSectionData extends BeamData
         public array $keys,
         public array $shadowedPackageKeys,
         public ConfigSectionCountsData $counts,
+        #[DataCollectionOf(ConfigOverrideData::class)]
+        public array $overrides = [],
+        public ConfigPinsData $pins = new ConfigPinsData(draft: null, published: null, draftPending: false),
     ) {}
 }

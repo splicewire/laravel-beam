@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\LocaleUpdated;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -71,6 +72,10 @@ use Splicewire\Beam\Collections\CollectionResourceContextNodes;
 use Splicewire\Beam\Collections\CollectionSchemaResolver;
 use Splicewire\Beam\Concerns\BootsBeamRouteNamespace;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
+use Splicewire\Beam\Config\Overrides\ConfigOverlay;
+use Splicewire\Beam\Config\Overrides\ConfigOverrideCounter;
+use Splicewire\Beam\Config\Overrides\ConfigOverrideScope;
+use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\BeamSeedCommand;
@@ -165,6 +170,7 @@ use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Http\ArrayResponseEnvelope;
 use Splicewire\Beam\Http\ConfiguredResponseEnvelope;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
+use Splicewire\Beam\Http\Middleware\ApplyConfigOverrides;
 use Splicewire\Beam\Http\Middleware\HoneypotMiddleware;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
@@ -384,6 +390,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 'shared/create_beam_ownership_edges_table',
                 'shared/create_beam_schemas_table',
                 'shared/create_saved_filters_table',
+                // config-sections 05: the config override store (ADR-0245 §9), central and every tenant schema.
+                'shared/create_beam_config_overrides_table',
                 // spatie/laravel-activitylog's table, squashed here from the former central-only
                 // `central_activity_log` + tenant-only `activity_log` pair (the same consolidation
                 // tower already did for model-status' `statuses`). Homed alongside
@@ -500,6 +508,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // `packageBooted()`), and an unaliased model's token prefix is its slugged FQCN (ADR-0118).
         Relation::morphMap([
             'beam_particle' => BeamParticle::class,
+            'beam_config_scope' => ConfigOverrideScope::class,
             'beam_schema' => BeamSchema::class,
             'beam_submission' => BeamSubmission::class,
             'git_repo' => GitRepo::class,
@@ -731,6 +740,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // served by the `beam-config` particle resource. A SINGLETON so a package (or the host) registering its
         // sections from its own provider mutates the instance the backing reads. Ships EMPTY ⇒ inert.
         $this->app->singleton(ConfigSectionRegistry::class, fn () => new ConfigSectionRegistry);
+        // config-sections 05: the operator tier. The overlay is a process singleton because it carries the snapshot it
+        // restores from; it never holds the config repository itself ({@see ConfigOverlay}).
+        $this->app->singleton(ConfigOverrideCounter::class);
+        $this->app->singleton(ConfigOverrideStore::class);
+        $this->app->singleton(ConfigOverlay::class);
 
         // The package-facing NAV SEAT registry. A `#[ParticleResource(section:)]` declaration says which
         // section a resource sits UNDER; until now nothing could SEAT that section, so 11 of the family's
@@ -1249,6 +1263,41 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 $kernel->appendMiddlewareToGroup($group, ResolveLocale::class);
             } elseif ($router->hasMiddlewareGroup($group)) {
                 $router->pushMiddlewareToGroup($group, ResolveLocale::class);
+            }
+        }
+    }
+
+    /**
+     * config-sections 05 (ADR-0245 §9; PRD §Overlay application): the operator tier's published overrides are applied
+     * from THREE hooks, each keyed by the one published-version counter, so a publish reaches the next request, job and
+     * command with no deploy and no restart:
+     *
+     * - an `$app->booted()` callback, so a console command (and a worker's boot) starts on the published values;
+     * - global middleware ({@see ApplyConfigOverrides}), prepended so routing and the session read them;
+     * - a `JobProcessing` listener, so a long-lived worker re-applies before its next job when the counter moved.
+     *
+     * None of them can fail boot or a request: a store or a cache that cannot be read falls back to the package and
+     * host tiers ({@see ConfigOverlay::sync()}).
+     */
+    protected function bootConfigOverrides(): void
+    {
+        // `config:cache` (and `optimize`, which runs it) builds a FRESH application and caches its configuration;
+        // applying the operator tier there would bake runtime overrides into the cached file. The cache holds the package
+        // and host tiers only, and the overlay applies on top at runtime ({@see ConfigOverlay::cachesConfiguration()}).
+        $this->app->booted(static function ($app): void {
+            if (! ConfigOverlay::cachesConfiguration()) {
+                $app->make(ConfigOverlay::class)->sync();
+            }
+        });
+
+        Event::listen(JobProcessing::class, static function (): void {
+            app(ConfigOverlay::class)->sync();
+        });
+
+        if ($this->app->bound(HttpKernel::class)) {
+            $kernel = $this->app->make(HttpKernel::class);
+            if (! $kernel->hasMiddleware(ApplyConfigOverrides::class)) {
+                $kernel->prependMiddleware(ApplyConfigOverrides::class);
             }
         }
     }
@@ -1965,6 +2014,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
     public function packageBooted(): void
     {
+        $this->bootConfigOverrides();
+
         // localization 09: a property's title and description resolve through the ladder. Appended at boot, after every
         // provider has merged `data-schemas.strategies`, under the estate's in_array guard (the frame precedent).
         $strategies = (array) config('data-schemas.strategies', []);

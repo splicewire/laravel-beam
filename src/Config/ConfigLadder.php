@@ -33,6 +33,10 @@ class ConfigLadder
      * @param  list<string>  $envBound  pointers an `env()` call feeds in the package file. Their re-required package
      *                                  value is only as good as the environment at read time (under `config:cache`
      *                                  `.env` is not loaded), so a difference there is the env's, not a provider's.
+     * @param  array<string, ConfigLayerValue>  $operator  the operator tier's published layer, pointer => its layer
+     *                                                     (ticket 05). `$observed` is then the configuration WITHOUT
+     *                                                     the operator tier (the overlay's base), so an override is
+     *                                                     never mistaken for a provider write.
      */
     public static function fold(
         ?array $package,
@@ -41,6 +45,7 @@ class ConfigLadder
         ?string $packageSource = null,
         ?string $hostSource = null,
         array $envBound = [],
+        array $operator = [],
     ): ConfigResolution {
         $package ??= [];
 
@@ -54,6 +59,7 @@ class ConfigLadder
         $pointers = array_values(array_unique([
             ...JsonPointer::leaves($folded),
             ...JsonPointer::leaves($observed),
+            ...array_map('strval', array_keys($operator)),
         ]));
 
         $keys = [];
@@ -88,13 +94,22 @@ class ConfigLadder
                 $layers[] = new ConfigLayerValue(ConfigTier::Provider, $inObserved ? $observedValue : null, null, removed: ! $inObserved);
             }
 
-            if (! $inObserved && $tier !== ConfigTier::Provider) {
+            // The operator tier sits above Provider: its published value is the key's effective value, a retained null
+            // included (ADR-0245 decision 2), and it creates a pointer no tier below holds.
+            $override = $operator[$pointer] ?? null;
+
+            if ($override !== null) {
+                $layers[] = $override;
+                $tier = ConfigTier::Operator;
+            }
+
+            if (! $inObserved && $tier !== ConfigTier::Provider && $override === null) {
                 continue;
             }
 
             $keys[$pointer] = new ConfigResolvedKey(
                 pointer: $pointer,
-                value: $inObserved ? $observedValue : null,
+                value: $override !== null ? $override->value : ($inObserved ? $observedValue : null),
                 tier: $tier,
                 hostShadowsPackage: $hostOwns && array_key_exists($top, $package),
                 layers: $layers,

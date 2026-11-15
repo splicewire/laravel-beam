@@ -142,4 +142,45 @@ class ConfigLadderTest extends TestCase
         $this->assertSame(['/hosts', '/empty'], array_keys($resolution->keys));
         $this->assertSame(['a', 'b'], $resolution->keys['/hosts']->value);
     }
+
+    // config-sections ticket 05: the operator tier joins as a sparse pointer layer above Provider.
+
+    public function test_an_operator_override_wins_over_host_and_is_never_a_provider_write(): void
+    {
+        $operator = ['/enabled' => new ConfigLayerValue(ConfigTier::Operator, true, 'operator override · v3')];
+        $resolution = ConfigLadder::fold(['enabled' => true], ['enabled'], ['enabled' => false], 'pkg.php', 'host.php', operator: $operator);
+        $key = $resolution->keys['/enabled'];
+
+        $this->assertSame(ConfigTier::Operator, $key->tier);
+        $this->assertTrue($key->value);
+        $this->assertSame([ConfigTier::Package, ConfigTier::Host, ConfigTier::Operator], array_map(fn ($l) => $l->tier, $key->layers));
+        $this->assertSame('operator override · v3', $key->layers[2]->source);
+    }
+
+    public function test_a_retained_null_override_is_the_operators_and_reads_null(): void
+    {
+        $operator = ['/banner' => new ConfigLayerValue(ConfigTier::Operator, null, 'operator override · v1')];
+        $key = ConfigLadder::fold(['banner' => 'Welcome'], null, ['banner' => 'Welcome'], operator: $operator)->keys['/banner'];
+
+        $this->assertSame(ConfigTier::Operator, $key->tier);
+        $this->assertNull($key->value);
+    }
+
+    public function test_an_operator_override_creates_a_pointer_no_tier_below_holds(): void
+    {
+        $operator = ['/catalog/map' => new ConfigLayerValue(ConfigTier::Operator, 'Map', 'operator override · v1')];
+        $resolution = ConfigLadder::fold(['catalog' => ['chart' => 'Chart']], null, ['catalog' => ['chart' => 'Chart']], operator: $operator);
+
+        $this->assertSame(ConfigTier::Package, $resolution->keys['/catalog/chart']->tier);
+        $this->assertSame(ConfigTier::Operator, $resolution->keys['/catalog/map']->tier);
+        $this->assertSame('Map', $resolution->keys['/catalog/map']->value);
+    }
+
+    public function test_without_an_operator_layer_the_fold_is_unchanged(): void
+    {
+        $this->assertEquals(
+            ConfigLadder::fold(['enabled' => true], ['enabled'], ['enabled' => false]),
+            ConfigLadder::fold(['enabled' => true], ['enabled'], ['enabled' => false], operator: []),
+        );
+    }
 }

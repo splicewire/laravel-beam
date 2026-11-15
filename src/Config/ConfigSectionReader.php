@@ -4,13 +4,18 @@ namespace Splicewire\Beam\Config;
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\Env;
+use Splicewire\Beam\Config\Overrides\ConfigOverlay;
+use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
 use Splicewire\Beam\Data\Config\ConfigEnvData;
 use Splicewire\Beam\Data\Config\ConfigKeyData;
 use Splicewire\Beam\Data\Config\ConfigLayerData;
+use Splicewire\Beam\Data\Config\ConfigOverrideData;
+use Splicewire\Beam\Data\Config\ConfigPinsData;
 use Splicewire\Beam\Data\Config\ConfigSectionCountsData;
 use Splicewire\Beam\Data\Config\ConfigSectionData;
 use Splicewire\Beam\Data\Config\ConfigSectionFilesData;
 use Splicewire\Beam\Enums\ConfigEffect;
+use Splicewire\Beam\Enums\ConfigOverrideOp;
 use Splicewire\Beam\Enums\ConfigTier;
 use Throwable;
 
@@ -53,8 +58,13 @@ class ConfigSectionReader
         $declaration = $section::declaration();
         $root = $declaration->root;
 
-        $observed = $this->config->get($root);
+        // The fold reads the configuration WITHOUT the operator tier (the overlay's base) and takes the operator's
+        // published layer explicitly, so an override is attributed to the operator and never to a provider (ticket 05).
+        $observed = app(ConfigOverlay::class)->base($root);
         $observed = is_array($observed) ? $observed : [];
+        [$operator, $overrides, $pins] = $this->operatorTier($section, $root);
+        $effective = $this->config->get($root);
+        $effective = is_array($effective) ? $effective : $observed;
 
         $packageFile = $registered->packageFile !== null && is_file($registered->packageFile) ? $registered->packageFile : null;
         $package = $packageFile === null ? null : $this->requireIsolated($packageFile);
@@ -70,6 +80,7 @@ class ConfigSectionReader
             packageSource: $this->display($packageFile),
             hostSource: $this->display($hostFile),
             envBound: $packageScan === null ? [] : array_keys($packageScan->bindings),
+            operator: $operator,
         );
 
         $keys = [];
@@ -86,7 +97,7 @@ class ConfigSectionReader
             owner: $registered->owner,
             files: new ConfigSectionFilesData(package: $this->display($packageFile), host: $this->display($hostFile)),
             schema: $this->schemas->for($section),
-            values: $this->redacted($section, $resolution->values),
+            values: $this->redacted($section, $effective),
             keys: $keys,
             shadowedPackageKeys: $resolution->shadowedPackageKeys,
             counts: new ConfigSectionCountsData(
@@ -96,7 +107,61 @@ class ConfigSectionReader
                 secrets: count(array_filter($keys, fn (ConfigKeyData $key): bool => $key->secret)),
                 envBound: count(array_filter($keys, fn (ConfigKeyData $key): bool => $key->env !== null)),
             ),
+            overrides: $overrides,
+            pins: $pins,
         );
+    }
+
+    /**
+     * The operator tier for one section (ticket 05): its PUBLISHED layer as fold layers, its DRAFT as the row's sparse
+     * overrides, and the two pins. A store that cannot be read (no tables yet, an unreachable connection) reads as no
+     * operator tier at all, exactly as before the store existed.
+     *
+     * @param  class-string<ConfigSection>  $section
+     * @return array{0: array<string, ConfigLayerValue>, 1: list<ConfigOverrideData>, 2: ConfigPinsData}
+     */
+    protected function operatorTier(string $section, string $root): array
+    {
+        $none = [[], [], new ConfigPinsData(draft: null, published: null, draftPending: false)];
+
+        try {
+            $store = app(ConfigOverrideStore::class);
+            $scope = $store->scope($root);
+
+            if ($scope === null) {
+                return $none;
+            }
+
+            $layer = [];
+
+            foreach ($store->publishedLayer($scope) as $pointer => $entry) {
+                $layer[$pointer] = new ConfigLayerValue(ConfigTier::Operator, $entry->value, "operator override · v{$entry->version}");
+            }
+
+            $overrides = [];
+
+            foreach ($scope->draftEntries() as $pointer => $entry) {
+                $segments = JsonPointer::segments((string) $pointer);
+                $secret = (bool) ($entry['secret'] ?? false);
+                $overrides[] = new ConfigOverrideData(
+                    pointer: (string) $pointer,
+                    op: ConfigOverrideOp::from($entry['op']),
+                    value: $secret ? null : $this->redactAt($section, $segments, $entry['value'] ?? null),
+                    secret: $secret,
+                    set: (bool) ($entry['set'] ?? false),
+                    setAt: $entry['setAt'] ?? null,
+                    revision: (string) ($entry['revision'] ?? ''),
+                );
+            }
+
+            return [$layer, $overrides, new ConfigPinsData(
+                draft: $store->versionNumber($scope, $scope->head_version),
+                published: $store->versionNumber($scope, $scope->published_version),
+                draftPending: $scope->head_version !== $scope->published_version,
+            )];
+        } catch (Throwable) {
+            return $none;
+        }
     }
 
     /**

@@ -441,6 +441,17 @@ return [
     ],
 
     /*
+    | Config overrides (ADR-0245 §9; config-sections ticket 05). The operator tier's published overrides are
+    | re-applied when one published-version counter moves; that counter lives in this cache store. Name a
+    | store that every process shares and that is NOT tenant-tagged (a central store); null reads the host's
+    | default store. When the store cannot be read, the overrides are not applied and config falls back to
+    | the package and host tiers; boot never fails on it.
+    */
+    'config_overrides' => [
+        'cache_store' => env('BEAM_CONFIG_OVERRIDES_CACHE_STORE'),
+    ],
+
+    /*
     | `beam.install.desired-state` — what a correct beam-tier install produces (prove-the-beam-starter
     | 01/12). See {@see \Splicewire\Beam\Surgeon\InstallDesiredStateAudit}; the requirements themselves
     | are R1–R7 and are NOT configurable, because they are the definition. What a host steers is only
