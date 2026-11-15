@@ -37,8 +37,12 @@ final class PublishConfigOp
     public static function handle(mixed $model, Request $request, mixed $actor): ConfigSectionData
     {
         $input = ConfigSectionRefInputData::validateAndCreate($request->all());
-        app(ConfigOverrideStore::class)->publish($input->root);
+        $store = app(ConfigOverrideStore::class);
+        $store->publish($input->root);
 
-        return self::row($input->root);
+        $row = self::row($input->root);
+        $row->notice = $store->propagationNotice();
+
+        return $row;
     }
 }

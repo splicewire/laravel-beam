@@ -447,7 +447,9 @@ return [
     | default store. With a working cache a publish reaches the very next request or job. When the cache
     | cannot be READ, the published overrides are read uncached (root ruling df42bf60). When a cache WRITE
     | fails, long-lived processes (Octane, queue workers) pick the publish up within `recheck_seconds`, the
-    | most often each process re-derives the token from the override store. Only an override store that
+    | most often each process re-derives the token from the override store, and the publish response and
+    | the log say so; 0 re-derives on every request, job or command, so even a failed write reaches the
+    | very next one (root ruling (A), row 64e24681, 2026-11-15). Only an override store that
     | cannot be read falls back to the package and host tiers; boot never fails on either.
     */
     'config_overrides' => [

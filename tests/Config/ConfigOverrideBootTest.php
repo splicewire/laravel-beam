@@ -213,7 +213,10 @@ class ConfigOverrideBootTest extends TestCase
         $this->assertSame([], $queries, 'the memoised layers serve the new clone');
     }
 
-    /** review-r1 HIGH-2 (a): a readable cache whose write fails is caught up within recheck_seconds. */
+    /**
+     * review-r1 HIGH-2 (a): a readable cache whose write fails is caught up within recheck_seconds. The bounded delay is
+     * the accepted fault-mode guarantee (root ruling (A), row 64e24681); 0 makes it strict (the next test).
+     */
     public function test_a_publish_whose_cache_write_fails_reaches_a_warm_process_within_the_recheck_bound(): void
     {
         config()->set('beam.core.config_overrides.recheck_seconds', 30);
@@ -246,6 +249,29 @@ class ConfigOverrideBootTest extends TestCase
         $warm->sync();
         $this->assertSame('Two', config('panels.title'), 'the cache recovering never takes it back to the old value');
         $this->assertSame(app(ConfigOverrideStore::class)->publishedToken(), Cache::store('cs05-flaky')->get(ConfigOverrideCounter::KEY), 'and the recheck repaired the cache');
+    }
+
+    /** Root ruling (A), row 64e24681: `recheck_seconds = 0` is strict, so a failed write still reaches the next sync. */
+    public function test_strict_recheck_reaches_a_warm_process_on_its_next_sync_when_the_cache_write_fails(): void
+    {
+        config()->set('beam.core.config_overrides.recheck_seconds', 0);
+        $cache = $this->flakyCounterCache();
+        $this->publishTitle('One');
+        $base = app('config');
+
+        $warmRepo = $this->operation($base);
+        $warm = $this->anotherWarmProcess();
+        $warm->sync();
+        $this->assertSame('One', $warmRepo->get('panels.title'));
+
+        $cache->failWrites = true;
+        $this->operation($base);
+        $this->publishTitle('Two');
+
+        // No time travel: the very next sync of the warm process sees the publish.
+        $this->app->instance('config', $warmRepo);
+        $warm->sync();
+        $this->assertSame('Two', config('panels.title'), 'strict recheck re-derives the token from the store on every sync');
     }
 
     /** review-r1 HIGH-2 (b): a flushed counter followed by a publish never reuses a token a warm process applied. */

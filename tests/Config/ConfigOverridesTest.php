@@ -7,6 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Schemastud\Frame\FrameServiceProvider;
@@ -401,6 +402,79 @@ class ConfigOverridesTest extends TestCase
         app(ConfigOverlay::class)->sync();
 
         $this->assertSame('Two', config('panels.title'), 'a recovered cache must not leave a long-lived worker at the old published version');
+    }
+
+    /** Root ruling (A), row 64e24681: a publish whose cache write fails says so, with the bound, in the response and the log. */
+    public function test_a_publish_whose_cache_write_fails_tells_the_operator_the_propagation_bound(): void
+    {
+        $flaky = new WriteRefusingArrayStore;
+        Cache::extend('qa-flaky', fn () => new \Illuminate\Cache\Repository($flaky));
+        config(['cache.stores.qa-flaky' => ['driver' => 'qa-flaky'], 'beam.core.config_overrides.cache_store' => 'qa-flaky', 'beam.core.config_overrides.recheck_seconds' => 45]);
+        $expected = 'published; propagation to other processes may take up to 45 s (cache write failed)';
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'panels', 'pointer' => '/title', 'op' => 'set', 'value' => '"One"'])->assertOk();
+        $this->assertNull($this->postJson('/beam-config/publish', ['root' => 'panels'])->assertOk()->json('data.notice'), 'a healthy publish has nothing to tell');
+
+        Log::spy();
+        $flaky->failWrites = true;
+        $this->postJson('/beam-config/save-draft', ['root' => 'panels', 'pointer' => '/title', 'op' => 'set', 'value' => '"Two"'])->assertOk();
+        $response = $this->postJson('/beam-config/publish', ['root' => 'panels'])->assertOk();
+
+        $this->assertSame($expected, $response->json('data.notice'));
+        $this->assertSame('Two', config('panels.title'), 'the publishing process still applied it at once');
+        Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []): bool => $message === $expected && $context['root'] === 'panels')->once();
+    }
+
+    /**
+     * review-r1 (ruling (A) follow-on): a store that reports a failed write by returning false, not by throwing (Laravel's
+     * `Repository::forever()`, Memcached), is a failed write: the notice, the warning, and the recheck catches it up.
+     */
+    public function test_a_cache_write_the_store_refuses_with_false_is_a_failed_write(): void
+    {
+        $store = new WriteReturningFalseArrayStore;
+        Cache::extend('qa-false', fn () => new \Illuminate\Cache\Repository($store));
+        config(['cache.stores.qa-false' => ['driver' => 'qa-false'], 'beam.core.config_overrides.cache_store' => 'qa-false', 'beam.core.config_overrides.recheck_seconds' => 0]);
+        $expected = 'published; propagation to other processes may take up to 0 s (cache write failed)';
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'panels', 'pointer' => '/title', 'op' => 'set', 'value' => '"One"'])->assertOk();
+        $this->postJson('/beam-config/publish', ['root' => 'panels'])->assertOk();
+        $worker = clone app('config');
+        $warm = new ConfigOverlay($this->app, $this->app->make(\Splicewire\Beam\Config\Overrides\ConfigOverrideCounter::class));
+        $base = app('config');
+        $this->app->instance('config', $worker);
+        $warm->sync();
+        $this->assertSame('One', config('panels.title'));
+        $this->app->instance('config', $base);
+
+        Log::spy();
+        $store->refuseWrites = true;
+        $this->postJson('/beam-config/save-draft', ['root' => 'panels', 'pointer' => '/title', 'op' => 'set', 'value' => '"Two"'])->assertOk();
+        $response = $this->postJson('/beam-config/publish', ['root' => 'panels'])->assertOk();
+
+        $this->assertSame($expected, $response->json('data.notice'));
+        Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []): bool => $message === $expected && $context['root'] === 'panels')->once();
+        $this->assertNotSame(app(ConfigOverrideStore::class)->publishedToken(), Cache::store('qa-false')->get(\Splicewire\Beam\Config\Overrides\ConfigOverrideCounter::KEY), 'the refused write left the cache stale');
+
+        // The recheck path (strict here) catches a warm process up despite the stale cache.
+        $this->app->instance('config', $worker);
+        $warm->sync();
+        $this->assertSame('Two', config('panels.title'));
+    }
+}
+
+/** A cache store that reads fine but reports a refused write by returning false, never throwing. */
+final class WriteReturningFalseArrayStore extends \Illuminate\Cache\ArrayStore
+{
+    public bool $refuseWrites = false;
+
+    public function put($key, $value, $seconds)
+    {
+        return $this->refuseWrites ? false : parent::put($key, $value, $seconds);
+    }
+
+    public function forever($key, $value)
+    {
+        return $this->refuseWrites ? false : parent::forever($key, $value);
     }
 }
 

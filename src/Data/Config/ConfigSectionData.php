@@ -70,5 +70,7 @@ class ConfigSectionData extends BeamData
         #[DataCollectionOf(ConfigOverrideData::class)]
         public array $overrides = [],
         public ConfigPinsData $pins = new ConfigPinsData(draft: null, published: null, draftPending: false),
+        /** What a publish must tell the operator, e.g. a failed cache write's propagation bound (root ruling (A), row 64e24681). */
+        public ?string $notice = null,
     ) {}
 }

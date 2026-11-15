@@ -15,8 +15,11 @@ use WeakMap;
  * config-sections ticket 05; PRD §Overlay application).
  *
  * **Guarantee.** With a working cache, a publish reaches the very next request or job. When a cache WRITE fails, a
- * long-lived process (Octane, a queue worker) picks it up within `beam.core.config_overrides.recheck_seconds`. When the
- * cache cannot be READ, the published overrides are read uncached on every call (root ruling df42bf60, amending
+ * long-lived process (Octane, a queue worker) picks it up within `beam.core.config_overrides.recheck_seconds`, and the
+ * publish response and the log say so ({@see ConfigOverrideStore::cacheWriteFailedNotice()}); `recheck_seconds = 0`
+ * re-derives the token from the store on every sync, which keeps the next-request guarantee through a failed write
+ * (root ruling (A), row 64e24681, 2026-11-15: the bounded fault-mode delay is accepted when it is surfaced and
+ * tunable to strict). When the cache cannot be READ, the published overrides are read uncached on every call (root ruling df42bf60, amending
  * PRD:224). Only an override store that cannot be read (or built) falls back to the package and host tiers. Nothing
  * here throws, and boot never fails. The publishing process applies its own publish at once
  * ({@see ConfigOverrideStore::publish()}).
@@ -176,9 +179,14 @@ class ConfigOverlay
             return true;
         }
 
-        $bound = max(0, (int) config('beam.core.config_overrides.recheck_seconds', 30)) * 1000;
+        // 0 is strict: every sync re-derives the token (root ruling (A), row 64e24681).
+        return $this->nowMs() - $this->checkedAt >= self::recheckSeconds() * 1000;
+    }
 
-        return $this->nowMs() - $this->checkedAt >= $bound;
+    /** `beam.core.config_overrides.recheck_seconds`, never negative. */
+    public static function recheckSeconds(): int
+    {
+        return max(0, (int) config('beam.core.config_overrides.recheck_seconds', 30));
     }
 
     /** The counter cache cannot be read: the published layer is read and applied on every call (df42bf60). */

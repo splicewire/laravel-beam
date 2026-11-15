@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Config\Overrides;
 
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\Repository;
+use RuntimeException;
 
 /**
  * The ONE published-state token the operator tier's three hooks key on (config-sections ticket 05; PRD §Overlay
@@ -33,10 +34,16 @@ class ConfigOverrideCounter
         return is_string($token) && $token !== '' ? $token : null;
     }
 
-    /** Announce the published state so every process re-reads on its next request, job or command. Throws on failure. */
+    /**
+     * Announce the published state so every process re-reads on its next request, job or command. Throws on failure,
+     * including a write the store refuses by returning false (Laravel's `Repository::forever()` and stores such as
+     * Memcached report a failed write that way, not by throwing; review-r1, 2026-11-15).
+     */
     public function put(string $token): void
     {
-        $this->store()->forever(self::KEY, $token);
+        if ($this->store()->forever(self::KEY, $token) === false) {
+            throw new RuntimeException('The config override cache store refused the write.');
+        }
     }
 
     protected function store(): Repository

@@ -52,6 +52,23 @@ class ConfigOverrideStore
         protected ConfigOverrideCounter $counter,
     ) {}
 
+    /** What the last {@see publish()} must tell the operator about propagation, or null when there is nothing to tell. */
+    protected ?string $propagationNotice = null;
+
+    public function propagationNotice(): ?string
+    {
+        return $this->propagationNotice;
+    }
+
+    /**
+     * The fault-mode notice (root ruling (A), row 64e24681): a publish whose token could not be written to the cache
+     * reaches other processes within `recheck_seconds` instead of on their next request, job or command.
+     */
+    public static function cacheWriteFailedNotice(): string
+    {
+        return sprintf('published; propagation to other processes may take up to %d s (cache write failed)', ConfigOverlay::recheckSeconds());
+    }
+
     protected function schemas(): ConfigSectionSchema
     {
         return $this->container->make(ConfigSectionSchema::class);
@@ -139,6 +156,7 @@ class ConfigOverrideStore
     public function publish(string $root): ConfigOverrideScope
     {
         $this->registered($root);
+        $this->propagationNotice = null;
 
         $moved = false;
 
@@ -520,7 +538,9 @@ class ConfigOverrideStore
         try {
             $this->counter->put($this->publishedToken());
         } catch (Throwable $e) {
-            Log::warning("[beam] published {$root}, but the override token could not be written to the cache; other processes pick it up within beam.core.config_overrides.recheck_seconds.", [
+            $this->propagationNotice = self::cacheWriteFailedNotice();
+            Log::warning($this->propagationNotice, [
+                'root' => $root,
                 'exception' => $e::class,
                 'message' => $e->getMessage(),
             ]);
