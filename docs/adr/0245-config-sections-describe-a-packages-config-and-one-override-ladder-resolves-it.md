@@ -1,6 +1,6 @@
 # ADR-0245 — Config Sections describe a package's config, and one Override Ladder resolves it
 
-**Status:** proposed — config-sections ticket 02, 2026-11-09. Gated by `cross-review` before ticket 05 builds on it.
+**Status:** accepted (cross-review met 2026-11-09; root under the owner's standing all-recs ruling, 2026-11-15)
 **Date:** 2026-11-09
 **Repo:** `splicewire/laravel-beam`
 **Wayfinding:** `.scratch/splicewire/laravel-beam/config-sections/` (MAP, PRD, tickets 01 and 02), in `splicewire-ecosystem`.
@@ -220,6 +220,15 @@ Raised by the cross-review. Two are decided here because ticket 05 builds on the
    Release member and a version snapshot carry that revision's id, plus `set` and `setAt`, never the value, so a
    later write cannot change what the Release publishes or rolls back to. Whether the revision row is the store's
    own or `rushing/laravel-versioning`'s is ticket 05's to settle with this constraint.
+
+   *Settled by ticket 05: the revision row is the store's own.* A `rushing/laravel-versioning` version's snapshot is
+   plain JSON, and decision 6 rules that a secret value is never written to a version, so the encrypted value cannot
+   live in one. `beam_config_overrides` is the store's append-only revision log: one row per write to one pointer
+   (`set`, an explicit `null` or `unset`), with `encrypted_value` for a secret and `value` otherwise, never updated or
+   deleted. The per-section scope row (`beam_config_scopes`) holds the draft as pointer → revision id, and it is the
+   `Versionable` record: its HEAD pin is the last saved draft and `published_version` the version the runtime applies.
+   A version snapshot carries each pointer's revision id with `set` and `setAt`, and a value only for a non-secret
+   `set`. Ticket 08's Release member names a revision id the same way.
 
 ## Consequences
 
