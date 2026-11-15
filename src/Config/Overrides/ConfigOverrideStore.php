@@ -223,7 +223,9 @@ class ConfigOverrideStore
             return [];
         }
 
-        $version = Version::query()->find($scope->published_version);
+        // Through the version store, which reads on the scope's own connection (`central`). A bare Version query
+        // would read the DEFAULT connection, which is the tenant's during a tenant request.
+        $version = $this->versions->version($scope, $scope->published_version);
         $draft = $version?->snapshot['draft'] ?? [];
 
         return $this->entries(is_array($draft) ? $draft : [], $version?->version);
