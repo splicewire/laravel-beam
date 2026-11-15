@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Config;
 
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
@@ -21,6 +22,7 @@ use Splicewire\Beam\Particle\Ops\Config\PublishConfigOp;
 use Splicewire\Beam\Particle\Ops\Config\RestoreConfigVersionOp;
 use Splicewire\Beam\Particle\Ops\Config\SaveConfigDraftOp;
 use Splicewire\Beam\Tests\Fixtures\Config\ConfigOperatorActor;
+use Splicewire\Beam\Tests\Fixtures\Config\NestedGroupSection;
 use Splicewire\Beam\Tests\Fixtures\Config\PanelsSection;
 use Splicewire\Beam\Tests\Fixtures\Config\ReadsPanelsConfigJob;
 use Splicewire\Beam\Tests\TestCase;
@@ -238,9 +240,13 @@ class ConfigOverridesTest extends TestCase
 
     public function test_a_long_lived_worker_sees_the_change_on_its_next_job_after_the_counter_moves(): void
     {
-        // Another process publishes: the store and the shared counter move, and this process has not re-synced yet.
+        // Another process publishes: the store and the shared token move, and this worker's repository has not re-synced.
+        // (The publishing process applies its own publish at once, so the publish runs on a separate repository.)
+        $worker = app('config');
+        $this->app->instance('config', clone $worker);
         app(ConfigOverrideStore::class)->saveDraft('panels', [['pointer' => '/title', 'op' => 'set', 'value' => 'From the operator']]);
         app(ConfigOverrideStore::class)->publish('panels');
+        $this->app->instance('config', $worker);
         $this->assertSame('Panels', config('panels.title'), 'the worker still runs on what it applied');
 
         ReadsPanelsConfigJob::$seen = null;
@@ -285,5 +291,139 @@ class ConfigOverridesTest extends TestCase
         ]);
         $this->assertStringNotContainsString($plain, $raw, 'no table holds the plaintext');
         $this->assertStringNotContainsString($plain, json_encode($this->op('versions', ['root' => 'panels'])->json()));
+    }
+
+    /* ---- Nested children keep their own ceiling and secrecy (Standards HIGH-1/HIGH-2, 2026-11-15) ----
+     * The three test_qa_ cases are build-qa's OperatorBoundaryQaTest repro, adopted as regressions. */
+
+    /** @return array{deploy: string, token: string, label: string} the host's `qa.group.group` object */
+    private function nestedGroup(): array
+    {
+        $group = ['deploy' => 'host-driver', 'token' => 'fake-original', 'label' => 'original'];
+        config(['qa.group' => ['group' => $group]]);
+        app(ConfigSectionRegistry::class)->section(NestedGroupSection::class, owner: 'qa/fixture');
+
+        return $group;
+    }
+
+    private function nestedRaw(): string
+    {
+        return json_encode([
+            DB::connection('central')->table(Beam::table('config_overrides'))->get(),
+            DB::connection('central')->table(Beam::table('config_scopes'))->get(),
+            DB::connection('central')->table(Beam::table('versions'))->get(),
+        ]);
+    }
+
+    /** build-qa: a parent-object set may not change a host-only child. */
+    public function test_qa_parent_object_cannot_write_a_host_only_child(): void
+    {
+        $group = $this->nestedGroup();
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.group', 'pointer' => '/group/deploy', 'op' => 'set', 'value' => '"changed-driver"'])->assertStatus(422);
+
+        $group['deploy'] = 'changed-driver';
+        $refused = $this->postJson('/beam-config/save-draft', ['root' => 'qa.group', 'pointer' => '/group', 'op' => 'set', 'value' => json_encode($group)])->assertStatus(422);
+        $this->assertStringContainsString('/group/deploy', (string) $refused->json('message'), 'the refusal names the child pointer');
+    }
+
+    public function test_a_parent_object_may_resend_its_host_only_children_unchanged(): void
+    {
+        $group = $this->nestedGroup();
+        $group['label'] = 'from the operator';
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.group', 'pointer' => '/group', 'op' => 'set', 'value' => json_encode($group)])->assertOk();
+        $this->op('publish', ['root' => 'qa.group'])->assertOk();
+
+        $this->assertSame('from the operator', config('qa.group.group.label'));
+        $this->assertSame('host-driver', config('qa.group.group.deploy'), 'the host-only child is value-equal, so allowed and unchanged');
+    }
+
+    public function test_a_parent_null_that_would_clear_a_host_only_child_is_refused(): void
+    {
+        $this->nestedGroup();
+
+        $refused = $this->postJson('/beam-config/save-draft', ['root' => 'qa.group', 'pointer' => '/group', 'op' => 'null'])->assertStatus(422);
+        $this->assertStringContainsString('/group/deploy', (string) $refused->json('message'));
+    }
+
+    /** build-qa: a declared secret inside a parent-object set never reaches a plain override, a scope or a version. */
+    public function test_qa_parent_object_does_not_store_secret_children_in_plaintext(): void
+    {
+        $group = $this->nestedGroup();
+        $group['token'] = 'sk-FAKE-QA-nested-secret';
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.group', 'pointer' => '/group', 'op' => 'set', 'value' => json_encode($group)])->assertOk();
+        $this->assertStringNotContainsString($group['token'], $this->nestedRaw(), 'a nested declared secret must never enter plain overrides, scopes or version snapshots');
+
+        $this->op('publish', ['root' => 'qa.group'])->assertOk();
+        $this->assertSame('sk-FAKE-QA-nested-secret', config('qa.group.group.token'), 'the running configuration holds it, decrypted');
+        $this->assertSame('original', config('qa.group.group.label'));
+
+        // A restore is a new draft built from a version snapshot: it must not resurrect a plaintext copy either.
+        $versions = app(ConfigOverrideStore::class)->versionsOf('qa.group');
+        app(ConfigOverrideStore::class)->restore('qa.group', end($versions)->id);
+        $this->assertStringNotContainsString($group['token'], $this->nestedRaw(), 'still absent after a restore');
+
+        $row = app(ConfigSectionReader::class)->read(app(ConfigSectionRegistry::class)->get('qa.group'));
+        $this->assertStringNotContainsString($group['token'], json_encode($row), 'reads and provenance redact it');
+    }
+
+    public function test_the_parent_s_next_op_replaces_the_secret_child_it_split_out(): void
+    {
+        $group = $this->nestedGroup();
+        $group['token'] = 'sk-FAKE-first';
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.group', 'pointer' => '/group', 'op' => 'set', 'value' => json_encode($group)])->assertOk();
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.group', 'pointer' => '/group', 'op' => 'unset'])->assertOk();
+        $this->op('publish', ['root' => 'qa.group'])->assertOk();
+
+        $this->assertSame('fake-original', config('qa.group.group.token'), 'unsetting the parent drops its secret child too');
+        $this->assertArrayNotHasKey('/group/token', app(ConfigOverrideStore::class)->scope('qa.group')->draft ?? []);
+    }
+
+    /**
+     * build-qa (corroborating Spec HIGH-2): a publish whose cache write fails, then a recovered cache, never leaves the
+     * worker at the old published version. Adapted: the token is now PUT, not incremented, so the outage fails writes.
+     */
+    public function test_qa_worker_sees_publish_after_counter_write_failure_and_recovery(): void
+    {
+        $flaky = new WriteRefusingArrayStore;
+        Cache::extend('qa-flaky', fn () => new \Illuminate\Cache\Repository($flaky));
+        config(['cache.stores.qa-flaky' => ['driver' => 'qa-flaky'], 'beam.core.config_overrides.cache_store' => 'qa-flaky']);
+        $this->postJson('/beam-config/save-draft', ['root' => 'panels', 'pointer' => '/title', 'op' => 'set', 'value' => '"One"'])->assertOk();
+        $this->postJson('/beam-config/publish', ['root' => 'panels'])->assertOk();
+        $this->assertSame('One', config('panels.title'));
+
+        $flaky->failWrites = true;
+        app(ConfigOverrideStore::class)->saveDraft('panels', [['pointer' => '/title', 'op' => 'set', 'value' => 'Two']]);
+        app(ConfigOverrideStore::class)->publish('panels');
+        $flaky->failWrites = false;
+        app(ConfigOverlay::class)->sync();
+
+        $this->assertSame('Two', config('panels.title'), 'a recovered cache must not leave a long-lived worker at the old published version');
+    }
+}
+
+/** A cache store that reads fine but refuses writes while `$failWrites` is on (build-qa's transient outage). */
+final class WriteRefusingArrayStore extends \Illuminate\Cache\ArrayStore
+{
+    public bool $failWrites = false;
+
+    public function put($key, $value, $seconds)
+    {
+        if ($this->failWrites) {
+            throw new \RuntimeException('fake transient cache outage during publish');
+        }
+
+        return parent::put($key, $value, $seconds);
+    }
+
+    public function increment($key, $value = 1)
+    {
+        if ($this->failWrites) {
+            throw new \RuntimeException('fake transient cache outage during publish');
+        }
+
+        return parent::increment($key, $value);
     }
 }

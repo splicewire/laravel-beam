@@ -2,145 +2,132 @@
 
 namespace Splicewire\Beam\Config\Overrides;
 
+use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Log;
 use Schemastud\DataSchemas\Overlay\JsonPathMutator;
 use Splicewire\Beam\Config\JsonPointer;
 use Throwable;
+use WeakMap;
 
 /**
  * Applies the operator tier's PUBLISHED overrides to the running configuration (ADR-0245 decision 2 and §9;
  * config-sections ticket 05; PRD §Overlay application).
  *
- * - It never holds a config repository: every read and write resolves `app('config')` at the call, so a host that
- *   rebinds the repository (Octane, a test) is always the one written.
- * - It snapshots each root it touches before the first write and restores those roots exactly before it re-applies or
- *   falls back, because a long-lived queue worker has no Octane sandbox to throw a request's config away.
- * - Each `set` / explicit `null` is applied in pointer order through DataOverlay's `override` (an upsert at a concrete
- *   path, {@see JsonPointer::toJsonPath()}); an `unset` is the absence of an entry and is never sent to DataOverlay.
- * - {@see sync()} is what the three hooks call. It re-applies only when the published-version counter has moved since
- *   it last applied. Nothing it meets is thrown (root ruling df42bf60, 2026-11-15, amending PRD:224):
- *   - a counter CACHE that cannot be read skips the cache, not the tier: the published layer is read uncached on every
- *     call until the cache answers again, so the operator tier keeps applying (a published `review_required` stays
- *     required). One warning is logged per failure streak;
- *   - an override STORE that cannot be read (or cannot be built) restores the base configuration and applies nothing:
- *     config falls back to the package and host tiers, and the failure is logged.
- * - The store is resolved inside that guard, never at construction, so a boot without the store's bindings falls back
- *   instead of failing.
+ * **Guarantee.** With a working cache, a publish reaches the very next request or job. When a cache WRITE fails, a
+ * long-lived process (Octane, a queue worker) picks it up within `beam.core.config_overrides.recheck_seconds`. When the
+ * cache cannot be READ, the published overrides are read uncached on every call (root ruling df42bf60, amending
+ * PRD:224). Only an override store that cannot be read (or built) falls back to the package and host tiers. Nothing
+ * here throws, and boot never fails. The publishing process applies its own publish at once
+ * ({@see ConfigOverrideStore::publish()}).
+ *
+ * **Every repository it meets gets the published layer.** Under Octane each operation runs on a fresh CLONE of the
+ * worker's repository (`CreateConfigurationSandbox`) while this singleton lives on (review-r1, 2026-11-15), so what was
+ * applied is tracked per repository in a WeakMap keyed by the repository object. Weak identity keys hold no values and
+ * write nothing through a remembered repository, which is HANDBACK-03's rule for the ladder hooks (resolve `app('config')`
+ * on every call, keep only values). The singleton keeps only repository-independent values:
+ * - the GLOBAL package+host base of each root, captured the first time the overlay touches it, before anything is
+ *   applied (worker or process boot). Applying writes each touched root's base back into the current repository,
+ *   then the layers, so a key unset after boot reverts to its host value in every clone;
+ * - the published layers memoised by token, so a new clone costs array writes, not a store read.
+ * A host's own `config()->set` on a touched root after the operation's sync stands until the next operation's sync.
+ *
+ * **Ordering (handoff to ticket 07, tenant tier).** The operator sync must run BEFORE tenancy initialises in an
+ * operation; the tenant tier applies on top of it. Requests satisfy this (the middleware is prepended global
+ * middleware). The JobProcessing listener shares its event with tenancy's queue bootstrapper; 07 owns that order.
+ *
+ * Each `set` / explicit `null` is applied in pointer order through DataOverlay's `override` (an upsert at a concrete
+ * path, {@see JsonPointer::toJsonPath()}); an `unset` is the absence of an entry and is never sent to DataOverlay.
  */
 class ConfigOverlay
 {
-    /** @var array<string, mixed> root => its value before this overlay first wrote it */
+    /** @var array<string, mixed> root => its package+host value, captured before the overlay first wrote it */
     protected array $base = [];
 
-    /** @var array<string, array<string, ConfigOverrideEntry>> root => pointer => the published entry applied */
-    protected array $applied = [];
+    /** @var WeakMap<Repository, string> repository => the token whose layers it holds */
+    protected WeakMap $applied;
 
-    protected ?int $appliedAt = null;
+    /** @var array<string, array<string, ConfigOverrideEntry>> the published layers read for `layersToken` */
+    protected array $layers = [];
 
-    /** Whether the current counter-cache failure streak has been logged. */
+    protected ?string $layersToken = null;
+
+    /** When this process last re-derived the token from the store (ms); null forces it on the next sync. */
+    protected ?int $checkedAt;
+
+    /**
+     * After a failed cache write, the stale token the cache still holds and the store's real token, so the stale value
+     * cannot take a repository back until the cache is repaired or says something else.
+     *
+     * @var array{0: string, 1: string}|null
+     */
+    protected ?array $correction = null;
+
+    /** Whether the current counter-cache read-failure streak has been logged. */
     protected bool $uncachedWarned = false;
 
     public function __construct(
         protected Container $container,
         protected ConfigOverrideCounter $counter,
-    ) {}
+    ) {
+        $this->applied = new WeakMap;
+        // A process starts as "just checked": an FPM request is short-lived and reads the layers fresh anyway; a
+        // long-lived process re-derives from the store once the bound passes.
+        $this->checkedAt = $this->nowMs();
+    }
 
-    /**
-     * Re-apply when the counter moved, or on every call while the counter cache cannot be read; fall back to the base
-     * configuration only when the override store cannot be read.
-     */
+    /** Bring the CURRENT repository (`app('config')`) to the published state. Never throws. */
     public function sync(): void
     {
+        $config = app('config');
+
         try {
-            $counter = $this->counter->current();
+            $token = $this->counter->current();
             $this->uncachedWarned = false;
         } catch (Throwable $e) {
-            $counter = null;
+            $this->warnUncached($e);
+            $this->syncUncached($config);
 
-            if (! $this->uncachedWarned) {
-                $this->uncachedWarned = true;
-                Log::warning('[beam] the config override counter cache could not be read; reading the published overrides uncached until it answers.', [
-                    'exception' => $e::class,
-                    'message' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        if ($counter !== null && $this->appliedAt === $counter) {
             return;
         }
 
         try {
-            $layers = $this->container->make(ConfigOverrideStore::class)->publishedLayers();
+            $token = $this->resolveToken($token);
         } catch (Throwable $e) {
             $this->fallBack('the override store could not be read', $e);
 
             return;
         }
 
-        $this->restore();
-        $this->apply($layers);
-        // Uncached (null): nothing to compare against, so the next call reads the published layer again.
-        $this->appliedAt = $counter;
-    }
-
-    /**
-     * Apply published layers over the current configuration, snapshotting each root first.
-     *
-     * @param  array<string, array<string, ConfigOverrideEntry>>  $layers  root => pointer => entry
-     */
-    public function apply(array $layers): void
-    {
-        $config = app('config');
-        $mutator = new JsonPathMutator;
-
-        foreach ($layers as $root => $entries) {
-            if ($entries === []) {
-                continue;
-            }
-
-            if (! array_key_exists($root, $this->base)) {
-                $this->base[$root] = $config->get($root);
-            }
-
-            $doc = $config->get($root);
-            $doc = is_array($doc) ? $doc : [];
-            ksort($entries);
-
-            foreach ($entries as $pointer => $entry) {
-                $mutator->override($doc, JsonPointer::toJsonPath($pointer), $entry->value);
-            }
-
-            $config->set($root, $doc);
-            $this->applied[$root] = $entries;
-        }
-    }
-
-    /** Put every root this overlay wrote back exactly as it was, and forget what was applied. */
-    public function restore(): void
-    {
-        $config = app('config');
-
-        foreach ($this->base as $root => $value) {
-            $config->set($root, $value);
+        if (isset($this->applied[$config]) && $this->applied[$config] === $token) {
+            return;
         }
 
-        $this->base = [];
-        $this->applied = [];
-        $this->appliedAt = null;
+        if ($this->layersToken !== $token) {
+            try {
+                $this->layers = $this->store()->publishedLayers();
+                $this->layersToken = $token;
+            } catch (Throwable $e) {
+                $this->fallBack('the override store could not be read', $e);
+
+                return;
+            }
+        }
+
+        $this->applyTo($config, $this->layers);
+        $this->applied[$config] = $token;
+    }
+
+    /** Force the next sync to re-derive the token from the store (after a publish in this process). */
+    public function recheckNow(): void
+    {
+        $this->checkedAt = null;
     }
 
     /** A root's value without this overlay: the package and host tiers (and any provider write) only. */
     public function base(string $root): mixed
     {
         return array_key_exists($root, $this->base) ? $this->base[$root] : app('config')->get($root);
-    }
-
-    /** @return array<string, ConfigOverrideEntry> the published entries applied to a root, pointer => entry */
-    public function appliedTo(string $root): array
-    {
-        return $this->applied[$root] ?? [];
     }
 
     /**
@@ -155,9 +142,140 @@ class ConfigOverlay
         return app()->runningInConsole() && in_array($command, ['config:cache', 'optimize'], true);
     }
 
+    /**
+     * The token to trust: the cached one, reseeded from the store when absent, re-derived from the store at most once
+     * per `recheck_seconds` (a failed write leaves the cache stale), and corrected while the cache still says the
+     * stale value it said at the last recheck.
+     */
+    protected function resolveToken(?string $cached): string
+    {
+        if ($cached === null) {
+            $token = $this->store()->publishedToken();
+            $this->checkedAt = $this->nowMs();
+            $this->tryPut($token);
+
+            return $token;
+        }
+
+        if ($this->recheckDue()) {
+            $fromStore = $this->store()->publishedToken();
+            $this->checkedAt = $this->nowMs();
+            $this->correction = $fromStore === $cached ? null : [$cached, $fromStore];
+
+            if ($this->correction !== null) {
+                $this->tryPut($fromStore);
+            }
+        }
+
+        return $this->correction !== null && $this->correction[0] === $cached ? $this->correction[1] : $cached;
+    }
+
+    protected function recheckDue(): bool
+    {
+        if ($this->checkedAt === null) {
+            return true;
+        }
+
+        $bound = max(0, (int) config('beam.core.config_overrides.recheck_seconds', 30)) * 1000;
+
+        return $this->nowMs() - $this->checkedAt >= $bound;
+    }
+
+    /** The counter cache cannot be read: the published layer is read and applied on every call (df42bf60). */
+    protected function syncUncached(Repository $config): void
+    {
+        try {
+            $layers = $this->store()->publishedLayers();
+        } catch (Throwable $e) {
+            $this->fallBack('the override store could not be read', $e);
+
+            return;
+        }
+
+        $this->applyTo($config, $layers);
+        unset($this->applied[$config]);
+    }
+
+    /**
+     * Write every touched root's package+host base into `$config`, then apply the layers. A root seen for the first
+     * time has its base captured from `$config` before anything is written to it.
+     *
+     * @param  array<string, array<string, ConfigOverrideEntry>>  $layers  root => pointer => entry
+     */
+    protected function applyTo(Repository $config, array $layers): void
+    {
+        foreach ($layers as $root => $entries) {
+            if ($entries !== [] && ! array_key_exists($root, $this->base)) {
+                $this->base[$root] = $config->get($root);
+            }
+        }
+
+        foreach ($this->base as $root => $value) {
+            $config->set($root, $value);
+        }
+
+        $mutator = new JsonPathMutator;
+
+        foreach ($layers as $root => $entries) {
+            if ($entries === []) {
+                continue;
+            }
+
+            $doc = $config->get($root);
+            $doc = is_array($doc) ? $doc : [];
+            ksort($entries);
+
+            foreach ($entries as $pointer => $entry) {
+                $mutator->override($doc, JsonPointer::toJsonPath($pointer), $entry->value);
+            }
+
+            $config->set($root, $doc);
+        }
+    }
+
+    protected function store(): ConfigOverrideStore
+    {
+        return $this->container->make(ConfigOverrideStore::class);
+    }
+
+    protected function tryPut(string $token): void
+    {
+        try {
+            $this->counter->put($token);
+        } catch (Throwable) {
+            // The cache is a notification; the store is the truth, and the next recheck repeats this.
+        }
+    }
+
+    protected function nowMs(): int
+    {
+        return (int) now()->getTimestampMs();
+    }
+
+    protected function warnUncached(Throwable $e): void
+    {
+        if ($this->uncachedWarned) {
+            return;
+        }
+
+        $this->uncachedWarned = true;
+        Log::warning('[beam] the config override counter cache could not be read; reading the published overrides uncached until it answers.', [
+            'exception' => $e::class,
+            'message' => $e->getMessage(),
+        ]);
+    }
+
+    /** The store cannot be read: the current repository gets the package and host tiers, and the failure is logged. */
     protected function fallBack(string $why, Throwable $e): void
     {
-        $this->restore();
+        $config = app('config');
+
+        foreach ($this->base as $root => $value) {
+            $config->set($root, $value);
+        }
+
+        unset($this->applied[$config]);
+        $this->layersToken = null;
         Log::warning("[beam] config overrides not applied: {$why}; config falls back to the package and host tiers.", [
             'exception' => $e::class,
             'message' => $e->getMessage(),

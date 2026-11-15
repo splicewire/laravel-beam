@@ -442,13 +442,17 @@ return [
 
     /*
     | Config overrides (ADR-0245 §9; config-sections ticket 05). The operator tier's published overrides are
-    | re-applied when one published-version counter moves; that counter lives in this cache store. Name a
-    | store that every process shares and that is NOT tenant-tagged (a central store); null reads the host's
-    | default store. When the store cannot be read, the overrides are not applied and config falls back to
-    | the package and host tiers; boot never fails on it.
+    | re-applied when the published-state token changes; the token lives in this cache store. Name a store
+    | that every process shares and that is NOT tenant-tagged (a central store); null reads the host's
+    | default store. With a working cache a publish reaches the very next request or job. When the cache
+    | cannot be READ, the published overrides are read uncached (root ruling df42bf60). When a cache WRITE
+    | fails, long-lived processes (Octane, queue workers) pick the publish up within `recheck_seconds`, the
+    | most often each process re-derives the token from the override store. Only an override store that
+    | cannot be read falls back to the package and host tiers; boot never fails on either.
     */
     'config_overrides' => [
         'cache_store' => env('BEAM_CONFIG_OVERRIDES_CACHE_STORE'),
+        'recheck_seconds' => (int) env('BEAM_CONFIG_OVERRIDES_RECHECK_SECONDS', 30),
     ],
 
     /*

@@ -6,14 +6,18 @@ use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\Repository;
 
 /**
- * The ONE published-version counter the operator tier's three hooks key on (config-sections ticket 05; PRD §Overlay
- * application). A publish moves it; a request, a job or a command that sees a value other than the one it applied
- * re-reads the published overrides. It lives in the cache store `beam.core.config_overrides.cache_store` names (null:
- * the host's default store), which every process must share and which must not be tenant-tagged.
+ * The ONE published-state token the operator tier's three hooks key on (config-sections ticket 05; PRD §Overlay
+ * application). It lives in the cache store `beam.core.config_overrides.cache_store` names (null: the host's default
+ * store), which every process must share and which must not be tenant-tagged.
  *
- * An absent key reads as 0, so a fresh or flushed cache still applies what is published. A store that throws is
- * reported to the caller: {@see ConfigOverlay::sync()} then reads the published layer UNCACHED (root ruling df42bf60,
- * amending PRD:224), so the operator tier keeps applying; the cache is an optimisation, never the tier's gate.
+ * The token is DERIVED FROM THE STORE ({@see ConfigOverrideStore::publishedToken()}), a fingerprint of every section's
+ * published pin, never a count (review-r1, 2026-11-15). A publish PUTs the new fingerprint; an absent key is reseeded
+ * from the store. A flushed cache therefore never reuses a token a warm process already applied, and the cache is only
+ * a notification: a write that fails is caught up by the overlay's bounded recheck ({@see ConfigOverlay::sync()}).
+ * Readers compare tokens for equality only.
+ *
+ * Both methods throw when the cache cannot be used; the callers decide what that means (the overlay reads the published
+ * layer uncached, root ruling df42bf60; a publish still commits and warns).
  */
 class ConfigOverrideCounter
 {
@@ -21,22 +25,18 @@ class ConfigOverrideCounter
 
     public function __construct(protected CacheFactory $cache) {}
 
-    /** The current counter; 0 when the key is absent. Throws when the store cannot be read. */
-    public function current(): int
+    /** The cached token, or null when the key is absent (cold, flushed or evicted). Throws when the store cannot be read. */
+    public function current(): ?string
     {
-        return (int) $this->store()->get(self::KEY, 0);
+        $token = $this->store()->get(self::KEY);
+
+        return is_string($token) && $token !== '' ? $token : null;
     }
 
-    /** Move the counter so every process re-applies on its next request, job or command. */
-    public function bump(): int
+    /** Announce the published state so every process re-reads on its next request, job or command. Throws on failure. */
+    public function put(string $token): void
     {
-        $store = $this->store();
-
-        if (! $store->has(self::KEY)) {
-            $store->forever(self::KEY, 0);
-        }
-
-        return (int) $store->increment(self::KEY);
+        $this->store()->forever(self::KEY, $token);
     }
 
     protected function store(): Repository

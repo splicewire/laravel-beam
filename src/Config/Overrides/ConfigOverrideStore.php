@@ -68,7 +68,7 @@ class ConfigOverrideStore
     public function saveDraft(string $root, array $ops, ?string $actor = null): ConfigOverrideScope
     {
         $registered = $this->registered($root);
-        $normalized = $this->normalize($registered, $ops);
+        $normalized = $this->normalize($registered, $ops, $this->base($root));
 
         return DB::connection('central')->transaction(function () use ($registered, $root, $normalized, $actor): ConfigOverrideScope {
             $scope = $this->lockedScope($root);
@@ -77,7 +77,12 @@ class ConfigOverrideStore
             $now = Carbon::now()->toIso8601String();
             $pending = [];
 
-            foreach ($normalized as $i => [$pointer, $op, $value, $secret, $merge]) {
+            foreach ($normalized as $i => [$pointer, $op, $value, $secret, $merge, $via]) {
+                // A parent op replaces what its earlier set split out: drop the secret children derived from it.
+                if ($via === null) {
+                    $draft = array_filter($draft, fn (array $entry): bool => ($entry['via'] ?? null) !== $pointer);
+                }
+
                 if ($merge === ConfigMerge::Extend && $op === ConfigOverrideOp::Set) {
                     [$exists] = JsonPointer::get($base, $pointer);
 
@@ -90,7 +95,8 @@ class ConfigOverrideStore
                     unset($draft[$pointer]);
                 } else {
                     $draft[$pointer] = ['op' => $op->value, 'secret' => $secret, 'set' => $op === ConfigOverrideOp::Set, 'setAt' => $now]
-                        + ($secret || $op !== ConfigOverrideOp::Set ? [] : ['value' => $value]);
+                        + ($secret || $op !== ConfigOverrideOp::Set ? [] : ['value' => $value])
+                        + ($via === null ? [] : ['via' => $via]);
                 }
 
                 $pending[] = [$pointer, $op, $value, $secret];
@@ -153,10 +159,27 @@ class ConfigOverrideStore
         });
 
         if ($moved) {
-            $this->moveCounter($root);
+            $this->announce($root);
         }
 
         return $scope->refresh();
+    }
+
+    /**
+     * A fingerprint of the published state: every section's published pin, from one query on the scopes table. Equal
+     * state gives an equal token; any publish moves a pin, and a restore always makes a NEW version, so a pin never
+     * returns to an earlier value and a token is never reused. Compared for equality only.
+     */
+    public function publishedToken(): string
+    {
+        if (! Schema::connection('central')->hasTable(Beam::table('config_scopes'))) {
+            return 'none';
+        }
+
+        $pins = ConfigOverrideScope::query()->whereNotNull('published_version')->orderBy('section')
+            ->pluck('published_version', 'section')->all();
+
+        return $pins === [] ? 'none' : sha1(json_encode($pins, JSON_THROW_ON_ERROR));
     }
 
     /** Put the draft back to the published version (or to nothing, when none is published). */
@@ -277,12 +300,23 @@ class ConfigOverrideStore
     }
 
     /**
-     * Validate each op's shape and the key's tier ceiling before any write.
+     * Validate each op's shape and tier ceilings before any write, and split declared secrets out of object values.
+     *
+     * - **Ceilings at every depth.** An op is checked against the ceiling of every LEAF it touches, not only the
+     *   pointer it names: a `set` of an object (or a `null` that clears one) is refused, naming the child pointer,
+     *   when it would CHANGE a leaf whose ceiling does not admit the operator tier. A leaf that stays value-equal to
+     *   its effective lower-tier value is allowed, so an operator may send a whole object back with its host-only
+     *   children untouched.
+     * - **Secrets at every depth.** A declared secret leaf inside an object `set` is taken out of the object and
+     *   written as its own `set` at its own pointer, through the same encrypted path a direct secret write takes, so
+     *   it never reaches a plain override value, a scope draft or a version snapshot. The derived op carries `via`
+     *   (the parent pointer), so the parent's next op replaces it.
      *
      * @param  list<array<string, mixed>>  $ops
-     * @return list<array{0: string, 1: ConfigOverrideOp, 2: mixed, 3: bool, 4: ConfigMerge}>
+     * @param  array<array-key, mixed>  $base  the section root without the operator tier
+     * @return list<array{0: string, 1: ConfigOverrideOp, 2: mixed, 3: bool, 4: ConfigMerge, 5: ?string}>
      */
-    protected function normalize(RegisteredConfigSection $registered, array $ops): array
+    protected function normalize(RegisteredConfigSection $registered, array $ops, array $base): array
     {
         if ($ops === []) {
             throw ConfigOverrideRefusal::because('ops', 'A draft needs at least one op.');
@@ -313,10 +347,100 @@ class ConfigOverrideStore
                 throw ConfigOverrideRefusal::because("ops.{$i}.pointer", "{$pointer} has the ceiling {$declared->ceiling->value}; the operator tier may not override it.");
             }
 
-            $normalized[] = [$pointer, $kind, $kind === ConfigOverrideOp::Set ? ($op['value'] ?? null) : null, $declared->secret, $declared->merge];
+            $value = $kind === ConfigOverrideOp::Set ? ($op['value'] ?? null) : null;
+
+            if ($kind !== ConfigOverrideOp::Unset) {
+                $this->guardLeafCeilings($registered, $pointer, $value, $base, $i);
+            }
+
+            $derived = [];
+
+            if ($kind === ConfigOverrideOp::Set && is_array($value) && ! $declared->secret) {
+                [$value, $derived] = $this->splitSecrets($registered, $pointer, $value);
+            }
+
+            $normalized[] = [$pointer, $kind, $value, $declared->secret, $declared->merge, null];
+
+            foreach ($derived as [$child, $leaf, $merge]) {
+                $normalized[] = [$child, ConfigOverrideOp::Set, $leaf, true, $merge, $pointer];
+            }
         }
 
         return $normalized;
+    }
+
+    /**
+     * Refuse an op that would change a leaf below `$pointer` whose ceiling does not admit the operator tier. Compares
+     * the leaves of the base object and of the new value (a leaf missing from either side is a change).
+     *
+     * @param  array<array-key, mixed>  $base
+     */
+    protected function guardLeafCeilings(RegisteredConfigSection $registered, string $pointer, mixed $value, array $base, int $i): void
+    {
+        [$exists, $old] = JsonPointer::get($base, $pointer);
+        $old = $exists && is_array($old) ? $old : [];
+        $new = is_array($value) ? $value : [];
+
+        if ($old === [] && $new === []) {
+            return;
+        }
+
+        foreach (array_unique([...JsonPointer::leaves($old), ...JsonPointer::leaves($new)]) as $leaf) {
+            $declared = $registered->section::keyDeclaration([...JsonPointer::segments($pointer), ...JsonPointer::segments($leaf)]);
+
+            if ($declared->ceiling->admits(ConfigTier::Operator)) {
+                continue;
+            }
+
+            if (json_encode(JsonPointer::get($old, $leaf)) !== json_encode(JsonPointer::get($new, $leaf))) {
+                throw ConfigOverrideRefusal::because("ops.{$i}.value", "{$pointer}{$leaf} has the ceiling {$declared->ceiling->value}; the operator tier may not change it, here inside a write to {$pointer}.");
+            }
+        }
+    }
+
+    /**
+     * Take every declared secret leaf out of an object value.
+     *
+     * @param  array<array-key, mixed>  $value
+     * @return array{0: array<array-key, mixed>, 1: list<array{0: string, 1: mixed, 2: ConfigMerge}>} the object without them, and [pointer, value, merge] per secret leaf
+     */
+    protected function splitSecrets(RegisteredConfigSection $registered, string $pointer, array $value): array
+    {
+        $derived = [];
+
+        foreach (JsonPointer::leaves($value) as $leaf) {
+            $segments = JsonPointer::segments($leaf);
+            $declared = $registered->section::keyDeclaration([...JsonPointer::segments($pointer), ...$segments]);
+
+            if (! $declared->secret) {
+                continue;
+            }
+
+            [, $secret] = JsonPointer::get($value, $leaf);
+            $derived[] = [$pointer.$leaf, $secret, $declared->merge];
+            $this->forgetAt($value, $segments);
+        }
+
+        return [$value, $derived];
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $doc
+     * @param  list<string>  $segments
+     */
+    protected function forgetAt(array &$doc, array $segments): void
+    {
+        $key = array_shift($segments);
+
+        if (! array_key_exists($key, $doc)) {
+            return;
+        }
+
+        if ($segments === []) {
+            unset($doc[$key]);
+        } elseif (is_array($doc[$key])) {
+            $this->forgetAt($doc[$key], $segments);
+        }
     }
 
     /**
@@ -384,15 +508,25 @@ class ConfigOverrideStore
         return $this->sections->get($root) ?? throw ConfigOverrideRefusal::because('root', "No config section is registered for {$root}.");
     }
 
-    protected function moveCounter(string $root): void
+    /**
+     * After a publish COMMITS: put the new published token in the cache, and apply the publish in THIS process at once,
+     * whatever the cache does. A cache write that fails never undoes or hides the publish: other warm processes catch up
+     * within `beam.core.config_overrides.recheck_seconds` ({@see ConfigOverlay::sync()}).
+     */
+    protected function announce(string $root): void
     {
+        $overlay = app(ConfigOverlay::class);
+
         try {
-            $this->counter->bump();
+            $this->counter->put($this->publishedToken());
         } catch (Throwable $e) {
-            Log::warning("[beam] published {$root}, but the override counter could not be moved; processes re-read it when the cache is back.", [
+            Log::warning("[beam] published {$root}, but the override token could not be written to the cache; other processes pick it up within beam.core.config_overrides.recheck_seconds.", [
                 'exception' => $e::class,
                 'message' => $e->getMessage(),
             ]);
         }
+
+        $overlay->recheckNow();
+        $overlay->sync();
     }
 }
