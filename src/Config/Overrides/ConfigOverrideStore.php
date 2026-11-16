@@ -94,7 +94,7 @@ class ConfigOverrideStore
             $now = Carbon::now()->toIso8601String();
             $pending = [];
 
-            foreach ($normalized as $i => [$pointer, $op, $value, $secret, $merge, $via]) {
+            foreach ($normalized as $i => [$pointer, $op, $value, $secret, $merge, $via, $inherit]) {
                 // A parent op replaces what its earlier set split out: drop the secret children derived from it.
                 if ($via === null) {
                     $draft = array_filter($draft, fn (array $entry): bool => ($entry['via'] ?? null) !== $pointer);
@@ -113,7 +113,8 @@ class ConfigOverrideStore
                 } else {
                     $draft[$pointer] = ['op' => $op->value, 'secret' => $secret, 'set' => $op === ConfigOverrideOp::Set, 'setAt' => $now]
                         + ($secret || $op !== ConfigOverrideOp::Set ? [] : ['value' => $value])
-                        + ($via === null ? [] : ['via' => $via]);
+                        + ($via === null ? [] : ['via' => $via])
+                        + ($inherit === [] ? [] : ['inherit' => $inherit]);
                 }
 
                 $pending[] = [$pointer, $op, $value, $secret];
@@ -309,7 +310,8 @@ class ConfigOverrideStore
                 $secret => $secrets->get($entry['revision'] ?? '')?->settingValue(),
                 default => $entry['value'] ?? null,
             };
-            $entries[(string) $pointer] = new ConfigOverrideEntry((string) $pointer, $op, $value, $secret, (string) ($entry['revision'] ?? ''), $version, $entry['setAt'] ?? null);
+            $inherit = is_array($entry['inherit'] ?? null) ? array_values(array_map('strval', $entry['inherit'])) : [];
+            $entries[(string) $pointer] = new ConfigOverrideEntry((string) $pointer, $op, $value, $secret, (string) ($entry['revision'] ?? ''), $version, $entry['setAt'] ?? null, $inherit);
         }
 
         ksort($entries);
@@ -324,15 +326,17 @@ class ConfigOverrideStore
      *   pointer it names: a `set` of an object (or a `null` that clears one) is refused, naming the child pointer,
      *   when it would CHANGE a leaf whose ceiling does not admit the operator tier. A leaf that stays value-equal to
      *   its effective lower-tier value is allowed, so an operator may send a whole object back with its host-only
-     *   children untouched.
+     *   children untouched. Those children are then taken OUT of the stored object and inherited from the tier below
+     *   ({@see ConfigOverrideEntry::$inherit}), so the override never pins the host's value of the day.
      * - **Secrets at every depth.** A declared secret leaf inside an object `set` is taken out of the object and
      *   written as its own `set` at its own pointer, through the same encrypted path a direct secret write takes, so
      *   it never reaches a plain override value, a scope draft or a version snapshot. The derived op carries `via`
-     *   (the parent pointer), so the parent's next op replaces it.
+     *   (the parent pointer), so the parent's next op replaces it; the parent inherits the leaf, so unsetting the
+     *   derived op falls back to the tier below.
      *
      * @param  list<array<string, mixed>>  $ops
      * @param  array<array-key, mixed>  $base  the section root without the operator tier
-     * @return list<array{0: string, 1: ConfigOverrideOp, 2: mixed, 3: bool, 4: ConfigMerge, 5: ?string}>
+     * @return list<array{0: string, 1: ConfigOverrideOp, 2: mixed, 3: bool, 4: ConfigMerge, 5: ?string, 6: list<string>}> 6 = the leaves the entry inherits
      */
     protected function normalize(RegisteredConfigSection $registered, array $ops, array $base): array
     {
@@ -372,15 +376,21 @@ class ConfigOverrideStore
             }
 
             $derived = [];
+            $inherit = [];
 
             if ($kind === ConfigOverrideOp::Set && is_array($value) && ! $declared->secret) {
+                [$value, $inherit] = $this->hostOwnedOut($registered, $pointer, $value);
                 [$value, $derived] = $this->splitSecrets($registered, $pointer, $value);
+
+                foreach ($derived as [$child]) {
+                    $inherit[] = substr($child, strlen($pointer));
+                }
             }
 
-            $normalized[] = [$pointer, $kind, $value, $declared->secret, $declared->merge, null];
+            $normalized[] = [$pointer, $kind, $value, $declared->secret, $declared->merge, null, $inherit];
 
             foreach ($derived as [$child, $leaf, $merge]) {
-                $normalized[] = [$child, ConfigOverrideOp::Set, $leaf, true, $merge, $pointer];
+                $normalized[] = [$child, ConfigOverrideOp::Set, $leaf, true, $merge, $pointer, []];
             }
         }
 
@@ -414,6 +424,71 @@ class ConfigOverrideStore
                 throw ConfigOverrideRefusal::because("ops.{$i}.value", "{$pointer}{$leaf} has the ceiling {$declared->ceiling->value}; the operator tier may not change it, here inside a write to {$pointer}.");
             }
         }
+    }
+
+    /**
+     * Take every key whose ceiling does not admit the operator tier out of an object value, at the HIGHEST such pointer:
+     * the whole key, not its leaves, so a host-owned map keeps every entry the host adds later (build-qa probe 3,
+     * 2026-11-16). {@see guardLeafCeilings()} has already
+     * refused any change below such a key, so what is taken out is a value-equal resend: the entry INHERITS it from the
+     * tier below instead of pinning today's value (build-qa probe 2). Keys the operator may set are walked into, so a
+     * host-owned key nested inside an operator-owned object is inherited at its own pointer and nothing above it; and a
+     * host-owned record holding an explicitly operator-owned child (nearest declaration wins) is walked into as well,
+     * so that child's change is kept (build-qa probe 4). A host-owned map's entries resolve to the map's own
+     * declaration, so the map is still inherited whole.
+     *
+     * @param  array<array-key, mixed>  $value
+     * @param  list<string>  $path  the walk's position below `$pointer`
+     * @return array{0: array<array-key, mixed>, 1: list<string>} the object without them, and their relative pointers
+     */
+    protected function hostOwnedOut(RegisteredConfigSection $registered, string $pointer, array $value, array $path = []): array
+    {
+        $owned = [];
+
+        foreach (array_keys($value) as $key) {
+            $here = [...$path, (string) $key];
+            $record = is_array($value[$key]) && $value[$key] !== [] && ! array_is_list($value[$key]);
+
+            // A refused key with an explicitly operator-owned child below it (nearest declaration wins, as in
+            // keyDeclaration) is walked into, so that child stays the operator's (build-qa probe 4); otherwise the whole
+            // key is inherited.
+            if (! $this->admitsOperator($registered, $pointer, $here) && ! ($record && $this->admitsBelow($registered, $pointer, $here, $value[$key]))) {
+                $owned[] = JsonPointer::from($here);
+                unset($value[$key]);
+
+                continue;
+            }
+
+            if ($record) {
+                [$value[$key], $below] = $this->hostOwnedOut($registered, $pointer, $value[$key], $here);
+                array_push($owned, ...$below);
+            }
+        }
+
+        return [$value, $owned];
+    }
+
+    /** @param  list<string>  $path  below `$pointer` */
+    protected function admitsOperator(RegisteredConfigSection $registered, string $pointer, array $path): bool
+    {
+        return $registered->section::keyDeclaration([...JsonPointer::segments($pointer), ...$path])->ceiling->admits(ConfigTier::Operator);
+    }
+
+    /**
+     * Whether any leaf of `$value` (at `$path` below `$pointer`) admits the operator tier by its nearest declaration.
+     *
+     * @param  list<string>  $path
+     * @param  array<array-key, mixed>  $value
+     */
+    protected function admitsBelow(RegisteredConfigSection $registered, string $pointer, array $path, array $value): bool
+    {
+        foreach (JsonPointer::leaves($value) as $leaf) {
+            if ($this->admitsOperator($registered, $pointer, [...$path, ...JsonPointer::segments($leaf)])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -484,6 +559,7 @@ class ConfigOverrideStore
 
         foreach ($draft as $pointer => $entry) {
             $value = array_key_exists($pointer, $values) ? $values[$pointer] : ($known[$pointer]->value ?? null);
+            $value = ConfigOverrideEntry::fill($value, (string) $pointer, is_array($entry['inherit'] ?? null) ? array_values(array_map('strval', $entry['inherit'])) : [], $doc);
             $mutator->override($doc, JsonPointer::toJsonPath((string) $pointer), $entry['op'] === 'null' ? null : $value);
         }
 

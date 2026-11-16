@@ -2,10 +2,12 @@
 
 namespace Splicewire\Beam\Tests\Config;
 
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
@@ -15,6 +17,7 @@ use Splicewire\Beam\Config\ConfigSectionReader;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\Overrides\ConfigOverlay;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
+use Splicewire\Beam\Enums\ConfigTier;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\Ops\Config\ConfigVersionsOp;
@@ -23,8 +26,12 @@ use Splicewire\Beam\Particle\Ops\Config\PublishConfigOp;
 use Splicewire\Beam\Particle\Ops\Config\RestoreConfigVersionOp;
 use Splicewire\Beam\Particle\Ops\Config\SaveConfigDraftOp;
 use Splicewire\Beam\Tests\Fixtures\Config\ConfigOperatorActor;
+use Splicewire\Beam\Tests\Fixtures\Config\MapGroupSection;
+use Splicewire\Beam\Tests\Fixtures\Config\MixedGroupSection;
+use Splicewire\Beam\Tests\Fixtures\Config\NearestChildSection;
 use Splicewire\Beam\Tests\Fixtures\Config\NestedGroupSection;
 use Splicewire\Beam\Tests\Fixtures\Config\PanelsSection;
+use Splicewire\Beam\Tests\Fixtures\Config\ProtectedMapSection;
 use Splicewire\Beam\Tests\Fixtures\Config\ReadsPanelsConfigJob;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -61,6 +68,28 @@ class ConfigOverridesTest extends TestCase
         $app['config']->set('auth.providers.users.model', ConfigOperatorActor::class);
         $app['config']->set('cache.default', 'array');
         $app['config']->set('queue.default', 'sync');
+
+        // The host's config at THIS boot (the next-boot probes set it before booting a second application).
+        foreach (self::$bootConfig as $root => $value) {
+            $app['config']->set($root, $value);
+        }
+    }
+
+    /** @var array<string, mixed> root => the host's value at the next boot */
+    private static array $bootConfig = [];
+
+    /** Boot the next application (a deploy, a worker restart) with the host's `$config`, then put this one back. */
+    private function nextBoot(array $config, callable $assert): void
+    {
+        self::$bootConfig = $config;
+
+        try {
+            $assert($this->createApplication());
+        } finally {
+            self::$bootConfig = [];
+            Container::setInstance($this->app);
+            Facade::setFacadeApplication($this->app);
+        }
     }
 
     protected function setUp(): void
@@ -423,6 +452,148 @@ class ConfigOverridesTest extends TestCase
         $this->assertSame($expected, $response->json('data.notice'));
         $this->assertSame('Two', config('panels.title'), 'the publishing process still applied it at once');
         Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []): bool => $message === $expected && $context['root'] === 'panels')->once();
+    }
+
+    /** build-qa's parent write: the whole `/group` object, its host-only child resent value-equal, a fake secret inside. */
+    private function qaParentDraft(): void
+    {
+        $this->postJson('/beam-config/save-draft', [
+            'root' => 'qa.group', 'pointer' => '/group', 'op' => 'set',
+            'value' => json_encode(['deploy' => 'host-driver', 'token' => 'sk-FAKE-parent', 'label' => 'Operator label']),
+        ])->assertOk();
+        $this->postJson('/beam-config/publish', ['root' => 'qa.group'])->assertOk();
+        $this->assertSame('sk-FAKE-parent', config('qa.group.group.token'));
+    }
+
+    /**
+     * build-qa (ParentEditAfterSplitQaTest, 2026-11-16; credited): unsetting the secret split out of a parent write
+     * inherits the lower tier, and the parent's own change stays published. The parent INHERITS the split leaf.
+     */
+    public function test_qa_unsetting_a_split_secret_child_inherits_the_lower_tier(): void
+    {
+        $this->nestedGroup();
+        $this->qaParentDraft();
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.group', 'pointer' => '/group/token', 'op' => 'unset'])->assertOk();
+        $this->postJson('/beam-config/publish', ['root' => 'qa.group'])->assertOk();
+
+        $this->assertSame('fake-original', config('qa.group.group.token'), 'unset must inherit the host secret, even after a compound parent write');
+        $this->assertSame('Operator label', config('qa.group.group.label'), 'the independent parent change stays published');
+        $this->assertSame(['/deploy', '/token'], app(ConfigOverrideStore::class)->scope('qa.group')->draft['/group']['inherit'] ?? null);
+    }
+
+    /**
+     * build-qa (ParentEditAfterSplitQaTest, 2026-11-16; credited): a host-only child resent value-equal inside a parent
+     * write is not pinned: after a deploy changes the host value, the next boot reads the new one.
+     */
+    public function test_qa_equal_host_child_resent_in_a_parent_does_not_pin_the_old_host_value_at_next_boot(): void
+    {
+        $this->nestedGroup();
+        $this->qaParentDraft();
+        $this->assertArrayNotHasKey('deploy', app(ConfigOverrideStore::class)->scope('qa.group')->draft['/group']['value'] ?? [], 'the stored object does not carry the host-only child');
+
+        $this->nextBoot(['qa.group' => ['group' => ['deploy' => 'host-driver-after-deploy', 'token' => 'fake-original', 'label' => 'original']]], function ($next): void {
+            $this->assertSame('host-driver-after-deploy', $next['config']->get('qa.group.group.deploy'), 'the host-only child still belongs to the host after a deploy');
+            $this->assertSame('Operator label', $next['config']->get('qa.group.group.label'), 'the operator\'s own change still applies');
+        });
+    }
+
+    /**
+     * build-qa (ProtectedMapInheritanceQaTest, 2026-11-16; credited): a HOST-ONLY map resent unchanged inside a parent
+     * write is inherited whole, so an entry the host adds later still arrives at the next boot. Predicted from the
+     * source to fail at 2003850 (leaf-level inherit) and fixed before it ran there.
+     */
+    public function test_qa_parent_keeps_a_new_host_owned_map_entry_at_next_boot(): void
+    {
+        config(['qa.protected-map' => ['group' => ['deployment' => ['a' => 'A'], 'label' => 'host label']]]);
+        app(ConfigSectionRegistry::class)->section(ProtectedMapSection::class, owner: 'qa/fixture');
+
+        $this->postJson('/beam-config/save-draft', [
+            'root' => 'qa.protected-map', 'pointer' => '/group', 'op' => 'set',
+            'value' => json_encode(['deployment' => ['a' => 'A'], 'label' => 'Operator label']),
+        ])->assertOk();
+        $this->postJson('/beam-config/publish', ['root' => 'qa.protected-map'])->assertOk();
+        $this->assertSame(['a' => 'A'], config('qa.protected-map.group.deployment'));
+        $this->assertSame(['/deployment'], app(ConfigOverrideStore::class)->scope('qa.protected-map')->draft['/group']['inherit'] ?? null, 'the map is inherited at its own pointer, not leaf by leaf');
+
+        $this->nextBoot(['qa.protected-map' => ['group' => ['deployment' => ['a' => 'A', 'b' => 'B'], 'label' => 'host label']]], function ($next): void {
+            $this->assertSame(['a' => 'A', 'b' => 'B'], $next['config']->get('qa.protected-map.group.deployment'), 'the whole deployment map is Host-only; a parent operator write must not delete a new Host entry');
+            $this->assertSame('Operator label', $next['config']->get('qa.protected-map.group.label'));
+        });
+    }
+
+    /**
+     * build-qa (NearestChildOwnershipQaTest, 2026-11-16; credited): the inverse boundary. Inside a HOST-ONLY record, an
+     * explicitly operator-owned child (nearest declaration wins) keeps the change a parent write makes to it, while its
+     * host-only sibling stays inherited. Predicted from the source to fail at 5b25977 (the whole host record was
+     * inherited) and fixed before it ran there.
+     */
+    public function test_qa_parent_set_does_not_silently_drop_an_explicit_operator_child_under_a_host_object(): void
+    {
+        config(['qa.nearest-child' => ['group' => ['limits' => ['hard' => 10, 'soft' => 5]]]]);
+        app(ConfigSectionRegistry::class)->section(NearestChildSection::class, owner: 'qa/fixture');
+        $this->assertSame(ConfigTier::Operator, NearestChildSection::keyDeclaration(['group', 'limits', 'soft'])->ceiling, 'the nearest child declaration is the authority');
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.nearest-child', 'pointer' => '/group/limits/soft', 'op' => 'set', 'value' => '7'])->assertOk();
+        $this->postJson('/beam-config/publish', ['root' => 'qa.nearest-child'])->assertOk();
+        $this->assertSame(7, config('qa.nearest-child.group.limits.soft'), 'the direct child write is admitted');
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.nearest-child', 'pointer' => '/group/limits/soft', 'op' => 'unset'])->assertOk();
+        $this->postJson('/beam-config/publish', ['root' => 'qa.nearest-child'])->assertOk();
+        $this->assertSame(5, config('qa.nearest-child.group.limits.soft'));
+
+        $this->postJson('/beam-config/save-draft', [
+            'root' => 'qa.nearest-child', 'pointer' => '/group', 'op' => 'set', 'value' => json_encode(['limits' => ['hard' => 10, 'soft' => 7]]),
+        ])->assertOk();
+        $this->postJson('/beam-config/publish', ['root' => 'qa.nearest-child'])->assertOk();
+
+        $this->assertSame(7, config('qa.nearest-child.group.limits.soft'), 'an accepted parent write must not silently discard the explicitly Operator-owned child');
+        $this->assertSame(10, config('qa.nearest-child.group.limits.hard'), 'the Host sibling stays inherited');
+        $this->assertSame(['/limits/hard'], app(ConfigOverrideStore::class)->scope('qa.nearest-child')->draft['/group']['inherit'] ?? null, 'the host record is walked into, not inherited whole');
+    }
+
+    /**
+     * The boundary the other way: inside an operator-owned object, the operator's map is still REPLACED (an entry it
+     * leaves out is dropped) and its record's own key changes, while the one host-only key nested in that record is
+     * inherited at its OWN pointer, never at the record or the parent.
+     */
+    public function test_a_host_key_nested_in_an_operator_record_is_inherited_alone(): void
+    {
+        $host = ['routes' => ['a' => 'A', 'b' => 'B'], 'limits' => ['hard' => 10, 'soft' => 5]];
+        config(['qa.mixed' => ['group' => $host]]);
+        app(ConfigSectionRegistry::class)->section(MixedGroupSection::class, owner: 'qa/fixture');
+
+        $this->postJson('/beam-config/save-draft', [
+            'root' => 'qa.mixed', 'pointer' => '/group', 'op' => 'set',
+            'value' => json_encode(['routes' => ['a' => 'A2'], 'limits' => ['hard' => 10, 'soft' => 7]]),
+        ])->assertOk();
+        $this->postJson('/beam-config/publish', ['root' => 'qa.mixed'])->assertOk();
+
+        $this->assertSame(['a' => 'A2'], config('qa.mixed.group.routes'), 'the operator-owned map is replaced: b is dropped');
+        // Key order is not part of the contract: an inherited key is filled in after the keys the parent owns.
+        $limits = config('qa.mixed.group.limits');
+        ksort($limits);
+        $this->assertSame(['hard' => 10, 'soft' => 7], $limits);
+        $this->assertSame(['/limits/hard'], app(ConfigOverrideStore::class)->scope('qa.mixed')->draft['/group']['inherit'] ?? null);
+
+        $this->nextBoot(['qa.mixed' => ['group' => ['routes' => ['a' => 'A', 'b' => 'B', 'c' => 'C'], 'limits' => ['hard' => 20, 'soft' => 5]]]], function ($next): void {
+            $this->assertSame(20, $next['config']->get('qa.mixed.group.limits.hard'), 'the nested host-only key follows the host');
+            $this->assertSame(7, $next['config']->get('qa.mixed.group.limits.soft'), 'the operator still owns its sibling');
+            $this->assertSame(['a' => 'A2'], $next['config']->get('qa.mixed.group.routes'), 'a new host entry does not enter an operator-owned map');
+        });
+    }
+
+    /** The inherit list keeps REPLACE semantics for what a parent owns: a map `set` still drops an entry it leaves out. */
+    public function test_a_map_parent_set_still_drops_an_entry_it_leaves_out(): void
+    {
+        config(['qa.maps' => ['routes' => ['a' => 'A', 'b' => 'B']]]);
+        app(ConfigSectionRegistry::class)->section(MapGroupSection::class, owner: 'qa/fixture');
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.maps', 'pointer' => '/routes', 'op' => 'set', 'value' => json_encode(['a' => 'A2'])])->assertOk();
+        $this->postJson('/beam-config/publish', ['root' => 'qa.maps'])->assertOk();
+
+        $this->assertSame(['a' => 'A2'], config('qa.maps.routes'), 'b is dropped, a is replaced');
+        $this->assertArrayNotHasKey('inherit', app(ConfigOverrideStore::class)->scope('qa.maps')->draft['/routes']);
     }
 
     /**

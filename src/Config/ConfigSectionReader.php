@@ -62,7 +62,7 @@ class ConfigSectionReader
         // published layer explicitly, so an override is attributed to the operator and never to a provider (ticket 05).
         $observed = app(ConfigOverlay::class)->base($root);
         $observed = is_array($observed) ? $observed : [];
-        [$operator, $overrides, $pins] = $this->operatorTier($section, $root);
+        [$operator, $overrides, $pins] = $this->operatorTier($section, $root, $observed);
         $effective = $this->config->get($root);
         $effective = is_array($effective) ? $effective : $observed;
 
@@ -118,9 +118,10 @@ class ConfigSectionReader
      * operator tier at all, exactly as before the store existed.
      *
      * @param  class-string<ConfigSection>  $section
+     * @param  array<array-key, mixed>  $observed  the root without the operator tier, which inherited leaves come from
      * @return array{0: array<string, ConfigLayerValue>, 1: list<ConfigOverrideData>, 2: ConfigPinsData}
      */
-    protected function operatorTier(string $section, string $root): array
+    protected function operatorTier(string $section, string $root, array $observed = []): array
     {
         $none = [[], [], new ConfigPinsData(draft: null, published: null, draftPending: false)];
 
@@ -135,7 +136,7 @@ class ConfigSectionReader
             $layer = [];
 
             foreach ($store->publishedLayer($scope) as $pointer => $entry) {
-                $layer[$pointer] = new ConfigLayerValue(ConfigTier::Operator, $entry->value, "operator override · v{$entry->version}");
+                $layer[$pointer] = new ConfigLayerValue(ConfigTier::Operator, $entry->valueOver($observed), "operator override · v{$entry->version}");
             }
 
             $overrides = [];

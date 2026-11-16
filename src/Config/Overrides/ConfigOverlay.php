@@ -234,7 +234,7 @@ class ConfigOverlay
             ksort($entries);
 
             foreach ($entries as $pointer => $entry) {
-                $mutator->override($doc, JsonPointer::toJsonPath($pointer), $entry->value);
+                $mutator->override($doc, JsonPointer::toJsonPath($pointer), $entry->valueOver($doc));
             }
 
             $config->set($root, $doc);
