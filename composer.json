@@ -8,6 +8,7 @@
         "illuminate/contracts": "^11.0|^12.0|^13.0",
         "illuminate/support": "^11.0|^12.0|^13.0",
         "nette/php-generator": "^3.4|^4.0",
+        "nikic/php-parser": "^5.0",
         "rushing/codegen": "dev-main",
         "rushing/laravel-data-filters": "*",
         "rushing/laravel-data-nav": "*",

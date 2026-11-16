@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Config;
 use ReflectionClass;
 use Schemastud\DataSchemas\Generators\Generator;
 use Splicewire\Beam\Config\Attributes\ConfigKey;
+use Splicewire\Beam\Config\Attributes\ConfigOpaque;
 
 /**
  * A Config Section's JSON Schema (ADR-0245), generated through the host's CONFIGURED data-schemas generator, the
@@ -16,7 +17,8 @@ use Splicewire\Beam\Config\Attributes\ConfigKey;
  * - **The root's shape.** A map-shaped root (`entries:`) is `{type: object, additionalProperties: <entry>}`. PHP
  *   cannot type a map whose keys a host chooses as properties, and the section class declares none.
  * - **Ladder behaviour.** Each declared key carries `x-beam-config: {ceiling, effect, secret, merge}` (and `env`
- *   when declared), the vocabulary a Config area and a validator read without loading PHP.
+ *   when declared, `opaque` for a `#[ConfigOpaque]` key), the vocabulary a Config area and a validator read without
+ *   loading PHP.
  *
  * The committed copy is written by `splicewire:beam:config:schemas` and compared, never written, by
  * {@see self::drift()}.
@@ -127,6 +129,8 @@ class ConfigSectionSchema
                 'secret' => $key->secret,
                 'merge' => $key->merge->value,
                 'env' => $key->env,
+                // Only an opaque key carries it, so no other committed schema changes (ticket 06).
+                'opaque' => $reflection->getProperty($name)->getAttributes(ConfigOpaque::class) === [] ? null : true,
             ], fn (mixed $value): bool => $value !== null);
         }
 

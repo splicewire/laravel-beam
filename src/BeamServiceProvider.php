@@ -94,6 +94,7 @@ use Splicewire\Beam\Console\LangKeysCommand;
 use Splicewire\Beam\Console\LangMissingCommand;
 use Splicewire\Beam\Console\LangRatchetCommand;
 use Splicewire\Beam\Console\LangRungsCommand;
+use Splicewire\Beam\Console\MakeConfigSectionCommand;
 use Splicewire\Beam\Console\MakePageCommand;
 use Splicewire\Beam\Console\MakeParticleBackingCommand;
 use Splicewire\Beam\Console\MakeParticleOpCommand;
@@ -110,7 +111,9 @@ use Splicewire\Beam\Discovery\ResourceMountMap;
 use Splicewire\Beam\Discovery\RouteReachability;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
+use Splicewire\Beam\Doctor\BootReadConfigAudit;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
+use Splicewire\Beam\Doctor\ConfigSectionCoverageAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
@@ -1443,6 +1446,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $manifest = $this->app->make(BeamDoctorManifest::class);
         $manifest->register('splicewire/laravel-beam', KeyTypeConformanceAudit::class);
         $manifest->register('splicewire/laravel-beam', DeadConfigKeyAudit::class);
+        // config-sections 06: every merged key under a declared root is described, and no provider reads a live key
+        // during boot. Advisory until ticket 13 makes them gates.
+        $manifest->register('splicewire/laravel-beam', ConfigSectionCoverageAudit::class);
+        $manifest->register('splicewire/laravel-beam', BootReadConfigAudit::class);
         $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', ConfigFacadeReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', UnguardedCreateAudit::class);
@@ -2158,6 +2165,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 Console\LangFingerprintCommand::class,
                 // Config Sections' committed JSON Schemas (ADR-0245): regeneration writes, `--check` only reads.
                 ConfigSectionSchemasCommand::class,
+                // config-sections 06: adopting the convention is one command; drift is reported, never overwritten.
+                MakeConfigSectionCommand::class,
             ]);
 
             // The estate-POLICY surgeon commands relocated DOWN from surgeon (they hard-code estate
