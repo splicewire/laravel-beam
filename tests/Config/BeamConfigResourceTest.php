@@ -162,6 +162,28 @@ class BeamConfigResourceTest extends TestCase
         $this->postJson('/beam-config', ['root' => 'x'])->assertMethodNotAllowed();
         $this->putJson('/frame/resources/beam-config/records/widgets', ['title' => 'x'])->assertForbidden();
     }
+
+    /**
+     * config-sections 14: the MCP read tool's path (ConfigSectionAccess) shares the reader, so a section's declaration
+     * text resolves through the `config` derived key there too, exactly as over REST.
+     */
+    public function test_the_mcp_read_path_serves_the_resolved_section_text(): void
+    {
+        $lang = sys_get_temp_dir().'/beam-cs14-mcp-'.getmypid().'-'.bin2hex(random_bytes(4));
+        @mkdir("{$lang}/es", 0777, true);
+        file_put_contents("{$lang}/es/config.php", '<?php return '.var_export(['widgets' => ['title' => 'Artilugios']], true).';');
+        $this->app->useLangPath($lang);
+        $this->app->forgetInstance('translation.loader');
+        $this->app->forgetInstance('translator');
+        $this->app->setLocale('es');
+
+        $operator = ConfigReadActor::query()->where('name', 'operator')->firstOrFail();
+        $rows = app(ConfigSectionAccess::class)->rows($operator, 'widgets');
+
+        $this->assertSame('Artilugios', $rows[0]->title);
+        $this->as('operator');
+        $this->assertSame('Artilugios', $this->getJson('/beam-config')->assertOk()->json('data.1.title'), 'REST serves the same text');
+    }
 }
 
 class ConfigReadActor extends User

@@ -17,6 +17,8 @@ use Splicewire\Beam\Data\Config\ConfigSectionFilesData;
 use Splicewire\Beam\Enums\ConfigEffect;
 use Splicewire\Beam\Enums\ConfigOverrideOp;
 use Splicewire\Beam\Enums\ConfigTier;
+use Splicewire\Beam\Localization\DeclaredText;
+use Splicewire\Beam\Localization\TextNamespaces;
 use Throwable;
 
 /**
@@ -33,6 +35,9 @@ use Throwable;
  *
  * A host root may live in its own file (`config/app/meters.php` for `app.meters`) or as a key of a parent file
  * (`config/splicewire.php['retrieval']` for `splicewire.retrieval`); the deepest existing file wins.
+ *
+ * The section's own title and description are served resolved ({@see declarationText()}: ADR-0244's `config` kind),
+ * both in the row and at the root of the served schema; the committed schema files keep the declared text.
  *
  * Secrets never leave here: a secret key's value and every layer value are replaced by null, and so is a secret
  * nested inside any compound value (a host that replaces a map ancestor makes the fold emit that ancestor, with the
@@ -89,14 +94,23 @@ class ConfigSectionReader
             $keys[] = $this->key($section, $resolved, $packageScan, $hostScan);
         }
 
+        $title = $this->declarationText($registered, 'title', $declaration->title);
+        $description = $this->declarationText($registered, 'description', $declaration->description);
+        $schema = $this->schemas->for($section);
+        $schema['title'] = $title;
+
+        if (array_key_exists('description', $schema)) {
+            $schema['description'] = $description;
+        }
+
         return new ConfigSectionData(
             id: $root,
             root: $root,
-            title: $declaration->title,
-            description: $declaration->description,
+            title: $title,
+            description: $description,
             owner: $registered->owner,
             files: new ConfigSectionFilesData(package: $this->display($packageFile), host: $this->display($hostFile)),
-            schema: $this->schemas->for($section),
+            schema: $schema,
             values: $this->redacted($section, $effective),
             keys: $keys,
             shadowedPackageKeys: $resolution->shadowedPackageKeys,
@@ -110,6 +124,21 @@ class ConfigSectionReader
             overrides: $overrides,
             pins: $pins,
         );
+    }
+
+    /**
+     * A section's OWN declaration text (`ConfigRoot` title or description), resolved through an ADR-0244 derived key of
+     * the `config` kind (localization 41; config-sections 14): `<ns>::config.<root, its dots as />.<slot>`, owned by the
+     * WINNING registration (a package's translator namespace, or no prefix for the host), with the declared English text
+     * as the fallback line. A refused owner forms no key, so the declared text is served. The nested Data classes keep the
+     * data rule (`BeamSchemaText`); config VALUES never pass through here (localization 27).
+     */
+    protected function declarationText(RegisteredConfigSection $registered, string $slot, string $declared): string
+    {
+        $prefix = app(TextNamespaces::class)->ownerOfPackage($registered->owner)->keyPrefix();
+        $key = DeclaredText::derive($prefix, 'config', [$registered->root()], $slot);
+
+        return app(DeclaredText::class)->resolve($key, $declared) ?? $declared;
     }
 
     /**
