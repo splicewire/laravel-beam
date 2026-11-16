@@ -1,13 +1,13 @@
 # ADR-0244: A declaration's text has a derived key; imperative text has an explicit one
 
 Status: accepted (localization ruling 01, amended, 2026-11-12; owner-overrulable). Landed by localization ticket 07 with
-the ladder it names keys for. **Proposed amendment (localization 41, under review): the `config` kind below. Nothing
-builds on it until it is accepted.**
+the ladder it names keys for. **Amendment (localization 41): the `config` kind below. Status: accepted, 2026-11-16
+(owner, all recs (BLITZ)).**
 
 **Derived keys.** Declared display text is translatable without editing the declaration. Its key is one fixed production
 per kind: `resources`, `data`, `enums`, `actions`, `nav`, `groups`, `realms` (coord-lead rulings 2026-11-13 21:26Z and
 21:49Z on localization 11, extending ruling 01's kind list; the grammar is unchanged), and `config` (localization 41,
-proposed; the grammar is unchanged):
+accepted; the grammar is unchanged):
 
 - a realm's label is `realms.<realm>.label`, in the realm's registering package's namespace;
 - a realm capability's title is `realms.<realm>.capabilities.<capability>.title`, in the overlay registrant's namespace;
@@ -51,7 +51,7 @@ derived key. It renders its literal and is reported. No escaping exists.
 - for a nav page, its authoring code;
 - for a Config Section's own title and description, the registered section's owner, which `ConfigSectionRegistry`
   already records (a composer name, or `host`). A host that supersedes a package's section for a root owns that root's
-  text (localization 41, proposed);
+  text (localization 41, accepted);
 - with none of these, the host, whose derived keys carry no namespace.
 
 A namespace is the composer name less its vendor and a leading `laravel-`, or the package's declared
@@ -65,7 +65,7 @@ declared literal is the default when the ladder misses. A realm's configured lab
 identity at every reader, and a group's display name is `groups.<group>.name` in the registering namespace. A column with
 its own literal never falls back to its property's title.
 
-**Config text and config values (localization 41, proposed).**
+**Config text and config values (localization 41, accepted).**
 - A Config Section's `ConfigRoot` title and description are its English lines.
 - The committed section schema (`resources/schemas/config-sections/<root>.schema.json`) stays English: it is a catalog
   and a drift-checked artifact, never localized. The text resolves at config-sections' read surface, through the one
