@@ -14,10 +14,11 @@ uses(TestCase::class);
  *   `beam:lang:fingerprint --clear`, which is not a name, so optimize:clear failed on every host.
  * - The clear task is now `beam:lang:fingerprint-clear`; `beam:lang:fingerprint --clear` still works when called directly.
  *
- * `optimize` runs here with `--except=config,events,routes,views`: the framework's own four tasks boot a fresh testbench
- * Application each (config:cache, route:cache…), which calls Env::disablePutenv() and never re-enables it, and loads
- * whatever providers the skeleton's discovery manifest lists (after the full suite, beam's own, whose Frame routes need
- * an API root the bare skeleton lacks). Every package's registered optimize task still runs, through optimize itself.
+ * `optimize` runs here with `--except` = {@see exceptAllButBeam()}: only laravel-beam's own optimize tasks run, through
+ * optimize itself. Excluded: the framework's four (config:cache, route:cache… each boot a fresh testbench Application,
+ * which calls Env::disablePutenv() and never re-enables it, and loads whatever providers the skeleton's discovery
+ * manifest lists) and every OTHER package's task (root 7c84aa0c: spatie/laravel-data's `data:cache-structures` writes
+ * to the configured cache store). beam's own tasks are pinned to {@see BEAM_OPTIMIZE_TASKS}, so a new one fails loudly.
  */
 
 afterEach(function (): void {
@@ -46,10 +47,32 @@ it('runs optimize:clear with laravel-beam loaded', function (): void {
  */
 function exceptAllButBeam(): string
 {
-    $others = array_diff(array_keys(ServiceProvider::$optimizeCommands), ['beam-lang-fingerprint', 'beam-frame-resources']);
+    $others = array_keys(array_filter(ServiceProvider::$optimizeCommands, fn (string $command): bool => ! isBeamCommand($command)));
 
     return implode(',', ['config', 'events', 'routes', 'views', ...$others]);
 }
+
+/** laravel-beam's own artisan commands: `beam:…` and `splicewire:beam:…`. */
+function isBeamCommand(string $command): bool
+{
+    return str_starts_with($command, 'beam:') || str_starts_with($command, 'splicewire:beam:');
+}
+
+/**
+ * The optimize tasks laravel-beam registers, each known to write files, not the cache store. A new beam optimize task
+ * fails the test below until it is added here, after confirming it is safe under any cache store.
+ */
+const BEAM_OPTIMIZE_TASKS = [
+    'beam-frame-resources' => 'splicewire:beam:frame:cache',
+    'beam-lang-fingerprint' => 'beam:lang:fingerprint',
+];
+
+it('registers exactly the known laravel-beam optimize tasks, so a new one fails loudly', function (): void {
+    $beam = array_filter(ServiceProvider::$optimizeCommands, fn (string $command): bool => isBeamCommand($command));
+    ksort($beam);
+
+    expect($beam)->toBe(BEAM_OPTIMIZE_TASKS);
+});
 
 it('builds the fingerprint artifact on optimize and removes it on optimize:clear', function (): void {
     LangFingerprint::clearArtifact();
