@@ -51,7 +51,7 @@ class LangMissingCommand extends Command
                 'note' => $note,
                 // B11-B6, additive: the client population's actual input state.
                 'clientDiscovery' => $catalog->clientDiscovery(),
-                'missing' => array_map(static fn (CatalogEntry $e): array => ['key' => $e->key, 'english' => $e->english], $missing),
+                'missing' => array_map(static fn (CatalogEntry $e): array => ['key' => $e->key, 'english' => $e->english] + ($e->note === null ? [] : ['note' => $e->note]), $missing),
             ], static fn ($v): bool => $v !== null), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
             return self::SUCCESS;
@@ -64,7 +64,9 @@ class LangMissingCommand extends Command
         if ($note !== null) {
             $this->info($note);
         }
-        $this->table(['key', 'English'], array_map(static fn (CatalogEntry $e): array => [$e->key, $e->english], $missing));
+        // A translator note (frame-foundation 69) gets its own column, shown only when some missing key has one.
+        $notes = array_filter($missing, static fn (CatalogEntry $e): bool => $e->note !== null) !== [];
+        $this->table(['key', 'English', ...($notes ? ['note'] : [])], array_map(static fn (CatalogEntry $e): array => [$e->key, $e->english, ...($notes ? [$e->note ?? ''] : [])], $missing));
         $this->line(sprintf('%s%s: %d missing of %d.', $locale, $realm === null ? '' : " (realm {$realm})", count($missing), count($catalog->entries())));
 
         return self::SUCCESS;

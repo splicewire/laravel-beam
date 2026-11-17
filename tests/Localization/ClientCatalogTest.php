@@ -155,3 +155,64 @@ it('lists client keys with their English in the key catalog and the missing-key 
     Artisan::call('beam:lang:missing', ['locale' => 'ja', '--json' => true]);
     expect(Artisan::output())->toContain('schemastud-ui::messages.save');
 });
+
+/*
+ * frame-foundation 69: the translator surfaces that show a client key's English show its note beside it. The notes
+ * fixture was written by schemastud's own collector (cf3ce1f2) from the same catalogs plus two notes. Without notes, the
+ * output is exactly as before: no note column and no note field.
+ */
+function useNotesCatalog(): void
+{
+    config(['beam.localization.client_catalog' => dirname(__DIR__).'/Fixtures/Localization/discovered-catalog-notes.json']);
+    app()->forgetScopedInstances();
+    app()->forgetInstance(KeyCatalog::class);
+}
+
+it('carries a client key\'s translator note on its key-catalog entry', function (): void {
+    useNotesCatalog();
+    $entries = app(KeyCatalog::class)->byKey();
+
+    expect($entries['schemastud-ui::messages.items']->note)->toBe('A count label: ":count" items in a list, beside the number.')
+        ->and($entries['messages.profile_updated']->note)->toBe('A toast after saving the profile form.')
+        ->and($entries['schemastud-ui::messages.save']->note)->toBeNull()
+        ->and($entries['schemastud-ui::messages.items']->toArray()['note'])->toBe('A count label: ":count" items in a list, beside the number.')
+        ->and($entries['schemastud-ui::messages.save']->toArray())->not->toHaveKey('note');
+});
+
+it('beam:lang:keys shows the note beside the English, in its table and its JSON', function (): void {
+    useNotesCatalog();
+
+    Artisan::call('beam:lang:keys');
+    $table = Artisan::output();
+    expect($table)->toMatch('/\|\s*key\s*\|\s*English\s*\|\s*source\s*\|\s*note\s*\|/')
+        ->and($table)->toContain('A count label: ":count" items in a list, beside the number.');
+
+    Artisan::call('beam:lang:keys', ['--json' => true]);
+    $json = collect(json_decode(Artisan::output(), true)['entries'])->keyBy('key');
+    expect($json['schemastud-ui::messages.items']['note'])->toBe('A count label: ":count" items in a list, beside the number.')
+        ->and($json['schemastud-ui::messages.save'])->not->toHaveKey('note');
+});
+
+it('beam:lang:missing shows the note beside the English of each missing key, in its table and its JSON', function (): void {
+    useNotesCatalog();
+
+    Artisan::call('beam:lang:missing', ['locale' => 'ja']);
+    $table = Artisan::output();
+    expect($table)->toMatch('/\|\s*key\s*\|\s*English\s*\|\s*note\s*\|/')
+        ->and($table)->toContain('A toast after saving the profile form.');
+
+    Artisan::call('beam:lang:missing', ['locale' => 'ja', '--json' => true]);
+    $missing = collect(json_decode(Artisan::output(), true)['missing'])->keyBy('key');
+    expect($missing['messages.profile_updated']['note'])->toBe('A toast after saving the profile form.')
+        ->and($missing['schemastud-ui::messages.save'])->toBe(['key' => 'schemastud-ui::messages.save', 'english' => 'Save']);
+});
+
+it('without notes, the lang exports have no note column or field', function (): void {
+    Artisan::call('beam:lang:keys');
+    expect(Artisan::output())->not->toMatch('/\|\s*note\s*\|/');
+
+    Artisan::call('beam:lang:missing', ['locale' => 'ja', '--json' => true]);
+    foreach (json_decode(Artisan::output(), true)['missing'] as $entry) {
+        expect($entry)->not->toHaveKey('note');
+    }
+});

@@ -422,10 +422,11 @@ final class KeyCatalog
         if ($this->client === null || ! $this->client->discovered()->valid()) {
             return [];
         }
-        $owners = $this->client->discovered()->defaults;
+        $discovered = $this->client->discovered();
+        $owners = $discovered->defaults;
         $entries = [];
         foreach ($this->client->defaults() as $key => $english) {
-            $entries[] = new CatalogEntry($key, $english, 'client', 'client catalog: '.$owners[$key]['owner']);
+            $entries[] = new CatalogEntry($key, $english, 'client', 'client catalog: '.$owners[$key]['owner'], note: $discovered->note($key));
         }
 
         return $entries;

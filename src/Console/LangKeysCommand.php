@@ -37,8 +37,10 @@ class LangKeysCommand extends Command
         if (($partial = $catalog->clientDiscoveryLine()) !== null) {
             $this->warn($partial);
         }
-        $this->table(['key', 'English', 'source'], array_map(
-            static fn (CatalogEntry $e): array => [$e->key, $e->english, $e->source.($e->derivedEnglish ? ' (English derived)' : '')],
+        // A translator note (frame-foundation 69) gets its own column, shown only when some key has one.
+        $notes = array_filter($entries, static fn (CatalogEntry $e): bool => $e->note !== null) !== [];
+        $this->table(['key', 'English', 'source', ...($notes ? ['note'] : [])], array_map(
+            static fn (CatalogEntry $e): array => [$e->key, $e->english, $e->source.($e->derivedEnglish ? ' (English derived)' : ''), ...($notes ? [$e->note ?? ''] : [])],
             $entries,
         ));
         $this->line(sprintf('%d key%s.', count($entries), count($entries) === 1 ? '' : 's'));

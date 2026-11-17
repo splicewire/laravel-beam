@@ -7,7 +7,8 @@ namespace Splicewire\Beam\Localization\Catalog;
  *
  * `source` is `derived` (a declaration's key, ruling 01) or `explicit` (a line in a `lang/en` file). `derivedEnglish`
  * is true when the English is itself a derivation (a headlined key, an inflected singular, a class short name), which
- * is a default only and what `localization.english-derivation` reports for framed resources.
+ * is a default only and what `localization.english-derivation` reports for framed resources. `note` is a client key's
+ * translator note from the discovered catalog (frame-foundation 69), shown beside the English; null when it has none.
  */
 final readonly class CatalogEntry
 {
@@ -17,6 +18,7 @@ final readonly class CatalogEntry
         public string $source,
         public string $origin,
         public bool $derivedEnglish = false,
+        public ?string $note = null,
     ) {}
 
     /** The namespace (`beam`), or null for a host key. */
@@ -35,9 +37,12 @@ final readonly class CatalogEntry
         return strtok($rest, '.') ?: $rest;
     }
 
-    /** @return array{key: string, english: string, source: string, origin: string, derivedEnglish: bool} */
+    /** @return array{key: string, english: string, source: string, origin: string, derivedEnglish: bool, note?: string} */
     public function toArray(): array
     {
-        return ['key' => $this->key, 'english' => $this->english, 'source' => $this->source, 'origin' => $this->origin, 'derivedEnglish' => $this->derivedEnglish];
+        $entry = ['key' => $this->key, 'english' => $this->english, 'source' => $this->source, 'origin' => $this->origin, 'derivedEnglish' => $this->derivedEnglish];
+
+        // Additive: an entry without a note serialises exactly as before.
+        return $this->note === null ? $entry : $entry + ['note' => $this->note];
     }
 }

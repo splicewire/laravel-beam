@@ -109,3 +109,60 @@ it('keeps realms valid as a later segment: messages.realms is an ordinary key', 
 
     expect($catalog->state)->toBe(DiscoveryState::Valid)->and($catalog->defaults)->toHaveKey($key);
 })->with(['package control' => ['frame::messages.realms'], 'host control' => ['messages.realms']]);
+
+/*
+ * frame-foundation 69: translator notes. discovered-catalog-notes.json was written by schemastud's own collector
+ * (schemastud/js cf3ce1f2, 67) from the same package and host catalogs as discovered-catalog.json plus two notes. The
+ * same collector reproduces discovered-catalog.json byte for byte from those catalogs without the notes.
+ */
+function notesFixture(): string
+{
+    return dirname(__DIR__).'/Fixtures/Localization/discovered-catalog-notes.json';
+}
+
+it('reads the collector-written notes beside the defaults, entries still exactly {default, owner}', function (): void {
+    $catalog = DiscoveredCatalog::read(notesFixture());
+
+    expect($catalog->state)->toBe(DiscoveryState::Valid)
+        ->and($catalog->payloadDigest)->toBe('sha256:22c3723b560b7f349c0d70a6874b8121220879e0530de33bdadc384665e817c3')
+        ->and($catalog->notes)->toBe([
+            'messages.profile_updated' => 'A toast after saving the profile form.',
+            'schemastud-ui::messages.items' => 'A count label: ":count" items in a list, beside the number.',
+        ])
+        ->and($catalog->note('schemastud-ui::messages.items'))->toBe('A count label: ":count" items in a list, beside the number.')
+        ->and($catalog->note('schemastud-ui::messages.save'))->toBeNull()
+        ->and($catalog->defaults['schemastud-ui::messages.items'])->toBe(['default' => 'one item|:count items', 'owner' => '@schemastud/ui']);
+});
+
+it('reads a payload without notes exactly as before: no notes', function (): void {
+    $catalog = DiscoveredCatalog::read(discoveredFixture());
+
+    expect($catalog->state)->toBe(DiscoveryState::Valid)
+        ->and($catalog->notes)->toBe([])
+        ->and($catalog->note('schemastud-ui::messages.save'))->toBeNull();
+});
+
+it('refuses a note for an unknown key, a non-string, an empty or over-long note, and non-object notes', function (mixed $notes, string $problem): void {
+    $path = discoveredVariant(function (array &$d) use ($notes): void {
+        $d['payload']['notes'] = $notes;
+    });
+
+    $catalog = DiscoveredCatalog::read($path);
+    expect($catalog->state)->toBe(DiscoveryState::Invalid)
+        ->and($catalog->problem)->toContain($problem)
+        ->and($catalog->notes)->toBe([]);
+})->with([
+    'unknown key' => [['schemastud-ui::messages.missing' => 'x'], 'Note [schemastud-ui::messages.missing] names no message.'],
+    'non-string' => [['schemastud-ui::messages.save' => 7], 'Note [schemastud-ui::messages.save] is not a non-empty string'],
+    'empty' => [['schemastud-ui::messages.save' => '   '], 'Note [schemastud-ui::messages.save] is not a non-empty string'],
+    'over 500 UTF-16 units' => [['schemastud-ui::messages.save' => str_repeat('😀', 251)], 'at most 500 characters'],
+    'not an object' => [['schemastud-ui::messages.save'], 'The payload notes are not an object'],
+]);
+
+it('admits a note of exactly 500 UTF-16 units, as the collector does', function (): void {
+    $path = discoveredVariant(function (array &$d): void {
+        $d['payload']['notes'] = ['schemastud-ui::messages.save' => str_repeat('😀', 250)];
+    });
+
+    expect(DiscoveredCatalog::read($path)->state)->toBe(DiscoveryState::Valid);
+});

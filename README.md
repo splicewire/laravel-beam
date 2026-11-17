@@ -341,8 +341,9 @@ Currency is never derived from the locale. Set it with `Number::useCurrency()`. 
 - **The doctor** adds five advisory `localization.*` checks: unresolved literal key, realm line without base,
   underived key, coverage and English derivation.
 - **Commands:**
-  - `beam:lang:keys` lists every key the host can emit, with its English;
-  - `beam:lang:missing <locale>` exports what a language lacks;
+  - `beam:lang:keys` lists every key the host can emit, with its English (and a client key's translator note, where its
+    catalog carries one);
+  - `beam:lang:missing <locale>` exports what a language lacks, with the same notes;
   - `beam:lang:ratchet [root] [--write]` runs the per-package literal ratchet (`lang-ratchet.json`, tested with
     `Testing\AssertsTextRatchet`).
 

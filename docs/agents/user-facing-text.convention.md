@@ -99,6 +99,8 @@ The exemplar is `Splicewire\Beam\Webhooks\HookSubscriptionError`, the hook-subsc
     wrappers, `match`/summary arms, and variable-forwarded messages. The README section "The literal ratchet" has the
     details.
 - **For a translator:** `php artisan beam:lang:keys` lists every key a host can emit with its English, and
-  `php artisan beam:lang:missing <locale>` exports what a language lacks. The pseudo-locale lacks nothing.
+  `php artisan beam:lang:missing <locale>` exports what a language lacks. Both show a client key's translator note beside
+  its English, where the package's catalog carries one (`notes` in `messages.default.json`; frame-foundation 67 and 69).
+  The pseudo-locale lacks nothing.
 
 Until localization 16 these read PHP-emitted keys only; client keys join through the discovered catalog.

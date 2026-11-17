@@ -6,13 +6,18 @@ namespace Splicewire\Beam\Localization\Client;
  * The ONE reader of the host's discovered client catalog (localization 16; ruling 02 §3): the version-1 artifact that
  * `schemastud-messages collect --out resources/beam/messages.json --write` writes.
  *
- *     {"payload": {"version": 1, "packages": [{name, namespace, sharesWith, catalogDigest}], "messages": {key: {default, owner}}},
+ *     {"payload": {"version": 1, "packages": [{name, namespace, sharesWith, catalogDigest}], "messages": {key: {default, owner}},
+ *                  "notes"?: {key: note}},
  *      "digest": "sha256:<hex of JCS(payload)>"}
  *
  * It admits the file through {@see Jcs::parse()}, re-verifies the digest with the same JCS, and checks the shape the
  * collector writes. Package keys are `<namespace>::<item>` with a declared namespace; host keys are unnamespaced; item
  * grammar and reserved groups are the collector's own. It reports an explicit state: VALID, MISSING (no file) or INVALID
  * (with the reason). A missing or invalid catalog is never an empty success; the doctor, tests and export report it.
+ *
+ * Since schemastud/messages 67 a payload may carry translator notes (frame-foundation 69): `notes` sits beside `messages`,
+ * written only when a note exists, each a non-empty string of at most 500 characters for a key in `messages`. A payload
+ * without `notes` reads exactly as before.
  */
 final class DiscoveredCatalog
 {
@@ -20,9 +25,13 @@ final class DiscoveredCatalog
     // The derived (beam-reserved) first groups; the same list as schemastud's collect.mjs (47810c9e added realms).
     private const RESERVED_GROUPS = ['resources', 'data', 'enums', 'actions', 'nav', 'groups', 'realms'];
 
+    /** The collector's note cap (messages/bin/collect.mjs catalogNotes), mirrored for admission parity. */
+    private const NOTE_MAX_LENGTH = 500;
+
     /**
      * @param  list<array{name: string, namespace: string, sharesWith: ?string, catalogDigest: string}>  $packages
      * @param  array<string, array{default: string, owner: string}>  $defaults
+     * @param  array<string, string>  $notes  translator notes, key => note (a subset of the defaults' keys)
      */
     private function __construct(
         public readonly string $path,
@@ -31,6 +40,7 @@ final class DiscoveredCatalog
         public readonly ?string $payloadDigest = null,
         public readonly array $packages = [],
         public readonly array $defaults = [],
+        public readonly array $notes = [],
     ) {}
 
     public static function read(string $path): self
@@ -48,6 +58,12 @@ final class DiscoveredCatalog
     public function valid(): bool
     {
         return $this->state === DiscoveryState::Valid;
+    }
+
+    /** The translator note for a key, or null when it has none. */
+    public function note(string $key): ?string
+    {
+        return $this->notes[$key] ?? null;
     }
 
     /** @return list<string> the package namespaces it declares */
@@ -108,7 +124,30 @@ final class DiscoveredCatalog
             $defaults[$key] = ['default' => $entry['default'], 'owner' => $entry['owner']];
         }
 
-        return new self($path, DiscoveryState::Valid, null, $digest, $packages, $defaults);
+        $notes = [];
+        if ($payload->offsetExists('notes')) {
+            if (! $payload['notes'] instanceof JsonObject) {
+                $fail('The payload notes are not an object of key => note.');
+            }
+            foreach ($payload['notes'] as $key => $note) {
+                $key = (string) $key;
+                if (! isset($defaults[$key])) {
+                    $fail("Note [{$key}] names no message.");
+                }
+                if (! is_string($note) || trim($note) === '' || self::utf16Length($note) > self::NOTE_MAX_LENGTH) {
+                    $fail("Note [{$key}] is not a non-empty string of at most ".self::NOTE_MAX_LENGTH.' characters.');
+                }
+                $notes[$key] = $note;
+            }
+        }
+
+        return new self($path, DiscoveryState::Valid, null, $digest, $packages, $defaults, $notes);
+    }
+
+    /** A note's length as the collector measures it: JavaScript string length, in UTF-16 code units. */
+    private static function utf16Length(string $text): int
+    {
+        return intdiv(strlen((string) mb_convert_encoding($text, 'UTF-16LE', 'UTF-8')), 2);
     }
 
     private static function validItem(string $item): bool
