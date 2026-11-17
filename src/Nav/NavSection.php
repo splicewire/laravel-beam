@@ -103,6 +103,22 @@ class NavSection
      *                          ADR-0222 decision 9). `false` (the default) leaves a seat exactly as it was, for the
      *                          same reason `$lock` may default: it adds a behaviour and takes no gate decision. Same-key
      *                          seats merge with it: the merged seat has an overview when any declaration does
+     * @param  list<array{label: string, match: string}>  $groups  child groups the section's strip folds into one
+     *                                                             tab each (analytics-area 22, owner ruling 2026-11-12):
+     *                                                             the same meaning as the flagship's
+     *                                                             `AppNavigation::section(groups:)`. Children whose href
+     *                                                             `match` takes ({@see NavGroupMatch}: realm-relative, a
+     *                                                             path prefix, or a raw prefix with a trailing `*`)
+     *                                                             become one synthesized tab, with no
+     *                                                             Overview, landing on its first child. The rail and
+     *                                                             the overview cards are unchanged, so a grouped leaf
+     *                                                             keeps its rail entry and its card. `[]` (the default)
+     *                                                             leaves a seat exactly as it was, for the same reason
+     *                                                             `$overview` may default. Same-key seats merge their
+     *                                                             groups with the host's first; a duplicate label is a
+     *                                                             `beam:doctor` finding
+     *                                                             ({@see \Splicewire\Beam\Doctor\NavSectionGroupLabelAudit}),
+     *                                                             never a silent override
      */
     public function __construct(
         public readonly string $key,
@@ -117,7 +133,22 @@ class NavSection
         public readonly array $static = [],
         public readonly ?NavSeatLock $lock = null,
         public readonly bool $overview = false,
+        public readonly array $groups = [],
     ) {
+        if (! array_is_list($groups)) {
+            throw new \InvalidArgumentException("NavSection [{$realm}.{$key}] groups must be a list.");
+        }
+        foreach ($groups as $i => $group) {
+            if (! is_array($group)
+                || ! is_string($group['label'] ?? null) || trim($group['label']) === ''
+                || ! is_string($group['match'] ?? null) || ! NavGroupMatch::isWellFormed($group['match'])) {
+                throw new \InvalidArgumentException(sprintf(
+                    'NavSection [%s.%s] group #%s needs a non-empty string `label` and a `match` that is a path or a raw prefix ending in one `*`.',
+                    $realm, $key, (string) $i,
+                ));
+            }
+        }
+
         $this->audienceDeclared = $audience !== null;
         $this->audience = $audience ?? NavAudience::Product;
 
@@ -160,6 +191,31 @@ class NavSection
     public function stampStaticRowRegistrants(array $registrants): void
     {
         $this->rowRegistrants = $registrants;
+    }
+
+    /**
+     * Who contributed each group, by group index, when that differs from the seat's own registrant: a merged seat
+     * carries several seats' groups, the host's first ({@see NavSectionRegistry::merged()}). Off the wire; set only by
+     * the merge, and read by {@see \Splicewire\Beam\Doctor\NavSectionGroupLabelAudit} to name a duplicate's declarers.
+     *
+     * @var array<int, ?string>
+     */
+    private array $groupRegistrants = [];
+
+    /** The registrant that declared group `$index`: its contributing seat's, else this seat's. */
+    public function groupRegistrant(int $index): ?string
+    {
+        return array_key_exists($index, $this->groupRegistrants) ? $this->groupRegistrants[$index] : $this->registrant();
+    }
+
+    /**
+     * Record each group's contributor (for {@see NavSectionRegistry::merged()}).
+     *
+     * @param  array<int, ?string>  $registrants  by group index
+     */
+    public function stampGroupRegistrants(array $registrants): void
+    {
+        $this->groupRegistrants = $registrants;
     }
 
     /** Whether the declaration named its audience; false only for an old-shape seat that took the default. */

@@ -60,6 +60,15 @@ $this->app->make(NavSectionRegistry::class)->register(
 - **`audience`** places the seat in the main rail (`Product`) or the developer zone (`Developer`).
   Leave it out and you get `Product`, plus a deprecation notice and a doctor finding naming your class.
 - **`static`** adds hand-written child rows alongside the resources, each with a `title` and an `href`.
+- **`groups`** folds some of the seat's children into one tab each, so a package with many pages keeps its strip short
+  on every host. Each group is `['label' => …, 'match' => …]`: the children `match` takes become one tab with that
+  label, which lands on its first child and has no Overview. A group that takes no child draws nothing. `match` is
+  read against the realm's route base, so one declaration serves every realm the seat is in. A path such as
+  `reports/archive` takes that page and every page beneath it. A trailing `*` makes it a plain prefix instead:
+  `analytics-traffic-*` takes `analytics-traffic-trend` and `analytics-traffic-pages`, but not `analytics-traffic`
+  itself. `NavGroupMatch` is that reading, for any host that folds groups itself. The rail and
+  the section's overview cards don't change: a grouped page keeps its rail entry and its card. Leave it out, and the
+  seat draws exactly as before.
 
 ## Several seats in one realm
 
@@ -69,7 +78,10 @@ one realm holds every seat declared for it. `for('tenant')` returns them sorted 
 project the same navigation.
 
 Seats that share a `key` in one realm are drawn as **one** seat. The first in that order supplies
-the label, icon and link, and every seat's `static` rows join it. They merge only when their
+the label, icon and link, and every seat's `static` rows join it. Their `groups` join too, with the
+host's groups (registered with no `by:`) first, whichever seat supplies the header. No group is
+dropped: two groups with one label are both kept, and `beam:doctor` warns about it
+(`nav.section-group-labels`). They merge only when their
 entitlement, permission, audience and lock all match. When they differ, Beam throws outside
 production (`beam.ux.ia.throw` controls this). In production it reports the conflict and keeps the
 seats apart, so one seat's rows are never shown behind another seat's looser gate.

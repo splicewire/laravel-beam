@@ -20,6 +20,7 @@ use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
 use Splicewire\Beam\Doctor\ModelLessReadGateAudit;
 use Splicewire\Beam\Doctor\NavSectionAudienceAudit;
+use Splicewire\Beam\Doctor\NavSectionGroupLabelAudit;
 use Splicewire\Beam\Doctor\ParticleRouteResourceAudit;
 use Splicewire\Beam\Doctor\ParticleSlotCollisionAudit;
 use Splicewire\Beam\Doctor\RelativeEdgeIntegrityAudit;
@@ -227,6 +228,13 @@ class BeamDoctorCommand extends Command
                 NavSectionAudienceAudit::class,
                 false,
                 fn (NavSectionAudienceAudit $audit) => $audit->run(),
+            ),
+            // Two groups with one label on a seat (analytics-area 22): same-key seats merge their groups and drop none, so a
+            // repeated word would draw two tabs. Advisory: each group still folds its own children.
+            $this->guarded(
+                NavSectionGroupLabelAudit::class,
+                false,
+                fn (NavSectionGroupLabelAudit $audit) => $audit->run(),
             ),
         );
 

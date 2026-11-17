@@ -146,7 +146,8 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
      * commerce's optional `billing` extension seat and a host's bespoke Usage & cost row all name `billing`: each used to
      * draw its own header. The first seat in projection order (the lowest `order`) supplies the header: its label, icon,
      * href and order. Every same-key seat's static rows join it, the header's own first, and the merged seat has an overview
-     * when any of them declares one: a package owns that, and an extension only adds rows. Only seats with the SAME gates,
+     * when any of them declares one: a package owns that, and an extension only adds rows. Their groups join too, the host's
+     * first ({@see mergedGroups()}). Only seats with the SAME gates,
      * audience and lock merge; a mismatch is refused (thrown outside production, reported and kept apart in it). The rows still
      * sort among the seat's resources by `navOrder` downstream, so a contributor places its row with `navOrder`.
      *
@@ -186,6 +187,7 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
             foreach (array_keys($section->static) as $i) {
                 $rows[] = $section->staticRowRegistrant($i);
             }
+            [$groups, $groupRegistrants] = self::mergedGroups($head, $section);
             $merged = self::withRegistrantOf($head, new NavSection(
                 key: $head->key,
                 realm: $head->realm,
@@ -199,8 +201,10 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
                 static: [...$head->static, ...$section->static],
                 lock: $head->lock,
                 overview: $head->overview || $section->overview,
+                groups: $groups,
             ));
             $merged->stampStaticRowRegistrants($rows);
+            $merged->stampGroupRegistrants($groupRegistrants);
             $byKey[$section->key] = $merged;
         }
 
@@ -209,6 +213,36 @@ class NavSectionRegistry implements Gated, RecordsRegistrants, Registry
         usort($all, static fn (NavSection $a, NavSection $b): int => NavSection::compare($a, $b) ?: [$a->label, $a->href] <=> [$b->label, $b->href]);
 
         return $all;
+    }
+
+    /**
+     * Two same-key seats' groups as one list, the HOST's first (analytics-area 22, owner ruling 2026-11-12): a group
+     * registered with no `by:` is the host's, and it keeps its place ahead of every package's, whichever seat supplies
+     * the header. Within each side the order is the merge order (the header's groups, then the joining seat's). Nothing
+     * is dropped: a duplicate label stays, and {@see \Splicewire\Beam\Doctor\NavSectionGroupLabelAudit} names it.
+     *
+     * @return array{0: list<array{label: string, match: string}>, 1: list<?string>}
+     */
+    private static function mergedGroups(NavSection $head, NavSection $section): array
+    {
+        $host = [];
+        $packages = [];
+        foreach ([$head, $section] as $seat) {
+            foreach ($seat->groups as $i => $group) {
+                $by = $seat->groupRegistrant($i);
+                if ($by === null) {
+                    $host[] = [$group, $by];
+                } else {
+                    $packages[] = [$group, $by];
+                }
+            }
+        }
+        $all = [...$host, ...$packages];
+
+        return [
+            array_map(static fn (array $pair): array => $pair[0], $all),
+            array_map(static fn (array $pair): ?string => $pair[1], $all),
+        ];
     }
 
     /** Whether two seats gate their rows identically: the same entitlement, permission, audience and lock. */
