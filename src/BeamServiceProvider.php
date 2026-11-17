@@ -4,8 +4,10 @@ namespace Splicewire\Beam;
 
 use Closure;
 use Composer\Autoload\ClassLoader;
+use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +17,7 @@ use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Router;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Number;
@@ -1271,6 +1274,19 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
             } elseif ($router->hasMiddlewareGroup($group)) {
                 $router->pushMiddlewareToGroup($group, ResolveLocale::class);
             }
+        }
+
+        // localization 45: a route's `auth:sanctum` is ROUTE middleware, which runs after the group's, so the group entry
+        // above saw no bearer request's person. In the priority list, right after the session and authentication, the
+        // router sorts every authenticating middleware ahead of it, whatever order a host gives its api group or its
+        // routes, and still ahead of route-model binding, so a missing record's 404 answers in the person's language.
+        // `addToMiddlewarePriorityAfter` is in_array-guarded and syncs the router, and lands after the LAST anchor present;
+        // a list with none of them appends. An older host kernel lists the `Authenticate` class, not the interface.
+        if ($kernel instanceof FoundationHttpKernel) {
+            $kernel->addToMiddlewarePriorityAfter(
+                [StartSession::class, AuthenticatesRequests::class, Authenticate::class],
+                ResolveLocale::class,
+            );
         }
     }
 
