@@ -2183,6 +2183,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 LangRatchetCommand::class,
                 // localization 16: the translation content fingerprint the client catalog memo keys on.
                 Console\LangFingerprintCommand::class,
+                // localization 46: the flag-free clear task optimize:clear runs (it calls each task as a command name).
+                Console\LangFingerprintClearCommand::class,
                 // Config Sections' committed JSON Schemas (ADR-0245): regeneration writes, `--check` only reads.
                 ConfigSectionSchemasCommand::class,
                 // config-sections 06: adopting the convention is one command; drift is reported, never overwritten.
@@ -2453,7 +2455,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
 
         // localization 16: the client catalog endpoint, and its fingerprint artifact in optimize / optimize:clear.
         $this->registerClientCatalogRoute();
-        $this->optimizes(optimize: 'beam:lang:fingerprint', clear: 'beam:lang:fingerprint --clear', key: 'beam-lang-fingerprint');
+        // localization 46: optimize:clear calls the clear task as a command NAME, so it names a flag-free command.
+        $this->optimizes(optimize: 'beam:lang:fingerprint', clear: 'beam:lang:fingerprint-clear', key: 'beam-lang-fingerprint');
 
         // Attributed-realm registration (realm-architecture ticket 08 slice D). Realms are ~4
         // (admin·tenant·user·docs), so a filesystem scan is overkill — register the configured

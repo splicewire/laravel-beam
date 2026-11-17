@@ -20,9 +20,7 @@ final class LangFingerprintCommand extends Command
     {
         $path = LangFingerprint::artifactPath();
         if ($this->option('clear')) {
-            if (is_file($path)) {
-                unlink($path);
-            }
+            LangFingerprint::clearArtifact();
             $this->info('Cleared '.$path.'.');
 
             return self::SUCCESS;

@@ -15,15 +15,27 @@ use Illuminate\Translation\FileLoader;
  * - **Config:** sha256 of JCS over the realm and localization configuration the ladder reads.
  *
  * `php artisan beam:lang:fingerprint` writes the translation fingerprint to {@see artifactPath()}; it's hooked into
- * `optimize`, and `--clear` into `optimize:clear`. That's the explicit-invalidation build artifact. With no artifact
- * (development, or after `optimize:clear`), it's recomputed from contents on every call, so a changed line is seen in the
- * same process.
+ * `optimize`, and `beam:lang:fingerprint-clear` (the same as `beam:lang:fingerprint --clear`) into `optimize:clear`.
+ * That's the explicit-invalidation build artifact. With no artifact (development, or after `optimize:clear`), it's
+ * recomputed from contents on every call, so a changed line is seen in the same process.
  */
 final class LangFingerprint
 {
     public static function artifactPath(): string
     {
         return app()->bootstrapPath('cache/beam-lang-fingerprint.php');
+    }
+
+    /** Remove the artifact, so the fingerprint is recomputed from contents on every call; true when one was there. */
+    public static function clearArtifact(): bool
+    {
+        $path = self::artifactPath();
+        if (! is_file($path)) {
+            return false;
+        }
+        unlink($path);
+
+        return true;
     }
 
     /** The translation fingerprint: the artifact's when one exists, else computed from contents now. */
