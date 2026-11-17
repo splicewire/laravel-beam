@@ -54,6 +54,15 @@ class ConfigOverrideStore
     protected ?ConfigTier $tier = null;
 
     /**
+     * An explicit connection the tier's rows are written through ({@see on()}), overriding {@see connectionName()}'s
+     * tier default. config-sections 08: a Release publishes its config override through the Release's OWN connection, so
+     * the pin and the Release's other pins move in one transaction on one PDO, even where a host's `central` alias is a
+     * copy of the default (a second connection to the same database). The caller must pass a connection reaching the
+     * same database as the tier's; the config_locks reads remain on `central` (central data).
+     */
+    protected ?string $connection = null;
+
+    /**
      * The section schema and the acceptance gate are resolved on first VALIDATION, never at construction. The overlay
      * builds this store on a process's first sync ({@see ConfigOverlay::sync()}, at a command start, a request or a job),
      * and reading the published layers needs neither. Resolving them eagerly built the Schemastud `Generator` chain in
@@ -124,6 +133,24 @@ class ConfigOverrideStore
         return $store;
     }
 
+    /**
+     * This store, writing the tier's rows through `$connection` instead of {@see connectionName()}'s tier default
+     * (config-sections 08). The connection must reach the same database as the tier's — a Release publishes its config
+     * override through the Release's own connection so both pins move in one transaction.
+     */
+    public function on(string $connection): static
+    {
+        $store = clone $this;
+        $store->connection = $connection;
+        $store->propagationNotice = null;
+        // The explicit connection becomes connectionName(), so the tenant-target guard and the writes check the SAME
+        // connection. Guard it now (fail fast): on the tenant tier a write may only target the tenant's OWN isolated
+        // store, never central and never a schema lacking the table (config-sections 07 guard).
+        $store->guardTenantTarget($connection);
+
+        return $store;
+    }
+
     /** The tier this store writes: the one {@see forTier()} named, else the tenant tier while tenancy is active. */
     public function tier(): ConfigTier
     {
@@ -136,7 +163,7 @@ class ConfigOverrideStore
      */
     public function connectionName(): string
     {
-        return $this->tier() === ConfigTier::Operator ? 'central' : DB::getDefaultConnection();
+        return $this->connection ?? ($this->tier() === ConfigTier::Operator ? 'central' : DB::getDefaultConnection());
     }
 
     /** @return \Illuminate\Database\Eloquent\Builder<ConfigOverrideScope> */
@@ -263,7 +290,51 @@ class ConfigOverrideStore
         });
 
         if ($moved) {
-            $this->announce($root);
+            // config-sections 08: announce on the OUTERMOST commit, not synchronously after this inner transaction. When
+            // a Release calls this inside its own transaction, a later rollback of that outer transaction reverts the pin,
+            // and the counter token must NOT have moved; afterCommit fires at level 0 (immediately when no transaction is
+            // open, so the standalone path is unchanged) and is skipped on rollback.
+            DB::connection($this->connectionName())->afterCommit(fn () => $this->announce($root));
+        }
+
+        return $scope->refresh();
+    }
+
+    /**
+     * Move the PUBLISHED pin directly to an existing version, or to null — no published layer, so the override is
+     * removed (config-sections 08: a Release rollback reverts the config pin to its previous value, which may be null).
+     * Unlike {@see publish()} this does NOT touch the draft and does NOT mint a new version; it only moves the pin, so an
+     * operator's in-flight draft survives. The published token re-derives from the pins on its next read.
+     */
+    public function publishVersion(string $root, ?string $version): ConfigOverrideScope
+    {
+        $this->registered($root);
+        // Like publish()/saveDraft(): a tenant-tier pin move may only run against the tenant's OWN isolated store, inside
+        // its tenant hop. A tenant Release publishes within the tenant's request, so this passes; an operator publish is
+        // a no-op here.
+        $this->guardTenantTarget();
+        $this->propagationNotice = null;
+
+        $moved = false;
+
+        $scope = DB::connection($this->connectionName())->transaction(function () use ($root, $version, &$moved): ConfigOverrideScope {
+            $scope = $this->lockedScope($root);
+            if ($version !== null && $this->versions->version($scope, $version) === null) {
+                throw ConfigOverrideRefusal::because('version', "{$root} has no version {$version}.");
+            }
+            if ($scope->published_version !== $version) {
+                $scope->published_version = $version;
+                $scope->save();
+                $moved = true;
+            }
+
+            return $scope;
+        });
+
+        if ($moved) {
+            // config-sections 08: announce on the OUTERMOST commit (see publish()) so a Release's outer rollback leaves
+            // the counter token unmoved along with the reverted pin.
+            DB::connection($this->connectionName())->afterCommit(fn () => $this->announce($root));
         }
 
         return $scope->refresh();
@@ -646,6 +717,14 @@ class ConfigOverrideStore
 
             $value = $kind === ConfigOverrideOp::Set ? ($op['value'] ?? null) : null;
 
+            // config-sections 08 import: a mirror file records a parent set's INHERIT (the leaves it does NOT own) with
+            // the owned value stripped of them. Refill those leaves from the base BEFORE the ceiling/host checks, so the
+            // set is not seen as REMOVING an inherited host/locked child; hostOwnedOut below takes them back out and
+            // re-derives the inherit, and the union keeps any the importing host would not itself strip.
+            if ($kind === ConfigOverrideOp::Set && is_array($value) && is_array($op['inherit'] ?? null)) {
+                $value = ConfigOverrideEntry::fill($value, $pointer, array_map('strval', $op['inherit']), $base);
+            }
+
             if ($kind !== ConfigOverrideOp::Unset) {
                 $this->guardLeafCeilings($registered, $pointer, $value, $base, $i, $locks);
             }
@@ -659,6 +738,16 @@ class ConfigOverrideStore
 
                 foreach ($derived as [$child]) {
                     $inherit[] = substr($child, strlen($pointer));
+                }
+
+                // config-sections 08 import: a mirror file records the inherit (the leaves the set does NOT own). UNION it
+                // onto what this host derives — a leaf the recording host owned/split but this host would not is still kept
+                // as inherit (the imported value is already stripped of those leaves), so the stored entry reproduces
+                // exactly. The owned value above went through the full host-owned/secret/ceiling checks first, so an
+                // explicit `inherit` can only REDUCE ownership — a crafted file cannot use it to sneak a refused owned key
+                // past the checks ({@see guardLeafCeilings}, which ran on the owned value).
+                if (is_array($op['inherit'] ?? null)) {
+                    $inherit = array_values(array_unique(array_merge($inherit, array_map('strval', $op['inherit']))));
                 }
             }
 
