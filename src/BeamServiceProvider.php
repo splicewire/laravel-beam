@@ -765,6 +765,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // config-sections 07: the tenant tier, applied inside a tenant hop by beam-tenancy's bootstrapper. A process
         // singleton for the same reason; it keeps the central values it restores per repository, never a repository.
         $this->app->singleton(ConfigTenantOverlay::class);
+        // The tenant-target answers the store caches per tenant frame are forgotten on stancl's own tenancy transitions,
+        // whether or not the host lists the ladder bootstrapper (a worker without it would otherwise keep an answer for
+        // the whole process). By event NAME: core takes no stancl dependency, and with no stancl they never fire.
+        foreach (['Stancl\Tenancy\Events\TenancyInitialized', 'Stancl\Tenancy\Events\TenancyEnded'] as $transition) {
+            Event::listen($transition, fn () => $this->app->make(ConfigOverrideStore::class)->forgetTenantTargets());
+        }
 
         // The package-facing NAV SEAT registry. A `#[ParticleResource(section:)]` declaration says which
         // section a resource sits UNDER; until now nothing could SEAT that section, so 11 of the family's

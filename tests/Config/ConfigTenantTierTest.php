@@ -1136,4 +1136,266 @@ class ConfigTenantTierTest extends TestCase
             $context->leave();
         }
     }
+
+    /* ---- root ab22fd59: a TENANT-tier write that has nowhere safe to go is refused, a tenant-tier read finds nothing,
+     * and central is byte-untouched. SQLite has no search path, so it CANNOT show the `<tenant schema>,public`
+     * fall-through: beam-tenancy's PG lane proves that hazard. Here, the same-target cases are the real collision on
+     * SQLite (the tenant connection reaching central's own file). The missing-table case shows only the refusal and the
+     * empty read. Before the guard, SQLite answered it with a 500, never a central write. ---- */
+
+    /** What the tenant tier READS inside tenant a's hop: its scope, its versions, its published layers, and its row. */
+    private function tenantReads(): array
+    {
+        $context = app(FakeTenancyContext::class);
+        $context->enter('a');
+
+        try {
+            $store = app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant);
+
+            return [$store->scope('tpanels'), $store->versionsOf('tpanels'), $store->publishedLayers(), $store->publishedToken()];
+        } finally {
+            $context->leave();
+        }
+    }
+
+    private function assertTenantReadsNothing(string $because): void
+    {
+        [$scope, $versions, $layers, $token] = $this->tenantReads();
+        $this->assertNull($scope, "{$because}: the tenant tier finds no scope (never central's)");
+        $this->assertSame([], $versions, "{$because}: and lists no versions (never the operator's history)");
+        $this->assertSame([], $layers, $because);
+        $this->assertSame('none', $token, $because);
+
+        $row = $this->set('/review', true, 'a')->assertStatus(422);
+        $this->assertStringContainsString('refused', (string) $row->json('message'), $because);
+    }
+
+    /** Row count and a checksum of every row of central's store and version tables. */
+    private function centralFingerprint(): array
+    {
+        $fingerprint = [];
+
+        foreach (['config_scopes', 'config_overrides', 'versions'] as $name) {
+            $rows = DB::connection('central')->table(Beam::table($name))->get()->map(fn ($row): array => (array) $row)->sortBy(fn (array $row): string => json_encode($row))->values()->all();
+            $fingerprint[$name] = [count($rows), md5((string) json_encode($rows))];
+        }
+
+        return $fingerprint;
+    }
+
+    /** An operator override, so central's tables hold rows a stray tenant write could join or overwrite. */
+    private function operatorBaseline(): array
+    {
+        $this->as('operator');
+        $this->set('/theme', 'dark')->assertOk();
+        $this->publish()->assertOk();
+        $this->as('tenant-admin');
+
+        return $this->centralFingerprint();
+    }
+
+    private function assertRefusedAsUnsafe(TestResponse $response, string $because): void
+    {
+        $message = (string) $response->assertStatus(422)->json('message');
+        $this->assertStringContainsString('A tenant-tier config write was refused and nothing was written', $message);
+        $this->assertStringContainsString($because, $message);
+        $this->assertStringContainsString('tenants:migrate', $message);
+        $this->assertStringContainsString('pools:migrate', $message);
+    }
+
+    public function test_a_tenant_write_is_refused_when_the_tenants_own_storage_lacks_the_store_and_central_is_byte_untouched(): void
+    {
+        $before = $this->operatorBaseline();
+
+        // Only the VERSIONS table missing still refuses: all three tables are the store's (versions come from a separate
+        // migration).
+        Schema::connection('tenant_a')->drop(Beam::table('versions'));
+        $this->assertRefusedAsUnsafe($this->set('/review', true, 'a'), "lacks the store's tables `".Beam::table('versions').'`');
+
+        foreach (['config_scopes', 'config_overrides'] as $name) {
+            Schema::connection('tenant_a')->drop(Beam::table($name));
+        }
+
+        foreach (['save-draft' => fn () => $this->set('/review', true, 'a'), 'publish' => fn () => $this->publish('a'), 'discard-draft' => fn () => $this->op('discard-draft', ['root' => 'tpanels'], 'a')] as $op => $call) {
+            $this->assertRefusedAsUnsafe($call(), "lacks the store's tables `".Beam::table('config_scopes').'`');
+        }
+
+        // The restore op resolves its version through the (now empty) tenant scope and refuses first; the store's own
+        // restore() refuses on the guard.
+        $this->op('restore', ['root' => 'tpanels', 'version' => '1'], 'a')->assertStatus(422);
+        $context = app(FakeTenancyContext::class);
+        $context->enter('a');
+
+        try {
+            app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant)->restore('tpanels', 'any');
+            $this->fail('restore() wrote on a tenant with no store of its own');
+        } catch (\Illuminate\Validation\ValidationException $refusal) {
+            $this->assertStringContainsString("lacks the store's tables", $refusal->getMessage());
+        } finally {
+            $context->leave();
+        }
+
+        $this->assertTenantReadsNothing('missing tables');
+        $this->assertSame($before, $this->centralFingerprint(), "central's store is byte-untouched");
+        $this->assertSame('dark', $this->probe('b')['theme'], 'every tenant still sees only the operator\'s value');
+        $this->assertSame('dark', $this->probe('a')['theme'], 'and so does the refused tenant');
+    }
+
+    public function test_a_tenant_write_is_refused_when_the_tenant_connection_resolves_to_centrals_own_database(): void
+    {
+        $before = $this->operatorBaseline();
+
+        // A tenant connection pointed at central's own database (a misconfiguration, or a pool resolved onto central's
+        // schema): before the guard, the tenant's draft lands in central's operator rows.
+        config()->set('database.connections.tenant_a.database', self::$files['central']);
+        DB::purge('tenant_a');
+
+        $this->assertRefusedAsUnsafe($this->set('/review', true, 'a'), "resolves to central's own database and schema");
+        // READS too (review 05:34Z): before, the tenant tier read central's operator scope and history as its own.
+        $this->assertTenantReadsNothing('same target');
+        $this->assertSame($before, $this->centralFingerprint(), "central's store is byte-untouched");
+        $this->assertFalse($this->probe('b')['review'], 'no tenant sees the refused value');
+    }
+
+    public function test_a_tenant_write_is_refused_when_central_is_spelled_by_url_and_the_tenant_by_path(): void
+    {
+        $before = $this->operatorBaseline();
+
+        // Central's connection spelled as a `url` whose RAW `database` key says something else (review 05:34Z): only the
+        // live, parsed connection shows that the tenant's file IS central's.
+        config()->set('database.connections.central', [
+            // Laravel's parser keeps an absolute sqlite path from four slashes (`sqlite:////abs/path`).
+            'driver' => 'sqlite', 'url' => 'sqlite:///'.self::$files['central'], 'database' => 'not-the-file', 'prefix' => '', 'foreign_key_constraints' => false,
+        ]);
+        DB::purge('central');
+        $this->assertSame(realpath(self::$files['central']), realpath((string) DB::connection('central')->getConfig('database')), 'the url is what the live connection uses');
+
+        config()->set('database.connections.tenant_a.database', self::$files['central']);
+        DB::purge('tenant_a');
+
+        $this->assertRefusedAsUnsafe($this->set('/review', true, 'a'), "resolves to central's own database and schema");
+        $this->assertSame($before, $this->centralFingerprint(), "central's store is byte-untouched");
+    }
+
+    public function test_the_tenant_tier_asked_for_with_no_tenant_active_is_refused_and_writes_nothing(): void
+    {
+        $before = $this->operatorBaseline();
+        // Outside a tenant the default connection is a real host's central one.
+        DB::setDefaultConnection('central');
+
+        try {
+            $store = app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant);
+
+            foreach (['saveDraft' => fn () => $store->saveDraft('tpanels', [['pointer' => '/review', 'op' => 'set', 'value' => true]]), 'publish' => fn () => $store->publish('tpanels'), 'discardDraft' => fn () => $store->discardDraft('tpanels')] as $method => $call) {
+                try {
+                    $call();
+                    $this->fail("{$method}: the tenant tier wrote with no tenant active");
+                } catch (\Illuminate\Validation\ValidationException $refusal) {
+                    $this->assertStringContainsString('no tenant is active', $refusal->getMessage(), $method);
+                }
+            }
+        } finally {
+            DB::setDefaultConnection('testing');
+        }
+
+        $this->assertSame($before, $this->centralFingerprint(), "central's store is byte-untouched");
+    }
+
+    public function test_the_tenant_target_answer_is_asked_once_per_tenant_frame_and_afresh_in_the_next(): void
+    {
+        $context = app(FakeTenancyContext::class);
+        $context->enter('a');
+        $overlay = app(ConfigTenantOverlay::class);
+        $checks = 0;
+        DB::listen(function ($query) use (&$checks): void {
+            $checks += str_contains($query->sql, 'sqlite_master') || str_contains($query->sql, 'current_schema') ? 1 : 0;
+        });
+
+        try {
+            // The hop's own apply() asks first (its published layers), and pays the table checks.
+            $overlay->apply();
+            $this->assertGreaterThan(0, $checks, 'the frame\'s first ask checks the tables');
+            $first = $checks;
+
+            $store = app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant);
+            $this->assertNull($store->tenantTargetProblem());
+            $this->assertNull(app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant)->tenantTargetProblem(), 'a forTier() clone shares the answer');
+            $store->publishedLayers();
+            $store->scope('tpanels');
+            $this->assertSame($first, $checks, 'every later ask in the same frame runs no table check');
+
+            // The next frame asks afresh: a table dropped between hops is seen.
+            $overlay->revert();
+            Schema::connection('tenant_a')->drop(Beam::table('versions'));
+            $overlay->apply();
+            $this->assertStringContainsString("lacks the store's tables `".Beam::table('versions').'`', (string) $store->tenantTargetProblem());
+        } finally {
+            $overlay->revert();
+            $context->leave();
+        }
+    }
+
+    /**
+     * Review 05:46Z: with NO ladder bootstrapper (so the overlay never applies or reverts), a cached "ok" must not survive
+     * a tenancy end + re-initialize for the same tenant after its table is dropped. stancl's own events clear it (core
+     * listens by event NAME, so they are dispatched here by name; stancl itself is not a core dependency). A new PDO for the
+     * connection starts with no answer, since the cache is keyed by the PDO object.
+     */
+    public function test_a_cached_ok_does_not_survive_a_tenancy_transition_or_a_new_pdo_without_the_bootstrapper(): void
+    {
+        $context = app(FakeTenancyContext::class);
+        $write = fn () => app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant)->saveDraft('tpanels', [['pointer' => '/review', 'op' => 'set', 'value' => true]]);
+
+        // 1. stancl's transitions, same PDO throughout.
+        $context->enter('a');
+        event('Stancl\Tenancy\Events\TenancyInitialized');
+        $this->assertNull(app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant)->tenantTargetProblem(), 'ok, and cached');
+        $context->leave();
+        event('Stancl\Tenancy\Events\TenancyEnded');
+
+        Schema::connection('tenant_a')->drop(Beam::table('versions'));
+
+        $context->enter('a');
+        event('Stancl\Tenancy\Events\TenancyInitialized');
+
+        try {
+            $write();
+            $this->fail('a stale cached ok let the write through after the table was dropped');
+        } catch (\Illuminate\Validation\ValidationException $refusal) {
+            $this->assertStringContainsString("lacks the store's tables `".Beam::table('versions').'`', $refusal->getMessage());
+        } finally {
+            $context->leave();
+            event('Stancl\Tenancy\Events\TenancyEnded');
+        }
+
+        // 2. No events at all, but a NEW PDO (the connection purged and reconnected): no answer is inherited.
+        $context->enter('b');
+        $this->assertNull(app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant)->tenantTargetProblem(), 'b ok, and cached on this PDO');
+        Schema::connection('tenant_b')->drop(Beam::table('versions'));
+        DB::purge('tenant_b');
+
+        try {
+            $this->assertStringContainsString("lacks the store's tables", (string) app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant)->tenantTargetProblem(), 'the new PDO asks afresh');
+        } finally {
+            $context->leave();
+        }
+    }
+
+    public function test_the_guard_is_public_so_a_caller_naming_its_own_connection_asks_it_of_that_connection(): void
+    {
+        $context = app(FakeTenancyContext::class);
+        $context->enter('a');
+
+        try {
+            $store = app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant);
+            $store->guardTenantTarget('tenant_a');
+            $this->addToAssertionCount(1);
+
+            $this->expectException(\Illuminate\Validation\ValidationException::class);
+            $this->expectExceptionMessage("resolves to central's own database and schema");
+            $store->guardTenantTarget('central');
+        } finally {
+            $context->leave();
+        }
+    }
 }

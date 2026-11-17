@@ -64,7 +64,34 @@ class ConfigOverrideStore
         protected Container $container,
         protected VersionStore $versions,
         protected ConfigOverrideCounter $counter,
-    ) {}
+    ) {
+        $this->tenantTargets = new \WeakMap;
+    }
+
+    /**
+     * {@see tenantTargetProblem()}'s answers for the current tenant frame: keyed by the live PDO OBJECT (a WeakMap, so an
+     * entry dies with its PDO and a later PDO can never inherit it, as a reused spl_object_id could), then by connection
+     * and tenant. An object, so every {@see forTier()} clone shares it. Forgotten at each hop's start and end by
+     * {@see ConfigTenantOverlay}, and on stancl's TenancyInitialized / TenancyEnded whether or not the host lists the
+     * ladder bootstrapper ({@see \Splicewire\Beam\BeamServiceProvider}).
+     *
+     * @var \WeakMap<object, array<string, string|false>>
+     */
+    protected \WeakMap $tenantTargets;
+
+    /** Forget the cached tenant-target answers (a tenant hop starts or ends). */
+    public function forgetTenantTargets(): void
+    {
+        $pdos = [];
+
+        foreach ($this->tenantTargets as $pdo => $answers) {
+            $pdos[] = $pdo;
+        }
+
+        foreach ($pdos as $pdo) {
+            unset($this->tenantTargets[$pdo]);
+        }
+    }
 
     /** What the last {@see publish()} must tell the operator about propagation, or null when there is nothing to tell. */
     protected ?string $propagationNotice = null;
@@ -140,6 +167,7 @@ class ConfigOverrideStore
     public function saveDraft(string $root, array $ops, ?string $actor = null): ConfigOverrideScope
     {
         $registered = $this->registered($root);
+        $this->guardTenantTarget();
         $normalized = $this->normalize($registered, $ops, $this->base($root));
         $tier = $this->tier()->value;
 
@@ -213,6 +241,7 @@ class ConfigOverrideStore
     public function publish(string $root): ConfigOverrideScope
     {
         $this->registered($root);
+        $this->guardTenantTarget();
         $this->propagationNotice = null;
 
         $moved = false;
@@ -257,16 +286,191 @@ class ConfigOverrideStore
         return $pins === [] ? 'none' : sha1(json_encode($pins, JSON_THROW_ON_ERROR));
     }
 
-    /** Whether this tier's connection has the store's tables (a host or tenant that has not run the shared migration has not). */
+    /**
+     * Whether this tier's connection has the store's tables (a host or tenant that has not run the shared migration has
+     * not). The tenant tier asks {@see tenantTargetProblem()}: its OWN schema, schema-qualified, so a table found only
+     * through a `<tenant schema>,public` search path's fall-through (central's) never counts as the tenant's.
+     */
     protected function hasStore(): bool
     {
-        return Schema::connection($this->connectionName())->hasTable(Beam::table('config_scopes'));
+        return $this->tier() === ConfigTier::Tenant
+            ? $this->tenantTargetProblem() === null
+            : Schema::connection($this->connectionName())->hasTable(Beam::table('config_scopes'));
+    }
+
+    /**
+     * Refuse a TENANT-tier write that has nowhere safe to go (root ab22fd59), with {@see tenantTargetProblem()}'s reason;
+     * nothing is written. Called before every tenant-tier write (saveDraft, publish, discardDraft, restore), and public so
+     * a caller that writes on a connection it names (08's `on()`) asks it of THAT connection, the one it writes on.
+     *
+     * @param  string|null  $connection  the connection the write will use; null means this store's own
+     */
+    public function guardTenantTarget(?string $connection = null): void
+    {
+        $problem = $this->tenantTargetProblem($connection);
+
+        if ($problem !== null) {
+            throw ConfigOverrideRefusal::because('tier', "A tenant-tier config write was refused and nothing was written: {$problem}. Run `php artisan tenants:migrate` (and `php artisan pools:migrate` for pooled tenants) so each tenant's own storage has the shared config tables.");
+        }
+    }
+
+    /**
+     * Why this store's TENANT tier has no safe storage on `$connection`, or null when it has (and always null for the
+     * operator tier). Every tenant-tier read and write asks it: a write is refused ({@see guardTenantTarget()}), and a
+     * read finds nothing ({@see hasStore()}, {@see scope()}), so central's rows are never served or written as a tenant's.
+     * It answers with a reason unless all three hold:
+     * - tenancy is active: outside a tenant the default connection is central's;
+     * - the target is not central's: neither the `central` connection nor one whose LIVE session is central's (the same
+     *   server, database and current schema on Postgres; the same file on SQLite), so a `url`, a host alias or a port
+     *   spelled on one side only cannot hide it;
+     * - the store's three tables (config_scopes, config_overrides and versions, which a separate migration creates) exist
+     *   in the session's OWN current schema, schema-qualified, never through the `,public` fall-through every tenant
+     *   schema and pool carries. Otherwise the store's unqualified queries resolve to central's OPERATOR tables, keyed by
+     *   section with no tier column.
+     * Known limit: a concurrent DROP between this check and the write (DDL racing a request) is not covered.
+     */
+    public function tenantTargetProblem(?string $connection = null): ?string
+    {
+        if ($this->tier() !== ConfigTier::Tenant) {
+            return null;
+        }
+
+        $connection ??= $this->connectionName();
+
+        if (! $this->tenancyActive()) {
+            return 'no tenant is active, so the tenant tier has no storage of its own';
+        }
+
+        if ($connection === 'central') {
+            return "the tenant's connection `{$connection}` resolves to central's own database and schema";
+        }
+
+        // Asked on every tenant read and write: cached for the tenant frame, per connection, live PDO and tenant (review
+        // 05:40Z), so a hop pays its session and table queries once.
+        $pdo = DB::connection($connection)->getPdo();
+        $key = $connection.'|'.$this->currentTenantKey();
+        $answers = $this->tenantTargets[$pdo] ?? [];
+
+        if (array_key_exists($key, $answers)) {
+            return $answers[$key] === false ? null : $answers[$key];
+        }
+
+        $problem = null;
+
+        if ($this->sameTarget($connection, 'central')) {
+            $problem = "the tenant's connection `{$connection}` resolves to central's own database and schema";
+        } else {
+            [$schema, $missing] = $this->missingOwnTables($connection);
+
+            if ($missing !== []) {
+                $problem = "the tenant's own schema".($schema === null ? '' : " `{$schema}`")." lacks the store's tables `".implode('`, `', $missing).'` (a table reachable only through the `,public` search path is central\'s)';
+            }
+        }
+
+        $answers[$key] = $problem ?? false;
+        $this->tenantTargets[$pdo] = $answers;
+
+        return $problem;
+    }
+
+    protected function currentTenantKey(): string
+    {
+        try {
+            return (string) app(TenancyContext::class)->currentTenantId();
+        } catch (Throwable) {
+            return '';
+        }
+    }
+
+    /**
+     * The store's tables `$connection`'s live session does not hold in its OWN current schema (a file database: itself).
+     *
+     * @return array{0: string|null, 1: list<string>} the schema asked, and the missing tables
+     */
+    protected function missingOwnTables(string $connection): array
+    {
+        $db = DB::connection($connection);
+        $schema = $db->getDriverName() === 'pgsql' ? (string) $db->selectOne('select current_schema() as s')->s : null;
+        $missing = [];
+
+        foreach (['config_scopes', 'config_overrides', 'versions'] as $name) {
+            $table = Beam::table($name);
+
+            if (! Schema::connection($connection)->hasTable($schema === null ? $table : "{$schema}.{$table}")) {
+                $missing[] = $table;
+            }
+        }
+
+        return [$schema, $missing];
+    }
+
+    /**
+     * Whether two connections' LIVE sessions reach the same storage. On Postgres: the same current database AND current
+     * schema. The server address is deliberately NOT compared (review 05:40Z): one server reached two ways (a unix socket
+     * answers NULL, `localhost` may be ::1 or 127.0.0.1, a pooler sits on one side) would differ there, and a tenant whose
+     * schema was never created (its current schema falls back to `public`) would pass as its own. The only false match,
+     * an isolated tenant on another server whose database is named like central's and whose session sits in `public`,
+     * fails closed. On SQLite the same file; otherwise the same parsed host, port and database.
+     */
+    protected function sameTarget(string $connection, string $other): bool
+    {
+        $a = DB::connection($connection);
+        $b = DB::connection($other);
+
+        if ($a->getDriverName() !== $b->getDriverName()) {
+            return false;
+        }
+
+        if ($a->getDriverName() === 'pgsql') {
+            return $this->pgSession($connection) === $this->pgSession($other);
+        }
+
+        if ($a->getDriverName() === 'sqlite') {
+            $file = function (\Illuminate\Database\Connection $connection): ?string {
+                $database = $connection->getConfig('database');
+
+                return is_string($database) && $database !== '' && $database !== ':memory:' ? (realpath($database) ?: $database) : null;
+            };
+
+            return $file($a) !== null && $file($a) === $file($b);
+        }
+
+        foreach (['host', 'port', 'database'] as $key) {
+            if ((string) json_encode($a->getConfig($key)) !== (string) json_encode($b->getConfig($key))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * A Postgres connection's live storage identity: its current database and current schema (nothing about how it
+     * reached the server). Its own seam so the identity can be exercised without two servers.
+     *
+     * @return array{0: string, 1: string}
+     */
+    protected function pgSession(string $connection): array
+    {
+        $row = DB::connection($connection)->selectOne('select current_database() as d, current_schema() as s');
+
+        return [(string) $row->d, (string) $row->s];
+    }
+
+    protected function tenancyActive(): bool
+    {
+        try {
+            return app(TenancyContext::class)->isActive();
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /** Put the draft back to the published version (or to nothing, when none is published). */
     public function discardDraft(string $root): ConfigOverrideScope
     {
         $this->registered($root);
+        $this->guardTenantTarget();
 
         return DB::connection($this->connectionName())->transaction(function () use ($root): ConfigOverrideScope {
             $scope = $this->lockedScope($root);
@@ -283,6 +487,7 @@ class ConfigOverrideStore
     public function restore(string $root, string $version): ConfigOverrideScope
     {
         $this->registered($root);
+        $this->guardTenantTarget();
 
         return DB::connection($this->connectionName())->transaction(function () use ($root, $version): ConfigOverrideScope {
             $scope = $this->lockedScope($root);
@@ -303,8 +508,13 @@ class ConfigOverrideStore
         return $scope === null ? [] : array_values($this->versions->versions($scope)->all());
     }
 
+    /** The section's scope on this tier, or null. A tenant tier with no safe storage has none (never central's). */
     public function scope(string $root): ?ConfigOverrideScope
     {
+        if ($this->tier() === ConfigTier::Tenant && $this->tenantTargetProblem() !== null) {
+            return null;
+        }
+
         return $this->scopes()->where('section', $root)->first();
     }
 

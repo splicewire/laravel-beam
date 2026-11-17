@@ -58,6 +58,8 @@ class ConfigTenantOverlay
     {
         $config = app('config');
         $this->restore($config);
+        // A new tenant frame: the store's tenant-target answers are asked afresh.
+        $this->forgetTargets();
 
         if (! $this->tenancyActive()) {
             return;
@@ -81,6 +83,16 @@ class ConfigTenantOverlay
     public function revert(): void
     {
         $this->restore(app('config'));
+        $this->forgetTargets();
+    }
+
+    protected function forgetTargets(): void
+    {
+        try {
+            $this->container->make(ConfigOverrideStore::class)->forgetTenantTargets();
+        } catch (Throwable) {
+            // A boot without the store has no answers to forget.
+        }
     }
 
     /** Re-read and re-apply the tenant layer in the current repository (after a tenant publish in this process). */
