@@ -183,4 +183,57 @@ class ConfigLadderTest extends TestCase
             ConfigLadder::fold(['enabled' => true], ['enabled'], ['enabled' => false], operator: []),
         );
     }
+
+    /* ---- Nearest-entry resolution (config-sections 07, review-r1; 05's fold read exact pointers only) ---- */
+
+    private const GROUP = ['group' => ['a' => 'A', 'b' => 'B', 'c' => 'C']];
+
+    public function test_a_leaf_beneath_an_operator_parent_reads_the_parents_owned_value(): void
+    {
+        $keys = ConfigLadder::fold(package: self::GROUP, hostKeys: null, observed: self::GROUP, operator: [
+            '/group' => new ConfigLayerValue(ConfigTier::Operator, ['a' => 'A2', 'b' => 'B', 'c' => 'C'], 'operator override · v1', owned: ['a' => 'A2', 'c' => 'C2x'], inherit: ['/b']),
+        ])->keys;
+
+        $this->assertSame([ConfigTier::Operator, 'A2'], [$keys['/group/a']->tier, $keys['/group/a']->value], 'owned: the entry\'s');
+        $this->assertSame([ConfigTier::Package, 'B'], [$keys['/group/b']->tier, $keys['/group/b']->value], 'inherited: the tier below');
+        $this->assertSame(ConfigTier::Operator, $keys['/group/c']->tier);
+    }
+
+    public function test_an_owned_child_a_parent_replace_omits_is_absent_under_that_tier(): void
+    {
+        $keys = ConfigLadder::fold(package: self::GROUP, hostKeys: null, observed: self::GROUP, operator: [
+            '/group' => new ConfigLayerValue(ConfigTier::Operator, ['a' => 'A2'], 'operator override · v1'),
+        ])->keys;
+
+        $this->assertSame(ConfigTier::Operator, $keys['/group/b']->tier);
+        $this->assertNull($keys['/group/b']->value);
+        $this->assertTrue(end($keys['/group/b']->layers)->removed, 'absent, attributed to the operator\'s replace');
+    }
+
+    public function test_the_tenant_resolves_over_the_operator_by_nearest_entry_at_mixed_depths(): void
+    {
+        $keys = ConfigLadder::fold(package: self::GROUP, hostKeys: null, observed: self::GROUP,
+            operator: ['/group' => new ConfigLayerValue(ConfigTier::Operator, ['a' => 'A2', 'b' => 'B2', 'c' => 'C'], 'operator override · v3')],
+            tenant: [
+                '/group/a' => new ConfigLayerValue(ConfigTier::Tenant, 'AT', 'tenant override · v1'),
+                '/group/c' => new ConfigLayerValue(ConfigTier::Tenant, ['x' => 1], 'tenant override · v1'),
+            ],
+        )->keys;
+
+        $this->assertSame([ConfigTier::Tenant, 'AT'], [$keys['/group/a']->tier, $keys['/group/a']->value]);
+        $this->assertSame([ConfigTier::Operator, 'B2', 'operator override · v3'], [$keys['/group/b']->tier, $keys['/group/b']->value, end($keys['/group/b']->layers)->source]);
+        $this->assertSame([ConfigTier::Tenant, 1], [$keys['/group/c/x']->tier, $keys['/group/c/x']->value], 'a key that exists only inside an override gets a row');
+    }
+
+    public function test_a_tenant_parent_replace_over_an_operator_leaf_leaves_it_absent_under_the_tenant(): void
+    {
+        $keys = ConfigLadder::fold(package: self::GROUP, hostKeys: null, observed: self::GROUP,
+            operator: ['/group/a' => new ConfigLayerValue(ConfigTier::Operator, 'A2', 'operator override · v1')],
+            tenant: ['/group' => new ConfigLayerValue(ConfigTier::Tenant, ['b' => 'BT'], 'tenant override · v1')],
+        )->keys;
+
+        $this->assertSame(ConfigTier::Tenant, $keys['/group/a']->tier);
+        $this->assertTrue(end($keys['/group/a']->layers)->removed);
+        $this->assertSame([ConfigTier::Tenant, 'BT'], [$keys['/group/b']->tier, $keys['/group/b']->value]);
+    }
 }

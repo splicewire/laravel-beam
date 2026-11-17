@@ -7,14 +7,16 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Splicewire\Beam\Authorization\ResourceVisibility;
 use Splicewire\Beam\Data\Config\ConfigSectionData;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Realm\Contracts\TenancyContext;
+use Throwable;
 
 /**
  * The `beam-config` read for a transport that is not a particle mount (ADR-0245 decision 8): the MCP read tool.
  *
  * It asks the SAME gate the REST and Frame reads ask, the resource's declared read gate through
- * {@see ResourceVisibility::readable()} (today `entitlement:os.operate`, read off the declaration rather than
- * restated), and reads through the SAME {@see ConfigSectionReader}, so a row cannot differ by transport and a
- * caller the API refuses is refused here too.
+ * {@see ResourceVisibility::readable()} ({@see READ}, read off the declaration rather than restated), and reads through
+ * the SAME {@see ConfigSectionReader}, so a row cannot differ by transport and a caller the API refuses is refused here
+ * too.
  *
  * Absence is a return value: null when the host does not register `beam-config` or the actor may not read it.
  */
@@ -23,10 +25,20 @@ class ConfigSectionAccess
     public const RESOURCE = 'beam-config';
 
     /**
-     * The ability every operator-tier op on `beam-config` asks (config-sections ticket 05): save-draft, discard-draft,
-     * publish, restore and versions. Core defines it ({@see \Splicewire\Beam\BeamServiceProvider}) as {@see permits()},
-     * which asks the resource's OWN declared policy (today `entitlement:os.operate`, the estate's staff key), so the
-     * ops and the resource answer the same actor the same way and a policy change moves both.
+     * `beam-config`'s declared read policy (config-sections ticket 07), which core defines ({@see allowsRead()}): outside a
+     * tenant it is the operator's existing staff key, `entitlement:os.operate`, exactly as 02 and 05 declared it; inside
+     * a tenant it is the host's `beam.core.config_overrides.tenant_ability`, and with none configured no tenant user
+     * reads or writes a workspace's config. One declared ability, so every transport (REST, Frame, MCP, the ops) asks the
+     * same question and the realm decides the answer; the staff key never opens a tenant's tier, and a tenant ability
+     * never opens the operator's.
+     */
+    public const READ = 'beam.config-section.read';
+
+    /**
+     * The ability every op on `beam-config` asks (config-sections tickets 05, 07): save-draft, discard-draft, publish,
+     * restore, versions and lock. Core defines it ({@see \Splicewire\Beam\BeamServiceProvider}) as {@see permits()},
+     * which asks the resource's OWN declared policy ({@see READ}), so the ops and the resource answer the same actor the
+     * same way, in each realm, and a policy change moves both.
      *
      * The ops do not name `entitlement:os.operate` themselves: core references that key but never defines it (a host
      * does), so an op declaring it would make the core-only `UndefinedEntitlementKeyAudit` report core's own ops. Spelled
@@ -35,6 +47,9 @@ class ConfigSectionAccess
      * `entitlement:{ability}` ({@see \Splicewire\Beam\Authorization\AbilityResolver::allows()}), which this is not.
      */
     public const OPERATE = 'beam.config-section.operate';
+
+    /** The staff key the operator realm reads `beam-config` with (02, 05). */
+    public const OPERATOR_ABILITY = 'entitlement:os.operate';
 
     public function __construct(
         protected ParticleResourceRegistry $resources,
@@ -61,6 +76,31 @@ class ConfigSectionAccess
         }
 
         return app(Gate::class)->forUser($actor)->allows($policy);
+    }
+
+    /**
+     * {@see READ}: the staff key outside a tenant; the host's configured tenant ability inside one, or nobody when the
+     * host names none. A guest is refused.
+     */
+    public static function allowsRead(?Authenticatable $actor): bool
+    {
+        if ($actor === null) {
+            return false;
+        }
+
+        $ability = self::inTenant() ? config('beam.core.config_overrides.tenant_ability') : self::OPERATOR_ABILITY;
+
+        return is_string($ability) && $ability !== '' && app(Gate::class)->forUser($actor)->allows($ability);
+    }
+
+    /** Whether this call runs inside a tenant (the tenant realm's rows and ops). */
+    public static function inTenant(): bool
+    {
+        try {
+            return app(TenancyContext::class)->isActive();
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**

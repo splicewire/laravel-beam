@@ -95,7 +95,10 @@ class BeamConfigResourceTest extends TestCase
         $this->assertSame(ConfigSectionBacking::class, $resource->backing);
         $this->assertSame(ConfigSectionData::class, $resource->data);
         $this->assertTrue($resource->readOnly);
-        $this->assertSame('entitlement:os.operate', $resource->policy);
+        // config-sections 07 (deliberate): the declared policy is core's realm-aware read ability, which outside a tenant
+        // asks exactly the operator's staff key this resource declared before (02, 05).
+        $this->assertSame(ConfigSectionAccess::READ, $resource->policy);
+        $this->assertSame('entitlement:os.operate', ConfigSectionAccess::OPERATOR_ABILITY);
         $this->assertNull($resource->publicRead);
     }
 

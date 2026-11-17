@@ -5,8 +5,10 @@ namespace Splicewire\Beam\Data\Config;
 use Schemastud\Frame\Attributes\Column;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
+use Splicewire\Beam\Config\ConfigSectionAccess;
 use Splicewire\Beam\Config\ConfigSectionBacking;
 use Splicewire\Beam\Data\BeamData;
+use Splicewire\Beam\Enums\ConfigTier;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 
 /**
@@ -20,10 +22,12 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
  * Read-only by construction for now: every key a section declares is deploy-only until the override store exists,
  * so `input: false` and the backing declines `WritesRecords`. Drafts and publishing arrive as ops.
  *
- * Realm membership is the host's (`frame.realms`): the operator realm reads the central tier. The read gate is
- * the operator's existing ability, `entitlement:os.operate` (the estate's one staff key, asked subject-free;
- * {@see \Splicewire\Beam\Realm\RealmEntitlementResourceGate::CentralRealmEntitlement}), because a section's rows
- * name env vars and install paths.
+ * Realm membership is the host's (`frame.realms`): the operator realm reads the central tier, and the tenant realm
+ * (while a tenant is initialized) the tenant tier (ticket 07). The read gate is core's {@see ConfigSectionAccess::READ}:
+ * outside a tenant the operator's existing ability, `entitlement:os.operate` (the estate's one staff key, asked
+ * subject-free; {@see \Splicewire\Beam\Realm\RealmEntitlementResourceGate::CentralRealmEntitlement}), because a
+ * section's rows name env vars and install paths; inside a tenant the ability the host names in
+ * `beam.core.config_overrides.tenant_ability`, and nobody when it names none.
  *
  * The attribute DECLARES; the host ROUTES:
  *
@@ -36,7 +40,9 @@ use Splicewire\Beam\Particle\Attributes\ParticleResource;
     input: false,
     perPage: 100,
     label: 'Config',
-    policy: 'entitlement:os.operate',
+    // config-sections 07: core's realm-aware read ability (the staff key outside a tenant, the host's tenant ability
+    // inside one; {@see ConfigSectionAccess::READ}).
+    policy: ConfigSectionAccess::READ,
     readOnly: true,
     singularLabel: 'Config section',
     // ADR-0230 Public Read: none. A section names env vars and install paths, so no guest reads it.
@@ -49,7 +55,11 @@ class ConfigSectionData extends BeamData
      * @param  array<array-key, mixed>  $values  the effective values, secrets redacted to null
      * @param  list<ConfigKeyData>  $keys
      * @param  list<string>  $shadowedPackageKeys  package leaves the host's top-level copy hides
-     * @param  list<ConfigOverrideData>  $overrides  the operator tier's sparse draft (ticket 05)
+     * @param  list<ConfigOverrideData>  $overrides  the row tier's sparse draft: the operator's (ticket 05), or in the
+     *                                               tenant realm the current tenant's (ticket 07)
+     * @param  ConfigTier  $tier  the tier this row's draft, pins and ops act on: `operator` in the operator realm, `tenant`
+     *                            while a tenant is initialized (ticket 07). In the tenant realm the row lists only keys
+     *                            whose declared ceiling admits the tenant tier.
      */
     public function __construct(
         public string $id,
@@ -72,5 +82,6 @@ class ConfigSectionData extends BeamData
         public ConfigPinsData $pins = new ConfigPinsData(draft: null, published: null, draftPending: false),
         /** What a publish must tell the operator, e.g. a failed cache write's propagation bound (root ruling (A), row 64e24681). */
         public ?string $notice = null,
+        public ConfigTier $tier = ConfigTier::Operator,
     ) {}
 }

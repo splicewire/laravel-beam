@@ -20,25 +20,39 @@ use Splicewire\Beam\Enums\ConfigMerge;
 use Splicewire\Beam\Enums\ConfigOverrideOp;
 use Splicewire\Beam\Enums\ConfigTier;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Realm\Contracts\TenancyContext;
 use Throwable;
 
 /**
- * The operator tier's override store (ADR-0245 decision 2 and §9; config-sections ticket 05): the draft, the two pins,
- * the versions and the revisions of every section, on the `central` connection. It has its own direct publish, for a
- * host without beam-ux; a Release joins in ticket 08.
+ * The override store of one writable tier (ADR-0245 decision 2 and §9): the draft, the two pins, the versions and the
+ * revisions of every section. It has its own direct publish, for a host without beam-ux; a Release joins in ticket 08.
+ *
+ * **Tiers (config-sections 05, 07).** The same shared tables hold both writable tiers, on different connections:
+ * - the OPERATOR tier on `central` (ticket 05);
+ * - the TENANT tier on the DEFAULT connection while a tenant is initialized, which is the tenant's own schema, pool
+ *   (rows kept apart by its row-level security) or database (ticket 07). A tenant's history stays in its workspace and
+ *   moves with it when it is relocated.
+ * The tier is {@see forTier()}'s, or, unnamed, the current context's: the tenant tier while tenancy is active, the
+ * operator tier otherwise ({@see tier()}). The runtime hooks always name theirs ({@see ConfigOverlay},
+ * {@see ConfigTenantOverlay}); the `beam-config` ops act on the realm they run in.
  *
  * - {@see saveDraft()} applies `set` / `null` / `unset` ops to a section's draft. Each write is refused unless the
- *   key's ceiling admits the operator tier, its pointer is addressable, an `extend` key's entry is new, and the
+ *   key's ceiling admits the writing tier, its pointer is addressable, an `extend` key's entry is new, and the
  *   section's document with the draft applied validates against the section schema through the same
- *   {@see AcceptanceGate} a particle write uses. Each op appends one {@see ConfigOverrideRevision}; the draft is saved
- *   as a new version and HEAD moves to it. A draft changes nothing the runtime applies.
- * - {@see publish()} moves the published pin to HEAD and moves the published-version counter, so every process
- *   re-applies on its next request, job or command.
+ *   {@see AcceptanceGate} a particle write uses. A tenant write is also refused, with the operator's reason, when an
+ *   operator lock covers the pointer ({@see lock()}). Each op appends one {@see ConfigOverrideRevision}; the draft is
+ *   saved as a new version and HEAD moves to it. A draft changes nothing the runtime applies.
+ * - {@see publish()} moves the published pin to HEAD. An operator publish moves the published-version counter, so every
+ *   process re-applies on its next request, job or command; a tenant publish needs no counter, because the tenant tier
+ *   is read afresh on every tenant hop.
  * - {@see discardDraft()} puts the draft back to the published version and HEAD with it; nothing published changes.
  * - {@see restore()} rehydrates the draft from a version and saves it as a NEW version: a restore is a draft.
  */
 class ConfigOverrideStore
 {
+    /** The tier this store writes; null is the current context's ({@see tier()}). */
+    protected ?ConfigTier $tier = null;
+
     /**
      * The section schema and the acceptance gate are resolved on first VALIDATION, never at construction. The overlay
      * builds this store on every boot ({@see ConfigOverlay::sync()} from the provider's `booted()` hook), and reading the
@@ -69,6 +83,47 @@ class ConfigOverrideStore
         return sprintf('published; propagation to other processes may take up to %d s (cache write failed)', ConfigOverlay::recheckSeconds());
     }
 
+    /** This store, writing `$tier` (Operator or Tenant). */
+    public function forTier(ConfigTier $tier): static
+    {
+        if (! in_array($tier, [ConfigTier::Operator, ConfigTier::Tenant], true)) {
+            throw new InvalidArgumentException("The {$tier->value} tier has no override store; only the operator and tenant tiers are written.");
+        }
+
+        $store = clone $this;
+        $store->tier = $tier;
+        $store->propagationNotice = null;
+
+        return $store;
+    }
+
+    /** The tier this store writes: the one {@see forTier()} named, else the tenant tier while tenancy is active. */
+    public function tier(): ConfigTier
+    {
+        return $this->tier ?? (app(TenancyContext::class)->isActive() ? ConfigTier::Tenant : ConfigTier::Operator);
+    }
+
+    /**
+     * The connection this tier's rows live on, resolved on every call: `central` for the operator, the current DEFAULT
+     * connection for a tenant (the tenant's own while its tenancy is initialized).
+     */
+    public function connectionName(): string
+    {
+        return $this->tier() === ConfigTier::Operator ? 'central' : DB::getDefaultConnection();
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Builder<ConfigOverrideScope> */
+    protected function scopes(): \Illuminate\Database\Eloquent\Builder
+    {
+        return ConfigOverrideScope::on($this->connectionName());
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Builder<ConfigOverrideRevision> */
+    protected function revisions(): \Illuminate\Database\Eloquent\Builder
+    {
+        return ConfigOverrideRevision::on($this->connectionName());
+    }
+
     protected function schemas(): ConfigSectionSchema
     {
         return $this->container->make(ConfigSectionSchema::class);
@@ -86,8 +141,9 @@ class ConfigOverrideStore
     {
         $registered = $this->registered($root);
         $normalized = $this->normalize($registered, $ops, $this->base($root));
+        $tier = $this->tier()->value;
 
-        return DB::connection('central')->transaction(function () use ($registered, $root, $normalized, $actor): ConfigOverrideScope {
+        return DB::connection($this->connectionName())->transaction(function () use ($registered, $root, $normalized, $actor, $tier): ConfigOverrideScope {
             $scope = $this->lockedScope($root);
             $draft = $scope->draft ?? [];
             $base = $this->base($root);
@@ -104,7 +160,7 @@ class ConfigOverrideStore
                     [$exists] = JsonPointer::get($base, $pointer);
 
                     if ($exists && ! isset($draft[$pointer])) {
-                        throw ConfigOverrideRefusal::because("ops.{$i}.pointer", "{$pointer} is an extend key, and its entry already exists in a tier below the operator; an override may add entries, never replace one.");
+                        throw ConfigOverrideRefusal::because("ops.{$i}.pointer", "{$pointer} is an extend key, and its entry already exists in a tier below the {$tier}; an override may add entries, never replace one.");
                     }
                 }
 
@@ -127,10 +183,10 @@ class ConfigOverrideStore
                 throw ConfigOverrideRefusal::because('ops', "The draft for {$root} does not validate against its section schema.");
             }
 
-            $revision = (int) ConfigOverrideRevision::query()->where('section', $root)->max('revision');
+            $revision = (int) $this->revisions()->where('section', $root)->max('revision');
 
             foreach ($pending as [$pointer, $op, $value, $secret]) {
-                $row = ConfigOverrideRevision::query()->create([
+                $row = $this->revisions()->create([
                     'section' => $root,
                     'pointer' => $pointer,
                     'op' => $op,
@@ -161,7 +217,7 @@ class ConfigOverrideStore
 
         $moved = false;
 
-        $scope = DB::connection('central')->transaction(function () use ($root, &$moved): ConfigOverrideScope {
+        $scope = DB::connection($this->connectionName())->transaction(function () use ($root, &$moved): ConfigOverrideScope {
             $scope = $this->lockedScope($root);
 
             if ($scope->head_version === null) {
@@ -191,14 +247,20 @@ class ConfigOverrideStore
      */
     public function publishedToken(): string
     {
-        if (! Schema::connection('central')->hasTable(Beam::table('config_scopes'))) {
+        if (! $this->hasStore()) {
             return 'none';
         }
 
-        $pins = ConfigOverrideScope::query()->whereNotNull('published_version')->orderBy('section')
+        $pins = $this->scopes()->whereNotNull('published_version')->orderBy('section')
             ->pluck('published_version', 'section')->all();
 
         return $pins === [] ? 'none' : sha1(json_encode($pins, JSON_THROW_ON_ERROR));
+    }
+
+    /** Whether this tier's connection has the store's tables (a host or tenant that has not run the shared migration has not). */
+    protected function hasStore(): bool
+    {
+        return Schema::connection($this->connectionName())->hasTable(Beam::table('config_scopes'));
     }
 
     /** Put the draft back to the published version (or to nothing, when none is published). */
@@ -206,7 +268,7 @@ class ConfigOverrideStore
     {
         $this->registered($root);
 
-        return DB::connection('central')->transaction(function () use ($root): ConfigOverrideScope {
+        return DB::connection($this->connectionName())->transaction(function () use ($root): ConfigOverrideScope {
             $scope = $this->lockedScope($root);
             $published = $scope->published_version === null ? null : $this->versions->version($scope, $scope->published_version);
             $scope->restoreVersionSnapshot($published->snapshot ?? ['draft' => []]);
@@ -222,7 +284,7 @@ class ConfigOverrideStore
     {
         $this->registered($root);
 
-        return DB::connection('central')->transaction(function () use ($root, $version): ConfigOverrideScope {
+        return DB::connection($this->connectionName())->transaction(function () use ($root, $version): ConfigOverrideScope {
             $scope = $this->lockedScope($root);
             $target = $this->versions->version($scope, $version)
                 ?? throw ConfigOverrideRefusal::because('version', "{$root} has no version {$version}.");
@@ -236,14 +298,14 @@ class ConfigOverrideStore
     /** @return list<Version> a section's versions, newest first */
     public function versionsOf(string $root): array
     {
-        $scope = ConfigOverrideScope::query()->where('section', $root)->first();
+        $scope = $this->scope($root);
 
         return $scope === null ? [] : array_values($this->versions->versions($scope)->all());
     }
 
     public function scope(string $root): ?ConfigOverrideScope
     {
-        return ConfigOverrideScope::query()->where('section', $root)->first();
+        return $this->scopes()->where('section', $root)->first();
     }
 
     /** The version number a version id names, or null. */
@@ -261,13 +323,13 @@ class ConfigOverrideStore
     {
         // Before the host has run the shared migration there is nothing published, and that is not a failure: boot,
         // `migrate` and a fresh install read the package and host tiers without a warning.
-        if (! Schema::connection('central')->hasTable(Beam::table('config_scopes'))) {
+        if (! $this->hasStore()) {
             return [];
         }
 
         $layers = [];
 
-        foreach (ConfigOverrideScope::query()->whereNotNull('published_version')->get() as $scope) {
+        foreach ($this->scopes()->whereNotNull('published_version')->get() as $scope) {
             $layers[$scope->section] = $this->publishedLayer($scope);
         }
 
@@ -281,8 +343,8 @@ class ConfigOverrideStore
             return [];
         }
 
-        // Through the version store, which reads on the scope's own connection (`central`). A bare Version query
-        // would read the DEFAULT connection, which is the tenant's during a tenant request.
+        // Through the version store, which reads on the scope's own connection (`central` for the operator). A bare
+        // Version query would read the DEFAULT connection, which is the tenant's during a tenant request.
         $version = $this->versions->version($scope, $scope->published_version);
         $draft = $version?->snapshot['draft'] ?? [];
 
@@ -299,7 +361,7 @@ class ConfigOverrideStore
             fn (array $entry): ?string => ($entry['secret'] ?? false) && ($entry['op'] ?? null) === 'set' ? ($entry['revision'] ?? null) : null,
             $draft,
         )));
-        $secrets = $secretIds === [] ? collect() : ConfigOverrideRevision::query()->whereKey($secretIds)->get()->keyBy('id');
+        $secrets = $secretIds === [] ? collect() : $this->revisions()->whereKey($secretIds)->get()->keyBy('id');
         $entries = [];
 
         foreach ($draft as $pointer => $entry) {
@@ -345,6 +407,7 @@ class ConfigOverrideStore
         }
 
         $normalized = [];
+        $locks = $this->tier() === ConfigTier::Tenant ? $this->locks($registered->root()) : [];
 
         foreach ($ops as $i => $op) {
             $pointer = $op['pointer'] ?? null;
@@ -365,21 +428,23 @@ class ConfigOverrideStore
 
             $declared = $registered->section::keyDeclaration(JsonPointer::segments($pointer));
 
-            if (! $declared->ceiling->admits(ConfigTier::Operator)) {
-                throw ConfigOverrideRefusal::because("ops.{$i}.pointer", "{$pointer} has the ceiling {$declared->ceiling->value}; the operator tier may not override it.");
+            // An `unset` of a pointer the operator has since locked is allowed: it only gives the key back to the
+            // tiers below, which is what the lock asks for.
+            if (($refused = $this->refusal($registered, $pointer, [], $locks)) !== null && ! ($kind === ConfigOverrideOp::Unset && $declared->ceiling->admits($this->tier()))) {
+                throw ConfigOverrideRefusal::because("ops.{$i}.pointer", $refused);
             }
 
             $value = $kind === ConfigOverrideOp::Set ? ($op['value'] ?? null) : null;
 
             if ($kind !== ConfigOverrideOp::Unset) {
-                $this->guardLeafCeilings($registered, $pointer, $value, $base, $i);
+                $this->guardLeafCeilings($registered, $pointer, $value, $base, $i, $locks);
             }
 
             $derived = [];
             $inherit = [];
 
             if ($kind === ConfigOverrideOp::Set && is_array($value) && ! $declared->secret) {
-                [$value, $inherit] = $this->hostOwnedOut($registered, $pointer, $value);
+                [$value, $inherit] = $this->hostOwnedOut($registered, $pointer, $value, $locks);
                 [$value, $derived] = $this->splitSecrets($registered, $pointer, $value);
 
                 foreach ($derived as [$child]) {
@@ -398,12 +463,39 @@ class ConfigOverrideStore
     }
 
     /**
-     * Refuse an op that would change a leaf below `$pointer` whose ceiling does not admit the operator tier. Compares
-     * the leaves of the base object and of the new value (a leaf missing from either side is a change).
+     * Why the writing tier may not write `$pointer` (+ `$path` below it), or null when it may: the key's declared
+     * ceiling does not admit the tier, or (tenant tier) an operator lock covers it, with the operator's reason.
+     *
+     * @param  list<string>  $path  below `$pointer`
+     * @param  array<string, ConfigOverrideLock>  $locks  the section's locks (the tenant tier's guard only)
+     */
+    protected function refusal(RegisteredConfigSection $registered, string $pointer, array $path, array $locks): ?string
+    {
+        $full = $path === [] ? $pointer : $pointer.JsonPointer::from($path);
+        $declared = $registered->section::keyDeclaration(JsonPointer::segments($full));
+        $tier = $this->tier();
+
+        if (! $declared->ceiling->admits($tier)) {
+            return "{$full} has the ceiling {$declared->ceiling->value}; the {$tier->value} tier may not override it.";
+        }
+
+        foreach ($locks as $lock) {
+            if ($lock->covers($full)) {
+                return "{$full} is locked by the operator: {$lock->reason}";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Refuse an op that would change a leaf below `$pointer` the writing tier may not write (its ceiling, or an operator
+     * lock). Compares the leaves of the base object and of the new value (a leaf missing from either side is a change).
      *
      * @param  array<array-key, mixed>  $base
+     * @param  array<string, ConfigOverrideLock>  $locks
      */
-    protected function guardLeafCeilings(RegisteredConfigSection $registered, string $pointer, mixed $value, array $base, int $i): void
+    protected function guardLeafCeilings(RegisteredConfigSection $registered, string $pointer, mixed $value, array $base, int $i, array $locks = []): void
     {
         [$exists, $old] = JsonPointer::get($base, $pointer);
         $old = $exists && is_array($old) ? $old : [];
@@ -414,81 +506,36 @@ class ConfigOverrideStore
         }
 
         foreach (array_unique([...JsonPointer::leaves($old), ...JsonPointer::leaves($new)]) as $leaf) {
-            $declared = $registered->section::keyDeclaration([...JsonPointer::segments($pointer), ...JsonPointer::segments($leaf)]);
+            $refused = $this->refusal($registered, $pointer, JsonPointer::segments($leaf), $locks);
 
-            if ($declared->ceiling->admits(ConfigTier::Operator)) {
+            if ($refused === null) {
                 continue;
             }
 
             if (json_encode(JsonPointer::get($old, $leaf)) !== json_encode(JsonPointer::get($new, $leaf))) {
-                throw ConfigOverrideRefusal::because("ops.{$i}.value", "{$pointer}{$leaf} has the ceiling {$declared->ceiling->value}; the operator tier may not change it, here inside a write to {$pointer}.");
+                $declared = $registered->section::keyDeclaration([...JsonPointer::segments($pointer), ...JsonPointer::segments($leaf)]);
+                $tier = $this->tier();
+
+                throw ConfigOverrideRefusal::because("ops.{$i}.value", $declared->ceiling->admits($tier)
+                    ? "{$refused} (inside a write to {$pointer})"
+                    : "{$pointer}{$leaf} has the ceiling {$declared->ceiling->value}; the {$tier->value} tier may not change it, here inside a write to {$pointer}.");
             }
         }
     }
 
     /**
-     * Take every key whose ceiling does not admit the operator tier out of an object value, at the HIGHEST such pointer:
-     * the whole key, not its leaves, so a host-owned map keeps every entry the host adds later (build-qa probe 3,
-     * 2026-11-16). {@see guardLeafCeilings()} has already
-     * refused any change below such a key, so what is taken out is a value-equal resend: the entry INHERITS it from the
-     * tier below instead of pinning today's value (build-qa probe 2). Keys the operator may set are walked into, so a
-     * host-owned key nested inside an operator-owned object is inherited at its own pointer and nothing above it; and a
-     * host-owned record holding an explicitly operator-owned child (nearest declaration wins) is walked into as well,
-     * so that child's change is kept (build-qa probe 4). A host-owned map's entries resolve to the map's own
-     * declaration, so the map is still inherited whole.
+     * Take every key the writing tier may not write (its ceiling, or an operator lock) out of an object value, by
+     * {@see ConfigTierBoundary::split()}, the same walk the tenant tier's runtime cuts with. {@see guardLeafCeilings()}
+     * has already refused any change below such a key, so what is taken out is a value-equal resend, which the entry
+     * INHERITS. The tenant tier treats an operator-locked key exactly as one above its ceiling: inherited, never pinned.
      *
      * @param  array<array-key, mixed>  $value
-     * @param  list<string>  $path  the walk's position below `$pointer`
+     * @param  array<string, ConfigOverrideLock>  $locks
      * @return array{0: array<array-key, mixed>, 1: list<string>} the object without them, and their relative pointers
      */
-    protected function hostOwnedOut(RegisteredConfigSection $registered, string $pointer, array $value, array $path = []): array
+    protected function hostOwnedOut(RegisteredConfigSection $registered, string $pointer, array $value, array $locks = []): array
     {
-        $owned = [];
-
-        foreach (array_keys($value) as $key) {
-            $here = [...$path, (string) $key];
-            $record = is_array($value[$key]) && $value[$key] !== [] && ! array_is_list($value[$key]);
-
-            // A refused key with an explicitly operator-owned child below it (nearest declaration wins, as in
-            // keyDeclaration) is walked into, so that child stays the operator's (build-qa probe 4); otherwise the whole
-            // key is inherited.
-            if (! $this->admitsOperator($registered, $pointer, $here) && ! ($record && $this->admitsBelow($registered, $pointer, $here, $value[$key]))) {
-                $owned[] = JsonPointer::from($here);
-                unset($value[$key]);
-
-                continue;
-            }
-
-            if ($record) {
-                [$value[$key], $below] = $this->hostOwnedOut($registered, $pointer, $value[$key], $here);
-                array_push($owned, ...$below);
-            }
-        }
-
-        return [$value, $owned];
-    }
-
-    /** @param  list<string>  $path  below `$pointer` */
-    protected function admitsOperator(RegisteredConfigSection $registered, string $pointer, array $path): bool
-    {
-        return $registered->section::keyDeclaration([...JsonPointer::segments($pointer), ...$path])->ceiling->admits(ConfigTier::Operator);
-    }
-
-    /**
-     * Whether any leaf of `$value` (at `$path` below `$pointer`) admits the operator tier by its nearest declaration.
-     *
-     * @param  list<string>  $path
-     * @param  array<array-key, mixed>  $value
-     */
-    protected function admitsBelow(RegisteredConfigSection $registered, string $pointer, array $path, array $value): bool
-    {
-        foreach (JsonPointer::leaves($value) as $leaf) {
-            if ($this->admitsOperator($registered, $pointer, [...$path, ...JsonPointer::segments($leaf)])) {
-                return true;
-            }
-        }
-
-        return false;
+        return ConfigTierBoundary::split($registered, $pointer, $value, $this->tier(), $locks);
     }
 
     /**
@@ -582,19 +629,121 @@ class ConfigOverrideStore
         return is_array($properties) && $properties !== [] ? array_intersect_key($doc, $properties) : $doc;
     }
 
-    /** @return array<array-key, mixed> the section root without the operator tier */
+    /**
+     * The section root the writing tier overrides: without the operator tier for the operator (the overlay's base), and
+     * the CENTRAL effective value (the operator tier included, no tenant tier) for a tenant.
+     *
+     * @return array<array-key, mixed>
+     */
     protected function base(string $root): array
     {
-        $base = app(ConfigOverlay::class)->base($root);
+        $base = $this->tier() === ConfigTier::Operator
+            ? app(ConfigOverlay::class)->base($root)
+            : app(ConfigTenantOverlay::class)->central($root);
 
         return is_array($base) ? $base : [];
     }
 
     protected function lockedScope(string $root): ConfigOverrideScope
     {
-        $scope = ConfigOverrideScope::query()->where('section', $root)->lockForUpdate()->first();
+        $scope = $this->scopes()->where('section', $root)->lockForUpdate()->first();
 
-        return $scope ?? ConfigOverrideScope::query()->create(['section' => $root, 'draft' => []]);
+        return $scope ?? $this->scopes()->create(['section' => $root, 'draft' => []]);
+    }
+
+    /**
+     * The operator's locks on a section, pointer-keyed, from `central` (operator locks are central data, whatever tier
+     * asks). No locks table yet reads as no locks.
+     *
+     * @return array<string, ConfigOverrideLock>
+     */
+    public function locks(string $root): array
+    {
+        if (! Schema::connection('central')->hasTable(Beam::table('config_locks'))) {
+            return [];
+        }
+
+        return ConfigOverrideLock::query()->where('section', $root)->orderBy('pointer')->get()->keyBy('pointer')->all();
+    }
+
+    /**
+     * Lock `$pointer` of a section for the tenant tier, with the reason a tenant is shown (operator only). Locking a
+     * pointer already locked replaces its reason. A key whose declared ceiling already excludes the tenant tier has
+     * nothing to lock and is refused, so a lock always names something a tenant could otherwise change.
+     */
+    public function lock(string $root, string $pointer, string $reason, ?string $actor = null): ConfigOverrideLock
+    {
+        $registered = $this->registered($root);
+        $this->guardOperatorOnly('lock');
+        $this->guardPointer($pointer, 'pointer');
+
+        if (trim($reason) === '') {
+            throw ConfigOverrideRefusal::because('reason', 'A lock needs a reason; the tenant is shown it beside the locked key.');
+        }
+
+        $declared = $registered->section::keyDeclaration(JsonPointer::segments($pointer));
+
+        if (! $declared->ceiling->admits(ConfigTier::Tenant) && ! $this->tenantWritableBelow($registered, $pointer)) {
+            throw ConfigOverrideRefusal::because('pointer', "{$pointer} has the ceiling {$declared->ceiling->value}; a tenant cannot override it, so there is nothing to lock.");
+        }
+
+        return ConfigOverrideLock::query()->updateOrCreate(
+            ['section' => $root, 'pointer' => $pointer],
+            ['reason' => trim($reason), 'locked_by' => $actor],
+        );
+    }
+
+    /** Remove the lock on `$pointer` of a section (operator only); a pointer with no lock is refused. */
+    public function unlock(string $root, string $pointer): void
+    {
+        $this->registered($root);
+        $this->guardOperatorOnly('unlock');
+
+        $deleted = ConfigOverrideLock::query()->where('section', $root)->where('pointer', $pointer)->delete();
+
+        if ($deleted === 0) {
+            throw ConfigOverrideRefusal::because('pointer', "{$pointer} of {$root} is not locked.");
+        }
+    }
+
+    protected function guardOperatorOnly(string $verb): void
+    {
+        if ($this->tier() !== ConfigTier::Operator) {
+            throw ConfigOverrideRefusal::because('root', "Only the operator may {$verb} a key; a tenant cannot.");
+        }
+    }
+
+    protected function guardPointer(mixed $pointer, string $field): void
+    {
+        if (! is_string($pointer) || ! str_starts_with($pointer, '/') || $pointer === '/') {
+            throw ConfigOverrideRefusal::because($field, 'A pointer is an RFC 6901 pointer below the section root, such as /releases/review_required.');
+        }
+
+        try {
+            JsonPointer::toJsonPath($pointer);
+        } catch (InvalidArgumentException $e) {
+            throw ConfigOverrideRefusal::because($field, $e->getMessage());
+        }
+    }
+
+    /**
+     * Whether any leaf the configuration holds below `$pointer` admits the tenant tier by its nearest declaration (a
+     * record whose own ceiling excludes tenants but which declares a tenant-writable child).
+     */
+    protected function tenantWritableBelow(RegisteredConfigSection $registered, string $pointer): bool
+    {
+        [$exists, $value] = JsonPointer::get($this->operatorBase($registered->root()), $pointer);
+
+        return $exists && is_array($value)
+            && ConfigTierBoundary::admitsBelow($registered, JsonPointer::segments($pointer), $value, ConfigTier::Tenant);
+    }
+
+    /** @return array<array-key, mixed> */
+    protected function operatorBase(string $root): array
+    {
+        $base = app(ConfigOverlay::class)->base($root);
+
+        return is_array($base) ? $base : [];
     }
 
     protected function registered(string $root): RegisteredConfigSection
@@ -609,6 +758,14 @@ class ConfigOverrideStore
      */
     protected function announce(string $root): void
     {
+        // A tenant publish needs no counter: every tenant hop reads the tenant tier afresh. This process's own hop
+        // re-applies at once.
+        if ($this->tier() === ConfigTier::Tenant) {
+            app(ConfigTenantOverlay::class)->refresh();
+
+            return;
+        }
+
         $overlay = app(ConfigOverlay::class);
 
         try {

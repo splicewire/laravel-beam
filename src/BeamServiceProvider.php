@@ -81,6 +81,7 @@ use Splicewire\Beam\Config\Overrides\ConfigOverlay;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideCounter;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideScope;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
+use Splicewire\Beam\Config\Overrides\ConfigTenantOverlay;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\BeamSeedCommand;
@@ -406,6 +407,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 'shared/create_saved_filters_table',
                 // config-sections 05: the config override store (ADR-0245 §9), central and every tenant schema.
                 'shared/create_beam_config_overrides_table',
+                // config-sections 07: operator locks (central data; the tenant-schema copy is inert).
+                'shared/create_beam_config_locks_table',
                 // spatie/laravel-activitylog's table, squashed here from the former central-only
                 // `central_activity_log` + tenant-only `activity_log` pair (the same consolidation
                 // tower already did for model-status' `statuses`). Homed alongside
@@ -759,6 +762,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->singleton(ConfigOverrideCounter::class);
         $this->app->singleton(ConfigOverrideStore::class);
         $this->app->singleton(ConfigOverlay::class);
+        // config-sections 07: the tenant tier, applied inside a tenant hop by beam-tenancy's bootstrapper. A process
+        // singleton for the same reason; it keeps the central values it restores per repository, never a repository.
+        $this->app->singleton(ConfigTenantOverlay::class);
 
         // The package-facing NAV SEAT registry. A `#[ParticleResource(section:)]` declaration says which
         // section a resource sits UNDER; until now nothing could SEAT that section, so 11 of the family's
@@ -2075,6 +2081,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         if (! $this->app->make(Gate::class)->has(ConfigSectionAccess::OPERATE)) {
             $this->app->make(Gate::class)->define(ConfigSectionAccess::OPERATE,
                 static fn (?Authenticatable $actor = null, mixed $subject = null): bool => ConfigSectionAccess::permits($actor));
+        }
+
+        // config-sections 07: `beam-config`'s declared read policy. The staff key outside a tenant (as 02 and 05 declared
+        // it), the host's `beam.core.config_overrides.tenant_ability` inside one ({@see ConfigSectionAccess::allowsRead()}).
+        if (! $this->app->make(Gate::class)->has(ConfigSectionAccess::READ)) {
+            $this->app->make(Gate::class)->define(ConfigSectionAccess::READ,
+                static fn (?Authenticatable $actor = null): bool => ConfigSectionAccess::allowsRead($actor));
         }
 
         // `Hook` binds its authorization HERE, in the package that owns the model, the way taxonomy binds

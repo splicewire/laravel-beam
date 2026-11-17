@@ -5,10 +5,13 @@ namespace Splicewire\Beam\Config;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\Env;
 use Splicewire\Beam\Config\Overrides\ConfigOverlay;
+use Splicewire\Beam\Config\Overrides\ConfigOverrideLock;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
+use Splicewire\Beam\Config\Overrides\ConfigTenantOverlay;
 use Splicewire\Beam\Data\Config\ConfigEnvData;
 use Splicewire\Beam\Data\Config\ConfigKeyData;
 use Splicewire\Beam\Data\Config\ConfigLayerData;
+use Splicewire\Beam\Data\Config\ConfigLockData;
 use Splicewire\Beam\Data\Config\ConfigOverrideData;
 use Splicewire\Beam\Data\Config\ConfigPinsData;
 use Splicewire\Beam\Data\Config\ConfigSectionCountsData;
@@ -19,6 +22,7 @@ use Splicewire\Beam\Enums\ConfigOverrideOp;
 use Splicewire\Beam\Enums\ConfigTier;
 use Splicewire\Beam\Localization\DeclaredText;
 use Splicewire\Beam\Localization\TextNamespaces;
+use Splicewire\Beam\Realm\Contracts\TenancyContext;
 use Throwable;
 
 /**
@@ -63,12 +67,23 @@ class ConfigSectionReader
         $declaration = $section::declaration();
         $root = $declaration->root;
 
-        // The fold reads the configuration WITHOUT the operator tier (the overlay's base) and takes the operator's
-        // published layer explicitly, so an override is attributed to the operator and never to a provider (ticket 05).
+        // The fold reads the configuration WITHOUT the override tiers (the operator overlay's base) and takes each
+        // tier's published layer explicitly, so an override is attributed to its tier and never to a provider
+        // (tickets 05 and 07). In the tenant realm the row's draft and pins are the current tenant's, folded above the
+        // operator's published layer, whose inherited leaves come from the central effective value.
+        $tenantRealm = $this->tenantRealm();
         $observed = app(ConfigOverlay::class)->base($root);
         $observed = is_array($observed) ? $observed : [];
-        [$operator, $overrides, $pins] = $this->operatorTier($section, $root, $observed);
-        $effective = $this->config->get($root);
+        [$operator, $overrides, $pins] = $this->tierRows(ConfigTier::Operator, $section, $root, $observed);
+        $tenant = [];
+
+        if ($tenantRealm) {
+            $central = app(ConfigTenantOverlay::class)->central($root);
+            [$tenant, $overrides, $pins] = $this->tierRows(ConfigTier::Tenant, $section, $root, is_array($central) ? $central : []);
+        }
+
+        $locks = $this->locks($root);
+        $effective = app('config')->get($root);
         $effective = is_array($effective) ? $effective : $observed;
 
         $packageFile = $registered->packageFile !== null && is_file($registered->packageFile) ? $registered->packageFile : null;
@@ -86,12 +101,22 @@ class ConfigSectionReader
             hostSource: $this->display($hostFile),
             envBound: $packageScan === null ? [] : array_keys($packageScan->bindings),
             operator: $operator,
+            tenant: $tenant,
         );
 
         $keys = [];
+        $rowTier = $tenantRealm ? ConfigTier::Tenant : ConfigTier::Operator;
 
         foreach ($resolution->keys as $pointer => $resolved) {
-            $keys[] = $this->key($section, $resolved, $packageScan, $hostScan);
+            $key = $this->key($section, $resolved, $packageScan, $hostScan, $locks, $rowTier);
+
+            // A key whose declared ceiling excludes the tenant tier is not offered in the tenant realm (ticket 07); a
+            // LOCKED key is, marked locked with the operator's reason.
+            if ($tenantRealm && ! $key->ceiling->admits(ConfigTier::Tenant)) {
+                continue;
+            }
+
+            $keys[] = $key;
         }
 
         $title = $this->declarationText($registered, 'title', $declaration->title);
@@ -123,7 +148,32 @@ class ConfigSectionReader
             ),
             overrides: $overrides,
             pins: $pins,
+            tier: $rowTier,
         );
+    }
+
+    /** Whether this read runs inside a tenant (the tenant realm's rows), by core's tenancy port. */
+    protected function tenantRealm(): bool
+    {
+        try {
+            return app(TenancyContext::class)->isActive();
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * The operator's locks on a section (central data), pointer-keyed; none when the store cannot be read.
+     *
+     * @return array<string, ConfigOverrideLock>
+     */
+    protected function locks(string $root): array
+    {
+        try {
+            return app(ConfigOverrideStore::class)->forTier(ConfigTier::Operator)->locks($root);
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     /**
@@ -142,20 +192,20 @@ class ConfigSectionReader
     }
 
     /**
-     * The operator tier for one section (ticket 05): its PUBLISHED layer as fold layers, its DRAFT as the row's sparse
-     * overrides, and the two pins. A store that cannot be read (no tables yet, an unreachable connection) reads as no
-     * operator tier at all, exactly as before the store existed.
+     * One override tier for one section (tickets 05, 07): its PUBLISHED layer as fold layers, its DRAFT as the row's
+     * sparse overrides, and the two pins. A store that cannot be read (no tables yet, an unreachable connection) reads
+     * as no such tier at all, exactly as before the store existed.
      *
      * @param  class-string<ConfigSection>  $section
-     * @param  array<array-key, mixed>  $observed  the root without the operator tier, which inherited leaves come from
+     * @param  array<array-key, mixed>  $observed  the root below this tier, which inherited leaves come from
      * @return array{0: array<string, ConfigLayerValue>, 1: list<ConfigOverrideData>, 2: ConfigPinsData}
      */
-    protected function operatorTier(string $section, string $root, array $observed = []): array
+    protected function tierRows(ConfigTier $tier, string $section, string $root, array $observed = []): array
     {
         $none = [[], [], new ConfigPinsData(draft: null, published: null, draftPending: false)];
 
         try {
-            $store = app(ConfigOverrideStore::class);
+            $store = app(ConfigOverrideStore::class)->forTier($tier);
             $scope = $store->scope($root);
 
             if ($scope === null) {
@@ -163,9 +213,24 @@ class ConfigSectionReader
             }
 
             $layer = [];
+            $entries = $store->publishedLayer($scope);
 
-            foreach ($store->publishedLayer($scope) as $pointer => $entry) {
-                $layer[$pointer] = new ConfigLayerValue(ConfigTier::Operator, $entry->valueOver($observed), "operator override · v{$entry->version}");
+            // The tenant tier is folded exactly as the runtime applies it: through the same lock and ceiling cut
+            // ({@see ConfigTenantOverlay::restrict()}), so a row cannot report a value the runtime refuses.
+            if ($tier === ConfigTier::Tenant && ($registered = app(ConfigSectionRegistry::class)->get($root)) !== null) {
+                $entries = ConfigTenantOverlay::restrict($registered, $entries, $this->locks($root), $observed);
+            }
+
+            // Each entry carries what it OWNS and what it inherits, so the fold resolves a descendant leaf through it
+            // (review-r1, 07; 05's operator fold read exact pointers only).
+            foreach ($entries as $pointer => $entry) {
+                $layer[$pointer] = new ConfigLayerValue(
+                    $tier,
+                    $entry->valueOver($observed),
+                    "{$tier->value} override · v{$entry->version}",
+                    owned: $entry->value,
+                    inherit: $entry->inherit,
+                );
             }
 
             $overrides = [];
@@ -196,11 +261,28 @@ class ConfigSectionReader
 
     /**
      * @param  class-string<ConfigSection>  $section
+     * @param  array<string, ConfigOverrideLock>  $locks  the section's operator locks
+     * @param  ConfigTier  $rowTier  the tier the row's ops write: `overridable` answers for it
      */
-    protected function key(string $section, ConfigResolvedKey $resolved, ?ConfigFileScan $packageScan, ?ConfigFileScan $hostScan): ConfigKeyData
+    protected function key(string $section, ConfigResolvedKey $resolved, ?ConfigFileScan $packageScan, ?ConfigFileScan $hostScan, array $locks = [], ConfigTier $rowTier = ConfigTier::Operator): ConfigKeyData
     {
         $declared = $section::keyDeclaration(JsonPointer::segments($resolved->pointer));
         $secret = $declared->secret;
+        $lock = null;
+
+        foreach ($locks as $candidate) {
+            if ($candidate->covers($resolved->pointer)) {
+                $lock = new ConfigLockData($candidate->pointer, $candidate->reason, $candidate->created_at?->toIso8601String());
+
+                break;
+            }
+        }
+
+        // The operator realm keeps 05's answer (any runtime tier may override it); the tenant realm answers for the tenant
+        // tier, and a lock takes the key away from it.
+        $overridable = $rowTier === ConfigTier::Tenant
+            ? $declared->ceiling->admits(ConfigTier::Tenant) && $lock === null
+            : $declared->ceiling->isOverridable();
 
         $binding = match ($resolved->tier) {
             ConfigTier::Host => $hostScan?->bindings[$resolved->pointer] ?? null,
@@ -234,10 +316,11 @@ class ConfigSectionReader
             env: $env,
             effect: $declared->effect,
             ceiling: $declared->ceiling,
-            overridable: $declared->ceiling->isOverridable(),
+            overridable: $overridable,
             secret: $secret,
             set: $resolved->value !== null && $resolved->value !== '',
             merge: $declared->merge,
+            lock: $lock,
         );
     }
 

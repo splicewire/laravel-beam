@@ -7,6 +7,7 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Log;
 use Schemastud\DataSchemas\Overlay\JsonPathMutator;
 use Splicewire\Beam\Config\JsonPointer;
+use Splicewire\Beam\Enums\ConfigTier;
 use Throwable;
 use WeakMap;
 
@@ -35,9 +36,11 @@ use WeakMap;
  * - the published layers memoised by token, so a new clone costs array writes, not a store read.
  * A host's own `config()->set` on a touched root after the operation's sync stands until the next operation's sync.
  *
- * **Ordering (handoff to ticket 07, tenant tier).** The operator sync must run BEFORE tenancy initialises in an
- * operation; the tenant tier applies on top of it. Requests satisfy this (the middleware is prepended global
- * middleware). The JobProcessing listener shares its event with tenancy's queue bootstrapper; 07 owns that order.
+ * **Ordering with the tenant tier (ticket 07).** The tenant tier ({@see ConfigTenantOverlay}) applies on top of this one.
+ * Requests sync before tenancy initialises (the middleware is prepended global middleware), and beam-tenancy's
+ * bootstrapper syncs this overlay itself before it applies the tenant layer. Should a sync still run while a tenant
+ * layer is in the repository (the `JobProcessing` listener shares its event with tenancy's queue bootstrapper, in
+ * provider order), {@see applyTo()} lifts the tenant layer first and lays it back after, so the order cannot leak.
  *
  * Each `set` / explicit `null` is applied in pointer order through DataOverlay's `override` (an upsert at a concrete
  * path, {@see JsonPointer::toJsonPath()}); an `unset` is the absence of an entry and is never sent to DataOverlay.
@@ -130,7 +133,7 @@ class ConfigOverlay
     /** A root's value without this overlay: the package and host tiers (and any provider write) only. */
     public function base(string $root): mixed
     {
-        return array_key_exists($root, $this->base) ? $this->base[$root] : app('config')->get($root);
+        return array_key_exists($root, $this->base) ? $this->base[$root] : $this->tenant()->central($root);
     }
 
     /**
@@ -212,6 +215,10 @@ class ConfigOverlay
      */
     protected function applyTo(Repository $config, array $layers): void
     {
+        // A tenant layer in this repository comes out first, so a base captured here is never a tenant's value, and goes
+        // back on top after (ticket 07): the tenant tier stays above the operator tier whichever hook runs first.
+        $tenant = $this->tenant()->lift($config);
+
         foreach ($layers as $root => $entries) {
             if ($entries !== [] && ! array_key_exists($root, $this->base)) {
                 $this->base[$root] = $config->get($root);
@@ -239,11 +246,20 @@ class ConfigOverlay
 
             $config->set($root, $doc);
         }
+
+        if ($tenant !== null) {
+            $this->tenant()->lay($config, $tenant);
+        }
     }
 
     protected function store(): ConfigOverrideStore
     {
-        return $this->container->make(ConfigOverrideStore::class);
+        return $this->container->make(ConfigOverrideStore::class)->forTier(ConfigTier::Operator);
+    }
+
+    protected function tenant(): ConfigTenantOverlay
+    {
+        return $this->container->make(ConfigTenantOverlay::class);
     }
 
     protected function tryPut(string $token): void
@@ -277,9 +293,14 @@ class ConfigOverlay
     protected function fallBack(string $why, Throwable $e): void
     {
         $config = app('config');
+        $tenant = $this->tenant()->lift($config);
 
         foreach ($this->base as $root => $value) {
             $config->set($root, $value);
+        }
+
+        if ($tenant !== null) {
+            $this->tenant()->lay($config, $tenant);
         }
 
         unset($this->applied[$config]);

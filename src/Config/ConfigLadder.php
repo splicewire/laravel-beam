@@ -22,7 +22,7 @@ use Splicewire\Beam\Enums\ConfigTier;
  * The observed values are the truth the fold is checked against: {@see ConfigResolution::$values} is always the
  * observed array, so an effective value shown to an operator is never a reconstruction.
  *
- * Operator and tenant overrides join as sparse pointer layers above Provider when the override store exists.
+ * Operator and tenant overrides join as sparse pointer layers above Provider (tickets 05 and 07), the tenant's on top.
  */
 class ConfigLadder
 {
@@ -37,6 +37,9 @@ class ConfigLadder
      *                                                     (ticket 05). `$observed` is then the configuration WITHOUT
      *                                                     the operator tier (the overlay's base), so an override is
      *                                                     never mistaken for a provider write.
+     * @param  array<string, ConfigLayerValue>  $tenant  the current tenant's published layer, pointer => its layer
+     *                                                   (ticket 07), folded above the operator tier. `$observed` stays
+     *                                                   the configuration without either override tier.
      */
     public static function fold(
         ?array $package,
@@ -46,6 +49,7 @@ class ConfigLadder
         ?string $hostSource = null,
         array $envBound = [],
         array $operator = [],
+        array $tenant = [],
     ): ConfigResolution {
         $package ??= [];
 
@@ -59,7 +63,8 @@ class ConfigLadder
         $pointers = array_values(array_unique([
             ...JsonPointer::leaves($folded),
             ...JsonPointer::leaves($observed),
-            ...array_map('strval', array_keys($operator)),
+            ...self::entryPointers($operator),
+            ...self::entryPointers($tenant),
         ]));
 
         $keys = [];
@@ -95,15 +100,36 @@ class ConfigLadder
             }
 
             // The operator tier sits above Provider: its published value is the key's effective value, a retained null
-            // included (ADR-0245 decision 2), and it creates a pointer no tier below holds.
-            $override = $operator[$pointer] ?? null;
+            // included (ADR-0245 decision 2), and it creates a pointer no tier below holds. The tenant tier sits above
+            // the operator's, the same way (ticket 07). Each resolves through its NEAREST entry at or above the pointer
+            // ({@see nearest()}), so a leaf beneath a published parent reads what the runtime holds (review-r1, 07; the
+            // exact-pointer lookup was 05's defect too).
+            $override = null;
 
-            if ($override !== null) {
-                $layers[] = $override;
-                $tier = ConfigTier::Operator;
+            foreach ([$operator, $tenant] as $layer) {
+                $resolved = self::nearest($layer, $pointer);
+
+                if ($resolved !== null) {
+                    $layers[] = $resolved;
+                    $tier = $resolved->tier;
+                    $override = $resolved;
+                }
             }
 
             if (! $inObserved && $tier !== ConfigTier::Provider && $override === null) {
+                continue;
+            }
+
+            // A key an ancestor's replace leaves out is absent at runtime: no row value, attributed to that tier.
+            if ($override?->removed) {
+                $keys[$pointer] = new ConfigResolvedKey(
+                    pointer: $pointer,
+                    value: null,
+                    tier: $tier,
+                    hostShadowsPackage: $hostOwns && array_key_exists($top, $package),
+                    layers: $layers,
+                );
+
                 continue;
             }
 
@@ -121,6 +147,79 @@ class ConfigLadder
             keys: $keys,
             shadowedPackageKeys: self::shadowed($package, $hostLayer),
         );
+    }
+
+    /**
+     * One override tier's layer for `$pointer`, through its NEAREST entry at or above it (the longest entry pointer that is
+     * the pointer or one of its ancestors), as the runtime applies entries in pointer order:
+     * - the entry itself: its layer as given;
+     * - a descendant in the entry's inherit list (a host-owned key, a split secret, a lock or ceiling cut): null, so the
+     *   key falls through to the tier below with its true provenance;
+     * - a descendant in the entry's OWNED value: that value, attributed to the entry's tier and source;
+     * - a descendant in neither: the entry's replace leaves it out, so it is ABSENT, a `removed` layer of the entry's tier.
+     *
+     * @param  array<string, ConfigLayerValue>  $layer
+     */
+    private static function nearest(array $layer, string $pointer): ?ConfigLayerValue
+    {
+        if (isset($layer[$pointer])) {
+            return $layer[$pointer];
+        }
+
+        $nearest = null;
+
+        foreach (array_keys($layer) as $at) {
+            $at = (string) $at;
+
+            if (str_starts_with($pointer, $at.'/') && ($nearest === null || strlen($at) > strlen($nearest))) {
+                $nearest = $at;
+            }
+        }
+
+        if ($nearest === null) {
+            return null;
+        }
+
+        $entry = $layer[$nearest];
+        $relative = substr($pointer, strlen($nearest));
+
+        foreach ($entry->inherit as $inherited) {
+            if ($relative === $inherited || str_starts_with($relative, $inherited.'/')) {
+                return null;
+            }
+        }
+
+        $owned = $entry->ownedValue();
+        [$exists, $value] = is_array($owned) ? JsonPointer::get($owned, $relative) : [false, null];
+
+        return $exists
+            ? new ConfigLayerValue($entry->tier, $value, $entry->source)
+            : new ConfigLayerValue($entry->tier, null, $entry->source, removed: true);
+    }
+
+    /**
+     * Every pointer a tier's entries name: each entry's own, and each leaf its owned value holds (a key that exists only
+     * inside an override gets a row).
+     *
+     * @param  array<string, ConfigLayerValue>  $layer
+     * @return list<string>
+     */
+    private static function entryPointers(array $layer): array
+    {
+        $pointers = [];
+
+        foreach ($layer as $at => $entry) {
+            $pointers[] = (string) $at;
+            $owned = $entry->ownedValue();
+
+            if (is_array($owned) && $owned !== []) {
+                foreach (JsonPointer::leaves($owned) as $leaf) {
+                    $pointers[] = $at.$leaf;
+                }
+            }
+        }
+
+        return $pointers;
     }
 
     /**

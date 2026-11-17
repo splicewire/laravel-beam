@@ -18,7 +18,8 @@ use Splicewire\Beam\Enums\ConfigTier;
  *   top-level key (`mergeConfigFrom()` is shallow).
  * - `env`: the env var feeding the winning tier's value, where there is one.
  * - `effect`, `ceiling`, `overridable`, `secret`, `merge`: the key's declaration, defaulted conservatively when
- *   the section declares none.
+ *   the section declares none. `overridable` is for the row's own tier: in the tenant realm, false for a locked key.
+ * - `lock`: the operator lock covering the key, with its reason (ticket 07), or null.
  */
 #[TypeScript]
 class ConfigKeyData extends BeamData
@@ -40,5 +41,6 @@ class ConfigKeyData extends BeamData
         public bool $secret,
         public bool $set,
         public ConfigMerge $merge,
+        public ?ConfigLockData $lock = null,
     ) {}
 }

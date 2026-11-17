@@ -451,10 +451,16 @@ return [
     | the log say so; 0 re-derives on every request, job or command, so even a failed write reaches the
     | very next one (root ruling (A), row 64e24681, 2026-11-15). Only an override store that
     | cannot be read falls back to the package and host tiers; boot never fails on either.
+    |
+    | `tenant_ability` (config-sections ticket 07): the Gate ability that lets a tenant user read and write
+    | their workspace's TENANT tier through `beam-config` while a tenant is initialized (a workspace admin's
+    | ability, say). Null, the default, lets no tenant user in: the tenant Config area stays closed until the
+    | host names who may use it. Outside a tenant `beam-config` keeps asking `entitlement:os.operate`.
     */
     'config_overrides' => [
         'cache_store' => env('BEAM_CONFIG_OVERRIDES_CACHE_STORE'),
         'recheck_seconds' => (int) env('BEAM_CONFIG_OVERRIDES_RECHECK_SECONDS', 30),
+        'tenant_ability' => env('BEAM_CONFIG_OVERRIDES_TENANT_ABILITY'),
     ],
 
     /*

@@ -48,6 +48,8 @@ class SharedMigrationStubsConvergeTest extends TestCase
         // config-sections 05: `create_beam_config_overrides_table` creates both, through `Beam::table()`.
         'beam_config_overrides',
         'beam_config_scopes',
+        // config-sections 07: `create_beam_config_locks_table` (operator locks; central data, inert in a tenant schema).
+        'beam_config_locks',
     ];
 
     protected function tearDown(): void

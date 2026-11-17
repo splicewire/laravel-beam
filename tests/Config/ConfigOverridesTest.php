@@ -596,6 +596,70 @@ class ConfigOverridesTest extends TestCase
         $this->assertArrayNotHasKey('inherit', app(ConfigOverrideStore::class)->scope('qa.maps')->draft['/routes']);
     }
 
+    /* ---- The reader agrees with the runtime beneath a published parent (config-sections 07, review-r1: 05's fold read
+     * exact pointers only, so every leaf under a published operator parent reported the base value and tier) ---- */
+
+    /**
+     * Every leaf `config()` holds for `$root` is a row with the same value (null for a declared secret), and every row the
+     * fold reports ABSENT is absent at runtime.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function assertRowAgreesWithRuntime(array $row, string $root): void
+    {
+        $runtime = config($root);
+        $keys = collect($row['keys'])->keyBy('pointer');
+
+        foreach (\Splicewire\Beam\Config\JsonPointer::leaves($runtime) as $pointer) {
+            $this->assertTrue($keys->has($pointer), "{$pointer} has a row");
+            $key = $keys[$pointer];
+            [, $value] = \Splicewire\Beam\Config\JsonPointer::get($runtime, $pointer);
+            $this->assertSame($key['secret'] ? null : $value, $key['value'], "{$pointer}: the row reads what config() holds");
+        }
+
+        foreach ($keys as $pointer => $key) {
+            if (collect($key['layers'])->last()['removed'] ?? false) {
+                $this->assertFalse(\Splicewire\Beam\Config\JsonPointer::get($runtime, $pointer)[0], "{$pointer}: reported absent, and absent at runtime");
+            }
+        }
+    }
+
+    public function test_every_leaf_beneath_a_published_operator_parent_reads_what_the_runtime_holds(): void
+    {
+        $group = $this->nestedGroup();
+        $group['label'] = 'from the operator';
+        $group['token'] = 'fake-operator-token';
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.group', 'pointer' => '/group', 'op' => 'set', 'value' => json_encode($group)])->assertOk();
+        $row = $this->op('publish', ['root' => 'qa.group'])->assertOk()->json('data');
+        $keys = collect($row['keys'])->keyBy('pointer');
+
+        $this->assertSame('from the operator', config('qa.group.group.label'));
+        $this->assertSame('operator', $keys['/group/label']['tier'], 'an owned child is the ancestor entry\'s');
+        $this->assertSame('from the operator', $keys['/group/label']['value']);
+        $this->assertNotSame('operator', $keys['/group/deploy']['tier'], 'a host-only child the entry inherits keeps its own tier');
+        $this->assertSame('host-driver', $keys['/group/deploy']['value']);
+        $this->assertSame('operator', $keys['/group/token']['tier'], 'a split secret is its own operator entry');
+        $this->assertNull($keys['/group/token']['value']);
+        $this->assertRowAgreesWithRuntime($row, 'qa.group');
+    }
+
+    public function test_a_map_parent_replace_reports_the_entry_it_leaves_out_as_absent_under_the_operator(): void
+    {
+        config(['qa.maps' => ['routes' => ['a' => 'A', 'b' => 'B']]]);
+        app(ConfigSectionRegistry::class)->section(MapGroupSection::class, owner: 'qa/fixture');
+
+        $this->postJson('/beam-config/save-draft', ['root' => 'qa.maps', 'pointer' => '/routes', 'op' => 'set', 'value' => json_encode(['a' => 'A2'])])->assertOk();
+        $row = $this->postJson('/beam-config/publish', ['root' => 'qa.maps'])->assertOk()->json('data');
+        $keys = collect($row['keys'])->keyBy('pointer');
+
+        $this->assertSame(['tier' => 'operator', 'value' => 'A2'], ['tier' => $keys['/routes/a']['tier'], 'value' => $keys['/routes/a']['value']]);
+        $this->assertSame('operator', $keys['/routes/b']['tier'], "b's absence is the operator's replace, not the host's value");
+        $this->assertNull($keys['/routes/b']['value']);
+        $this->assertTrue(collect($keys['/routes/b']['layers'])->last()['removed']);
+        $this->assertRowAgreesWithRuntime($row, 'qa.maps');
+    }
+
     /**
      * review-r1 (ruling (A) follow-on): a store that reports a failed write by returning false, not by throwing (Laravel's
      * `Repository::forever()`, Memcached), is a failed write: the notice, the warning, and the recheck catches it up.

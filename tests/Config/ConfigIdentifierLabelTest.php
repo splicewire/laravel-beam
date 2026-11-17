@@ -52,6 +52,7 @@ class ConfigIdentifierLabelTest extends TestCase
         $this->assertSame([
             'Splicewire\Beam\Particle\Ops\Config\ConfigVersionsOp',
             'Splicewire\Beam\Particle\Ops\Config\DiscardConfigDraftOp',
+            'Splicewire\Beam\Particle\Ops\Config\LockConfigKeyOp',
             'Splicewire\Beam\Particle\Ops\Config\PublishConfigOp',
             'Splicewire\Beam\Particle\Ops\Config\RestoreConfigVersionOp',
             'Splicewire\Beam\Particle\Ops\Config\SaveConfigDraftOp',
