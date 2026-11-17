@@ -140,6 +140,12 @@ final class KeyCatalog
         $defaults = [];
         foreach ([...$this->resourceEntries(), ...$this->schemaEntries(), ...$this->codedErrorEntries(), ...$this->shellEntries(), ...$this->explicitEntries(), ...$this->clientEntries()] as $entry) {
             $byKey[$entry->key] ??= $entry;
+            // A client key's translator note (frame-foundation 69) survives a duplicate that wins the key: client entries
+            // come last, so a sharesWith or host lang/en line for the same key is kept, and the note is carried onto it.
+            if ($entry->note !== null && $byKey[$entry->key]->note === null) {
+                $winner = $byKey[$entry->key];
+                $byKey[$entry->key] = new CatalogEntry($winner->key, $winner->english, $winner->source, $winner->origin, $winner->derivedEnglish, $entry->note);
+            }
             $defaults[$entry->key][$entry->english] = $entry->origin;
         }
         ksort($byKey);

@@ -155,6 +155,8 @@ it('refuses a note for an unknown key, a non-string, an empty or over-long note,
     'unknown key' => [['schemastud-ui::messages.missing' => 'x'], 'Note [schemastud-ui::messages.missing] names no message.'],
     'non-string' => [['schemastud-ui::messages.save' => 7], 'Note [schemastud-ui::messages.save] is not a non-empty string'],
     'empty' => [['schemastud-ui::messages.save' => '   '], 'Note [schemastud-ui::messages.save] is not a non-empty string'],
+    // REVIEW-69 N2: the collector refuses what JavaScript trim() empties, NBSP and other Unicode spaces included.
+    'only NBSP and ideographic space' => [['schemastud-ui::messages.save' => "\u{00A0}\u{3000}\u{FEFF}"], 'Note [schemastud-ui::messages.save] is not a non-empty string'],
     'over 500 UTF-16 units' => [['schemastud-ui::messages.save' => str_repeat('😀', 251)], 'at most 500 characters'],
     'not an object' => [['schemastud-ui::messages.save'], 'The payload notes are not an object'],
 ]);

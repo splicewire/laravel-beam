@@ -216,3 +216,15 @@ it('without notes, the lang exports have no note column or field', function (): 
         expect($entry)->not->toHaveKey('note');
     }
 });
+
+it('keeps a client key\'s note when a host lang/en line for the same key wins the entry (REVIEW-69 N1)', function (): void {
+    mkdir($this->lang.'/en', 0777, true);
+    file_put_contents($this->lang.'/en/messages.php', "<?php return ['profile_updated' => 'Profile updated.'];");
+    app()->forgetInstance('translation.loader');
+    app()->forgetInstance('translator');
+    useNotesCatalog();
+
+    $entry = app(KeyCatalog::class)->byKey()['messages.profile_updated'];
+    expect($entry->source)->not->toBe('client')
+        ->and($entry->note)->toBe('A toast after saving the profile form.');
+});

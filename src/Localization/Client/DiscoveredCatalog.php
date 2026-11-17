@@ -29,6 +29,12 @@ final class DiscoveredCatalog
     private const NOTE_MAX_LENGTH = 500;
 
     /**
+     * The characters JavaScript's String.prototype.trim removes (WhiteSpace and LineTerminator), so a note the collector
+     * refuses as empty (`note.trim() === ''`) is refused here too, NBSP and the other Unicode spaces included.
+     */
+    private const JS_TRIM_WHITESPACE = '\x{09}-\x{0D}\x{20}\x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}';
+
+    /**
      * @param  list<array{name: string, namespace: string, sharesWith: ?string, catalogDigest: string}>  $packages
      * @param  array<string, array{default: string, owner: string}>  $defaults
      * @param  array<string, string>  $notes  translator notes, key => note (a subset of the defaults' keys)
@@ -134,7 +140,7 @@ final class DiscoveredCatalog
                 if (! isset($defaults[$key])) {
                     $fail("Note [{$key}] names no message.");
                 }
-                if (! is_string($note) || trim($note) === '' || self::utf16Length($note) > self::NOTE_MAX_LENGTH) {
+                if (! is_string($note) || preg_match('/^['.self::JS_TRIM_WHITESPACE.']*$/u', $note) === 1 || self::utf16Length($note) > self::NOTE_MAX_LENGTH) {
                     $fail("Note [{$key}] is not a non-empty string of at most ".self::NOTE_MAX_LENGTH.' characters.');
                 }
                 $notes[$key] = $note;
