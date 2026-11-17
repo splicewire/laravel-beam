@@ -21,7 +21,8 @@ class TenantPanelsSection extends ConfigSection
 {
     public function __construct(
         #[Title('Review required'), Description('Publishes go to review first.')]
-        #[ConfigKey(ceiling: ConfigTier::Tenant, effect: ConfigEffect::Live)]
+        // A DECLARED env binding (root 29b67e82): the schema's `x-beam-config.env` and the key's `env` name it.
+        #[ConfigKey(ceiling: ConfigTier::Tenant, effect: ConfigEffect::Live, env: 'BEAM_FIXTURE_TPANELS_REVIEW')]
         public bool $review,
         #[Title('Theme')]
         #[ConfigKey(ceiling: ConfigTier::Tenant, effect: ConfigEffect::Live)]

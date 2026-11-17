@@ -8,6 +8,7 @@ use Splicewire\Beam\Config\Overrides\ConfigOverlay;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideLock;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
 use Splicewire\Beam\Config\Overrides\ConfigTenantOverlay;
+use Splicewire\Beam\Config\Overrides\ConfigTierBoundary;
 use Splicewire\Beam\Data\Config\ConfigEnvData;
 use Splicewire\Beam\Data\Config\ConfigKeyData;
 use Splicewire\Beam\Data\Config\ConfigLayerData;
@@ -116,7 +117,7 @@ class ConfigSectionReader
                 continue;
             }
 
-            $keys[] = $key;
+            $keys[] = $tenantRealm ? $this->forTenant($registered, $key) : $key;
         }
 
         $title = $this->declarationText($registered, 'title', $declaration->title);
@@ -128,17 +129,32 @@ class ConfigSectionReader
             $schema['description'] = $description;
         }
 
+        // A tenant row is redacted at the source (root 29b67e82): a workspace admin sees the value, tier and lock (with its
+        // reason) of the keys it is OFFERED, and nothing of the rest: never another key's value, the install's env
+        // variable names, config file paths or the package and host layers' sources. Every transport serves this one
+        // reader, so none can leak them.
+        $values = $this->redacted($section, $effective);
+
+        if ($tenantRealm) {
+            $values = $this->offeredValues($keys);
+            $schema = $this->offeredProperties($this->withoutEnvNames($schema), $keys, $declaration->entries !== null);
+        }
+
         return new ConfigSectionData(
             id: $root,
             root: $root,
             title: $title,
             description: $description,
             owner: $registered->owner,
-            files: new ConfigSectionFilesData(package: $this->display($packageFile), host: $this->display($hostFile)),
+            files: $tenantRealm
+                ? new ConfigSectionFilesData(package: null, host: null)
+                : new ConfigSectionFilesData(package: $this->display($packageFile), host: $this->display($hostFile)),
             schema: $schema,
-            values: $this->redacted($section, $effective),
+            values: $values,
             keys: $keys,
-            shadowedPackageKeys: $resolution->shadowedPackageKeys,
+            shadowedPackageKeys: $tenantRealm
+                ? array_values(array_filter($resolution->shadowedPackageKeys, fn (string $pointer): bool => ConfigTierBoundary::admits($registered, JsonPointer::segments($pointer), ConfigTier::Tenant)))
+                : $resolution->shadowedPackageKeys,
             counts: new ConfigSectionCountsData(
                 keys: count($keys),
                 overridable: count(array_filter($keys, fn (ConfigKeyData $key): bool => $key->overridable)),
@@ -414,6 +430,158 @@ class ConfigSectionReader
             is_array($value) => array_map(fn (mixed $item): mixed => $this->wire($item), $value),
             default => $value,
         };
+    }
+
+    /** A tenant row's one lower layer: the value the key falls back to without the tenant's own entry. */
+    public const INHERITED = 'inherited';
+
+    /**
+     * An offered key as a tenant row serves it (root 29b67e82; lead 05:17Z):
+     * - its value, and every layer value, without any descendant the tenant is not offered, by the nearest-declaration
+     *   walk ({@see ConfigTierBoundary::split()}), so a COMPOUND key (an entry's whole record) carries none of them;
+     * - its layers as ONE `inherited` entry (the central effective value it falls back to, with that value's tier as a
+     *   tier, or absent) and the tenant's own layer, never the package, host and operator layers one by one: a host
+     *   value bound to an env var is an operator's internal;
+     * - no env binding, and no host-shadows-package flag.
+     */
+    protected function forTenant(RegisteredConfigSection $registered, ConfigKeyData $key): ConfigKeyData
+    {
+        $prune = fn (mixed $value): mixed => is_array($value) && $value !== [] && ! array_is_list($value)
+            ? ConfigTierBoundary::split($registered, $key->pointer, $value, ConfigTier::Tenant)[0]
+            : $value;
+        $below = array_values(array_filter($key->layers, fn (ConfigLayerData $layer): bool => $layer->tier !== ConfigTier::Tenant && ! $layer->shadowed));
+        $falls = $below === [] ? null : $below[count($below) - 1];
+        $layers = [new ConfigLayerData(
+            tier: $falls === null ? ConfigTier::Package : $falls->tier,
+            value: $prune($falls?->value),
+            source: self::INHERITED,
+            shadowed: false,
+            removed: $falls === null || $falls->removed,
+        )];
+
+        foreach ($key->layers as $layer) {
+            if ($layer->tier === ConfigTier::Tenant) {
+                $layers[] = new ConfigLayerData($layer->tier, $prune($layer->value), $layer->source, $layer->shadowed, $layer->removed);
+            }
+        }
+
+        return new ConfigKeyData(
+            pointer: $key->pointer,
+            value: $prune($key->value),
+            tier: $key->tier,
+            hostShadowsPackage: false,
+            layers: $layers,
+            env: null,
+            effect: $key->effect,
+            ceiling: $key->ceiling,
+            overridable: $key->overridable,
+            secret: $key->secret,
+            set: $key->set,
+            merge: $key->merge,
+            lock: $key->lock,
+        );
+    }
+
+    /**
+     * A tenant row's `values`: only the offered keys' (already pruned and redacted) values, each at its own pointer, so
+     * a key the tenant is not offered (its ceiling excludes the tenant tier) leaves no value on the wire.
+     *
+     * @param  list<ConfigKeyData>  $keys  the offered keys
+     * @return array<array-key, mixed>
+     */
+    protected function offeredValues(array $keys): array
+    {
+        $values = [];
+
+        foreach ($keys as $key) {
+            $node = &$values;
+
+            foreach (JsonPointer::segments($key->pointer) as $segment) {
+                if (! is_array($node)) {
+                    $node = [];
+                }
+
+                $node = &$node[$segment];
+            }
+
+            $node = $key->value;
+            unset($node);
+        }
+
+        return $values;
+    }
+
+    /**
+     * A tenant row's schema: the key class's top-level properties no offered key lies under are dropped (with their
+     * `required` entry), so the schema names no such key. For a map-shaped section (`entries:`) those properties live in
+     * `additionalProperties`, and a key's property is its SECOND segment (the first is an entry name). Nested records
+     * keep their shared `$defs`, which carry types and titles, never values.
+     *
+     * @param  array<array-key, mixed>  $schema
+     * @param  list<ConfigKeyData>  $keys  the offered keys
+     * @return array<array-key, mixed>
+     */
+    protected function offeredProperties(array $schema, array $keys, bool $map = false): array
+    {
+        $offered = [];
+
+        foreach ($keys as $key) {
+            $offered[JsonPointer::segments($key->pointer)[$map ? 1 : 0] ?? ''] = true;
+        }
+
+        if ($map) {
+            if (is_array($schema['additionalProperties'] ?? null)) {
+                $schema['additionalProperties'] = $this->keepProperties($schema['additionalProperties'], $offered);
+            }
+
+            return $schema;
+        }
+
+        return $this->keepProperties($schema, $offered);
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $schema
+     * @param  array<string, true>  $offered
+     * @return array<array-key, mixed>
+     */
+    protected function keepProperties(array $schema, array $offered): array
+    {
+        if (is_array($schema['properties'] ?? null)) {
+            $schema['properties'] = array_filter($schema['properties'], fn (string|int $name): bool => isset($offered[(string) $name]), ARRAY_FILTER_USE_KEY);
+        }
+
+        if (is_array($schema['required'] ?? null)) {
+            $schema['required'] = array_values(array_filter($schema['required'], fn (mixed $name): bool => isset($offered[(string) $name])));
+        }
+
+        return $schema;
+    }
+
+    /**
+     * The schema without the env variable names its `x-beam-config` keywords declare, at any depth (a tenant row).
+     *
+     * @param  array<array-key, mixed>  $schema
+     * @return array<array-key, mixed>
+     */
+    protected function withoutEnvNames(array $schema): array
+    {
+        foreach ($schema as $name => $member) {
+            if (! is_array($member)) {
+                continue;
+            }
+
+            if ($name === ConfigSectionSchema::KEYWORD) {
+                unset($member['env']);
+                $schema[$name] = $member;
+
+                continue;
+            }
+
+            $schema[$name] = $this->withoutEnvNames($member);
+        }
+
+        return $schema;
     }
 
     protected function display(?string $file): ?string

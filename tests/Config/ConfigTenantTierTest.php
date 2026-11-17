@@ -785,6 +785,134 @@ class ConfigTenantTierTest extends TestCase
         $this->setGroup(['review' => true, 'label' => 'base', 'deploy' => 'host-driver', 'settings' => null])->assertStatus(422);
     }
 
+    /* ---- root 29b67e82: a tenant row is REDACTED at the source. A workspace admin sees each key's value, its tier as a
+     * tier, and a lock with its reason; never the install's env variable names, config file paths or the package and
+     * host layers' sources. The operator row keeps all of them (the negative control). ---- */
+
+    private const INSTALL_DETAIL = [
+        'BEAM_FIXTURE_TPANELS_THEME', // an env() binding in the package file (a tenant-offered key)
+        'BEAM_FIXTURE_TPANELS_REVIEW', // a DECLARED env (the key's `env` and the schema's x-beam-config.env)
+        'BEAM_FIXTURE_TPANELS_DRIVER', // an env() binding in the host file
+        'package/tpanels.php', // the package file: the section's `files.package` and the package layer's source
+        'host/tpanels.php', // the host file: `files.host`, and the host layer's source
+    ];
+
+    public function test_a_tenant_row_names_no_env_variable_file_path_or_layer_source_on_any_read(): void
+    {
+        // COMPOUND keys (review 05:17Z): the operator AND the tenant each publish the whole /group record, so the fold
+        // emits /group as one key whose value is the record, host-only `deploy` and operator-only `settings/fixed`
+        // included. The operator's own values are distinctive strings, so a leak shows in the serialized JSON.
+        $this->as('operator');
+        $this->set('/group', ['review' => false, 'label' => 'Operator label', 'deploy' => 'host-driver', 'settings' => ['fixed' => 'OPERATOR-ONLY-FIXED'] + self::SETTINGS])->assertOk();
+        $this->publish()->assertOk();
+        $this->lock('/group/review', 'Review is the operator\'s.');
+        $this->as('tenant-admin');
+        $this->set('/review', true, 'a')->assertOk();
+        $this->setGroup(['review' => false, 'label' => 'Tenant label', 'deploy' => 'host-driver', 'settings' => ['label' => 'tenant', 'fixed' => 'OPERATOR-ONLY-FIXED'] + self::SETTINGS])->assertOk();
+
+        $published = $this->publish('a')->assertOk()->json('data');
+        $index = collect($this->getJson('/beam-config', ['X-Tenant' => 'a'])->assertOk()->json('data'))->firstWhere('root', 'tpanels');
+        $this->assertNotNull($index, 'the resource\'s own list read serves the tenant row');
+        [, $access] = $this->tenantView('tpanels', 'a');
+
+        foreach (['publish op' => $published, 'resource list' => $index, 'access (MCP) read' => $access] as $door => $row) {
+            $json = (string) json_encode($row, JSON_UNESCAPED_SLASHES);
+
+            foreach ([...self::INSTALL_DETAIL, 'host-driver', 'OPERATOR-ONLY-FIXED'] as $detail) {
+                $this->assertStringNotContainsString($detail, $json, "{$door}: the tenant row names {$detail} ANYWHERE");
+            }
+
+            $this->assertSame(['package' => null, 'host' => null], $row['files'], "{$door}: no config file paths");
+            $this->assertNotNull($this->key($row, '/group'), "{$door}: the compound /group key is offered");
+            $this->assertArrayNotHasKey('deploy', $this->key($row, '/group')['value'], "{$door}: the compound key's value is pruned");
+
+            foreach ($row['keys'] as $key) {
+                $this->assertNull($key['env'], "{$door}: {$key['pointer']} names no env variable");
+                $this->assertFalse($key['hostShadowsPackage'], $door);
+
+                // ONE inherited entry, then at most the tenant's own layer (lead 05:17Z).
+                $this->assertSame('inherited', $key['layers'][0]['source'], "{$door}: {$key['pointer']}'s first layer is the inherited value");
+                $this->assertLessThanOrEqual(2, count($key['layers']), "{$door}: {$key['pointer']} lists no lower layers one by one");
+
+                if (isset($key['layers'][1])) {
+                    $this->assertSame('tenant', $key['layers'][1]['tier'], $door);
+                }
+            }
+
+            // The inherited entry is the central effective value with its tier as a tier: theme falls back to the package
+            // default, group/label to the operator's.
+            $this->assertSame(['package', 'light'], [$this->key($row, '/theme')['layers'][0]['tier'], $this->key($row, '/theme')['layers'][0]['value']], $door);
+            $this->assertSame(['operator', 'Operator label'], [$this->key($row, '/group/label')['layers'][0]['tier'], $this->key($row, '/group/label')['layers'][0]['value']], $door);
+
+            // Keys the tenant is NOT offered leave no value and no schema property: the host-ceilinged `driver` and the
+            // operator-only `limit` (lead 05:12Z), nor the host-only `group/deploy` and operator-only
+            // `group/settings/fixed` below offered records.
+            $this->assertArrayNotHasKey('driver', $row['values'], "{$door}: the host-ceilinged driver's value");
+            $this->assertArrayNotHasKey('limit', $row['values'], "{$door}: the operator-only limit's value");
+            $this->assertArrayNotHasKey('deploy', $row['values']['group'], "{$door}: the host-only group/deploy's value");
+            $this->assertArrayNotHasKey('fixed', $row['values']['group']['settings'], "{$door}: the operator-only group/settings/fixed's value");
+            $this->assertArrayNotHasKey('driver', $row['schema']['properties'], "{$door}: the schema names driver");
+            $this->assertArrayNotHasKey('limit', $row['schema']['properties'], "{$door}: the schema names limit");
+            $this->assertNotContains('driver', $row['schema']['required'], $door);
+            $this->assertSame(['review' => true, 'theme' => 'light'], array_intersect_key($row['values'], ['review' => 1, 'theme' => 1]), "{$door}: an offered key keeps its value");
+            $this->assertSame('tenant', $row['values']['group']['settings']['label'], "{$door}: an offered child of a refused record keeps its value");
+            $this->assertSame('tenant', $this->key($row, '/group')['value']['settings']['label'], "{$door}: and so does the compound key's");
+
+            // What a tenant DOES see: the value, its tier as a tier, and a lock with its reason.
+            $this->assertSame([true, 'tenant'], [$this->key($row, '/review')['value'], $this->key($row, '/review')['tier']], $door);
+            $this->assertSame(['light', 'package'], [$this->key($row, '/theme')['value'], $this->key($row, '/theme')['tier']], $door);
+            $this->assertSame('Review is the operator\'s.', $this->key($row, '/group/review')['lock']['reason'], $door);
+            $this->assertStringStartsWith('tenant override · v', (string) collect($this->key($row, '/review')['layers'])->last()['source'], "{$door}: the tenant's own layer keeps its version");
+        }
+
+        // The negative control: the operator row still names every one of them.
+        $this->as('operator');
+        $operator = (string) json_encode($this->set('/theme', 'dark')->assertOk()->json('data'), JSON_UNESCAPED_SLASHES);
+        $operatorIndex = (string) json_encode(collect($this->getJson('/beam-config')->assertOk()->json('data'))->firstWhere('root', 'tpanels'), JSON_UNESCAPED_SLASHES);
+
+        foreach (self::INSTALL_DETAIL as $detail) {
+            $this->assertStringContainsString($detail, $operator, "the operator row still names {$detail}");
+            $this->assertStringContainsString($detail, $operatorIndex, "the operator's list read still names {$detail}");
+        }
+
+        foreach ([$operator, $operatorIndex] as $json) {
+            $this->assertStringContainsString('OPERATOR-ONLY-FIXED', $json, 'the operator row still has the operator-only value');
+            $row = json_decode($json, true);
+            $this->assertSame(['array', 10], [$row['values']['driver'], $row['values']['limit']], 'the operator row still has every value');
+            $this->assertSame('host-driver', $row['values']['group']['deploy']);
+            $this->assertArrayHasKey('driver', $row['schema']['properties']);
+        }
+    }
+
+    public function test_a_map_shaped_sections_tenant_row_prunes_its_entry_schema_and_values_too(): void
+    {
+        // `fleet.gauges` is map-shaped (entries: GaugeEntry), and none of an entry's keys admits the tenant: its schema's
+        // entry properties live under `additionalProperties`, a host file binds an env var, and its values are the host's.
+        app(ConfigSectionRegistry::class)->section(\Splicewire\Beam\Tests\Fixtures\Config\GaugesSection::class, owner: 'host');
+        config()->set('fleet.gauges', require self::FIXTURES.'/host/fleet/gauges.php');
+        $this->as('tenant-admin');
+
+        [, $tenant] = $this->tenantView('fleet.gauges', 'a');
+        $json = (string) json_encode($tenant, JSON_UNESCAPED_SLASHES);
+
+        $this->assertSame([], $tenant['keys']);
+        $this->assertSame([], $tenant['values']);
+        $this->assertSame([], $tenant['schema']['additionalProperties']['properties'], 'the entry schema names no key the tenant is not offered');
+        $this->assertSame([], $tenant['schema']['additionalProperties']['required'] ?? []);
+
+        foreach (['BEAM_FIXTURE_CSE_COST_USD', 'Google web search', 'fleet/gauges.php', 'unit_cost_usd'] as $detail) {
+            $this->assertStringNotContainsString($detail, $json, "the tenant's map row names {$detail}");
+        }
+
+        // The negative control: the operator's row of the same section keeps all of it.
+        $this->as('operator');
+        $operator = (string) json_encode(app(ConfigSectionAccess::class)->rows(auth()->user(), 'fleet.gauges')[0]->toArray(), JSON_UNESCAPED_SLASHES);
+
+        foreach (['BEAM_FIXTURE_CSE_COST_USD', 'Google web search', 'fleet/gauges.php', 'unit_cost_usd'] as $detail) {
+            $this->assertStringContainsString($detail, $operator, "the operator's map row still names {$detail}");
+        }
+    }
+
     /**
      * The boundary over GENERATED trees (lead 03:01Z): random nesting of records, maps and leaves declared Tenant,
      * Operator, Host or undeclared, nullable records and maps (null central values included), and random operator locks.

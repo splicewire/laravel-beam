@@ -3,7 +3,7 @@
 // Fixture: a package's own config file for the `tpanels` root (config-sections ticket 07, the tenant tier).
 return [
     'review' => false,
-    'theme' => 'light',
+    'theme' => env('BEAM_FIXTURE_TPANELS_THEME', 'light'),
     'limit' => 10,
     'driver' => 'array',
     'group' => [
