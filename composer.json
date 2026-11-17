@@ -28,6 +28,7 @@
         "spatie/laravel-sluggable": "^3.5|^4.0",
         "spatie/typescript-transformer": "^3.0",
         "rushing/laravel-schema-convergence": "*",
+        "rushing/php-graphine": "dev-main",
         "rushing/php-popcorn": "dev-main"
     },
     "require-dev": {
@@ -60,8 +61,9 @@
     },
     "extra": {
         "package-topology": {
-            "because": "beam depends DOWN on frame (direction corrected — see tower refactor); the vendor-seam policy lives on the base package. beam also depends DOWN on schemastud/laravel-json-ns (ADR-0191): SchemaId extends the one fleet-wide NamespaceUri parser, and the Laravel binding tier is where beam binds json-ns ports (VocabularyRegistry, ADR-0192) into the container — the splicewire/* → schemastud/* direction R1 sanctions",
+            "because": "beam depends DOWN on frame (direction corrected — see tower refactor); the vendor-seam policy lives on the base package. beam also depends DOWN on schemastud/laravel-json-ns (ADR-0191): SchemaId extends the one fleet-wide NamespaceUri parser, and the Laravel binding tier is where beam binds json-ns ports (VocabularyRegistry, ADR-0192) into the container — the splicewire/* → schemastud/* direction R1 sanctions. beam also requires rushing/php-graphine (graph-operations D1, ruled 2026-11-12): the framework-free, MIT, already-public graph store the GraphsRecords capability returns, a CORE requirement so a graph resource needs no extra install, not a bridge package.",
             "mustRequire": [
+                "rushing/php-graphine",
                 "schemastud/laravel-frame",
                 "schemastud/laravel-json-ns"
             ],
