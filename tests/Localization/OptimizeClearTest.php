@@ -37,17 +37,46 @@ it('runs optimize:clear with laravel-beam loaded', function (): void {
         ->and(ServiceProvider::$optimizeClearCommands['beam-lang-fingerprint'] ?? null)->toBe('beam:lang:fingerprint-clear');
 });
 
+/**
+ * `optimize --except` for everything that is not laravel-beam's own: the framework's four (each boots an inner testbench
+ * app) and every OTHER package's registered task. Root 7c84aa0c: spatie/laravel-data registers `data:cache-structures`,
+ * which writes to the configured cache store, so under a database cache store with no `cache` table (config-sections'
+ * run) `optimize` failed on a task that is not this package's. beam's own tasks (the fingerprint and the frame
+ * resource manifest) still run through `optimize` itself.
+ */
+function exceptAllButBeam(): string
+{
+    $others = array_diff(array_keys(ServiceProvider::$optimizeCommands), ['beam-lang-fingerprint', 'beam-frame-resources']);
+
+    return implode(',', ['config', 'events', 'routes', 'views', ...$others]);
+}
+
 it('builds the fingerprint artifact on optimize and removes it on optimize:clear', function (): void {
     LangFingerprint::clearArtifact();
     expect(is_file(LangFingerprint::artifactPath()))->toBeFalse();
 
     expect(ServiceProvider::$optimizeCommands['beam-lang-fingerprint'] ?? null)->toBe('beam:lang:fingerprint')
-        ->and(Artisan::call('optimize', ['--except' => 'config,events,routes,views']))->toBe(0)
+        ->and(Artisan::call('optimize', ['--except' => exceptAllButBeam()]))->toBe(0)
         ->and(is_file(LangFingerprint::artifactPath()))->toBeTrue()
         ->and((require LangFingerprint::artifactPath())['translations'] ?? null)->toBe(LangFingerprint::computeTranslations());
 
     expect(Artisan::call('optimize:clear'))->toBe(0)
         ->and(is_file(LangFingerprint::artifactPath()))->toBeFalse();
+});
+
+it('builds the fingerprint artifact whatever the cache store, running no optimize task of another package', function (): void {
+    // config-sections' run (root 7c84aa0c): a database cache store on the in-memory testing connection, with no `cache`
+    // table. Any optimize task that writes to the cache would fail here; beam's own write files, not the cache.
+    // CACHE_STORE=database reaches both the default store and laravel-data's structure cache (its config reads the env).
+    config(['cache.default' => 'database', 'data.structure_caching.cache.store' => 'database']);
+    app('cache')->forgetDriver('database');
+    app()->forgetInstance(Spatie\LaravelData\Support\Caching\DataStructureCache::class);
+    LangFingerprint::clearArtifact();
+
+    // optimize first, so a regression shows as the real failure (the cache write), not as the list check below.
+    expect(Artisan::call('optimize', ['--except' => exceptAllButBeam()]))->toBe(0)
+        ->and(is_file(LangFingerprint::artifactPath()))->toBeTrue()
+        ->and(exceptAllButBeam())->toContain('laravel-data');
 });
 
 it('keeps beam:lang:fingerprint --clear working for direct callers, beside the flag-free clear command', function (): void {
