@@ -285,13 +285,10 @@ class ParticleMounter
                 : null);
 
         $stem = $options['names'] ?? $resourceKey;
+        // The route name keeps the dot: `{stem}.graph.neighbours` (graph-operations 03).
         $name = $options['name'] ?? "{$stem}.{$op}";
 
-        // The subject's coordinates (see the docblock) — a static read of the declaration, so a
-        // class-string resolver is never constructed at boot. `null` declaration ⇒ `['id']`.
-        $coordinates = SubjectResolvers::coordinates($declaration);
-        $carried = $this->carriedParameters($router, $uri);
-        $emitted = array_values(array_filter($coordinates, fn (string $parameter) => ! in_array($parameter, $carried, true)));
+        $emitted = $this->emittedCoordinates($router, $uri, $resourceKey, $op);
 
         $path = $uri;
 
@@ -299,7 +296,7 @@ class ParticleMounter
             $path .= '/{'.$parameter.'}';
         }
 
-        $route = $router->{$verb}("{$path}/{$op}", [ParticleOperationController::class, 'invoke'])
+        $route = $router->{$verb}("{$path}/".self::segments($op), [ParticleOperationController::class, 'invoke'])
             ->defaults(ParticleOperationController::RESOURCE, $resourceKey)
             ->defaults(ParticleOperationController::NAME, $op)
             ->name($name);
@@ -318,6 +315,48 @@ class ParticleMounter
             $route->whereUuid('id');
         }
 
+    }
+
+    /**
+     * An operation's name as URL segments: **a dot in the name is a path separator in the URL, and only
+     * there** (graph-operations 03, D10). `graph.neighbours` is served at `…/graph/neighbours`; the
+     * registry key, the route name and the permission name keep the dot.
+     *
+     * The dot is the separator because it is the one that keeps every DERIVED name legal: the Saloon
+     * generator turns dots and hyphens into word breaks, and the TypeScript client splits a route name on
+     * dots. A slash in a name would reach a PHP method name, so a name carrying one is refused here, at
+     * registration, naming the spelling to use instead.
+     */
+    public static function segments(string $op): string
+    {
+        if (str_contains($op, '/')) {
+            throw new InvalidArgumentException(
+                "Particle operation name [{$op}] contains a slash. Nest an operation's address with a dot "
+                ."instead ('".str_replace('/', '.', $op)."' is served at '".$op."'): the dot is what the route name, "
+                .'the registry key and both generated clients read.'
+            );
+        }
+
+        return str_replace('.', '/', $op);
+    }
+
+    /**
+     * The coordinates {@see op()} emits for this operation: the declared subject's
+     * `pathParameters()` (a static read, so a class-string resolver is never constructed at boot; a
+     * `null` declaration is `['id']`), minus the parameters the enclosing group and `$uri` already carry.
+     *
+     * An EMPTY list is a subject-free mount — `{uri}/{name}` — which shares a slot shape with the
+     * resource's own `{uri}/{id}` and must therefore be registered above it
+     * ({@see PendingParticleMount::register()}).
+     *
+     * @return list<string>
+     */
+    public function emittedCoordinates(Router $router, string $uri, string $resourceKey, string $op): array
+    {
+        $coordinates = SubjectResolvers::coordinates(app(ParticleOperationRegistry::class)->find($resourceKey, $op));
+        $carried = $this->carriedParameters($router, $uri);
+
+        return array_values(array_filter($coordinates, fn (string $parameter) => ! in_array($parameter, $carried, true)));
     }
 
     /**
@@ -348,11 +387,28 @@ class ParticleMounter
      */
     public function ops(Router $router, string $uri, string $resourceKey, array $ops, array $options = []): void
     {
+        foreach ($this->declare($resourceKey, $ops) as $name) {
+            $this->op($router, $uri, $resourceKey, $name, $options);
+        }
+    }
+
+    /**
+     * The registration half of {@see ops()}: registers each inline object or `#[ParticleOp]` class, checks
+     * each bare name is registered, and returns the operation names in list order without mounting
+     * anything. Split out so {@see PendingParticleMount::register()} can read each operation's
+     * declaration — whether it is subject-free — before it decides where in the route table it goes.
+     *
+     * @param  array<int, mixed>  $ops  each a bare name, a `#[ParticleOp]` class-string or a ParticleOperation
+     * @return list<string>
+     */
+    public function declare(string $resourceKey, array $ops): array
+    {
         $discovery = app(AttributedParticleDiscovery::class);
         $operations = app(ParticleOperationRegistry::class);
+        $names = [];
 
         foreach ($ops as $op) {
-            $name = match (true) {
+            $names[] = match (true) {
                 // An inline runtime object — register it, mount by its own name.
                 $op instanceof ParticleOperation => tap($op->name, fn () => $operations->register($op)),
                 // A #[ParticleOp] class-string — discover (registers) + read the attribute's name to mount.
@@ -371,14 +427,14 @@ class ParticleMounter
                 // registration, naming the fix (tutorial-dx 05), not later as a 500 from the mounted route.
                 default => $operations->has($resourceKey, $op) ? $op : throw new InvalidArgumentException(
                     "No particle operation [{$op}] on resource [{$resourceKey}] to mount: a bare name in ->ops() mounts an op "
-                    ."registered elsewhere, and none is. Register it first: give its class #[ParticleOp] and list that class "
-                    ."in beam.core.particle.classes or under beam.core.particle.discover_paths, or pass the class-string or "
-                    ."a ParticleOperation to ->ops() instead of the bare name."
+                    .'registered elsewhere, and none is. Register it first: give its class #[ParticleOp] and list that class '
+                    .'in beam.core.particle.classes or under beam.core.particle.discover_paths, or pass the class-string or '
+                    .'a ParticleOperation to ->ops() instead of the bare name.'
                 ),
             };
-
-            $this->op($router, $uri, $resourceKey, $name, $options);
         }
+
+        return $names;
     }
 
     /**

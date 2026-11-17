@@ -211,3 +211,32 @@ it('applies the same collision-only transport distinction inside an operator map
     expect($files['hooks/entries.ts'])->toContain('useEntriesIndex(', "operatorRoute('entries.index')")
         ->and($files['hooks/api-operator-entries.ts'])->toContain('useApiOperatorEntriesIndex(', "operatorRoute('api.operator.entries.index')");
 });
+
+/**
+ * graph-operations 03 §5: a nested operation name lands in its own domain (`yards.graph.neighbours` →
+ * `hooks/yards-graph.ts`, `useYardsGraphNeighbours`) while a one-word subject-free one stays in the
+ * resource's (`yards.graph` → `hooks/yards.ts`, `useYardsGraph`). Every identifier is distinct, so the
+ * reservation guard passes. `TS_CLIENT_NESTED_DUMP=<dir>` writes the files for a `tsc --noEmit` check.
+ */
+it('emits distinct hooks and domains for nested and subject-free operation names', function () {
+    $files = collisionClient([
+        'yards.index' => collisionRead('yards'),
+        'yards.show' => collisionRead('yards/{id}'),
+        'yards.graph' => collisionRead('yards/graph'),
+        'yards.graph.cycles' => collisionRead('yards/graph/cycles'),
+        'yards.graph.neighbours' => collisionRead('yards/{id}/graph/neighbours'),
+        'yards.graph.path' => collisionRead('yards/{id}/graph/path'),
+    ])['files'];
+
+    expect($files['hooks/yards.ts'])->toContain('useYardsIndex(', 'useYardsShow(', 'useYardsGraph(', "route('yards.graph')")
+        ->and($files['hooks/yards-graph.ts'])->toContain('useYardsGraphCycles(', 'useYardsGraphNeighbours(', 'useYardsGraphPath(',
+            "route('yards.graph.neighbours', params)", "route('yards.graph.cycles')")
+        ->and($files['routes.ts'])->toContain("'yards.graph.neighbours'", "'yards/{id}/graph/neighbours'");
+
+    if (is_string($dump = getenv('TS_CLIENT_NESTED_DUMP')) && $dump !== '') {
+        foreach ($files as $path => $source) {
+            @mkdir(dirname($dump.'/'.$path), 0o755, true);
+            file_put_contents($dump.'/'.$path, $source);
+        }
+    }
+});

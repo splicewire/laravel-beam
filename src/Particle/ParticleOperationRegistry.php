@@ -102,6 +102,14 @@ class ParticleOperationRegistry implements Gated, RecordsRegistrants, RecordsSup
             return null;
         }
 
+        // An operation lookup is EXACT. With nested names a key can be a branch with nothing at itself
+        // (`silos.graph` when only `silos.graph.neighbours` and `silos.graph.path` are registered), and
+        // `tryResolve()` reports a branch as ambiguous rather than absent. The question asked here is
+        // "is THIS operation registered", which has the answer no.
+        if ($name !== '' && ! $resource instanceof RegistryKey && ! $this->entries->has($key)) {
+            return null;
+        }
+
         return $this->entries->tryResolve($key);
     }
 
@@ -139,7 +147,13 @@ class ParticleOperationRegistry implements Gated, RecordsRegistrants, RecordsSup
             return [];
         }
 
-        return $this->entries->matches($resource);
+        // `matches()` is segment-wise and DEEP: under `silos` it also returns `silos.graph.neighbours`
+        // (wanted: a nested operation name, graph-operations 03) and the operations of a dotted resource
+        // `silos.archive` (not wanted: those belong to another resource). The declaration says which.
+        return array_values(array_filter(
+            $this->entries->matches($resource),
+            fn (ParticleOperation $operation): bool => $operation->resource === $resource,
+        ));
     }
 
     // ── The kernel contract (registry-kernel ticket 53) ─────────────────────────────────────────────
@@ -170,9 +184,52 @@ class ParticleOperationRegistry implements Gated, RecordsRegistrants, RecordsSup
             }
         }
 
+        $this->refuseAmbiguousKey($operation);
+
         $this->entries->register($address, $operation, $by, $ability);
 
         return $this;
+    }
+
+    /**
+     * Refuse a registration whose flat key another operation already holds under a DIFFERENT split
+     * (graph-operations 03 §2).
+     *
+     * The key is `<resource>.<name>`, and both halves may contain dots: a resource key can be dotted, and
+     * an operation name can now nest (`graph.neighbours`). So resource `a.b` with operation `c` and
+     * resource `a` with operation `b.c` are both `a.b.c`. The store keys by segments and cannot tell them
+     * apart, and under `OnKeyDuplicate::Supersede` the second would silently displace the first — one
+     * resource's operation answering on another's route. That is refused here, naming both.
+     *
+     * The SAME split registered again is not a collision: that is an override, and supersession is how
+     * a package replaces an operation it does not own (see the registry declaration above).
+     */
+    private function refuseAmbiguousKey(ParticleOperation $operation): void
+    {
+        $key = $operation->key();
+
+        if (Key::tryParse($key) === null || ! $this->entries->unfiltered()->has($key)) {
+            return;
+        }
+
+        foreach ($this->entries->unfiltered()->matches($key) as $occupant) {
+            if (! $occupant instanceof ParticleOperation || $occupant->key() !== $key) {
+                continue;
+            }
+
+            if ($occupant->resource !== $operation->resource) {
+                throw new InvalidArgumentException(sprintf(
+                    'Particle operation [%s] on resource [%s] and particle operation [%s] on resource [%s] share the registry key [%s]. '
+                    .'An operation is addressed by `<resource>.<name>` and both halves may contain dots, so the two cannot be told '
+                    .'apart; rename one of them.',
+                    $operation->name,
+                    $operation->resource,
+                    $occupant->name,
+                    $occupant->resource,
+                    $key,
+                ));
+            }
+        }
     }
 
     public function resolve(RegistryKey|string $key): mixed

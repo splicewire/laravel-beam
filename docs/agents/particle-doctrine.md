@@ -71,19 +71,24 @@ prerequisite remains. Historical dual-mount decisions are superseded by this con
 `Doctor\ParticleSlotCollisionAudit` compares actual URI slots (including domain and method)
 and route names. Literal `op` segments in resource prefixes remain part of those keys.
 
-⚠️ **A `subject: NoSubject` op lands in a DIFFERENT slot, and that one is not audited.** Its
-`pathParameters()` is empty, so the primary mount emits no coordinate and the URL is the flat
-`{uri}/{op}` — which is the same two-segment shape as a host's own `{uri}/{id}`. Laravel matches
-FIRST-REGISTERED, so an unconstrained `{uri}/{id}` declared earlier in the route file swallows the op
-and answers its own controller with `id = "{op}"`; nothing raises, and the route table still lists both.
-Measured 2026-09-12 (`fragment-producers-and-chunking` 02): `Particle::ops('fragments', 'fragments',
-[SearchFragmentsOp::class])` placed beside the flagship's other `fragments` op mounts answered
-`FragmentController@show` with `id = "search"` — the op's handler never ran, and the only fix was
-declaration order. So **mount a subject-free op above the resource's `{id}` routes**, next to whatever
-literal siblings (`{uri}/schema`, `{uri}/filters`) already had to go there, and pin the order in a test —
-`ParticleSlotCollisionAudit` cannot see this, because the slot it simulates has three segments and this
-one has two. An `idConstraint:` on the *host's* wildcard would also close it, but that is the host's
-route to change and order is the fix that needs no other owner.
+**A dot in an operation's name nests its address** (graph-operations 03). `graph.neighbours` mounts at
+`{uri}/{id}/graph/neighbours`, named `{resourceKey}.graph.neighbours`; the registry key and the
+permission name keep the dot too. Only the URL turns it into a slash. Nest with a dot, never a slash:
+a name containing `/` is refused at the mount, because a slash would reach the generated clients'
+method names. The key is `<resource>.<name>` and both halves may be dotted, so resource `a.b` with
+operation `c` and resource `a` with operation `b.c` would share `a.b.c`. The registry refuses the
+second registration and names both.
+
+**A subject-free op is routed above the resource's own routes.** An op whose subject emits no
+coordinate (`subject: NoSubject`, or a `ParentSubject` whose parameter the group already carries)
+mounts at `{uri}/{op}`, the same slot shape as `{uri}/{id}`. Laravel matches first-registered.
+Measured 2026-09-12 (`fragment-producers-and-chunking` 02): mounted after `show`, the op answered
+`FragmentController@show` with `id = "search"`. `Particle::mount(…)->ops(…)` therefore mounts
+subject-free ops first, then the CRUD verbs, then the ops that carry a subject. A nested name gets
+the same protection: `{uri}/graph/cycles` is registered above a record op's `{uri}/{id}/cycles`.
+`Tests\Particle\NestedOperationNameMountTest` pins the order. The ordering belongs to the fluent
+mount. A hand-written `Particle::ops(…)` call still mounts where it is written, so put a subject-free
+one above the resource's `{id}` routes yourself. `ParticleSlotCollisionAudit` does not see this slot.
 
 ## What BACKS a resource — one polymorphic slot, and a capability is allowed to be absent
 

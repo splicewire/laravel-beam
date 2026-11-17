@@ -204,7 +204,10 @@ class PendingParticleMount
 
         $this->registered = true;
 
-        $this->mounter->resource($this->router, $this->uri, $this->resourceKey, $this->options);
+        // Declare every op first (registering inline objects and #[ParticleOp] classes), so each one's
+        // subject is known before anything is routed.
+        $subjectFree = [];
+        $withSubject = [];
 
         foreach ($this->ops as [$declared, $options]) {
             $ops = $declared === true
@@ -221,13 +224,34 @@ class PendingParticleMount
                 $options['names'] = $this->options['names'];
             }
 
-            $this->mounter->ops(
-                $this->router,
-                $this->uri,
-                $this->resourceKey,
-                $ops,
-                array_replace($this->options, $options),
-            );
+            $options = array_replace($this->options, $options);
+
+            foreach ($this->mounter->declare($this->resourceKey, $ops) as $name) {
+                $emitted = $this->mounter->emittedCoordinates($this->router, $this->uri, $this->resourceKey, $name);
+
+                if ($emitted === []) {
+                    $subjectFree[] = [$name, $options];
+                } else {
+                    $withSubject[] = [$name, $options];
+                }
+            }
+        }
+
+        // ## A subject-free op is routed ABOVE the resource's routes (graph-operations 03, D6)
+        //
+        // It mounts at `{uri}/{name}`, the same slot shape as the resource's own `{uri}/{id}`, and
+        // Laravel matches FIRST-REGISTERED: mounted after `show`, `GET {uri}/graph` answered `show` with
+        // `id = "graph"` and the op's handler never ran. A nested name is the same hazard one level down
+        // (`{uri}/graph/cycles` against a record op's `{uri}/{id}/cycles`), so subject-free ops go above
+        // the record ops as well as the CRUD. Order only — no route name or URL changes.
+        foreach ($subjectFree as [$name, $options]) {
+            $this->mounter->op($this->router, $this->uri, $this->resourceKey, $name, $options);
+        }
+
+        $this->mounter->resource($this->router, $this->uri, $this->resourceKey, $this->options);
+
+        foreach ($withSubject as [$name, $options]) {
+            $this->mounter->op($this->router, $this->uri, $this->resourceKey, $name, $options);
         }
 
         // AFTER the resource's own CRUD and ops, which is the order the hand-written spelling produced:

@@ -78,4 +78,49 @@ class SaloonConnectorGeneratorTest extends TestCase
         @rmdir($dir.'/Requests');
         @rmdir($dir);
     }
+
+    /**
+     * graph-operations 03 §5: a NESTED operation name (`graph.neighbours`, route name
+     * `yards.graph.neighbours`) and a subject-free one (`graph`, at `yards/graph`) beside it. The dot is a
+     * word break in every derived PHP name, so the classes and methods stay distinct and legal.
+     */
+    public function test_nested_and_subject_free_operation_names_emit_distinct_valid_php(): void
+    {
+        $model = (new CodegenModel)
+            ->operation('yards.graph', 'GET', 'yards/graph', Type::external('App.Data.Slice'), methods: ['GET'])
+            ->operation('yards.graph.cycles', 'GET', 'yards/graph/cycles', Type::external('App.Data.Cycles'), methods: ['GET'])
+            ->operation('yards.graph.neighbours', 'GET', 'yards/{id}/graph/neighbours', Type::external('App.Data.Neighbours'), methods: ['GET'])
+            ->operation('yards.graph.path', 'GET', 'yards/{id}/graph/path', Type::external('App.Data.Path'), methods: ['GET']);
+
+        $files = (new SaloonConnectorGenerator)->invoke([
+            'model' => $model->toArray(),
+            'options' => ['namespace' => 'App\\Generated\\Saloon', 'base_url' => 'https://api.test'],
+        ])['files'];
+
+        foreach (['YardsGraph', 'YardsGraphCycles', 'YardsGraphNeighbours', 'YardsGraphPath'] as $class) {
+            $this->assertArrayHasKey("Requests/{$class}Request.php", $files);
+        }
+
+        $connector = $files['ApiConnector.php'];
+        foreach (['yardsGraph', 'yardsGraphCycles', 'yardsGraphNeighbours', 'yardsGraphPath'] as $method) {
+            $this->assertStringContainsString("public function {$method}(", $connector);
+        }
+
+        $this->assertStringContainsString("return 'yards/graph';", $files['Requests/YardsGraphRequest.php']);
+        $this->assertStringContainsString("return 'yards/'.\$this->params['id'].'/graph/neighbours';", $files['Requests/YardsGraphNeighboursRequest.php']);
+
+        $dir = sys_get_temp_dir().'/saloon-gen-nested-'.uniqid();
+        mkdir($dir.'/Requests', 0o755, true);
+
+        foreach ($files as $rel => $contents) {
+            file_put_contents($dir.'/'.$rel, $contents);
+            $lint = shell_exec(escapeshellarg(PHP_BINARY).' -l '.escapeshellarg($dir.'/'.$rel).' 2>&1');
+            $this->assertStringContainsString('No syntax errors detected', (string) $lint, "Syntax error in {$rel}: {$lint}");
+        }
+
+        array_map('unlink', glob($dir.'/Requests/*') ?: []);
+        array_map('unlink', glob($dir.'/*.php') ?: []);
+        @rmdir($dir.'/Requests');
+        @rmdir($dir);
+    }
 }
