@@ -8,9 +8,11 @@ use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Routing\Router;
 use LogicException;
 use ReflectionProperty;
+use Rushing\LaravelDataSchemasScribe\Attributes\RequestFromData;
 use Rushing\LaravelDataSchemasScribe\Attributes\ResponseFromData;
 use Rushing\LaravelDataSchemasScribe\Attributes\StreamsFromData;
 use Spatie\LaravelData\Data;
@@ -18,6 +20,7 @@ use Spatie\LaravelTypeScriptTransformer\LaravelData\LaravelDataTransformedProvid
 use Spatie\LaravelTypeScriptTransformer\LaravelData\LaravelDataTypeScriptTransformerExtension;
 use Spatie\LaravelTypeScriptTransformer\LaravelData\Transformers\DataClassTransformer;
 use Spatie\LaravelTypeScriptTransformer\TransformedProviders\LaravelTypesTransformedProvider;
+use Spatie\TypeScriptTransformer\Support\Loggers\ArrayLogger;
 use Spatie\TypeScriptTransformer\TransformedProviders\TransformerProvider;
 use Spatie\TypeScriptTransformer\Transformers\EnumTransformer;
 use Spatie\TypeScriptTransformer\TypeScriptTransformer;
@@ -121,7 +124,7 @@ class BeamTypeScriptTransformerExtensionTest extends TestCase
 
         $replace = $config->providedVisitorClosures[0];
         $this->assertInstanceOf(ReplaceTypesVisitorClosure::class, $replace);
-        $this->assertSame([CarbonInterface::class, DateTimeInterface::class], array_keys($this->property($replace, 'typeReplacements')));
+        $this->assertSame([CarbonInterface::class, DateTimeInterface::class, UploadedFile::class], array_keys($this->property($replace, 'typeReplacements')));
 
         // configPath() replaces the list; the extension must leave the host provider's path in place.
         $this->assertSame(['/host/app/Providers/TypeScriptTransformerServiceProvider.php'], $config->configPaths);
@@ -243,6 +246,52 @@ class BeamTypeScriptTransformerExtensionTest extends TestCase
         $this->expectException(LogicException::class);
         (new ClientTypeReferences)->resolve($model, $this->directory.'/sdk', $config(new ModuleWriter(path: null), new Router(new Dispatcher($this->app), $this->app)));
     }
+
+    /**
+     * owner-review-20261112 14 (edcaa65 made `#[RequestFromData]` request DTOs part of the transform): an input DTO
+     * with an `UploadedFile` property (tower's fragment intake declares two, for the OpenAPI generator) emits `File`,
+     * the DOM type a form's file input yields and the family's TS uses for uploads, without the transformer's
+     * "Tried replacing reference to ... UploadedFile ... not found" warning every tower-bearing host was printing.
+     */
+    public function test_a_request_dto_with_an_uploaded_file_emits_file_without_a_warning(): void
+    {
+        $particles = new ParticleResourceRegistry;
+        $operations = new ParticleOperationRegistry;
+        $router = new Router(new Dispatcher($this->app), $this->app);
+        $router->post('/uploads', [ExtensionUploadController::class, 'store'])->name('uploads.store');
+
+        $config = $this->factory()
+            ->extension(new BeamTypeScriptTransformerExtension(
+                new DeclaredParticleTypes($particles, $operations, new ResourceContributionRegistry),
+                new PackageTypeRoots([]),
+                new DeclaredRouteTypes($router, new RouteReturnType($particles, $operations)),
+            ))
+            ->writer(new GlobalNamespaceWriter('generated.d.ts'))
+            ->get();
+        $log = new ArrayLogger;
+
+        TypeScriptTransformer::create($config, $log)->execute();
+
+        $generated = (string) file_get_contents($this->directory.'/types/generated.d.ts');
+        $warnings = array_values(array_filter($log->messages, fn (array $m) => $m['level'] === 'warning' && str_contains($m['message'], 'UploadedFile')));
+        $this->assertSame([], $warnings, json_encode($warnings));
+        $this->assertMatchesRegularExpression('/\bupload: File,/', $generated, $generated);
+        $this->assertMatchesRegularExpression('/\blabel: string,?/', $generated, $generated);
+    }
+}
+
+class ExtensionUploadInputData extends Data
+{
+    public function __construct(
+        public UploadedFile $upload,
+        public string $label,
+    ) {}
+}
+
+class ExtensionUploadController
+{
+    #[RequestFromData(ExtensionUploadInputData::class)]
+    public function store() {}
 }
 
 class ExtensionRootData extends Data
