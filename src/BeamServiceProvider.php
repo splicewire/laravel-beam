@@ -84,6 +84,7 @@ use Splicewire\Beam\Console\BeamSeedCommand;
 use Splicewire\Beam\Console\ConfigSectionSchemasCommand;
 use Splicewire\Beam\Console\ConvergencePreflightCommand;
 use Splicewire\Beam\Console\DocblockCommand;
+use Splicewire\Beam\Console\EnvPrefixBaselineCommand;
 use Splicewire\Beam\Console\FrameCacheCommand;
 use Splicewire\Beam\Console\FrameClearCommand;
 use Splicewire\Beam\Console\GenerateAssetsCommand;
@@ -115,6 +116,7 @@ use Splicewire\Beam\Doctor\BootReadConfigAudit;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\ConfigSectionCoverageAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
+use Splicewire\Beam\Doctor\EnvPrefixAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
 use Splicewire\Beam\Doctor\FramedDeclarationAudit;
@@ -1450,6 +1452,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // during boot. Advisory until ticket 13 makes them gates.
         $manifest->register('splicewire/laravel-beam', ConfigSectionCoverageAudit::class);
         $manifest->register('splicewire/laravel-beam', BootReadConfigAudit::class);
+        // env-inventory 02: a new env key carries its config file's prefix. Advisory, beside the two above.
+        $manifest->register('splicewire/laravel-beam', EnvPrefixAudit::class);
         $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', ConfigFacadeReferenceAudit::class);
         $manifest->register('splicewire/laravel-beam', UnguardedCreateAudit::class);
@@ -2167,6 +2171,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 ConfigSectionSchemasCommand::class,
                 // config-sections 06: adopting the convention is one command; drift is reported, never overwritten.
                 MakeConfigSectionCommand::class,
+                // env-inventory 02: the package's grandfathered env names, which may only shrink; the audit only reads.
+                EnvPrefixBaselineCommand::class,
             ]);
 
             // The estate-POLICY surgeon commands relocated DOWN from surgeon (they hard-code estate

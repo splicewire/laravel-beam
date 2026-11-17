@@ -21,6 +21,8 @@ use Splicewire\Beam\Config\ConfigFileScanner;
  *   alike). A host's own config is out of scope (the ticket): the root package is skipped when it is an application
  *   (it has `artisan`).
  * - **The walk** is {@see ConfigFileScanner::envReads()}, ADR-0245's syntax-tree walk, so there is no second scanner.
+ * - **The baseline** has one format, read by {@see baseline()} and written from {@see renderBaseline()}, and one
+ *   population of names it may hold, {@see unruled()}: the audit and the command consume the same definitions.
  */
 class EnvPrefixCensus
 {
@@ -43,6 +45,63 @@ class EnvPrefixCensus
         'SCALAR_API_KEY',
         'STRIPE_SECRET', 'STRIPE_WEBHOOK_PATH', 'STRIPE_WEBHOOK_SECRET',
     ];
+
+    /**
+     * @param  array<string, string>|null  $packages  composer name => package root; null reads the installed family
+     *                                                packages ({@see installedPackages()}). A test passes fixture roots.
+     * @param  string|null  $root  the package whose checkout this is (the only one the baseline command writes for);
+     *                             null reads Composer's root package
+     */
+    public function __construct(
+        private ?array $packages = null,
+        private ?string $root = null,
+    ) {}
+
+    /** @return array<string, string> */
+    public function packages(): array
+    {
+        return $this->packages ??= self::installedPackages();
+    }
+
+    public function root(): string
+    {
+        return $this->root ??= InstalledVersions::getRootPackage()['name'];
+    }
+
+    /**
+     * The names in `$reads` that break the rule: sorted, distinct. What a first baseline captures, and what the audit
+     * holds against the baseline.
+     *
+     * @param  list<array{package: string, file: string, prefix: string, binding: ConfigEnvBinding}>  $reads
+     * @return list<string>
+     */
+    public static function unruled(array $reads): array
+    {
+        $names = [];
+
+        foreach ($reads as $read) {
+            if (! self::conforms($read['binding']->name, $read['prefix'])) {
+                $names[$read['binding']->name] = true;
+            }
+        }
+
+        $names = array_keys($names);
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * The baseline file's content: a header naming the command that writes it, then one name per line.
+     *
+     * @param  list<string>  $names
+     */
+    public static function renderBaseline(string $package, array $names): string
+    {
+        return "# {$package}: env names grandfathered by the env entries convention (docs/conventions/env-entries.md).\n"
+            ."# Written by `php artisan splicewire:beam:env-prefix-baseline --write`; a name may leave this list, never join it.\n"
+            .implode('', array_map(static fn (string $name): string => $name."\n", $names));
+    }
 
     /**
      * The installed family packages: composer name => absolute root (realpath), sorted by name.
