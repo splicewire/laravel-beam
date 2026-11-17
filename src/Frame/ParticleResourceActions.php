@@ -29,6 +29,11 @@ use Splicewire\Beam\Particle\Subject\SubjectResolvers;
  *     no URL to press, so it has no button. A mount under a parent parameter the button cannot fill is
  *     skipped the same way.
  *
+ * A mount parameter the CURRENT request already binds is not the client's to fill (frame-foundation 75): under
+ * tower's path or host topology every tenant route carries `{tenant}`, and the tenant manifest is asked for
+ * under that same tenant. Such a parameter is filled from the matched route, so the client never sees it.
+ * `{id}` is never filled this way.
+ *
  * The URL is RELATIVE to the host (`/{route uri}`) and a record URL keeps its `{id}` placeholder, which the
  * client fills per row. The op's mount stays the enforcement; this only says where it is.
  *
@@ -78,7 +83,13 @@ class ParticleResourceActions
         $scope = $this->scope($operation);
         $route = $this->route($operation, $realm);
 
-        if ($scope === null || $route === null || ! $this->fillable($route, $scope)) {
+        if ($scope === null || $route === null) {
+            return null;
+        }
+
+        $bound = $this->boundParameters($route);
+
+        if (! $this->fillable($route, $scope, $bound)) {
             return null;
         }
 
@@ -87,7 +98,7 @@ class ParticleResourceActions
             label: $affordance->label ?? Str::headline($operation->name),
             scope: $scope,
             method: strtoupper($operation->method?->value ?? 'post'),
-            url: '/'.ltrim($route->uri(), '/'),
+            url: '/'.ltrim($this->substitute($route->uri(), $bound), '/'),
             input: is_string($operation->input) ? $operation->input : null,
             result: $affordance->result,
             destructive: $affordance->destructive,
@@ -153,14 +164,59 @@ class ParticleResourceActions
         };
     }
 
-    /** Whether the client can fill every parameter of this mount: none for a resource action, `{id}` for a record one. */
-    protected function fillable(Route $route, string $scope): bool
+    /**
+     * Whether the client can fill every parameter of this mount that the current request does not already bind:
+     * none for a resource action, `{id}` for a record one.
+     *
+     * @param  array<string, string>  $bound
+     */
+    protected function fillable(Route $route, string $scope, array $bound = []): bool
     {
-        $parameters = $route->parameterNames();
+        $parameters = array_values(array_diff($route->parameterNames(), array_keys($bound)));
 
         return $scope === ResourceActionDefinition::ScopeRecord
             ? $parameters === ['id']
             : $parameters === [];
+    }
+
+    /**
+     * The mount's parameters the matched request route already binds, as URL segments. `id` is never taken: it
+     * is the record's, which the client fills per row. An absent or empty segment stays unbound, so the mount is
+     * still dropped rather than given a guessed one.
+     *
+     * @return array<string, string>
+     */
+    protected function boundParameters(Route $route): array
+    {
+        $current = $this->router->current();
+
+        // The request's ORIGINAL parameters, as matched off its URL: tenant identification by path (stancl's
+        // `PathTenantResolver`, run by tower before every tenant surface) FORGETS `{tenant}` from `parameters()`
+        // once it has initialized tenancy, and a model-bound parameter would hand back its primary key where
+        // the URL carried a slug. The matched segment is what the action's own mount will match again.
+        $original = $current !== null && $current->hasParameters() ? $current->originalParameters() : [];
+
+        $bound = [];
+
+        foreach ($route->parameterNames() as $name) {
+            $value = $original[$name] ?? null;
+
+            if ($name !== 'id' && ((is_string($value) && $value !== '') || is_int($value))) {
+                $bound[$name] = (string) $value;
+            }
+        }
+
+        return $bound;
+    }
+
+    /** @param  array<string, string>  $bound */
+    protected function substitute(string $uri, array $bound): string
+    {
+        foreach ($bound as $name => $segment) {
+            $uri = str_replace(['{'.$name.'}', '{'.$name.'?}'], rawurlencode($segment), $uri);
+        }
+
+        return $uri;
     }
 
     protected function route(ParticleOperation $operation, ?string $realm): ?Route

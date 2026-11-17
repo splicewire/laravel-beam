@@ -6,12 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use Schemastud\Frame\Authorization\OpenResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceActionAuthorizer;
 use Schemastud\Frame\FrameServiceProvider;
+use Schemastud\Frame\Http\Controllers\FrameManifestController;
 use Schemastud\Frame\Registry\ResourceActionDefinition;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Data;
@@ -184,6 +186,96 @@ class ParticleResourceActionsTest extends TestCase
         $this->assertSame('/api/vaults/reload', $legacy['reload']->url);
     }
 
+    /**
+     * frame-foundation 75: under tower's path topology every tenant route carries `{tenant}`, and the tenant
+     * manifest is asked for under that same tenant. The tenant's mounts stay in the manifest with the tenant
+     * filled in; a record action keeps `{id}` for the client.
+     */
+    public function test_a_tenant_realm_keeps_actions_whose_mount_binds_the_requests_tenant(): void
+    {
+        $this->mountTenantVaults();
+
+        $tenant = $this->getJson('/acme/actions-probe')->assertOk()->json();
+
+        $this->assertSame(['reload', 'seal'], array_keys($tenant));
+        $this->assertSame(['resource', '/acme/vaults/reload'], $tenant['reload']);
+        $this->assertSame(['record', '/acme/vaults/{id}/seal'], $tenant['seal']);
+
+        // The value is the request's own tenant, not one frozen by an earlier request.
+        $this->assertSame('/globex/vaults/reload', $this->getJson('/globex/actions-probe')->json('reload.1'));
+    }
+
+    public function test_the_tenant_manifest_carries_the_tenant_mounts_with_the_tenant_filled_in(): void
+    {
+        $this->app->bind(ResourceAccessGate::class, OpenResourceAccessGate::class);
+        $this->mountTenantVaults();
+        // The realm manifest lists the realm's members: vaults is one, as beam-config is in a tower host.
+        $this->app->make(ParticleResourceRegistry::class)->loadRealmMap(['tenant' => ['vaults']]);
+        Route::get('{tenant}/frame/manifest', FrameManifestController::class)->defaults('realm', 'tenant')
+            ->middleware(ForgetsTenantLikePathIdentification::class);
+
+        $this->actingAs(new ActionOwner);
+        $actions = collect($this->getJson('/acme/frame/manifest')->assertOk()->json('contexts.vaults.actions'))
+            ->pluck('url', 'key')
+            ->all();
+
+        $this->assertSame(['reload' => '/acme/vaults/reload', 'seal' => '/acme/vaults/{id}/seal'], $actions);
+    }
+
+    public function test_a_mount_with_a_parameter_the_request_does_not_bind_is_still_dropped(): void
+    {
+        $this->mountTenantVaults();
+        $this->op('sweep', NoSubject::class, 'action', input: false);
+        $this->op('stamp', null, 'action', ability: 'update', abilityModel: null, input: false);
+        Particle::ops('{tenant}/buckets/{bucket}/vaults', 'vaults', ['sweep', 'stamp'], ['realm' => 'tenant', 'names' => 'tenant.bucket.vaults']);
+
+        $tenant = $this->getJson('/acme/actions-probe')->assertOk()->json();
+
+        $this->assertSame(['reload', 'seal'], array_keys($tenant), 'An unbound {bucket} is the client\'s to fill, and it cannot.');
+    }
+
+    public function test_the_operator_realm_is_unchanged_beside_a_tenant_prefixed_realm(): void
+    {
+        $this->mountTenantVaults();
+        Particle::ops('operator/vaults', 'vaults', ['reload', 'seal'], ['realm' => 'operator', 'names' => 'operator.vaults']);
+
+        // Before any request there is no current route, so nothing is bound: the tenant mount is not
+        // fillable, exactly as before, while the operator's parameterless mount is.
+        $this->assertNull($this->app->make('router')->current());
+        $resource = $this->app->make(ParticleResourceRegistry::class)->get('vaults');
+        $this->assertSame([], $resource->toResourceDefinition('tenant')->actions);
+        $this->assertCount(2, $resource->toResourceDefinition('operator')->actions);
+
+        $operator = $this->getJson('/operator/actions-probe')->assertOk()->json();
+
+        $this->assertSame([
+            'reload' => ['resource', '/operator/vaults/reload'],
+            'seal' => ['record', '/operator/vaults/{id}/seal'],
+        ], $operator);
+    }
+
+    private function mountTenantVaults(): void
+    {
+        $this->op('reload', NoSubject::class, new ActionAffordance(label: 'Reload vault'), input: false);
+        $this->op('seal', null, 'action', ability: 'update', abilityModel: null, input: false);
+
+        Particle::ops('{tenant}/vaults', 'vaults', ['reload', 'seal'], ['realm' => 'tenant', 'names' => 'tenant.vaults']);
+
+        // The realm's own request route: what the tenant manifest is served under, its {tenant} bound.
+        $probe = function () {
+            $realm = request()->route()->defaults['realm'];
+            $resource = app(ParticleResourceRegistry::class)->get('vaults');
+
+            return collect($resource->toResourceDefinition($realm)->actions)
+                ->mapWithKeys(fn (ResourceActionDefinition $action) => [$action->key => [$action->scope, $action->url]])
+                ->all();
+        };
+
+        // The literal operator path first, so `{tenant}` never captures "operator".
+        Route::get('operator/actions-probe', $probe)->defaults('realm', 'operator');
+        Route::get('{tenant}/actions-probe', $probe)->defaults('realm', 'tenant')->middleware(ForgetsTenantLikePathIdentification::class);
+    }
+
     public function test_action_visibility_uses_the_ability_of_the_selected_tenant_mount(): void
     {
         $this->op('reload', NoSubject::class, 'action', ability: 'ux.author', input: false);
@@ -329,6 +421,20 @@ class ParticleResourceActionsTest extends TestCase
         $placement = $findings[UndeclaredAffordanceAudit::CHECK_UNPLACEABLE];
         $this->assertSame('warn', $placement->status->value);
         $this->assertStringContainsString('vaults.under-edge', $placement->detail);
+    }
+}
+
+/**
+ * What tower's path topology runs before every tenant surface: stancl's `PathTenantResolver` initializes tenancy
+ * and then FORGETS `{tenant}` from the route's parameters, so a handler never receives it.
+ */
+class ForgetsTenantLikePathIdentification
+{
+    public function handle(\Illuminate\Http\Request $request, \Closure $next): mixed
+    {
+        $request->route()->forgetParameter('tenant');
+
+        return $next($request);
     }
 }
 
