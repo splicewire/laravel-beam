@@ -71,6 +71,12 @@ class TsClientGenerator implements Generator
         $streamed = array_slice($entries, $typedCount);
         $this->assertDistinctClientNames($typed, $streamed);
 
+        // Emit the query serializer ONCE, only when some read declares an input to serialize into its URL
+        // (graph-operations 02 B1 r3). The hook/store files that need it import `beamQuery` from here.
+        if ($this->hasReadInput($typed)) {
+            $files['query.ts'] = $this->renderQuery();
+        }
+
         $files = $this->emitHooks($files, $typed);
         $files = $this->emitStreamHooks($files, $streamed);
 
@@ -557,7 +563,9 @@ class TsClientGenerator implements Generator
                 .'import { '.implode(', ', $values)." } from '@tanstack/react-query';\n"
                 .'import type { '.implode(', ', $types)." } from '@tanstack/react-query';\n"
                 ."import { {$client} } from '{$this->clientImport()}';\n"
-                ."import { {$routeFn} } from '{$this->routesImport()}';\n\n"
+                ."import { {$routeFn} } from '{$this->routesImport()}';\n"
+                .($this->hasReadInput($entries) ? "import { beamQuery } from '../query';\n" : '')
+                ."\n"
                 .$this->optionTypes($hasQuery, $hasMutation);
 
             foreach ($entries as $entry) {
@@ -568,6 +576,70 @@ class TsClientGenerator implements Generator
         }
 
         return $files;
+    }
+
+    /**
+     * Whether any read entry in a domain declares an input Data class — the ones whose GET must carry a
+     * query string (graph-operations 02 B1 r3). Such a file imports {@see renderQuery}'s `beamQuery`.
+     *
+     * @param  list<array<string, mixed>>  $entries
+     */
+    private function hasReadInput(array $entries): bool
+    {
+        foreach ($entries as $e) {
+            if (empty($e['isWrite']) && is_string($e['input'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The generated query-string serializer, emitted ONCE into `query.ts` and imported by the hook/store
+     * files that read an operation with an input (graph-operations 02 B1 r3). The host contract's
+     * `api.get(url)` takes a single argument and `route()` appends no query, so a GET op's input is
+     * serialized into the URL here, in generated code — no host-contract change. Laravel's shape, so the
+     * server's `parse_str` round-trips it into the input Data class.
+     */
+    private function renderQuery(): string
+    {
+        $fn = <<<'TS'
+            // A pure query-string serializer for GET operations that declare an input (graph-operations 02).
+            // Laravel's shape so the server's parse_str round-trips it: scalars `k=v`; arrays `k[]=a&k[]=b`;
+            // nested objects `k[sub]=v`; booleans 1/0; null/undefined skipped; keys and values
+            // encodeURIComponent'd; returns '' when empty, else a leading '?'.
+            export function beamQuery(input: Record<string, unknown>): string {
+                const parts: string[] = [];
+
+                const add = (key: string, value: unknown): void => {
+                    if (value === null || value === undefined) {
+                        return;
+                    }
+                    if (Array.isArray(value)) {
+                        for (const item of value) {
+                            add(`${key}[]`, item);
+                        }
+                    } else if (typeof value === 'object') {
+                        for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+                            add(`${key}[${nestedKey}]`, nestedValue);
+                        }
+                    } else {
+                        const scalar = typeof value === 'boolean' ? (value ? '1' : '0') : String(value);
+                        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(scalar)}`);
+                    }
+                };
+
+                for (const [key, value] of Object.entries(input ?? {})) {
+                    add(key, value);
+                }
+
+                return parts.length === 0 ? '' : `?${parts.join('&')}`;
+            }
+
+            TS;
+
+        return $this->banner().$fn;
     }
 
     private function optionTypes(bool $hasQuery, bool $hasMutation): string
@@ -595,16 +667,42 @@ class TsClientGenerator implements Generator
         $hasParams = ! empty($e['params']);
 
         if (! $e['isWrite']) {
-            $params = $hasParams ? 'params: '.$this->paramsType($e['params']).', ' : '';
-            $sig = "{$params}options?: QueryOpts<{$type}>";
-            $key = $hasParams ? "['{$e['name']}', params]" : "['{$e['name']}']";
+            // graph-operations 02 B1 (r2): a GET operation declares an `input:` — its query/params type (a
+            // Data class). It becomes a typed hook argument, rides the queryKey, and is passed to
+            // `{$client}.get` as the query (the second argument, mirroring the write body). A read with no
+            // declared input class (every resource read, and `input: false`) stays BYTE-IDENTICAL.
+            $input = $e['input'] ?? null;
+            $hasInput = is_string($input);
+
+            $sigParts = [];
+            if ($hasParams) {
+                $sigParts[] = 'params: '.$this->paramsType($e['params']);
+            }
+            if ($hasInput) {
+                $sigParts[] = 'input: '.$this->typeReference($input);
+            }
+            $sigParts[] = "options?: QueryOpts<{$type}>";
+            $sig = implode(', ', $sigParts);
+
+            $keyParts = ["'{$e['name']}'"];
+            if ($hasParams) {
+                $keyParts[] = 'params';
+            }
+            if ($hasInput) {
+                $keyParts[] = 'input';
+            }
+            $key = '['.implode(', ', $keyParts).']';
+
             $routeCall = $hasParams ? "{$routeFn}('{$e['name']}', params)" : "{$routeFn}('{$e['name']}')";
+            // The host `api.get(url)` takes ONE argument and `route()` appends no query, so a read op's
+            // input is serialized into the URL by the generated `beamQuery` (B1 r3). No input → plain get.
+            $getCall = $hasInput ? "{$client}.get({$routeCall} + beamQuery(input))" : "{$client}.get({$routeCall})";
 
             return "export function {$e['hookName']}({$sig}) {\n"
                 ."    return useQuery({\n"
                 ."        queryKey: {$key},\n"
                 ."        queryFn: async () => {\n"
-                ."            const res = await {$client}.get({$routeCall});\n"
+                ."            const res = await {$getCall};\n"
                 ."\n"
                 ."            return {$e['responseExpression']} as {$type};\n"
                 ."        },\n"
@@ -673,7 +771,9 @@ class TsClientGenerator implements Generator
             $body = $this->banner()
                 ."import { create } from 'zustand';\n"
                 ."import { {$client} } from '{$this->clientImport()}';\n"
-                ."import { {$routeFn} } from '{$this->routesImport()}';\n\n";
+                ."import { {$routeFn} } from '{$this->routesImport()}';\n"
+                .($this->hasReadInput($reads) ? "import { beamQuery } from '../query';\n" : '')
+                ."\n";
 
             foreach ($reads as $entry) {
                 $body .= $this->renderStore($entry, $client, $routeFn)."\n";
@@ -694,21 +794,30 @@ class TsClientGenerator implements Generator
         $storeName = $e['hookName'].'Store';
         $stateType = Str::studly(preg_replace('/^use/', '', $e['hookName'])).'State';
 
+        // A store read that declares an input takes it on `fetch` and serializes it into the URL via
+        // `beamQuery` (B1 r3). A read with no input keeps a no-argument `fetch` — byte-identical.
+        $input = $e['input'] ?? null;
+        $hasInput = is_string($input);
+        $fetchArg = $hasInput ? 'input: '.$this->typeReference($input) : '';
+        $getCall = $hasInput
+            ? "{$client}.get({$routeFn}('{$e['name']}') + beamQuery(input))"
+            : "{$client}.get({$routeFn}('{$e['name']}'))";
+
         return "type {$stateType} = {\n"
             ."    data: {$type} | null;\n"
             ."    loading: boolean;\n"
             ."    error: unknown;\n"
-            ."    fetch: () => Promise<void>;\n"
+            ."    fetch: ({$fetchArg}) => Promise<void>;\n"
             ."};\n\n"
             ."export const {$storeName} = create<{$stateType}>((set) => ({\n"
             ."    data: null,\n"
             ."    loading: false,\n"
             ."    error: null,\n"
-            ."    fetch: async () => {\n"
+            ."    fetch: async ({$fetchArg}) => {\n"
             ."        set({ loading: true, error: null });\n"
             ."\n"
             ."        try {\n"
-            ."            const res = await {$client}.get({$routeFn}('{$e['name']}'));\n"
+            ."            const res = await {$getCall};\n"
             ."            set({ data: {$e['responseExpression']} as {$type}, loading: false });\n"
             ."        } catch (error) {\n"
             ."            set({ error, loading: false });\n"

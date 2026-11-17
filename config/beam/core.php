@@ -489,6 +489,24 @@ return [
         ],
     ],
 
+    /*
+    | The ceiling on the derived graph read operations (graph-operations 02, D5). A resource whose
+    | backing implements {@see \Splicewire\Beam\Particle\Backing\GraphsRecords} gets four read operations
+    | (`graph`, `graph.cycles`, `graph.neighbours`, `graph.path`) without declaring them, and these are
+    | the limits every one of them enforces — depth of traversal and node count of the answer.
+    |
+    | They are a REFUSAL boundary, not a silent truncation (D5): a request that asks beyond a limit, or a
+    | scoped set too large to load within it, is refused with {@see \Splicewire\Beam\Graph\Data\GraphRefusalData}
+    | naming the limit, never quietly trimmed. The owner accepted this snapshot ceiling for the first
+    | version; a traverse-native driver that lifts it stays nominated (PLAN.md D5). A host tightens or
+    | loosens the two numbers; it does not turn the gate off, because an unbounded graph read is the
+    | failure mode the ceiling exists to deny.
+    */
+    'graph' => [
+        'max_depth' => (int) env('BEAM_CORE_GRAPH_MAX_DEPTH', 10),
+        'max_nodes' => (int) env('BEAM_CORE_GRAPH_MAX_NODES', 1000),
+    ],
+
     // 'media'         => [ ... ]   // (ticket 08)
     // 'hooks'         => [ ... ]   // (webhook / sitemap / doctor registries)
 

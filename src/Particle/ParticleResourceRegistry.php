@@ -27,6 +27,7 @@ use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Doctor\ParticleRouteResourceAudit;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
+use Splicewire\Beam\Graph\GraphOperations;
 use Splicewire\Beam\Localization\FrameText;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleResource as ParticleResourceAttribute;
@@ -469,6 +470,16 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegist
 
         $this->entries->register($resource->key, $resource, $by, $ability);
         $this->registerRealms($resource->key, $realms);
+
+        // graph-operations 02 (D3/D6): a resource whose backing graphs its records gets four derived read
+        // operations registered for its key, here at registration — a resource WITHOUT the capability gets
+        // none. The check is static ({@see BackingResolver::hasCapability()}), so this never resolves the
+        // backing. Guarded on the operation registry being bound: in a booted host it always is (both are
+        // container singletons the provider binds), and a bare unit test that constructs this registry
+        // without a container simply derives nothing — it is testing resource storage, not graph mounts.
+        if (app()->bound(ParticleOperationRegistry::class)) {
+            GraphOperations::deriveFor($resource, app(ParticleOperationRegistry::class));
+        }
 
         return $this;
     }

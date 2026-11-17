@@ -273,23 +273,34 @@ class ParticleRouteManifestSource implements RouteManifestSource
     }
 
     /**
-     * The input a write route accepts (tutorial-dx 03): an operation's own `input:` slot, or for a resource's
-     * `store`/`update` the resource's `input:` (both go through {@see ParticleController::parseInput()}). Null for
-     * a read, a destroy, an unregistered declaration, or an undeclared input.
+     * The input a route accepts (tutorial-dx 03): an OPERATION's own `input:` slot — on whatever method it
+     * mounts — or for a resource's `store`/`update` the resource's `input:` (both go through
+     * {@see ParticleController::parseInput()}). Null for a resource read/destroy, an unregistered
+     * declaration, or an undeclared input.
+     *
+     * ⚠️ An operation carries its declared input REGARDLESS of HTTP method (graph-operations 02 review B1).
+     * A GET operation's input is its query/params type, not a request body — the declaration says WHAT is
+     * accepted and the mount said WHERE (the axis). The generated client renders it accordingly: the read
+     * branch of {@see \Splicewire\Beam\Codegen\TsClientGenerator::renderHook()} types a read op's `input`
+     * and serializes it INTO THE URL as a query string — `api.get(route(name, params) + beamQuery(input))`
+     * — because the host contract's `api.get(url)` takes one argument and `route()` appends no query (r3).
+     * A read with no input class stays byte-identical; the write branch sends input as the body. So a GET
+     * op's `input:` reaches the client typed, which a read-anchored operation (the four graph reads) needs.
+     * A resource's own `store`/`update` stays method-gated below, so `index`/`show`/`destroy` carry no input.
      *
      * @return class-string|false|null
      */
     private function inputFor(Route $route, string $name): string|false|null
     {
-        if (! array_intersect($this->readMethods($route), ['POST', 'PUT', 'PATCH'])) {
-            return null;
-        }
-
         $resource = $route->defaults[ParticleOperationController::RESOURCE] ?? null;
         $operation = $route->defaults[ParticleOperationController::NAME] ?? null;
 
         if (is_string($resource) && is_string($operation)) {
             return $this->operations->find($resource, $operation)?->input;
+        }
+
+        if (! array_intersect($this->readMethods($route), ['POST', 'PUT', 'PATCH'])) {
+            return null;
         }
 
         $key = $route->defaults[ParticleController::RESOURCE] ?? null;
