@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Enums;
 
+use Schemastud\DataSchemas\Attributes\Title;
+use Schemastud\DataSchemas\Contracts\ProvidesEnumLabel;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
@@ -15,10 +17,20 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  *
  * Declared in `src/Enums`, beside the ladder's other enums, so a host's TypeScript tree reflects it (ADR-0245 §3).
  */
-#[TypeScript]
-enum ConfigOverrideOp: string
+#[TypeScript, Title('Config op')]
+enum ConfigOverrideOp: string implements ProvidesEnumLabel
 {
     case Set = 'set';
     case Null = 'null';
     case Unset = 'unset';
+
+    /** The case's rendered label (the user-facing-text convention: `<ns>::enums.C.cases.<Case>.label`). */
+    public function label(): string
+    {
+        return match ($this) {
+            self::Set => 'Set',
+            self::Null => 'Set to null',
+            self::Unset => 'Inherit',
+        };
+    }
 }

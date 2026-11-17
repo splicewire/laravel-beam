@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Data\Config;
 
+use Schemastud\DataSchemas\Attributes\Title;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Enums\ConfigOverrideOp;
@@ -15,7 +16,7 @@ use Splicewire\Beam\Enums\ConfigOverrideOp;
  * - `secret`, `set`, `setAt`: a secret says only whether it has a value and when it was written.
  * - `revision`: the store's revision id this pointer currently names (the address a version or a Release member keeps).
  */
-#[TypeScript]
+#[TypeScript, Title('Config override')]
 class ConfigOverrideData extends BeamData
 {
     public function __construct(

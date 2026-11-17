@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Data\Config;
 
+use Schemastud\DataSchemas\Attributes\Title;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Data\BeamData;
 
@@ -10,7 +11,7 @@ use Splicewire\Beam\Data\BeamData;
  * derived draft-pending flag"): the version numbers of the last saved draft (HEAD) and of the published version the
  * runtime applies. Null when the section has none. A draft is pending when the two differ.
  */
-#[TypeScript]
+#[TypeScript, Title('Config pins')]
 class ConfigPinsData extends BeamData
 {
     public function __construct(

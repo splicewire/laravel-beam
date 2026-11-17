@@ -24,9 +24,9 @@ final class ConfigSaveDraftInputData extends BeamData
         public string $root,
         #[Title('Key'), Description('The key as a JSON pointer below the root, such as /releases/review_required.')]
         public string $pointer,
-        #[Title('Op'), Description('set writes the value; null keeps an explicit null; unset inherits the value below.')]
+        #[Title('Op'), Description('Set writes the value; Set to null keeps an explicit null; Inherit removes this tier\'s value so the one below applies.')]
         public ConfigOverrideOp $op,
-        #[Title('Value'), Description('For set: the value as JSON, such as true, 30 or "text".')]
+        #[Title('Value'), Description('For Set: the value as JSON, such as true, 30 or "text".')]
         public ?string $value = null,
     ) {}
 

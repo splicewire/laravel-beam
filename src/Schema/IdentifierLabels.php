@@ -37,9 +37,21 @@ final class IdentifierLabels
     /** @return array<class-string, 'object'|'enum'> sorted by class */
     public function find(): array
     {
+        return $this->findFrom($this->roots());
+    }
+
+    /**
+     * {@see find()} from the given roots instead of the booted registries: the same walk and the same units, for a
+     * package that guards the classes ITS particles reach, whatever their namespace, without booting a host.
+     *
+     * @param  list<string>  $roots  op inputs/outputs and resource data/input classes
+     * @return array<class-string, 'object'|'enum'> sorted by class
+     */
+    public function findFrom(array $roots): array
+    {
         $found = [];
 
-        foreach ($this->reachable() as $class => $kind) {
+        foreach ($this->reachableFrom($roots) as $class => $kind) {
             if ($kind === 'enum') {
                 if (is_subclass_of($class, BackedEnum::class) && ! is_subclass_of($class, ProvidesEnumLabel::class)) {
                     $found[$class] = 'enum';
@@ -66,9 +78,18 @@ final class IdentifierLabels
      */
     public function reachable(): array
     {
+        return $this->reachableFrom($this->roots());
+    }
+
+    /**
+     * @param  list<string>  $roots
+     * @return array<class-string, 'data'|'enum'> sorted by class
+     */
+    public function reachableFrom(array $roots): array
+    {
         $reachable = [];
         $seen = [];
-        $queue = $this->roots();
+        $queue = $roots;
 
         while ($queue !== []) {
             $class = array_shift($queue);
