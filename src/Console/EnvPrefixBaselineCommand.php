@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Process;
 use Splicewire\Beam\Doctor\EnvPrefixAudit;
 use Splicewire\Beam\Doctor\Support\EnvPrefixCensus;
 
@@ -16,7 +17,9 @@ use Splicewire\Beam\Doctor\Support\EnvPrefixCensus;
  * - **First write captures.** With no baseline, every name in the package's config that breaks the rule today is
  *   grandfathered, which is the convention's ruling for existing names.
  * - **Later writes only shrink.** A name that is no longer read leaves; a non-conforming name that is not already in the
- *   baseline refuses the write and is named, because a new key takes its file's prefix rather than joining the list.
+ *   baseline refuses the write and is named, because a new key takes its file's prefix rather than joining the list. A
+ *   baseline git still tracks but the checkout lacks refuses too, so deleting the file cannot reopen the capture; past
+ *   that, the reviewed diff of the committed file is the guard.
  * - **Only into a package's own repository.** It writes for Composer's root package (run in the package's checkout),
  *   or, with `--package`, for an installed family package whose root resolves to a git checkout outside any `vendor/`
  *   directory (an overlay link). That is how a `rushing/*` or `schemastud/*` package, which does not install beam, gets
@@ -59,6 +62,13 @@ class EnvPrefixBaselineCommand extends Command
         $names = EnvPrefixCensus::unruled($scan['reads']);
         $existing = EnvPrefixCensus::baseline($root);
 
+        // Deleting a committed baseline must not reopen the first-write capture: that would let a new name join.
+        if ($existing === null && Process::path($root)->run(['git', 'ls-files', '--error-unmatch', EnvPrefixCensus::BASELINE])->successful()) {
+            $this->components->error(EnvPrefixCensus::BASELINE." is tracked in {$package}'s repository but missing from its checkout. Restore it (git checkout -- ".EnvPrefixCensus::BASELINE.') before writing: only a package that never had a baseline captures one.');
+
+            return self::FAILURE;
+        }
+
         if ($existing !== null) {
             $joining = array_values(array_diff($names, $existing));
 
@@ -84,7 +94,12 @@ class EnvPrefixBaselineCommand extends Command
             return self::SUCCESS;
         }
 
-        file_put_contents($path, $content);
+        if (file_put_contents($path, $content) === false) {
+            $this->components->error("Could not write {$path}.");
+
+            return self::FAILURE;
+        }
+
         $this->components->twoColumnDetail($package, sprintf('%s: %d name(s)%s', EnvPrefixCensus::BASELINE, count($names), $leaving !== [] ? ', removed '.implode(', ', $leaving) : ''));
 
         return self::SUCCESS;

@@ -93,6 +93,23 @@ class EnvPrefixBaselineCommandTest extends TestCase
         $this->assertSame(['LEGACY_WIDGET_MODE'], $this->written());
     }
 
+    public function test_deleting_a_tracked_baseline_does_not_reopen_the_capture(): void
+    {
+        $root = $this->packages['acme/widgets'];
+        $this->artisan('splicewire:beam:env-prefix-baseline', ['--write' => true])->assertSuccessful();
+        $git = static fn (string ...$args) => \Illuminate\Support\Facades\Process::path($root)->run(['git', ...$args])->throw();
+        $git('init', '-q');
+        $git('add', EnvPrefixCensus::BASELINE);
+        unlink($this->baseline);
+        $this->addRead("'fresh' => env('FRESH_KNOB'),");
+
+        $this->artisan('splicewire:beam:env-prefix-baseline', ['--write' => true])
+            ->expectsOutputToContain('tracked')
+            ->assertFailed();
+
+        $this->assertFileDoesNotExist($this->baseline);
+    }
+
     public function test_another_package_is_written_only_when_it_is_linked_from_its_own_git_checkout(): void
     {
         $gizmos = $this->packages['acme/gizmos'];

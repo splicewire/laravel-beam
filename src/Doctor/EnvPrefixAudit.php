@@ -16,7 +16,9 @@ use Splicewire\Beam\Doctor\Support\EnvPrefixCensus;
  *   ({@see EnvPrefixCensus::BASELINE}). A package without a baseline has every non-conforming name reported;
  * - **another package's prefix (warn):** the longest prefix an installed package's config file owns that the name
  *   starts with belongs to a different package (`COMMERCE_WEBHOOK_PATH` read by beam lands in the `COMMERCE_` that
- *   `rushing/laravel-commerce` owns). A grandfathered or third-party name is not reported here;
+ *   `rushing/laravel-commerce` owns). A grandfathered or third-party name is not reported here: grandfathering accepts
+ *   an existing name as it is (the convention renames one only when its config is already changing), so a package
+ *   whose baseline was just written reads clean. This is a reading of the ticket's scope 3, stated here;
  * - **two defaults (warn):** one name read by two packages whose `env()` defaults differ, so the value a host gets
  *   depends on which config it reads (`POPCORN_BUBBLE_ALLOW_UNSANDBOXED` is the specimen). The baseline does not
  *   silence this one: it is a behaviour difference, not a spelling;
@@ -105,8 +107,6 @@ class EnvPrefixAudit implements DoctorAudit
             $read[$name] = true;
 
             if (isset($listed[$name])) {
-                $counts['grandfathered']++;
-
                 continue;
             }
 
@@ -121,6 +121,7 @@ class EnvPrefixAudit implements DoctorAudit
             }
         }
 
+        $counts['grandfathered'] += count(array_intersect_key($listed, $read));
         $findings = [];
 
         if ($unruled !== []) {
@@ -180,7 +181,7 @@ class EnvPrefixAudit implements DoctorAudit
 
         foreach ($scans as $package => $scan) {
             foreach ($scan['reads'] as $entry) {
-                $default = $entry['binding']->default ?? '(no default)';
+                $default = $this->normalizedDefault($entry['binding']->default);
                 $where = $entry['file'].($entry['binding']->line !== null ? ':'.$entry['binding']->line : '');
                 $byName[$entry['binding']->name][$package][$default] ??= "{$package} {$where} → {$default}";
             }
@@ -205,6 +206,31 @@ class EnvPrefixAudit implements DoctorAudit
         }
 
         return $findings;
+    }
+
+    /**
+     * A default as compared across packages: no second argument is `null` (what `env()` returns then), the constants
+     * `true`/`false`/`null` are lowercased, and a plain string literal is single-quoted whichever quotes it was written
+     * with. Anything else (an expression, `1` against `true`) stays as printed, so it may still report a pair that
+     * behaves alike.
+     */
+    private function normalizedDefault(?string $default): string
+    {
+        if ($default === null) {
+            return 'null';
+        }
+
+        $lower = strtolower($default);
+
+        if (in_array($lower, ['true', 'false', 'null'], true)) {
+            return $lower;
+        }
+
+        if (preg_match('/^"([^"\\\\$\']*)"$/', $default, $match) === 1) {
+            return "'".$match[1]."'";
+        }
+
+        return $default;
     }
 
     /**

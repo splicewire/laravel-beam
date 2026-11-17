@@ -125,6 +125,23 @@ class EnvPrefixAuditTest extends TestCase
         $this->assertStringStartsWith('WIDGETS_SHARED is read by 2 packages with different defaults', $findings[0]->detail);
     }
 
+    public function test_defaults_that_differ_only_in_spelling_are_not_two_defaults(): void
+    {
+        $packages = $this->fixtures->copy('acme-widgets', 'acme-gizmos');
+        $gizmos = $packages['acme/gizmos'].'/config/gizmos.php';
+        file_put_contents($gizmos, str_replace("env('WIDGETS_SHARED', false)", "env('WIDGETS_SHARED', TRUE)", (string) file_get_contents($gizmos)));
+        $widgets = $packages['acme/widgets'].'/config/widgets.php';
+        file_put_contents($widgets, str_replace("env('LEGACY_WIDGET_MODE', 'a')", "env('LEGACY_WIDGET_MODE', \"a\")", (string) file_get_contents($widgets)));
+        file_put_contents($gizmos, str_replace("];\n", "    'mode' => env('LEGACY_WIDGET_MODE', 'a'),\n    'none' => env('GIZMOS_NONE'),\n];\n", (string) file_get_contents($gizmos)));
+        file_put_contents($widgets, str_replace("];\n", "    'none' => env('GIZMOS_NONE', null),\n];\n", (string) file_get_contents($widgets)));
+
+        $messages = $this->messages($this->audit($packages));
+
+        $this->assertStringNotContainsString('with different defaults', $messages);
+        // …the shared reads are still reported for their prefix, so the reads were seen.
+        $this->assertStringContainsString('WIDGETS_SHARED (config/gizmos.php:7; acme/widgets owns WIDGETS_)', $messages);
+    }
+
     public function test_a_baselined_name_that_is_no_longer_read_is_reported(): void
     {
         $packages = $this->fixtures->copy('acme-widgets');
