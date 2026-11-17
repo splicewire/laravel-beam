@@ -15,6 +15,7 @@ use Splicewire\Beam\Doctor\BeamManifestAudit;
 use Splicewire\Beam\Doctor\DashboardTierAudit;
 use Splicewire\Beam\Doctor\EventCatalogPrefixAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
+use Splicewire\Beam\Doctor\GraphSlotIntegrityAudit;
 use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
 use Splicewire\Beam\Doctor\McpIsolationAudit;
@@ -201,6 +202,14 @@ class BeamDoctorCommand extends Command
                 RelativeEdgeIntegrityAudit::class,
                 false,
                 fn (RelativeEdgeIntegrityAudit $audit) => $audit->run(),
+            ),
+            // graph-operations 04: every graph: slot names a table and columns its model has. Advisory like the
+            // edge audit above: a missing column fails the first graph read, and this names it from the schema first.
+            $this->guarded(
+                GraphSlotIntegrityAudit::class,
+                false,
+                // guarded() hands back an object; narrowing the closure's parameter type is not contravariant.
+                fn (object $audit): array => $audit instanceof GraphSlotIntegrityAudit ? $audit->run() : [],
             ),
             // A model-less resource declaring no read gate rests on app ADR-0119 §2's "the API layer still
             // enforces" — listed to every authenticated actor its realm admits, served on realm reach alone.

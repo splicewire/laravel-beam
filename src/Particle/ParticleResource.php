@@ -21,9 +21,12 @@ use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Filters\BeamResourceFilterProvider;
 use Splicewire\Beam\Frame\ParticleResourceActions;
+use Splicewire\Beam\Graph\Edges\GraphEdges;
+use Splicewire\Beam\Graph\EloquentGraphBacking;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\BindsResource;
 use Splicewire\Beam\Particle\Backing\EloquentBacking;
+use Splicewire\Beam\Particle\Backing\GraphsRecords;
 use Splicewire\Beam\Particle\Backing\ModelResourceIndex;
 use Splicewire\Beam\Particle\Backing\ResourceBacking;
 use Splicewire\Beam\Summary\BeamResourceSummaryProvider;
@@ -315,6 +318,14 @@ class ParticleResource implements HasRegistryKey
         public ?string $schemaRef = null,
         /** @var class-string|null Frame handler create result; null uses the read Data class. */
         public ?string $createResultData = null,
+        /**
+         * graph-operations 04 (D2): where a MODEL-backed resource's edges are — `new ParentEdge('parent_id')` or
+         * `new EdgeTable(…)`. Set, {@see backing()} supplies the {@see GraphsRecords} port over the resource's own
+         * list ({@see EloquentGraphBacking}) and the four graph read operations derive at registration. Null (the
+         * default) declares no graph. Refused at registration on a backing that is not one plain model
+         * ({@see assertGraphSlot()}).
+         */
+        public ?GraphEdges $graph = null,
     ) {}
 
     /**
@@ -337,9 +348,49 @@ class ParticleResource implements HasRegistryKey
     {
         $backing = (new BackingResolver)->resolve($this->backing);
 
+        // graph-operations 04: a declared `graph:` slot turns the plain model backing into the graph port over
+        // the same model. assertGraphSlot() refused every other backing at registration.
+        if ($this->graph !== null && $backing::class === EloquentBacking::class) {
+            $backing = new EloquentGraphBacking($backing->modelClass(), $this->graph);
+        }
+
         return $backing instanceof BindsResource
             ? $backing->forResource($this, $request ?? app(Request::class))
             : $backing;
+    }
+
+    /**
+     * Whether this resource graphs its records: its backing implements {@see GraphsRecords}, or it declares a
+     * `graph:` slot (graph-operations 04). Decided statically, so registration never resolves the backing.
+     */
+    public function graphsRecords(): bool
+    {
+        return $this->graph !== null || (new BackingResolver)->hasCapability($this->backing, GraphsRecords::class);
+    }
+
+    /**
+     * A `graph:` slot is for a resource backed by ONE plain Eloquent model (the class-string form, or an
+     * {@see EloquentBacking} instance). Any other backing implements {@see GraphsRecords} itself (ticket 01), so
+     * a slot beside it is refused here, at registration, rather than silently ignored.
+     */
+    public function assertGraphSlot(): void
+    {
+        if ($this->graph === null) {
+            return;
+        }
+
+        $plainModel = is_string($this->backing)
+            ? ! is_a($this->backing, ResourceBacking::class, true)
+            : $this->backing::class === EloquentBacking::class;
+
+        if (! $plainModel) {
+            $name = is_string($this->backing) ? $this->backing : $this->backing::class;
+            $why = (new BackingResolver)->hasCapability($this->backing, GraphsRecords::class)
+                ? 'it already implements '.GraphsRecords::class.', so the slot would be a second graph'
+                : 'a backing class declares its graph by implementing '.GraphsRecords::class;
+
+            throw new \InvalidArgumentException("Resource [{$this->key}] declares graph: on backing [{$name}], which is not one Eloquent model: {$why}.");
+        }
     }
 
     /**

@@ -160,7 +160,9 @@ class AttributeCarryParityTest extends TestCase
                 property_exists($resource, $name),
                 "the resource registration no longer exposes \${$name}; carry it, or add a documented expectation",
             );
-            $this->assertSame(
+            // An object value (`graph: new ParentEdge(…)`) is a fresh instance on every newInstance(): carried means
+            // equal, never identical. Every scalar, array and class-string value is still compared by identity.
+            $this->{is_object($declared) ? 'assertEquals' : 'assertSame'}(
                 $declared,
                 $resource->{$name},
                 "#[ParticleResource] \${$name} was declared but did not arrive on the registration — the carry list dropped it",
@@ -230,6 +232,8 @@ class CarryFixtureOp
     summaryProvider: CarryFixtureProvider::class,
     schemaRef: 'carry/fixture',
     createResultData: CarryFixtureOutput::class,
+    // graph-operations 04: the backing above is a plain model, so the slot is legal here.
+    graph: new \Splicewire\Beam\Graph\Edges\ParentEdge('parent_id', label: 'name'),
     filterable: true,
     publicRead: 'carry-public-read',
 )]

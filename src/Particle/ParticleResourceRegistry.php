@@ -466,6 +466,9 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegist
             'deletable' => $resource->deletable ?? ! $resource->readOnly,
         ]);
 
+        // graph-operations 04: a graph: slot is for one plain model; any other backing implements the port itself.
+        $resource->assertGraphSlot();
+
         (new SchemaBindingIndex($this))->assertCanRegister($resource);
 
         $this->entries->register($resource->key, $resource, $by, $ability);

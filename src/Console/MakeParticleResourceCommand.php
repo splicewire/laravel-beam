@@ -7,7 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Schemastud\Frame\Registry\ContextManifest;
+use Splicewire\Beam\Doctor\GraphSlotIntegrityAudit;
 use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Graph\Edges\EdgeTable;
+use Splicewire\Beam\Graph\Edges\GraphEdges;
+use Splicewire\Beam\Graph\Edges\ParentEdge;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Surgeon\UnseatedNavSectionAudit;
 use Symfony\Component\Console\Input\InputOption;
@@ -50,6 +54,13 @@ use Throwable;
  *   {@see \Splicewire\Beam\Nav\NavSectionRegistry} or authored by hand, the same reading
  *   {@see UnseatedNavSectionAudit} uses — it warns and prints a registration line. When a hand-authored navigation
  *   cannot be read here, it says "unknown" instead. Seating is the host's decision.
+ *
+ * ## `--graph=` declares a model-backed resource's edges (graph-operations 04)
+ * `--graph=parent:<column>` writes `graph: new ParentEdge('<column>')`; `--graph=edges:<table>,<from>,<to>[,<type>[,<weight>]]`
+ * writes `graph: new EdgeTable(…)`; `--graph-label=<column>` adds the label column either way. It needs `--model`: the slot is
+ * for one plain model. The check reads the slot back from the discovered declaration and asks the schema, through
+ * {@see GraphSlotIntegrityAudit::problemsFor()}, whether every table and column it names exists, so a slot naming a
+ * column the model lacks fails the run.
  *
  * ## What it deliberately does NOT do
  * It does not mount a route. Routing is a host concern by design (`Particle::mount($uri, $key)`) —
@@ -145,6 +156,23 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
         }
         if (! $this->option('read-only') && ! $model && $this->option('public')) {
             $this->components->error(($ownership === 'actor' ? 'Actor-owned' : 'Shared').' storage has no Public Read. Use --model for a deliberately public model-backed resource.');
+
+            return self::FAILURE;
+        }
+        if ($this->option('graph') !== null) {
+            if (! $model) {
+                $this->components->error('--graph declares a model-backed resource\'s edges; select the model with --model.');
+
+                return self::FAILURE;
+            }
+
+            if ($this->graphEdges() === null) {
+                $this->components->error('--graph must be parent:<column> or edges:<table>,<from>,<to>[,<type>[,<weight>]].');
+
+                return self::FAILURE;
+            }
+        } elseif ($this->option('graph-label') !== null) {
+            $this->components->error('--graph-label names the label column of a --graph slot; add --graph.');
 
             return self::FAILURE;
         }
@@ -264,6 +292,14 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
                 || $resource->readPolicy !== \Splicewire\Beam\Particle\Backing\SharedParticleAccess::class)) {
             $findings[] = 'Shared particle storage must declare its write ability and SharedParticleAccess read policy.';
         }
+        $graph = $this->graphEdges();
+        if ($graph !== null) {
+            if ($resource?->graph === null || $resource->graph->describe() !== $graph->describe()) {
+                $findings[] = sprintf('The emitted resource must declare graph: %s, as --graph asked.', $graph->describe());
+            } else {
+                array_push($findings, ...GraphSlotIntegrityAudit::problemsFor($resource));
+            }
+        }
         $block = (new ContextManifest)->forResource($read);
         $hasColumn = false;
         foreach ($block['byNode'] as $contexts) {
@@ -274,6 +310,39 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
         }
 
         return $findings;
+    }
+
+    /**
+     * The edge declaration `--graph=` (and `--graph-label=`) asks for, or null when none is asked or the value does not parse.
+     */
+    protected function graphEdges(): ?GraphEdges
+    {
+        $graph = $this->option('graph');
+        if (! is_string($graph) || ! str_contains($graph, ':')) {
+            return null;
+        }
+
+        $label = $this->option('graph-label');
+        $label = is_string($label) && $label !== '' ? $label : null;
+        [$kind, $spec] = explode(':', $graph, 2);
+        $parts = array_map('trim', explode(',', $spec));
+
+        if (in_array('', array_slice($parts, 0, 3), true)) {
+            return null;
+        }
+
+        return match (true) {
+            $kind === 'parent' && count($parts) === 1 => new ParentEdge($parts[0], label: $label),
+            $kind === 'edges' && count($parts) >= 3 && count($parts) <= 5 => new EdgeTable(
+                $parts[0],
+                from: $parts[1],
+                to: $parts[2],
+                type: ($parts[3] ?? '') !== '' ? $parts[3] : null,
+                weight: ($parts[4] ?? '') !== '' ? $parts[4] : null,
+                label: $label,
+            ),
+            default => null,
+        };
     }
 
     protected function modelInputMapping(): string
@@ -329,6 +398,7 @@ PHP;
             'inputNote' => $readOnly ? '`false`: this resource accepts no writes' : 'the write DTO '.class_basename($this->inputClass),
             'readOnly' => $readOnly ? 'true' : 'false',
             'publicRead' => $this->option('public') ? $readClass.'::class' : 'null',
+            'graphLine' => ($graph = $this->graphEdges()) !== null ? sprintf("    graph: %s,\n", $graph->describe()) : '',
             'sectionLine' => is_string($section = $this->option('section')) && $section !== ''
                 ? sprintf("    section: '%s',\n", $section)
                 : '',
@@ -580,6 +650,8 @@ PHP;
             ['cascade-policy', null, InputOption::VALUE_NONE, 'Print the #[UseCascadePolicy] attribute and its registrar call for the model (the generator never edits an authored model)'],
             ['section', null, InputOption::VALUE_REQUIRED, 'Declare the resource\'s section:, and warn (with a registration line) when no NavSection seats it here'],
             ['read-only', null, InputOption::VALUE_NONE, 'Declare a read-only resource (readOnly: true, input: false) and emit no write DTO; a bare mount then mounts index and show'],
+            ['graph', null, InputOption::VALUE_REQUIRED, 'Declare the model-backed resource\'s edges (graph-operations 04): parent:<column>, or edges:<table>,<from>,<to>[,<type>[,<weight>]]. Needs --model'],
+            ['graph-label', null, InputOption::VALUE_REQUIRED, 'The column a graph node\'s label is read from (with --graph); the id when omitted'],
             ['public', null, InputOption::VALUE_NONE, 'Declare the read class as the Public Read (publicRead: <Name>Data::class): a guest may read every field it projects'],
         ];
     }

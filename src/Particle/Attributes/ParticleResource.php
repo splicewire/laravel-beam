@@ -7,6 +7,7 @@ use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\ResourceFilterProvider;
 use Schemastud\Frame\Contracts\ResourceSummaryProvider;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
+use Splicewire\Beam\Graph\Edges\GraphEdges;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -145,6 +146,12 @@ class ParticleResource
         public ?string $schemaRef = null,
         /** @var class-string|null Frame handler create result; null uses the read Data class. */
         public ?string $createResultData = null,
+        /**
+         * graph-operations 04: where a model-backed resource's edges are, `graph: new ParentEdge('parent_id')` or
+         * `graph: new EdgeTable(…)` (an attribute argument may be a `new` expression). Carried verbatim onto
+         * {@see \Splicewire\Beam\Particle\ParticleResource::$graph}.
+         */
+        public ?GraphEdges $graph = null,
         /**
          * @deprecated Removed by aeee2b2 (2026-09-22): filtering derives from declarations. Accepted and
          * ignored for one release so an extension built before it (beam-extension-demo v1.0.0/v2.0.0)

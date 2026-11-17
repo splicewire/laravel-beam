@@ -10,7 +10,6 @@ use Splicewire\Beam\Graph\Data\GraphPathInput;
 use Splicewire\Beam\Graph\Data\GraphRefusalData;
 use Splicewire\Beam\Graph\Data\GraphSliceData;
 use Splicewire\Beam\Graph\Data\GraphSliceInput;
-use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\GraphsRecords;
 use Splicewire\Beam\Particle\OperationCall;
 use Splicewire\Beam\Particle\OperationKind;
@@ -59,7 +58,8 @@ class GraphOperations
      */
     public static function deriveFor(ParticleResource $resource, ParticleOperationRegistry $operations): void
     {
-        if (! (new BackingResolver)->hasCapability($resource->backing, GraphsRecords::class)) {
+        // The capability, or (graph-operations 04) a `graph:` slot that supplies it over the resource's model.
+        if (! $resource->graphsRecords()) {
             return;
         }
 

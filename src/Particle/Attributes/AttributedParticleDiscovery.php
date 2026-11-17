@@ -202,6 +202,7 @@ class AttributedParticleDiscovery
             summaryProvider: $attribute->summaryProvider,
             schemaRef: $attribute->schemaRef,
             createAffordance: $attribute->createAffordance,
+            graph: $attribute->graph,
         );
     }
 
