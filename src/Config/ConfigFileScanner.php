@@ -12,6 +12,7 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
 use PhpParser\ParserFactory;
+use PhpParser\PrettyPrinter\Standard;
 use Throwable;
 
 /**
@@ -87,6 +88,52 @@ class ConfigFileScanner
         }
 
         return $bindings;
+    }
+
+    /**
+     * Every `env()` call in a config file, wherever it sits (env-inventory 02's prefix audit): not only the first call
+     * feeding a literal key, as {@see scan()} maps them, but nested calls, calls under computed keys and calls outside
+     * the returned array too. Each carries its line and its default as printed source. A call whose name is computed is
+     * counted, not guessed. Null when the file is absent or does not parse.
+     *
+     * @return array{reads: list<ConfigEnvBinding>, dynamic: int}|null
+     */
+    public function envReads(string $file): ?array
+    {
+        if (! is_file($file)) {
+            return null;
+        }
+
+        try {
+            $statements = (new ParserFactory)->createForNewestSupportedVersion()->parse((string) file_get_contents($file)) ?? [];
+        } catch (Throwable) {
+            return null;
+        }
+
+        $printer = new Standard;
+        $reads = [];
+        $dynamic = 0;
+
+        foreach ((new NodeFinder)->find($statements, fn (Node $node): bool => $node instanceof FuncCall && $node->name instanceof Name && strtolower($node->name->toString()) === 'env') as $call) {
+            $name = $this->envName($call);
+
+            if ($name === null) {
+                $dynamic++;
+
+                continue;
+            }
+
+            /** @var FuncCall $call */
+            $default = $call->args[1] ?? null;
+            $reads[] = new ConfigEnvBinding(
+                name: $name,
+                file: $file,
+                line: $call->getStartLine(),
+                default: $default instanceof Arg ? $printer->prettyPrintExpr($default->value) : null,
+            );
+        }
+
+        return ['reads' => $reads, 'dynamic' => $dynamic];
     }
 
     private function envCall(Node $value): ?ConfigEnvBinding
