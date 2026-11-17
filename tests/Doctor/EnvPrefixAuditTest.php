@@ -91,7 +91,7 @@ class EnvPrefixAuditTest extends TestCase
         $this->assertCount(1, $findings, $this->messages($findings));
         $this->assertSame(DoctorStatus::Fail, $findings[0]->status);
         $this->assertStringContainsString('LEGACY_WIDGET_MODE (config/widgets.php:8)', $findings[0]->detail);
-        $this->assertStringContainsString('splicewire:beam:env-prefix-baseline --write', $findings[0]->detail);
+        $this->assertStringContainsString('splicewire:beam:env-prefix-baseline --package=acme/widgets --write', $findings[0]->detail);
         // Its own prefix, a nested file's own prefix and a declared third-party name all conform.
         $this->assertStringNotContainsString('WIDGETS_', $findings[0]->detail);
         $this->assertStringNotContainsString('STRIPE_SECRET', $findings[0]->detail);

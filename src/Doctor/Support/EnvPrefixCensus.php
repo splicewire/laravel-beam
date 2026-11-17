@@ -99,7 +99,7 @@ class EnvPrefixCensus
     public static function renderBaseline(string $package, array $names): string
     {
         return "# {$package}: env names grandfathered by the env entries convention (docs/conventions/env-entries.md).\n"
-            ."# Written by `php artisan splicewire:beam:env-prefix-baseline --write`; a name may leave this list, never join it.\n"
+            ."# Written by `php artisan splicewire:beam:env-prefix-baseline --package={$package} --write`; a name may leave this list, never join it.\n"
             .implode('', array_map(static fn (string $name): string => $name."\n", $names));
     }
 

@@ -130,7 +130,7 @@ class EnvPrefixAudit implements DoctorAudit
                 $package,
                 count($unruled),
                 $baseline === null
-                    ? 'it has no '.EnvPrefixCensus::BASELINE.' (`php artisan splicewire:beam:env-prefix-baseline --write` in its own checkout captures today\'s names)'
+                    ? 'it has no '.EnvPrefixCensus::BASELINE.' (in a host that links it from its own checkout, `php artisan splicewire:beam:env-prefix-baseline --package='.$package.' --write` captures today\'s names)'
                     : 'are not in its '.EnvPrefixCensus::BASELINE,
                 $this->listed(array_values($unruled)),
             ));
@@ -149,11 +149,12 @@ class EnvPrefixAudit implements DoctorAudit
 
         if ($stale !== []) {
             $findings[] = Finding::warn(self::CHECK, sprintf(
-                '%s: %d name(s) in its %s are no longer read by its config: %s. Shrink it with `php artisan splicewire:beam:env-prefix-baseline --write` in its own checkout.',
+                '%s: %d name(s) in its %s are no longer read by its config: %s. Shrink it in a host that links it from its own checkout: `php artisan splicewire:beam:env-prefix-baseline --package=%s --write`.',
                 $package,
                 count($stale),
                 EnvPrefixCensus::BASELINE,
                 $this->listed($stale),
+                $package,
             ));
         }
 

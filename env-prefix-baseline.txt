@@ -1,0 +1,7 @@
+# splicewire/laravel-beam: env names grandfathered by the env entries convention (docs/conventions/env-entries.md).
+# Written by `php artisan splicewire:beam:env-prefix-baseline --package=splicewire/laravel-beam --write`; a name may leave this list, never join it.
+BEAM_CONFIG_OVERRIDES_CACHE_STORE
+BEAM_CONFIG_OVERRIDES_RECHECK_SECONDS
+BEAM_REGISTRY_CONFORMANCE_ARTIFACT
+BEAM_TRACKER_PATH
+BEAM_UNDECLARED_SURFACE_ARTIFACT

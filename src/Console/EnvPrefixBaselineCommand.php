@@ -20,10 +20,12 @@ use Splicewire\Beam\Doctor\Support\EnvPrefixCensus;
  *   baseline refuses the write and is named, because a new key takes its file's prefix rather than joining the list. A
  *   baseline git still tracks but the checkout lacks refuses too, so deleting the file cannot reopen the capture; past
  *   that, the reviewed diff of the committed file is the guard.
- * - **Only into a package's own repository.** It writes for Composer's root package (run in the package's checkout),
- *   or, with `--package`, for an installed family package whose root resolves to a git checkout outside any `vendor/`
- *   directory (an overlay link). That is how a `rushing/*` or `schemastud/*` package, which does not install beam, gets
- *   its baseline. A vendor copy refuses: the file is committed where the package is developed.
+ * - **Only into a package's own repository.** The usual run is in a host that links the package from its own checkout:
+ *   `--package=<name>` writes for an installed family package whose root resolves to a git checkout outside any
+ *   `vendor/` directory (an overlay link). That covers beam itself, whose package checkout has no Testbench workbench
+ *   to run commands in, and the `rushing/*` and `schemastud/*` packages, which do not install beam. Without
+ *   `--package` it writes for Composer's root package. A vendor copy refuses: the file is committed where the package
+ *   is developed.
  */
 class EnvPrefixBaselineCommand extends Command
 {

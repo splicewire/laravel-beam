@@ -63,7 +63,7 @@ class EnvPrefixBaselineCommandTest extends TestCase
         $this->artisan('splicewire:beam:env-prefix-baseline', ['--write' => true])->assertSuccessful();
 
         $this->assertSame(['LEGACY_WIDGET_MODE'], $this->written());
-        $this->assertStringContainsString('splicewire:beam:env-prefix-baseline --write', (string) file_get_contents($this->baseline));
+        $this->assertStringContainsString('splicewire:beam:env-prefix-baseline --package=acme/widgets --write', (string) file_get_contents($this->baseline));
 
         $widgetsOnly = new EnvPrefixAudit(new EnvPrefixCensus(['acme/widgets' => $this->packages['acme/widgets']], 'acme/widgets'));
         $this->assertSame(['pass'], array_map(fn ($finding): string => $finding->status->value, $widgetsOnly->run()));
