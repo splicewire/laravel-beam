@@ -5,6 +5,7 @@ namespace Splicewire\Beam;
 use Closure;
 use Composer\Autoload\ClassLoader;
 use Illuminate\Auth\Middleware\Authenticate;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
@@ -1319,9 +1320,24 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      * from THREE hooks, each keyed by the one published-version counter, so a publish reaches the next request, job and
      * command with no deploy and no restart:
      *
-     * - an `$app->booted()` callback, so a console command (and a worker's boot) starts on the published values;
+     * - a `CommandStarting` listener, so a console command (a queue worker and the scheduler among them) starts on the
+     *   published values;
      * - global middleware ({@see ApplyConfigOverrides}), prepended so routing and the session read them;
      * - a `JobProcessing` listener, so a long-lived worker re-applies before its next job when the counter moved.
+     *
+     * Boot itself reads nothing (config-sections 05b, qitem-20261118065332-ac9fb949): the operator tier lives on the
+     * NAMED `central` connection, and resolving it at boot makes and caches its PDO on whatever env says before a host
+     * (a TestCase pinning central to its test database) can repoint it. Every hook runs after boot, on the connection
+     * as the host left it. An application that boots and runs no command, request or job (a bare test application)
+     * reads the package and host tiers until its first sync.
+     *
+     * Two limits follow from the command hook. Laravel routes Symfony's console events to `CommandStarting` only when
+     * `runningUnitTests()` is false, which is `APP_ENV !== 'testing'` (Foundation\Application::runningUnitTests()). So
+     * a command run under APP_ENV=testing, a real `php artisan` run included, does not sync at its start; its requests
+     * and jobs still do (the middleware, `JobProcessing`). And an object a command builds BEFORE `CommandStarting` (a
+     * constructor injection, such as `queue:work`'s Worker and its cache repository) keeps the config it was built
+     * with, without the operator tier, until the process restarts. Config read on each use, as each job does, is not
+     * affected.
      *
      * None of them can fail boot or a request ({@see ConfigOverlay::sync()}): a counter cache that cannot be read is
      * skipped and the published layer read uncached, so the operator tier still applies; only an override store that
@@ -1329,12 +1345,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      */
     protected function bootConfigOverrides(): void
     {
-        // `config:cache` (and `optimize`, which runs it) builds a FRESH application and caches its configuration;
-        // applying the operator tier there would bake runtime overrides into the cached file. The cache holds the package
-        // and host tiers only, and the overlay applies on top at runtime ({@see ConfigOverlay::cachesConfiguration()}).
-        $this->app->booted(static function ($app): void {
+        // `config:cache` (and `optimize`, which runs it) builds a FRESH application and caches its configuration; that
+        // application boots and runs no command, so no hook applies the operator tier into the cached file. The guard
+        // keeps the caching process itself off the store too ({@see ConfigOverlay::cachesConfiguration()}).
+        Event::listen(CommandStarting::class, static function (): void {
             if (! ConfigOverlay::cachesConfiguration()) {
-                $app->make(ConfigOverlay::class)->sync();
+                app(ConfigOverlay::class)->sync();
             }
         });
 

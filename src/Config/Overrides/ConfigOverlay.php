@@ -138,8 +138,9 @@ class ConfigOverlay
 
     /**
      * Whether this process is caching the configuration (`config:cache`, or `optimize`, which runs it). Laravel builds
-     * a fresh application for the cache and boots it, so the booted hook would otherwise apply the operator tier inside
-     * it; the cached file must hold the package and host tiers only, with the overlay applied on top at runtime.
+     * a fresh application for the cache and boots it; that application runs no command, so no hook applies the operator
+     * tier inside it, and this guard keeps the caching command's own start off the store (config-sections 05b). The
+     * cached file holds the package and host tiers only, with the overlay applied on top at runtime.
      */
     public static function cachesConfiguration(): bool
     {

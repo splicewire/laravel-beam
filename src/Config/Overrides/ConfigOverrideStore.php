@@ -55,9 +55,9 @@ class ConfigOverrideStore
 
     /**
      * The section schema and the acceptance gate are resolved on first VALIDATION, never at construction. The overlay
-     * builds this store on every boot ({@see ConfigOverlay::sync()} from the provider's `booted()` hook), and reading the
-     * published layers needs neither. Resolving them eagerly built the Schemastud `Generator` chain in every boot,
-     * including boots that register only some providers, where `Generator` (an interface) has no binding.
+     * builds this store on a process's first sync ({@see ConfigOverlay::sync()}, at a command start, a request or a job),
+     * and reading the published layers needs neither. Resolving them eagerly built the Schemastud `Generator` chain in
+     * every process, including boots that register only some providers, where `Generator` (an interface) has no binding.
      */
     public function __construct(
         protected ConfigSectionRegistry $sections,

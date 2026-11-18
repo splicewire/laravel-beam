@@ -4,10 +4,14 @@ namespace Splicewire\Beam\Tests\Config;
 
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Cache\Store;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
+use Illuminate\Http\Request;
 use Illuminate\Support\Env;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Facade;
@@ -17,11 +21,16 @@ use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\Overrides\ConfigOverlay;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideCounter;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
+use Splicewire\Beam\Http\Middleware\ApplyConfigOverrides;
 use Splicewire\Beam\Tests\Fixtures\Config\PanelsSection;
 use Splicewire\Beam\Tests\TestCase;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\NullOutput;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
- * config-sections ticket 05: a console command sees a published override at boot; an unreadable counter cache is skipped
+ * config-sections ticket 05: a console command sees a published override from its start (05b: boot itself touches no
+ * connection, so a host can repoint `central` after boot); an unreadable counter cache is skipped
  * and the published layer read uncached (root ruling df42bf60); an unreachable store falls back to the package and host
  * tiers; neither ever fails boot; `config:cache` caches the package and host tiers
  * only and boots unchanged. The store lives in a FILE SQLite database here, so a second application booted in the
@@ -36,6 +45,15 @@ class ConfigOverrideBootTest extends TestCase
     /** The temp file this test made, removed in tearDown even after a test points the store elsewhere. */
     private static string $file;
 
+    /**
+     * config-sections 05b: where `central` points WHILE the next application boots, as a host's env points it before its
+     * TestCase pins central to the test database; null means the test's own database. Removed in tearDown.
+     */
+    private static ?string $bootCentral = null;
+
+    /** config-sections 05b: `unreachable` boots the next application on a counter cache whose every read throws. */
+    private static ?string $bootCacheStore = null;
+
     protected function defineEnvironment($app): void
     {
         parent::defineEnvironment($app);
@@ -43,8 +61,19 @@ class ConfigOverrideBootTest extends TestCase
         $app['config']->set('database.default', 'testing');
         $connection = ['driver' => 'sqlite', 'database' => self::$database, 'prefix' => '', 'foreign_key_constraints' => false];
         $app['config']->set('database.connections.testing', $connection);
-        $app['config']->set('database.connections.central', $connection);
+        $app['config']->set('database.connections.central', self::$bootCentral === null ? $connection : ['database' => self::$bootCentral] + $connection);
         $app['config']->set('cache.default', 'array');
+
+        if (self::$bootCacheStore === 'unreachable') {
+            $extend = fn ($cache) => $cache->extend('unreachable', fn () => new Repository(new UnreachableCacheStore));
+            $app->afterResolving('cache', $extend);
+            if ($app->resolved('cache')) {
+                $extend($app['cache']);
+            }
+            $app['config']->set('cache.stores.unreachable', ['driver' => 'unreachable']);
+            $app['config']->set('beam.core.config_overrides.cache_store', 'unreachable');
+        }
+
         $app['config']->set('panels', array_merge(require self::FIXTURES.'/package/panels.php', require self::FIXTURES.'/host/panels.php'));
     }
 
@@ -73,6 +102,32 @@ class ConfigOverrideBootTest extends TestCase
         if (is_file(self::$file)) {
             unlink(self::$file);
         }
+        if (self::$bootCentral !== null && is_file(self::$bootCentral)) {
+            unlink(self::$bootCentral);
+        }
+        self::$bootCentral = self::$bootCacheStore = null;
+    }
+
+    /**
+     * config-sections 05b (qitem-20261118065332-ac9fb949): boot the next application with `central` on ANOTHER, empty
+     * database (as env's DB_DATABASE gives it), pin central to the test's database the way a host TestCase does after
+     * boot, and hand the application to `$use`.
+     *
+     * @return array{0: list<string>, 1: mixed} [the connections boot resolved, what `$use` returned]
+     */
+    private function bootThenPinCentral(callable $use): array
+    {
+        $pinned = self::$database;
+        $stem = tempnam(sys_get_temp_dir(), 'beam-config-envdb-');
+        @unlink($stem);
+        touch(self::$bootCentral = $stem.'.sqlite');
+
+        return $this->inAnotherProcess(function ($app) use ($pinned, $use): array {
+            $atBoot = array_keys($app['db']->getConnections());
+            $app['config']->set('database.connections.central.database', $pinned);
+
+            return [$atBoot, $use($app)];
+        });
     }
 
     private function publishTitle(string $title): void
@@ -81,15 +136,33 @@ class ConfigOverrideBootTest extends TestCase
         app(ConfigOverrideStore::class)->publish('panels');
     }
 
-    /** Boot a second application (the next console command), read one key, and put the test's application back. */
+    /** Boot a second application, start a console command in it (the next command), read one key, and put the test's application back. */
     private function bootAnotherProcess(string $key): mixed
     {
-        $app = $this->createApplication();
-        $value = $app['config']->get($key);
-        Container::setInstance($this->app);
-        Facade::setFacadeApplication($this->app);
+        return $this->inAnotherProcess(function ($app) use ($key): mixed {
+            $this->startCommand($app);
 
-        return $value;
+            return $app['config']->get($key);
+        });
+    }
+
+    /**
+     * Start a console command in `$app`. `$viaArtisan` runs one as `php artisan` does: Laravel routes Symfony's console
+     * events to `CommandStarting` only when `runningUnitTests()` is false (`Kernel::__construct`; APP_ENV !== 'testing'),
+     * so the route is laid here, as a console process outside APP_ENV=testing lays it at boot. Otherwise the `CommandStarting` that route emits is
+     * dispatched directly (testbench's cached-config boot cannot resolve artisan's own commands).
+     */
+    private function startCommand($app, bool $viaArtisan = false): void
+    {
+        if (! $viaArtisan) {
+            $app['events']->dispatch(new CommandStarting('env', new ArrayInput([]), new NullOutput));
+
+            return;
+        }
+
+        $kernel = $app->make(ConsoleKernel::class);
+        $kernel->rerouteSymfonyCommandEvents();
+        $kernel->call('env');
     }
 
     /** Boot a second application, hand it to `$read`, and put the test's application back. */
@@ -170,12 +243,13 @@ class ConfigOverrideBootTest extends TestCase
     {
         $this->publishTitle('From the operator');
 
-        [$value, $base] = $this->inAnotherProcess(fn ($app): array => [
-            $app['config']->get('panels.title'),
-            $app->make(ConfigOverlay::class)->base('panels')['title'] ?? null,
-        ]);
+        [$value, $base] = $this->inAnotherProcess(function ($app): array {
+            $this->startCommand($app);
 
-        $this->assertSame('From the operator', $value, 'the console boot applied the override');
+            return [$app['config']->get('panels.title'), $app->make(ConfigOverlay::class)->base('panels')['title'] ?? null];
+        });
+
+        $this->assertSame('From the operator', $value, 'the console command applied the override');
         $this->assertSame('Panels', $base, 'its base was captured before that apply');
     }
 
@@ -307,6 +381,79 @@ class ConfigOverrideBootTest extends TestCase
         $this->assertSame('Two', config('panels.title'), 'and the stale cache does not take it back');
     }
 
+    /**
+     * config-sections 05b: booting beam resolves no `central` connection (its PDO would be made, and cached, on whatever
+     * env says before a host TestCase pins central), and the first console command reads central as the host pinned it.
+     */
+    public function test_boot_resolves_no_central_connection_and_the_first_command_reads_the_pinned_central(): void
+    {
+        $this->publishTitle('From the operator');
+
+        [$atBoot, $title] = $this->bootThenPinCentral(function ($app): mixed {
+            $this->startCommand($app, viaArtisan: true);
+
+            return $app['config']->get('panels.title');
+        });
+
+        $this->assertNotContains('central', $atBoot, 'boot resolved central: '.implode(', ', $atBoot));
+        $this->assertSame('From the operator', $title, 'the first command applied the override from the pinned central');
+    }
+
+    /**
+     * config-sections 05b, the disclosed behaviour change, pinned: a bare unit-test application does NOT apply the
+     * operator tier at boot, and `Artisan::call` inside a unit test does NOT apply it either (Laravel routes Symfony's
+     * console events to `CommandStarting` only when `runningUnitTests()` is false, i.e. APP_ENV !== 'testing', so any
+     * command under APP_ENV=testing, a real `php artisan` run included, skips it); the first request sync applies it,
+     * as a job's does.
+     */
+    public function test_a_bare_unit_test_app_and_an_artisan_call_in_it_apply_no_operator_tier_until_a_request_sync(): void
+    {
+        $this->publishTitle('From the operator');
+
+        [$booted, $afterArtisanCall, $afterRequest] = $this->inAnotherProcess(function ($app): array {
+            $booted = $app['config']->get('panels.title');
+            Artisan::call('env');
+            $afterArtisanCall = $app['config']->get('panels.title');
+            (new ApplyConfigOverrides)->handle(Request::create('/'), fn (): Response => new Response(''));
+
+            return [$booted, $afterArtisanCall, $app['config']->get('panels.title')];
+        });
+
+        $this->assertSame('Panels', $booted, 'a bare unit-test boot reads the package and host tiers');
+        $this->assertSame('Panels', $afterArtisanCall, 'an Artisan::call inside a unit test fires no CommandStarting, so no sync');
+        $this->assertSame('From the operator', $afterRequest, 'the first request sync applies the operator tier');
+    }
+
+    /** config-sections 05b: 05's next-request behaviour is unchanged after a boot that touched no connection. */
+    public function test_boot_resolves_no_central_connection_and_the_first_request_reads_the_pinned_central(): void
+    {
+        $this->publishTitle('From the operator');
+
+        [$atBoot, $title] = $this->bootThenPinCentral(fn ($app): string => (new ApplyConfigOverrides)
+            ->handle(Request::create('/'), fn (): Response => new Response((string) $app['config']->get('panels.title')))
+            ->getContent());
+
+        $this->assertNotContains('central', $atBoot, 'boot resolved central: '.implode(', ', $atBoot));
+        $this->assertSame('From the operator', $title, 'the first request applied the override from the pinned central');
+    }
+
+    /** config-sections 05b: with the counter cache unreadable (df42bf60's uncached read), boot still touches no central. */
+    public function test_boot_with_an_unreadable_counter_cache_resolves_no_central_and_the_first_command_reads_uncached(): void
+    {
+        $this->publishTitle('From the operator');
+        self::$bootCacheStore = 'unreachable';
+        Log::spy();
+
+        [$atBoot, $title] = $this->bootThenPinCentral(function ($app): mixed {
+            $this->startCommand($app, viaArtisan: true);
+
+            return $app['config']->get('panels.title');
+        });
+
+        $this->assertNotContains('central', $atBoot, 'boot resolved central: '.implode(', ', $atBoot));
+        $this->assertSame('From the operator', $title, 'the first command read the published layer uncached, from the pinned central');
+    }
+
     public function test_a_console_command_sees_a_published_override_at_boot(): void
     {
         $this->publishTitle('From the operator');
@@ -373,10 +520,12 @@ class ConfigOverrideBootTest extends TestCase
         $argv = $_SERVER['argv'] ?? null;
 
         try {
-            // While `config:cache` builds its fresh application, the booted hook must not apply the operator tier.
+            // The fresh application `config:cache` builds boots and runs no command, so no hook applies the operator tier
+            // to it; and the caching process's own command start is guarded off the store.
             $_SERVER['argv'] = ['artisan', 'config:cache'];
             $this->assertTrue(ConfigOverlay::cachesConfiguration());
-            $this->assertSame('Panels', $this->bootAnotherProcess('panels.title'), 'a cache built now holds no override');
+            $this->assertSame('Panels', $this->inAnotherProcess(fn ($app) => $app['config']->get('panels.title')), 'a cache built now holds no override');
+            $this->assertSame('Panels', $this->bootAnotherProcess('panels.title'), 'the caching process applies none either');
         } finally {
             $_SERVER['argv'] = $argv;
         }
@@ -387,7 +536,11 @@ class ConfigOverrideBootTest extends TestCase
             $this->assertFileExists($cached);
             $this->assertStringNotContainsString('From the operator', file_get_contents($cached), 'the cached file holds no override');
             $this->assertSame('From the operator', $this->bootAnotherProcess('panels.title'), 'with config cached, the next process still sees the override');
-            $this->assertSame('Panels', $this->inAnotherProcess(fn ($app) => $app->make(ConfigOverlay::class)->base('panels')['title'] ?? null), 'on the cached-config boot the base is captured from the cached file, before the apply');
+            $this->assertSame('Panels', $this->inAnotherProcess(function ($app) {
+                $this->startCommand($app);
+
+                return $app->make(ConfigOverlay::class)->base('panels')['title'] ?? null;
+            }), 'on the cached-config boot the base is captured from the cached file, before the apply');
         } finally {
             $this->artisan('config:clear')->assertSuccessful();
             // `config:cache` boots testbench's own Application, which calls Env::disablePutenv() and re-enables it only

@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Config;
 
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\Schema\Blueprint;
@@ -34,6 +35,8 @@ use Splicewire\Beam\Tests\Fixtures\Config\PanelsSection;
 use Splicewire\Beam\Tests\Fixtures\Config\ProtectedMapSection;
 use Splicewire\Beam\Tests\Fixtures\Config\ReadsPanelsConfigJob;
 use Splicewire\Beam\Tests\TestCase;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\NullOutput;
 
 /**
  * config-sections ticket 05: an operator override reaches the next request, job and command. Every behaviour is driven
@@ -78,13 +81,18 @@ class ConfigOverridesTest extends TestCase
     /** @var array<string, mixed> root => the host's value at the next boot */
     private static array $bootConfig = [];
 
-    /** Boot the next application (a deploy, a worker restart) with the host's `$config`, then put this one back. */
+    /**
+     * Boot the next application (a deploy, a worker restart) with the host's `$config`, start its command (the worker's
+     * `queue:work`; boot alone reads no override, config-sections 05b), then put this one back.
+     */
     private function nextBoot(array $config, callable $assert): void
     {
         self::$bootConfig = $config;
 
         try {
-            $assert($this->createApplication());
+            $app = $this->createApplication();
+            $app['events']->dispatch(new CommandStarting('queue:work', new ArrayInput([]), new NullOutput));
+            $assert($app);
         } finally {
             self::$bootConfig = [];
             Container::setInstance($this->app);
