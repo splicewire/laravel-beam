@@ -287,7 +287,8 @@ class ParticleResourceActionsTest extends TestCase
         ]);
 
         Gate::define('entitlement:ux.author', fn ($user): bool => $user instanceof ActionOwner);
-        Gate::define('entitlement:site.edit', fn ($user): bool => $user instanceof ActionMember);
+        // site.edit is the tenant role permission: a subject-free override target is asked as itself (launch 72).
+        Gate::define('site.edit', fn ($user): bool => $user instanceof ActionMember);
 
         $owner = new ActionOwner;
         $member = new ActionMember;

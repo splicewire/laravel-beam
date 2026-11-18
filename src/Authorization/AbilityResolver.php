@@ -58,8 +58,14 @@ class AbilityResolver
      *                        the per-action plane, deferred principal resolution on the entitlement one)
      * @param  string  $ability  a bare policy verb (subject-bearing) or a flat namespaced ability key
      * @param  mixed  $subject  a model instance or a model class-string; null selects the subject-free plane
+     * @param  bool  $overridden  true when `$ability` is a mount's `abilityOverrides` TARGET (launch ticket 72, root
+     *                            Option A). A subject-free override target that is not written `entitlement:<x>`
+     *                            names a role permission (tower's tenant `site.edit`), so it is asked of the Gate
+     *                            as itself — the actor's `can('<permission>')` — instead of as an entitlement nothing
+     *                            defines. An `entitlement:`-prefixed target, asked as itself, IS the entitlement
+     *                            plane; a declared (non-overridden) ability is unchanged.
      */
-    public function allows(mixed $actor, string $ability, mixed $subject = null): bool
+    public function allows(mixed $actor, string $ability, mixed $subject = null, bool $overridden = false): bool
     {
         $gate = $this->gate->forUser($actor);
 
@@ -67,13 +73,17 @@ class AbilityResolver
             return $gate->allows($ability, $subject);
         }
 
+        if ($overridden) {
+            return $gate->allows($ability);
+        }
+
         return $gate->allows($this->entitlementAbility($ability));
     }
 
     /** The inverse of {@see allows()}, for call sites that read better negated. */
-    public function denies(mixed $actor, string $ability, mixed $subject = null): bool
+    public function denies(mixed $actor, string $ability, mixed $subject = null, bool $overridden = false): bool
     {
-        return ! $this->allows($actor, $ability, $subject);
+        return ! $this->allows($actor, $ability, $subject, $overridden);
     }
 
     /**
