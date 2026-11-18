@@ -1,0 +1,179 @@
+{
+    "GET /regions/graph?depth=5&limit=100": {
+        "status": 200,
+        "body": {
+            "data": {
+                "nodes": [
+                    {
+                        "id": "1",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Root"
+                    },
+                    {
+                        "id": "2",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Branch"
+                    },
+                    {
+                        "id": "3",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Leaf"
+                    },
+                    {
+                        "id": "4",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "4"
+                    }
+                ],
+                "edges": [
+                    {
+                        "from": "1",
+                        "to": "2",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    },
+                    {
+                        "from": "2",
+                        "to": "3",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    },
+                    {
+                        "from": "1",
+                        "to": "4",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    }
+                ]
+            }
+        }
+    },
+    "GET /regions/1/graph/neighbours?direction=descendants&depth=1&limit=100": {
+        "status": 200,
+        "body": {
+            "data": {
+                "nodes": [
+                    {
+                        "id": "1",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Root"
+                    },
+                    {
+                        "id": "2",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Branch"
+                    },
+                    {
+                        "id": "4",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "4"
+                    }
+                ],
+                "edges": [
+                    {
+                        "from": "1",
+                        "to": "2",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    },
+                    {
+                        "from": "1",
+                        "to": "4",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    }
+                ]
+            }
+        }
+    },
+    "GET /regions/1/graph/path?target=3": {
+        "status": 200,
+        "body": {
+            "data": {
+                "nodes": [
+                    {
+                        "id": "1",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Root"
+                    },
+                    {
+                        "id": "2",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Branch"
+                    },
+                    {
+                        "id": "3",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Leaf"
+                    }
+                ],
+                "edges": [
+                    {
+                        "from": "1",
+                        "to": "2",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    },
+                    {
+                        "from": "2",
+                        "to": "3",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    }
+                ]
+            }
+        }
+    },
+    "GET /regions/3/graph/path?target=1": {
+        "status": 200,
+        "body": {
+            "data": {
+                "nodes": [],
+                "edges": []
+            }
+        }
+    },
+    "GET /regions/graph/cycles?limit=10": {
+        "status": 200,
+        "body": {
+            "data": {
+                "cycles": []
+            }
+        }
+    },
+    "GET /regions/5/graph/neighbours?direction=descendants&depth=1&limit=100": {
+        "status": 404,
+        "body": {
+            "message": ""
+        }
+    },
+    "GET /regions/1/graph/path?target=5": {
+        "status": 200,
+        "body": {
+            "data": {
+                "nodes": [],
+                "edges": []
+            }
+        }
+    },
+    "GET /regions/1/graph/neighbours?direction=descendants&depth=99&limit=100": {
+        "status": 422,
+        "body": {
+            "code": "over_limit",
+            "message": "The graph request exceeds the `depth` limit: asked for 99, the maximum is 10.",
+            "limit": "depth",
+            "max": 10,
+            "requested": 99
+        }
+    }
+}

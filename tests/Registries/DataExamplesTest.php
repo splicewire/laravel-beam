@@ -18,7 +18,7 @@ class DataExamplesTest extends TestCase
         $examples = DataExamples::forPackage(dirname(__DIR__, 2));
 
         $this->assertSame(
-            ['beam.events.types/catalog-entry', 'beam.particle.resources/register-a-resource'],
+            ['beam.events.types/catalog-entry', 'beam.particle.operations/graph-operations', 'beam.particle.resources/register-a-resource'],
             array_keys($examples->cases()),
         );
         $this->assertSame([], $examples->problems());

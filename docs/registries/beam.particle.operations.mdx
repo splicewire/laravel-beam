@@ -51,6 +51,345 @@ Particle::ops('tickets', 'tickets', [CloseTicket::class]);
 Each operation mounts once, at `tickets/{id}/close` for the common record-scoped case, named
 `tickets.close`.
 
+## Graph operations: a resource whose records form a graph
+
+Some operations are not declared at all. When a resource's records form a graph, such as a tree by a
+parent column or rows joined by an edge table, Beam registers four read operations for it:
+
+| operation | address | answers |
+|---|---|---|
+| `graph` | `GET {uri}/graph` | a bounded slice, optionally from `roots[]` |
+| `graph.cycles` | `GET {uri}/graph/cycles` | at most `limit` cycles |
+| `graph.neighbours` | `GET {uri}/{id}/graph/neighbours` | the record's neighbourhood, by `direction`, `depth` and `limit` |
+| `graph.path` | `GET {uri}/{id}/graph/path?target={id}` | the shortest path from the record to `target` |
+
+The query parameters have no defaults. `graph` requires `depth` (at least 0) and `limit` (at least 1), with
+`roots[]` optional. `graph.neighbours` requires `direction` (`descendants`, `ancestors` or `both`), `depth`
+(at least 0) and `limit` (at least 1). `graph.cycles` requires `limit` (at least 0), and `graph.path`
+requires `target`. A missing or out-of-range parameter is a 422.
+
+The four share one read gate, and it **fails closed**. Each runs the resource's read gate through
+`ResourceReadGuard::inspectRead()`, not the list's Public Read floor. A guest who may list the resource
+through a declared Public Read is still refused with a 403 by all four, because a graph exposes how
+records connect, which the Public Read never narrowed.
+
+A resource gets them in one of two ways. A backing that implements `GraphsRecords` hands Beam a graph
+over its own records. Or a resource backed by **one Eloquent model** declares where its edges are in
+one `graph:` slot, and Beam supplies the graph itself, with no backing class to write. The slot takes
+`new ParentEdge('parent_id', label: 'name')` for a self-referencing column, or `new EdgeTable(…)` for an
+edge table. It needs `splicewire/laravel-beam` at `78caf162` or later, and it is refused at registration
+on any backing that is not one plain model.
+
+This is how `splicewire/laravel-beam-taxonomy` declares `silos` (`label: 'name'` labels each node with
+the silo's name, or its id where that is empty):
+
+{/* excerpt: splicewire/laravel-beam-taxonomy@a1867c8c4a4db517913cc442fd028525d4ec5001 · src/BeamTaxonomyServiceProvider.php:164-178 */}
+
+```php
+            $registry->register(new ParticleResource(
+                key: 'silos',
+                backing: $siloModel,
+                data: config('beam.taxonomy.data.silo'),
+                input: config('beam.taxonomy.input.silo'),
+                includes: ['fragments'],
+                // The declared row scope (integrator ruling c353ac01): the cascade narrowing SiloQuery's base applies.
+                scope: fn (EloquentBuilder $query): EloquentBuilder => SiloQuery::rowScope($query),
+                label: 'Silos',
+                group: 'Taxonomy',
+                // graph-operations 05 (D7): silos is the first consumer. The `parent_id` tree declares its
+                // edges in one slot; beam derives the four graph read operations over the same row-scoped
+                // query. `label: 'name'` labels nodes from the silo name (04 label ruling), id where null.
+                graph: new ParentEdge('parent_id', label: 'name'),
+            ));
+```
+
+Nothing is routed until the host asks with `->ops()`. A host mounts its particles in `routes/web.php`
+**above** the `Route::beamUxSite(...)` page catch-all, because the catch-all's `{path}` answers every
+address declared after it. This is the change that adopted `silos` on the proof host, a fresh
+`laravel-beam-starter` install:
+
+{/* excerpt: splicewire/splicewire-ecosystem@e0b250e4be221aab3dee8c6d471bf83a2e8c7cca · .scratch/splicewire/laravel-beam/graph-operations/evidence/05/host-web-php-silos-mount.diff:5-14 */}
+
+```diff
+@@ -280,4 +280,9 @@ function (string $href): string {
+ // It also mounts the compiled-artifact route the page shell imports, above its own catch-all. The
+ // renderer 404s uniformly on anything it cannot resolve, gate, and read — so an incumbent catch-all
+ // of your own must be registered BELOW this line, or `/{any}` never sees a request again.
++// graph-operations 05 — this host ADOPTS `silos` as a graph consumer (D6: a host asks for the operations
++// with `->ops()`; the package mounts no route of its own). Mounted here, ABOVE the `beamUxSite` page
++// catch-all like every other surface above, so its four graph addresses are declared before `{path}`.
++Splicewire\Beam\Facades\Particle::mount('silos')->ops(true)->register();
++
+ Route::beamUxSite('site/entry');
+```
+
+With the `graph:` slot, the graph is built from the resource's own list query, with its row scope applied.
+A `GraphsRecords` backing scopes its own graph to the reader, from the same filters its list takes.
+Either way, **a record the reader cannot list is not a node** and no path runs through it. Asking from such a record is a 404, while
+asking for a path TO one gives an empty path. `graph.path` is directed: it walks from the source record
+`{id}` downward, along the edges, to `?target=`. In a tree that means from an ancestor to its descendant,
+so the reverse request is an empty path, not an error. Depth and node count are capped by
+`beam.core.graph` (`max_depth`, `max_nodes`). A request past a cap, or a scoped set too large to load,
+is refused with a 422 naming the limit. It is never quietly truncated.
+
+**A node is a reference, never row data:** `{ id, type, resource, label }`, and an edge is
+`{ from, to, type, weight }`. Read a record's fields through the resource itself.
+
+The calls below run against a small tree over a test model. Row 5 is outside the resource's scope:
+
+{/* data-example:start graph-operations — captured output; regenerate it, do not edit between these markers. */}
+
+<DataExample source="docs/registries/examples/beam.particle.operations/graph-operations.php">
+
+```php
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Graph\Edges\ParentEdge;
+use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Tests\Graph\Fixtures\GraphReadUser;
+use Splicewire\Beam\Tests\Graph\Fixtures\GraphTreeNode;
+
+// A tree by a parent column: 1 Root → 2 Branch → 3 Leaf, and 1 → 4 Other. Row 5 hangs under 1 but is private.
+Schema::create('graph_tree_nodes', function (Blueprint $table): void {
+    $table->id();
+    $table->unsignedBigInteger('parent_id')->nullable();
+    $table->string('name')->nullable();
+    $table->string('team');
+});
+DB::table('graph_tree_nodes')->insert([
+    ['id' => 1, 'parent_id' => null, 'name' => 'Root', 'team' => 'public'],
+    ['id' => 2, 'parent_id' => 1, 'name' => 'Branch', 'team' => 'public'],
+    ['id' => 3, 'parent_id' => 2, 'name' => 'Leaf', 'team' => 'public'],
+    ['id' => 4, 'parent_id' => 1, 'name' => null, 'team' => 'public'],
+    ['id' => 5, 'parent_id' => 1, 'name' => 'Hidden', 'team' => 'private'],
+]);
+
+// One slot on a model-backed resource: beam supplies the graph and derives the four read operations.
+app(ParticleResourceRegistry::class)->register(new ParticleResource(
+    key: 'regions',
+    backing: GraphTreeNode::class,
+    readOnly: true,
+    scope: fn (Builder $query): Builder => $query->where('team', 'public'),
+    graph: new ParentEdge('parent_id', label: 'name'),
+));
+
+// The host asks for them: nothing is routed until `->ops()`.
+Particle::mount('regions')->ops(true)->register();
+
+// An authenticated reader the resource's read gate admits. The four gate fail-closed: Public Read does not open them.
+Gate::before(fn () => true);
+auth()->setUser(new GraphReadUser);
+
+$get = function (string $uri): array {
+    $response = app()->handle(Request::create($uri, 'GET', server: ['HTTP_ACCEPT' => 'application/json']));
+
+    return ['status' => $response->getStatusCode(), 'body' => json_decode((string) $response->getContent(), true)];
+};
+
+return [
+    'GET /regions/graph?depth=5&limit=100' => $get('/regions/graph?depth=5&limit=100'),
+    'GET /regions/1/graph/neighbours?direction=descendants&depth=1&limit=100' => $get('/regions/1/graph/neighbours?direction=descendants&depth=1&limit=100'),
+    'GET /regions/1/graph/path?target=3' => $get('/regions/1/graph/path?target=3'),
+    'GET /regions/3/graph/path?target=1' => $get('/regions/3/graph/path?target=1'),
+    'GET /regions/graph/cycles?limit=10' => $get('/regions/graph/cycles?limit=10'),
+    'GET /regions/5/graph/neighbours?direction=descendants&depth=1&limit=100' => $get('/regions/5/graph/neighbours?direction=descendants&depth=1&limit=100'),
+    'GET /regions/1/graph/path?target=5' => $get('/regions/1/graph/path?target=5'),
+    'GET /regions/1/graph/neighbours?direction=descendants&depth=99&limit=100' => $get('/regions/1/graph/neighbours?direction=descendants&depth=99&limit=100'),
+];
+```
+
+```json
+{
+    "GET /regions/graph?depth=5&limit=100": {
+        "status": 200,
+        "body": {
+            "data": {
+                "nodes": [
+                    {
+                        "id": "1",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Root"
+                    },
+                    {
+                        "id": "2",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Branch"
+                    },
+                    {
+                        "id": "3",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Leaf"
+                    },
+                    {
+                        "id": "4",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "4"
+                    }
+                ],
+                "edges": [
+                    {
+                        "from": "1",
+                        "to": "2",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    },
+                    {
+                        "from": "2",
+                        "to": "3",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    },
+                    {
+                        "from": "1",
+                        "to": "4",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    }
+                ]
+            }
+        }
+    },
+    "GET /regions/1/graph/neighbours?direction=descendants&depth=1&limit=100": {
+        "status": 200,
+        "body": {
+            "data": {
+                "nodes": [
+                    {
+                        "id": "1",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Root"
+                    },
+                    {
+                        "id": "2",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Branch"
+                    },
+                    {
+                        "id": "4",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "4"
+                    }
+                ],
+                "edges": [
+                    {
+                        "from": "1",
+                        "to": "2",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    },
+                    {
+                        "from": "1",
+                        "to": "4",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    }
+                ]
+            }
+        }
+    },
+    "GET /regions/1/graph/path?target=3": {
+        "status": 200,
+        "body": {
+            "data": {
+                "nodes": [
+                    {
+                        "id": "1",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Root"
+                    },
+                    {
+                        "id": "2",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Branch"
+                    },
+                    {
+                        "id": "3",
+                        "type": "regions",
+                        "resource": "regions",
+                        "label": "Leaf"
+                    }
+                ],
+                "edges": [
+                    {
+                        "from": "1",
+                        "to": "2",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    },
+                    {
+                        "from": "2",
+                        "to": "3",
+                        "type": "PARENT_OF",
+                        "weight": 1
+                    }
+                ]
+            }
+        }
+    },
+    "GET /regions/3/graph/path?target=1": {
+        "status": 200,
+        "body": {
+            "data": {
+                "nodes": [],
+                "edges": []
+            }
+        }
+    },
+    "GET /regions/graph/cycles?limit=10": {
+        "status": 200,
+        "body": {
+            "data": {
+                "cycles": []
+            }
+        }
+    },
+    "GET /regions/5/graph/neighbours?direction=descendants&depth=1&limit=100": {
+        "status": 404,
+        "body": {
+            "message": ""
+        }
+    },
+    "GET /regions/1/graph/path?target=5": {
+        "status": 200,
+        "body": {
+            "data": {
+                "nodes": [],
+                "edges": []
+            }
+        }
+    },
+    "GET /regions/1/graph/neighbours?direction=descendants&depth=99&limit=100": {
+        "status": 422,
+        "body": {
+            "code": "over_limit",
+            "message": "The graph request exceeds the `depth` limit: asked for 99, the maximum is 10.",
+            "limit": "depth",
+            "max": 10,
+            "requested": 99
+        }
+    }
+}
+```
+
+</DataExample>
+
+{/* data-example:end graph-operations */}
+
 ## Overriding an operation
 
 The [**duplicate-key policy**](/beam/docs/foundations/registries#key-policies) is

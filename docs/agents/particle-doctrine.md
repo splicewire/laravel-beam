@@ -147,6 +147,21 @@ backing implements the ones it genuinely has:
   `…/filters/options/{ref}` answers only the handles the declaration names. Model
   reading: `splicewire/tower` `src/Frame/Sources/ReviewQueueUnionSource.php`, whose tower test pins the
   declared names against `ReviewInbox::applyFacets()`.
+- **`GraphsRecords`** — `graph(filters): GraphStore`, a `rushing/php-graphine` store over the records, already
+  scoped to the actor by the same filter bag every capability takes. A record the actor cannot list is not a
+  node, so no path runs through it. Having it is what derives the four graph read operations at registration
+  (graph-operations 02): `graph`, `graph.cycles`, `graph.neighbours` and `graph.path`, mounted under
+  `{uri}/graph`, `{uri}/graph/cycles`, `{uri}/{id}/graph/neighbours` and `{uri}/{id}/graph/path` only when the
+  host writes `->ops()`. Their read gate FAILS CLOSED: each runs the resource's read gate through
+  `ResourceReadGuard::inspectRead()`, not the list's `bindReadContext()` Public Read floor, so a guest who may list
+  the resource through a declared Public Read is still refused 403 by all four. Depth and node count are capped by
+  `beam.core.graph`; a request or a scoped set past a cap is refused with the declared `over_limit` body, never
+  truncated. **A node is a reference, never a payload:** `{ id, type, resource, label }`, and an edge is
+  `{ from, to, type, weight }`. A row's data is read through the resource's own projection, never carried on a
+  node. A resource backed by one plain Eloquent model gets the port without writing a backing, through the
+  `graph:` slot: `new ParentEdge('parent_id', label: 'name')` or `new EdgeTable(…)` (graph-operations 04).
+  Its store is built from the resource's own list (`ParticleListQuery::forList()`), and the scoped set is
+  counted before anything loads.
 
 ⚠️ **A declined capability is a legitimate answer, never an error, and the readers are written that way.**
 `EloquentBacking` deliberately declines `ResolvesRecord` — a model-backed detail runs through the
