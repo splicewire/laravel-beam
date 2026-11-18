@@ -576,6 +576,13 @@ without), and the **transport owns the deny shape** — HTTP throws 403, MCP omi
 is always allowed. Command abilities exist only for the **MCP projection** — that gate gates the
 *agent*, not the operation.
 
+A **scoped credential narrows the permission plane** (ADR-0109): when `ability:` is a flat permission
+name (`declarations.check`, checked with a subject or as a subject-free override target), a call made
+with a scoped token passes only if the token's abilities also hold that name. The scope comes from the
+permission cascade's `CredentialScope` seam, so a session or a `['*']` token is unchanged. A bare policy
+verb (`view`) is left to its policy, which narrows the name it derives to; an `entitlement:` key is a plan
+feature, not a permission, and is not narrowed.
+
 ## Reference implementations
 
 - **`splicewire/splicewire-app` — the reference for depth.** The most mechanisms in one place, and the

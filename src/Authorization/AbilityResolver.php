@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Authorization;
 
 use Illuminate\Contracts\Auth\Access\Gate;
+use Rushing\PermissionCascade\Contracts\CredentialScopeResolver;
+use Rushing\PermissionCascade\Support\CredentialScope;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 
 /**
@@ -40,6 +42,25 @@ use Splicewire\Beam\Entitlements\EntitlementGate;
  * database access, so a gate there would be theatre, not security. The consequence to keep in mind is
  * that the MCP gate is a gate on the AGENT, not on the operation: never rely on it as the only control
  * over something a shell user must not do.
+ *
+ * ## A scoped credential narrows the permission plane (ADR-0109; standwell gap-assessment-build 36)
+ *
+ * A call made with a scoped token is allowed only when the token's abilities also cover the permission the
+ * check names: `effective = principal may ∩ credential scope`. Measured before this (standwell 02): a token
+ * scoped to `entity.view` got 200 on `declarations.check`, because a flat permission name asked of the Gate
+ * is answered by spatie's `before` and never reaches the cascade's `BaseModelPolicy`, the one place the
+ * scope was applied. So the narrowing is applied HERE, on the two checks that ask a flat permission name:
+ * a subject-bearing check whose ability is a name (`declarations.check` on `Entity`), and a subject-free
+ * override target asked as a permission (launch 72). The scope comes from the permission cascade's
+ * {@see CredentialScope} seam: the host binds its source (beam-accounts' bearer-token resolver), the
+ * null default is unscoped, so a session, a `['*']` token, a guest and MCP over stdio are unchanged.
+ * It can only subtract. Two checks are left as they were, on purpose:
+ *
+ *   - a bare policy VERB (`view`, `update`) with a subject: the policy owns the name the verb derives to,
+ *     and the cascade's `BaseModelPolicy` already narrows it (`entity.view`, `entity.own.view`). Checking
+ *     the raw verb against a scope of permission names would refuse every scoped token.
+ *   - the ENTITLEMENT plane (`entitlement:{key}`): a plan feature of the tenant, not a principal
+ *     permission, so it is not in a token's vocabulary (ADR-0109 decision 1).
  */
 class AbilityResolver
 {
@@ -70,14 +91,35 @@ class AbilityResolver
         $gate = $this->gate->forUser($actor);
 
         if ($subject !== null) {
-            return $gate->allows($ability, $subject);
+            return $gate->allows($ability, $subject) && $this->credentialPermits($ability);
         }
 
         if ($overridden) {
-            return $gate->allows($ability);
+            return $gate->allows($ability) && $this->credentialPermits($ability);
         }
 
         return $gate->allows($this->entitlementAbility($ability));
+    }
+
+    /**
+     * Whether the acting credential's scope covers `$ability` (ADR-0109, see the class docblock). A bare
+     * policy verb and an `entitlement:` key are not permission names, so they pass; the policy narrows a
+     * verb's derived name itself. A host that never registered the cascade's seam is unscoped.
+     */
+    protected function credentialPermits(string $ability): bool
+    {
+        if (! $this->isPermissionName($ability) || ! app()->bound(CredentialScopeResolver::class)) {
+            return true;
+        }
+
+        return app(CredentialScope::class)->permits($ability);
+    }
+
+    /** A flat namespaced name (`declarations.check`, `tenant:provision`), not a bare verb or an entitlement key. */
+    protected function isPermissionName(string $ability): bool
+    {
+        return ! str_starts_with($ability, self::ENTITLEMENT_PREFIX)
+            && (str_contains($ability, '.') || str_contains($ability, ':'));
     }
 
     /** The inverse of {@see allows()}, for call sites that read better negated. */

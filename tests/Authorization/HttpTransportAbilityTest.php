@@ -8,6 +8,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
+use Rushing\PermissionCascade\Contracts\CredentialScopeResolver;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\GuardActorAdapter;
@@ -269,6 +270,83 @@ class HttpTransportAbilityTest extends TestCase
         $this->actingAs(new PlainUser)->postJson('/tenant-subject/gadgets/1/polish')->assertForbidden();
     }
 
+    // ── Standwell gap-assessment-build 36 (ADR-0109): a scoped credential narrows the permission plane ────────
+
+    public function test_a_scoped_credential_without_the_permission_is_refused_a_named_ability_on_a_subject(): void
+    {
+        // The reproduction: the principal holds the permission (the Gate answers yes, as spatie's `before` does),
+        // but the acting token is scoped to something else. Before 36 this answered 200.
+        Gate::define('gadgets.tune', fn ($user = null, $subject = null): bool => $user instanceof PrivilegedUser);
+        $this->mount($this->op(name: 'named', ability: 'gadgets.tune', abilityModel: Gadget::class));
+        $this->actingAs(new PrivilegedUser);
+
+        $this->scopeCredentialTo(['gadgets.view']);
+        $this->postJson('/gadgets/1/named')->assertForbidden();
+
+        $this->scopeCredentialTo(['gadgets.view', 'gadgets.tune']);
+        $this->postJson('/gadgets/1/named')->assertOk();
+
+        // Unscoped (a session, a `*` token): unchanged.
+        $this->scopeCredentialTo(null);
+        $this->postJson('/gadgets/1/named')->assertOk();
+    }
+
+    public function test_a_scope_never_grants_what_the_principal_lacks(): void
+    {
+        Gate::define('gadgets.tune', fn ($user = null, $subject = null): bool => $user instanceof PrivilegedUser);
+        $this->mount($this->op(name: 'named', ability: 'gadgets.tune'));
+        $this->actingAs(new PlainUser);
+        $this->scopeCredentialTo(['gadgets.tune']);
+
+        $this->postJson('/gadgets/1/named')->assertForbidden();
+    }
+
+    public function test_a_policy_verb_is_left_to_the_policy_under_a_scoped_credential(): void
+    {
+        // `tune` is a verb: the policy owns the name it derives to (the cascade narrows that itself), so a scope of
+        // permission names that does not literally contain `tune` must not refuse it.
+        $this->mount($this->op(ability: 'tune'));
+        $this->actingAs(new PrivilegedUser);
+        $this->scopeCredentialTo(['gadgets.view']);
+
+        $this->postJson('/gadgets/1/tune')->assertOk();
+    }
+
+    public function test_a_subject_free_permission_override_is_narrowed_by_a_scoped_credential(): void
+    {
+        $this->mountAuthorScopedOperation('tenant/gadgets', [
+            'name' => 'tenant.tune',
+            'realm' => 'tenant',
+            'abilityOverrides' => ['ux.author' => 'site.edit'],
+        ]);
+        $editor = new ScopedAbilityUser;
+        $editor->siteEdit = true;
+        $this->actingAs($editor);
+
+        $this->scopeCredentialTo(['gadgets.view']);
+        $this->postJson('/tenant/gadgets/1/tune')->assertForbidden();
+
+        $this->scopeCredentialTo(['site.edit']);
+        $this->postJson('/tenant/gadgets/1/tune')->assertOk();
+    }
+
+    public function test_the_entitlement_plane_is_not_narrowed_by_a_scoped_credential(): void
+    {
+        // An entitlement is the tenant's plan feature, not a principal permission (ADR-0109 decision 1).
+        Gate::define('entitlement:workbench.enter', fn ($user = null): bool => $user instanceof PrivilegedUser);
+        $this->mount($this->op(name: 'subject-free', ability: 'workbench.enter', abilityModel: false));
+        $this->actingAs(new PrivilegedUser);
+        $this->scopeCredentialTo(['gadgets.view']);
+
+        $this->postJson('/gadgets/1/subject-free')->assertOk();
+    }
+
+    /** @param  list<string>|null  $scope */
+    private function scopeCredentialTo(?array $scope): void
+    {
+        $this->app->instance(CredentialScopeResolver::class, new FixedCredentialScope($scope));
+    }
+
     // ── The actor arrives through the port, not ambient auth ─────────────────────────────────────────
 
     public function test_the_decision_follows_the_actor_port_rather_than_the_ambient_guard_user(): void
@@ -420,5 +498,16 @@ class FixedActorPort implements ActorPort
     public function actor(): mixed
     {
         return $this->actor;
+    }
+}
+
+class FixedCredentialScope implements CredentialScopeResolver
+{
+    /** @param  list<string>|null  $scope */
+    public function __construct(private ?array $scope) {}
+
+    public function resolve(): ?array
+    {
+        return $this->scope;
     }
 }
