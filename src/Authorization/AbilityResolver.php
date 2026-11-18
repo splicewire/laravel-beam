@@ -2,8 +2,11 @@
 
 namespace Splicewire\Beam\Authorization;
 
+use Illuminate\Auth\Access\Response;
 use Illuminate\Contracts\Auth\Access\Gate;
+use Illuminate\Support\Str;
 use Rushing\PermissionCascade\Contracts\CredentialScopeResolver;
+use Rushing\PermissionCascade\Policies\BaseModelPolicy;
 use Rushing\PermissionCascade\Support\CredentialScope;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 
@@ -54,11 +57,16 @@ use Splicewire\Beam\Entitlements\EntitlementGate;
  * override target asked as a permission (launch 72). The scope comes from the permission cascade's
  * {@see CredentialScope} seam: the host binds its source (beam-accounts' bearer-token resolver), the
  * null default is unscoped, so a session, a `['*']` token, a guest and MCP over stdio are unchanged.
- * It can only subtract. Two checks are left as they were, on purpose:
+ * MCP's tool gate (beam-mcp's `EntitlementToolAuthorizer`) asks a subject-free, non-overridden ability,
+ * which is the entitlement plane, so a scoped bearer on MCP's HTTP transport is NOT narrowed here either.
+ * It can only subtract. Two checks are not matched against the scope as raw names, on purpose:
  *
- *   - a bare policy VERB (`view`, `update`) with a subject: the policy owns the name the verb derives to,
- *     and the cascade's `BaseModelPolicy` already narrows it (`entity.view`, `entity.own.view`). Checking
- *     the raw verb against a scope of permission names would refuse every scoped token.
+ *   - a bare policy VERB (`view`, `update`) with a subject: the policy owns the name the verb derives to
+ *     (`entity.view`, `entity.own.view`); checking the raw verb against a scope of permission names would
+ *     refuse every scoped token. Under a scoped credential, a verb on a cascade-backed subject is asked of
+ *     its `BaseModelPolicy` directly ({@see cascadePolicyPermits()}), because a host's `Gate::before` (the
+ *     flagship's Root) can answer the Gate before that policy runs. A policy outside the cascade is not
+ *     narrowed yet (standwell gap-assessment-build 39).
  *   - the ENTITLEMENT plane (`entitlement:{key}`): a plan feature of the tenant, not a principal
  *     permission, so it is not in a token's vocabulary (ADR-0109 decision 1).
  */
@@ -91,7 +99,9 @@ class AbilityResolver
         $gate = $this->gate->forUser($actor);
 
         if ($subject !== null) {
-            return $gate->allows($ability, $subject) && $this->credentialPermits($ability);
+            return $gate->allows($ability, $subject)
+                && $this->credentialPermits($ability)
+                && $this->cascadePolicyPermits($actor, $ability, $subject);
         }
 
         if ($overridden) {
@@ -113,6 +123,47 @@ class AbilityResolver
         }
 
         return app(CredentialScope::class)->permits($ability);
+    }
+
+    /**
+     * Under a scoped credential, a bare policy verb on a cascade-backed subject must also be allowed by that
+     * {@see BaseModelPolicy} itself, the place the cascade intersects the derived name (`hook.update`) with the
+     * scope. The Gate's yes does not prove the policy ran: a host's `Gate::before` (the flagship's Root) answers
+     * before it, so a Root token scoped to `entity.view` would otherwise reach a write. Asking the policy directly
+     * leaves the principal half to it (`$user->can()`, where Root's `before` still answers) and keeps its own
+     * rungs (steward, grants, reach, `#[UseCascadePolicy]` overrides) as they are. Unscoped calls, a guest, a
+     * flat name (narrowed above) and a policy outside the cascade are unchanged here; the last is ticket 39.
+     */
+    protected function cascadePolicyPermits(mixed $actor, string $ability, mixed $subject): bool
+    {
+        if ($actor === null
+            || $this->isPermissionName($ability)
+            || str_starts_with($ability, self::ENTITLEMENT_PREFIX)
+            || ! app()->bound(CredentialScopeResolver::class)
+            || ! app(CredentialScope::class)->isScoped()) {
+            return true;
+        }
+
+        $policy = $this->gate->getPolicyFor($subject);
+        $method = Str::camel($ability);
+
+        if (! $policy instanceof BaseModelPolicy || ! is_callable([$policy, $method])) {
+            return true;
+        }
+
+        $arguments = is_string($subject) ? [] : [$subject];
+
+        if (method_exists($policy, 'before')) {
+            $before = $policy->before($actor, $ability, ...$arguments);
+
+            if ($before !== null) {
+                return $before instanceof Response ? $before->allowed() : (bool) $before;
+            }
+        }
+
+        $result = $policy->{$method}($actor, ...$arguments);
+
+        return $result instanceof Response ? $result->allowed() : (bool) $result;
     }
 
     /** A flat namespaced name (`declarations.check`, `tenant:provision`), not a bare verb or an entitlement key. */

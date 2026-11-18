@@ -580,8 +580,11 @@ A **scoped credential narrows the permission plane** (ADR-0109): when `ability:`
 name (`declarations.check`, checked with a subject or as a subject-free override target), a call made
 with a scoped token passes only if the token's abilities also hold that name. The scope comes from the
 permission cascade's `CredentialScope` seam, so a session or a `['*']` token is unchanged. A bare policy
-verb (`view`) is left to its policy, which narrows the name it derives to; an `entitlement:` key is a plan
-feature, not a permission, and is not narrowed.
+verb (`view`) is not matched against the scope as a raw name; on a cascade-backed subject a scoped call is
+also asked of its `BaseModelPolicy` directly, which narrows the name the verb derives to (`hook.update`), so a
+host's `Gate::before` grant (the flagship's Root) cannot carry a scoped token past it. A verb on a policy
+outside the cascade is not narrowed yet (standwell gap-assessment-build 39). An `entitlement:` key is a plan
+feature, not a permission, and is not narrowed; MCP's tool gate asks that plane, so MCP calls are not narrowed.
 
 ## Reference implementations
 

@@ -9,6 +9,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Rushing\PermissionCascade\Contracts\CredentialScopeResolver;
+use Rushing\PermissionCascade\Policies\BaseModelPolicy;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\GuardActorAdapter;
@@ -341,6 +342,66 @@ class HttpTransportAbilityTest extends TestCase
         $this->postJson('/gadgets/1/subject-free')->assertOk();
     }
 
+    public function test_a_gate_before_grant_does_not_carry_a_scoped_credential_past_a_cascade_backed_verb(): void
+    {
+        // The pre-land review's bypass: a bare verb on a cascade-backed model is narrowed by `BaseModelPolicy`, but a
+        // host's `Gate::before` (the flagship's Root) answers yes before that policy runs. A Root token scoped to
+        // `cascade-gadget.view` must still be refused `update`; a token carrying the derived name is admitted.
+        Schema::create('cascade_gadgets', function (Blueprint $table): void {
+            $table->id();
+        });
+        CascadeGadget::create();
+        Gate::policy(CascadeGadget::class, CascadeGadgetPolicy::class);
+        Gate::before(fn ($user = null) => $user instanceof RootUser ? true : null);
+        $this->app->make(ParticleOperationRegistry::class)->register(new ParticleOperation(
+            resource: 'cascade-gadgets',
+            name: 'reset',
+            kind: OperationKind::Write,
+            model: CascadeGadget::class,
+            handle: fn () => ['ran' => true],
+            ability: 'update',
+        ));
+        Particle::ops('cascade-gadgets', 'cascade-gadgets', 'reset');
+        $this->actingAs(new RootUser);
+
+        $this->scopeCredentialTo(['cascade-gadget.view']);
+        $this->postJson('/cascade-gadgets/1/reset')->assertForbidden();
+
+        $this->scopeCredentialTo(['cascade-gadget.view', 'cascade-gadget.update']);
+        $this->postJson('/cascade-gadgets/1/reset')->assertOk();
+
+        // Unscoped (a session, a `*` token): unchanged.
+        $this->scopeCredentialTo(null);
+        $this->postJson('/cascade-gadgets/1/reset')->assertOk();
+    }
+
+    public function test_a_cascade_backed_verb_without_a_before_grant_is_unchanged_under_a_scope(): void
+    {
+        // A principal holding the derived permission outright: the policy runs and narrows, as before the review fix.
+        Schema::create('cascade_gadgets', function (Blueprint $table): void {
+            $table->id();
+        });
+        CascadeGadget::create();
+        Gate::policy(CascadeGadget::class, CascadeGadgetPolicy::class);
+        Gate::define('cascade-gadget.update', fn ($user = null): bool => $user instanceof PrivilegedUser);
+        $this->app->make(ParticleOperationRegistry::class)->register(new ParticleOperation(
+            resource: 'cascade-gadgets',
+            name: 'reset',
+            kind: OperationKind::Write,
+            model: CascadeGadget::class,
+            handle: fn () => ['ran' => true],
+            ability: 'update',
+        ));
+        Particle::ops('cascade-gadgets', 'cascade-gadgets', 'reset');
+        $this->actingAs(new PrivilegedUser);
+
+        $this->scopeCredentialTo(['cascade-gadget.view']);
+        $this->postJson('/cascade-gadgets/1/reset')->assertForbidden();
+
+        $this->scopeCredentialTo(['cascade-gadget.update']);
+        $this->postJson('/cascade-gadgets/1/reset')->assertOk();
+    }
+
     /** @param  list<string>|null  $scope */
     private function scopeCredentialTo(?array $scope): void
     {
@@ -469,6 +530,31 @@ class Gadget extends Model
     public $timestamps = false;
 
     protected $guarded = [];
+}
+
+class CascadeGadget extends Model
+{
+    protected $table = 'cascade_gadgets';
+
+    public $timestamps = false;
+
+    protected $guarded = [];
+
+    public function getMorphClass()
+    {
+        return 'cascade-gadget';
+    }
+}
+
+class CascadeGadgetPolicy extends BaseModelPolicy
+{
+    public static $defaultModelClass = CascadeGadget::class;
+}
+
+/** A principal a host's `Gate::before` answers yes for (the flagship's Root). */
+class RootUser extends User
+{
+    protected $table = 'users';
 }
 
 class PlainUser extends User
