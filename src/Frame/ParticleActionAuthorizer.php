@@ -83,7 +83,8 @@ class ParticleActionAuthorizer implements ResourceActionAuthorizer
             is_string($realm) ? $realm : null,
         );
 
-        return app(AbilityResolver::class)->allows($actor, $ability, $subject);
+        // A mount override's target is asked as the permission it names when there is no subject (launch 72).
+        return app(AbilityResolver::class)->allows($actor, $ability, $subject, $ability !== $operation->ability);
     }
 
     protected function yieldsActor(ParticleOperation $operation): bool

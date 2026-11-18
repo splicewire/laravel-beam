@@ -162,7 +162,8 @@ class ParticleOperationController extends Controller
             $ability = app(\Splicewire\Beam\Frame\ParticleResourceActions::class)
                 ->effectiveAbility($operation, $routeRealm, $routeOverrides);
 
-            if ($this->abilities->denies($this->actor->actor(), $ability, $subject)) {
+            // A mount override's target is asked as the permission it names when there is no subject (launch 72).
+            if ($this->abilities->denies($this->actor->actor(), $ability, $subject, $ability !== $operation->ability)) {
                 throw new AuthorizationException;
             }
         }

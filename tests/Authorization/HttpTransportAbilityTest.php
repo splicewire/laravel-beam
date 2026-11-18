@@ -187,6 +187,88 @@ class HttpTransportAbilityTest extends TestCase
         $this->actingAs($centralAuthor)->postJson('/tenant-generic/gadgets/1/generic')->assertOk();
     }
 
+    // ── Launch 72 (root Option A, an AUTHORIZATION change): a subject-free override target is a permission ─────
+
+    public function test_a_subject_free_tenant_override_to_a_role_permission_asks_the_actors_can(): void
+    {
+        $this->mountAuthorScopedOperation('tenant/gadgets', [
+            'name' => 'tenant.tune',
+            'realm' => 'tenant',
+            'abilityOverrides' => ['ux.author' => 'site.edit'],
+        ]);
+
+        $withPermission = new ScopedAbilityUser;
+        $withPermission->siteEdit = true;
+        $without = new ScopedAbilityUser;
+        $centralAuthor = new ScopedAbilityUser;
+        $centralAuthor->uxAuthor = true;
+
+        $this->actingAs($withPermission)->postJson('/tenant/gadgets/1/tune')->assertOk();
+        $this->actingAs($without)->postJson('/tenant/gadgets/1/tune')->assertForbidden();
+        $this->actingAs($centralAuthor)->postJson('/tenant/gadgets/1/tune')->assertForbidden();
+        $this->app['auth']->forgetGuards();
+        $this->postJson('/tenant/gadgets/1/tune')->assertForbidden();
+    }
+
+    public function test_a_permission_override_is_not_answered_by_an_entitlement_of_the_same_name(): void
+    {
+        $this->mountAuthorScopedOperation('tenant/gadgets', [
+            'name' => 'tenant.tune',
+            'realm' => 'tenant',
+            'abilityOverrides' => ['ux.author' => 'site.edit'],
+        ]);
+        // A permissive entitlement under the target's name must NOT admit: the target is the permission itself.
+        Gate::define('entitlement:site.edit', fn ($user = null): bool => true);
+
+        $this->actingAs(new ScopedAbilityUser)->postJson('/tenant/gadgets/1/tune')->assertForbidden();
+    }
+
+    public function test_an_entitlement_prefixed_override_still_resolves_through_the_entitlement_gate(): void
+    {
+        $this->mountAuthorScopedOperation('tenant/gadgets', [
+            'name' => 'tenant.tune',
+            'realm' => 'tenant',
+            'abilityOverrides' => ['ux.author' => 'entitlement:workbench.enter'],
+        ]);
+        Gate::define('entitlement:workbench.enter', fn ($user = null): bool => $user instanceof PrivilegedUser);
+        Gate::define('workbench.enter', fn ($user = null): bool => true);
+
+        $this->actingAs(new PrivilegedUser)->postJson('/tenant/gadgets/1/tune')->assertOk();
+        // Holding a same-named PERMISSION is not enough: the prefixed form keeps the entitlement plane.
+        $this->actingAs(new PlainUser)->postJson('/tenant/gadgets/1/tune')->assertForbidden();
+    }
+
+    public function test_an_operator_realm_mount_without_an_override_keeps_the_entitlement_plane(): void
+    {
+        $this->mountAuthorScopedOperation('operator/gadgets', ['name' => 'operator.tune', 'realm' => 'operator']);
+        // A same-named permission must not admit a declared (non-overridden) subject-free ability.
+        Gate::define('ux.author', fn ($user = null): bool => true);
+
+        $centralAuthor = new ScopedAbilityUser;
+        $centralAuthor->uxAuthor = true;
+        $tenantEditor = new ScopedAbilityUser;
+        $tenantEditor->siteEdit = true;
+
+        $this->actingAs($centralAuthor)->postJson('/operator/gadgets/1/tune')->assertOk();
+        $this->actingAs($tenantEditor)->postJson('/operator/gadgets/1/tune')->assertForbidden();
+        $this->actingAs(new ScopedAbilityUser)->postJson('/operator/gadgets/1/tune')->assertForbidden();
+    }
+
+    public function test_an_overridden_ability_with_a_subject_stays_on_the_policy_plane(): void
+    {
+        $operation = $this->op(name: 'polish', ability: 'ux.author');
+        $this->app->make(ParticleOperationRegistry::class)->register($operation);
+        Particle::ops('tenant-subject/gadgets', 'gadgets', 'polish', [
+            'realm' => 'tenant',
+            'abilityOverrides' => ['ux.author' => 'site.edit'],
+        ]);
+        // The subject-bearing check is the policy cascade's, with the Gadget: a subject-free `site.edit` alone does not admit.
+        Gate::define('site.edit', fn ($user, $subject = null): bool => $subject instanceof Gadget && $user instanceof PrivilegedUser);
+
+        $this->actingAs(new PrivilegedUser)->postJson('/tenant-subject/gadgets/1/polish')->assertOk();
+        $this->actingAs(new PlainUser)->postJson('/tenant-subject/gadgets/1/polish')->assertForbidden();
+    }
+
     // ── The actor arrives through the port, not ambient auth ─────────────────────────────────────────
 
     public function test_the_decision_follows_the_actor_port_rather_than_the_ambient_guard_user(): void
@@ -296,7 +378,9 @@ class HttpTransportAbilityTest extends TestCase
         Particle::ops($uri, 'gadgets', $operation->name, $options);
 
         Gate::define('entitlement:ux.author', fn ($user): bool => $user instanceof ScopedAbilityUser && $user->uxAuthor);
-        Gate::define('entitlement:site.edit', fn ($user): bool => $user instanceof ScopedAbilityUser && $user->siteEdit);
+        // `site.edit` is a ROLE PERMISSION (tower's PermissionsSeeder), the actor's `can('site.edit')`: launch 72 asks
+        // a subject-free override target as itself. Nothing defines `entitlement:site.edit` (see the strictness test).
+        Gate::define('site.edit', fn ($user): bool => $user instanceof ScopedAbilityUser && $user->siteEdit);
     }
 }
 
