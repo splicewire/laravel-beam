@@ -115,6 +115,12 @@ abstract class TestCase extends Orchestra
     {
         $app['config']->set('cache.default', 'array');
 
+        // Pinned, not inherited: a stray testbench skeleton `.env` with APP_DEBUG=true (found in a copied
+        // vendor tree, 2026-11-18) put exception/file/trace fields into a captured 404 body, so the
+        // DataExamples capture drifted from its fixture on one host and not another. A clean install
+        // already resolves false; the pin makes every host agree.
+        $app['config']->set('app.debug', false);
+
         $app['config']->set('data-schemas.base_uri', $this->schemaAuthority());
     }
 
