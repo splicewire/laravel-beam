@@ -46,7 +46,24 @@ use Splicewire\Beam\Routing\HttpMethod;
 class GraphOperations
 {
     /** The registrant the four derived operations are recorded under — beam itself (review N5). */
-    private const REGISTRANT = 'splicewire/laravel-beam';
+    public const REGISTRANT = 'splicewire/laravel-beam';
+
+    /** The names {@see operationsFor()} derives, in its order — what {@see isDerived()} recognises. */
+    public const NAMES = ['graph', 'graph.cycles', 'graph.neighbours', 'graph.path'];
+
+    /**
+     * Whether `$operation` is one of the four THIS class derived, as `$operations` recorded it: one of
+     * {@see NAMES}, registered by {@see REGISTRANT}. A host's own `#[ParticleOp(name: 'graph.path')]` is
+     * recorded under the host and answers false, because deriveFor() never displaces it.
+     *
+     * {@see \Splicewire\Beam\Doctor\UngatedOperationAudit} reads this to report the derived ops' `null`
+     * ability as acknowledged (scope-gated, see the class docblock) rather than as residue.
+     */
+    public static function isDerived(ParticleOperation $operation, ParticleOperationRegistry $operations): bool
+    {
+        return in_array($operation->name, self::NAMES, true)
+            && $operations->registrantOf($operation->key()) === self::REGISTRANT;
+    }
 
     /**
      * Register the four operations for `$resource` when — and only when — its backing graphs records. A

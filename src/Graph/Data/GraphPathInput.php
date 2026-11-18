@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Graph\Data;
 
+use Schemastud\DataSchemas\Attributes\Description;
 use Spatie\LaravelData\Data;
 
 /**
@@ -11,6 +12,7 @@ use Spatie\LaravelData\Data;
 class GraphPathInput extends Data
 {
     public function __construct(
+        #[Description('The id of the record the path ends at. The path starts at the record in the address.')]
         public string $target,
     ) {}
 }

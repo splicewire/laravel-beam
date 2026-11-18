@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Doctor;
 
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Splicewire\Beam\Graph\GraphOperations;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -66,6 +67,24 @@ class UngatedOperationAudit implements DoctorAudit
 {
     public const CHECK = 'particle.operation-gate';
 
+    /**
+     * Why the four graph reads {@see GraphOperations} derives are ACKNOWLEDGED rather than residue.
+     *
+     * The same shape as {@see UndeclaredInputAudit::ACKNOWLEDGED}, with the recognition structural rather
+     * than a key list, because the keys are per host resource (`silos.graph`, `regions.graph.path`):
+     * an operation is acknowledged when {@see GraphOperations::isDerived()} says beam derived it. A host's
+     * own null-ability Read, at any key, stays outstanding.
+     *
+     * Not a fixed `viewAny` either, measured rather than assumed: {@see \Splicewire\Beam\Authorization\ResourceReadGuard}
+     * asks `viewAny` only when a read policy is bound, so a fixed token would 403 every policy-less
+     * resource (an undefined ability is a denied one, registry-kernel 27 D1). And not `false`: these are
+     * gated, by the resource read gate plus the backing's scoped store, which
+     * {@see \Splicewire\Beam\Graph\GraphOperationHandler} applies before it reads anything.
+     */
+    public const ACKNOWLEDGED_DERIVED_GRAPH = 'derived by GraphOperations for a resource whose backing graphs its records; '
+        .'gated by the resource read gate (ResourceReadGuard::inspectRead, fail-closed) and the scoped store, the way '
+        .'a list read is, so `ability:` is left undeclared on purpose rather than spelled `false`';
+
     public function __construct(protected ParticleOperationRegistry $operations) {}
 
     /** @return list<Finding> */
@@ -81,12 +100,39 @@ class UngatedOperationAudit implements DoctorAudit
             fn (ParticleOperation $op): bool => $op->kind !== OperationKind::Write,
         ));
 
-        $undeclared = array_values(array_filter(
-            $population,
-            fn (ParticleOperation $op): bool => $op->gateUndeclared(),
-        ));
+        $undeclared = [];
+        $acknowledged = [];
 
-        $declared = count($population) - count($undeclared);
+        foreach ($population as $op) {
+            if (! $op->gateUndeclared()) {
+                continue;
+            }
+
+            // Reported under its own heading, never silently subtracted (UndeclaredInputAudit's rule).
+            if (GraphOperations::isDerived($op, $this->operations)) {
+                $acknowledged[] = $op->key();
+            } else {
+                $undeclared[] = $op;
+            }
+        }
+
+        $declared = count($population) - count($undeclared) - count($acknowledged);
+
+        // Counted inside the population, never as an extra one (UndeclaredInputAudit's phrasing): "0/4
+        // declare …, and the 4 acknowledged …" rather than "0/4 … 4 more", which reads as eight.
+        $acknowledgedPhrase = sprintf('the %d acknowledged derived graph read%s (%s)',
+            count($acknowledged),
+            count($acknowledged) === 1 ? '' : 's',
+            implode(', ', $acknowledged));
+        $acknowledgedVerb = count($acknowledged) === 1 ? 'is' : 'are';
+
+        // The acknowledged reads are still `ability: null`. The null → derived flip would turn each into a
+        // token no host defines, and an undefined ability is a denied one (registry-kernel 27 D1), so the
+        // flip is not clear while any are registered: it has to exempt them.
+        $flipNote = $acknowledged === []
+            ? 'Both halves empty is the gate ParticleOperation::$ability\'s null → derived flip is waiting on.'
+            : sprintf('The null → derived flip is still not clear: it must exempt %s, which %s null by design '
+                .'and would 403 under a derived token no host defines.', $acknowledgedPhrase, $acknowledgedVerb);
 
         if ($all === []) {
             return [Finding::inconclusive(self::CHECK, 'No particle operations are registered in this host.')];
@@ -103,12 +149,16 @@ class UngatedOperationAudit implements DoctorAudit
 
         if ($undeclared === []) {
             return [Finding::pass(self::CHECK, sprintf(
-                '%d/%d non-write particle operations declare their authorization. The `null` residue is '
-                .'empty on this half; `kind: Write` is gated separately by %s. Both halves empty is the '
-                .'gate ParticleOperation::$ability\'s null → derived flip is waiting on.',
+                '%d/%d non-write particle operations declare their authorization%s. The unacknowledged '
+                .'`null` residue is empty on this half; `kind: Write` is gated separately by %s. %s',
                 $declared,
                 count($population),
+                $acknowledged === []
+                    ? ''
+                    : sprintf(', and %s %s scope-gated by construction: %s',
+                        $acknowledgedPhrase, $acknowledgedVerb, self::ACKNOWLEDGED_DERIVED_GRAPH),
                 UngatedWriteOperationAudit::class,
+                $flipNote,
             ))];
         }
 
@@ -117,7 +167,7 @@ class UngatedOperationAudit implements DoctorAudit
             .'`false`. Each is gated only by whatever middleware its mount carries, and the declaration '
             ."cannot be read to find out which.\n\nDeclare a token, or `ability: false` with a docblock "
             .'saying why (the shape `Splicewire\\Beam\\Accounts\\Ops\\StopImpersonating` argues). The '
-            ."derived permission name each would take is shown beside it:\n%s",
+            ."derived permission name each would take is shown beside it:\n%s%s",
             count($undeclared),
             count($population),
             implode("\n", array_map(
@@ -128,6 +178,11 @@ class UngatedOperationAudit implements DoctorAudit
                 ),
                 $undeclared,
             )),
+            // After the list, never between its header and its lines.
+            $acknowledged === []
+                ? ''
+                : "\n\n".sprintf('Not counted as residue: %s, which %s scope-gated by construction: %s. %s',
+                    $acknowledgedPhrase, $acknowledgedVerb, self::ACKNOWLEDGED_DERIVED_GRAPH, $flipNote),
         ))];
     }
 }

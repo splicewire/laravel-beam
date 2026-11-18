@@ -143,7 +143,10 @@ use Splicewire\Beam\Routing\IdConstraint;
  * ticket 27 D1 pinned that exact failure for the registry authorizer). Flipping in one act would 403
  * fourteen shipped endpoints rather than gate them. The gate on the flip is the count of remaining
  * `null`s reaching zero — which {@see UngatedOperationAudit} measures, so the
- * count is a check rather than a memory. This is the identical schedule `input:`'s own `null` → `false`
+ * count is a check rather than a memory. That audit reports the graph reads
+ * {@see \Splicewire\Beam\Graph\GraphOperations} derives as ACKNOWLEDGED, not residue, yet they stay
+ * `null` by design (scope-gated by the read gate and the scoped store): a zero residue there does not
+ * clear the flip, which must exempt them or 403 them under a derived token no host defines. This is the identical schedule `input:`'s own `null` → `false`
  * flip is under.
  *
  * ### ⚠️ On `kind: Write` that count IS zero, and the residue is now held there by a GATE
