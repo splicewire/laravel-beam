@@ -195,31 +195,6 @@ class CredentialScopeGate
         return false;
     }
 
-    /**
-     * Owner ruling 2026-11-19 (standwell gap-assessment-build 39): a token minted or replaced by a call that is itself
-     * authenticated with a scoped token can carry no ability outside the acting token's abilities. Returns the abilities
-     * of `$abilities` the acting credential does not carry, so the minting surface can refuse them with its own coded
-     * error (never trim). `null` asks for an unscoped (`*`) token, which a scoped credential never carries (`['*']`).
-     * A session, a `*` token and an unbound resolver are unscoped: always `[]`.
-     *
-     * @param  list<string>|null  $abilities
-     * @return list<string>
-     */
-    public function beyondActingCredential(?array $abilities): array
-    {
-        if (! app()->bound(CredentialScopeResolver::class)) {
-            return [];
-        }
-
-        $acting = app(CredentialScopeResolver::class)->resolve();
-
-        if ($acting === null) {
-            return [];
-        }
-
-        return $abilities === null ? ['*'] : array_values(array_diff($abilities, $acting));
-    }
-
     /** A flat namespaced name (`declarations.check`, `tenant:provision`), not a bare verb or an entitlement key. */
     public static function isPermissionName(string $ability): bool
     {

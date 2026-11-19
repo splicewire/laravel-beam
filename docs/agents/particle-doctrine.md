@@ -602,10 +602,6 @@ principal** (the acting principal is any user an already-resolved guard holds, a
 default request user); a **decision that asks no permission** (membership, ownership, a participant or seller check:
 there is no name in a token's vocabulary to narrow it by; an owner question); and **checks outside the Gate**
 (`tokenCan()`, which is the credential itself, and `hasRole()`/`isRoot()` read directly by a controller or middleware).
-**A scoped token cannot mint a wider one** (owner ruling 2026-11-19): a token minted or replaced by a call authenticated
-with a scoped token may carry only abilities the acting token carries; the minting surface refuses more with a coded
-error (`CredentialScopeGate::beyondActingCredential()`), and a session or `*` token mints as before.
-
 The inventory of sites a token call can reach (beam, tower, the flagship and the beam packages they compose; each file is
 cited in the gap-assessment-build 39 proof):
 
@@ -620,7 +616,6 @@ cited in the gap-assessment-build 39 proof):
 | beam-accounts `InvitationPolicy` team-role fallback (`create`, `delete`) beside the cascade | narrowed | `superuserMay()` to `invitation.create` / `invitation.delete` (`invitation.{id}.delete`) |
 | `entitlement:{key}` (`can:entitlement:exec.view`, `RequireRootRole` → `entitlement:os.operate`, MCP tool gate, realm doors, can maps) | exempt | entitlement plane (owner 2026-11-18), answered principal-only; permission-asking definitions audited: `entitlement:analytics.view` (asks `analytics.view`), `entitlement:commerce.manage` (asks `entitlement:os.operate`) |
 | Membership / ownership / participant / seller decisions (`TenantMemberReadPolicy` member arm, `RulePolicy`, `EntitySectionRevisionPolicy`, `EntityObligation/Registration/AssessmentPolicy::view`, `TenantSyncPolicy`, `MessagePolicy`, `TokenPolicy`, `SavedFilterPolicy`, calendar `ActionPolicy`, `SellerRepoAuthorizationPolicy`) | exempt | asks no permission; no name in a token's vocabulary |
-| Token minting and replacement: tower `ApiTokenController` store/rotate (flagship `routes/tenant.php:1153`), beam-accounts `ApiTokenController` store/rotate | narrowed (owner ruling 2026-11-19) | a scoped acting token mints nothing beyond its abilities; refused with a coded error |
 | `tokenCan()` gates (`provision.tenant`'s `tenant:provision`, `consume.engine`'s `engine:consume`), the federation resolve grant | exempt | the credential's own abilities |
 | Role checks outside the Gate: `hasRole`/`isRoot` in controllers and middleware (tower `TenantSyncController`, `KnowledgeGraphController`; flagship `AuthorizeTenantProvisioning`, `RequireAdminRole`) | not narrowed | not a policy or gate; recorded in the 39 proof |
 

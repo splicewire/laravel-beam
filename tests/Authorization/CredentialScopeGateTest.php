@@ -186,22 +186,6 @@ class CredentialScopeGateTest extends TestCase
         $this->getJson('/scoped/named-guard')->assertOk()->assertJson(['self' => true, 'other' => true]);
     }
 
-    public function test_a_token_minted_under_a_scoped_credential_may_carry_only_what_that_credential_carries(): void
-    {
-        $gate = $this->app->make(CredentialScopeGate::class);
-
-        $this->scopeTo(['widgets.export', 'widgets.approve']);
-        $this->assertSame([], $gate->beyondActingCredential(['widgets.export']), 'narrower');
-        $this->assertSame([], $gate->beyondActingCredential(['widgets.approve', 'widgets.export']), 'equal');
-        $this->assertSame(['widgets.delete'], $gate->beyondActingCredential(['widgets.export', 'widgets.delete']), 'wider');
-        $this->assertSame(['*'], $gate->beyondActingCredential(null), 'an unscoped token is wider than any scope');
-
-        // A session or a `*` token mints as before.
-        $this->scopeTo(null);
-        $this->assertSame([], $gate->beyondActingCredential(null));
-        $this->assertSame([], $gate->beyondActingCredential(['widgets.delete']));
-    }
-
     public function test_a_guest_and_a_check_for_someone_other_than_the_acting_principal_are_not_narrowed(): void
     {
         $this->scopeTo([]);
