@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Tests\Routing;
 
 use Illuminate\Routing\Router;
 use LogicException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Splicewire\Beam\Routing\ApiRoot;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -76,6 +77,73 @@ class ApiRootTest extends TestCase
             });
         });
         $this->getJson('http://package.test/beam/widgets/ping')->assertOk()->assertJsonPath('ok', true);
+    }
+
+    public function test_a_catch_all_on_a_dedicated_literal_host_does_not_shadow_an_undomained_root(): void
+    {
+        // data-schemas mounts its path-less schema door as a `{path}` catch-all constrained to `schemas.<host>`
+        // (SchemaDoorMount). It answers only there, so it never shadows an undomained package root on the app host.
+        config(['app.url' => 'http://app.test']);
+        $router = $this->app->make(Router::class);
+        $router->domain('schemas.app.test')->get('{path}', fn () => 'door')->where('path', '.*')->name('data-schemas.document');
+        ApiRoot::mount($router, 'fixture.api_root', 'widgets', function (Router $router): void {
+            $router->get('ping', fn () => ['ok' => true]);
+        });
+
+        $this->getJson('http://app.test/beam/widgets/ping')->assertOk()->assertJsonPath('ok', true);
+        $this->get('http://schemas.app.test/some/schema')->assertOk()->assertSee('door');
+    }
+
+    /** @return array<string, array{0: string, 1: string}> app.url, the catch-all's literal domain */
+    public static function ownHostSpellings(): array
+    {
+        return [
+            'same host' => ['http://app.test', 'app.test'],
+            'case' => ['http://APP.test', 'app.TEST'],
+            'port on app.url' => ['http://app.test:8000', 'app.test'],
+            'trailing dot on the domain' => ['http://app.test', 'app.test.'],
+        ];
+    }
+
+    #[DataProvider('ownHostSpellings')]
+    public function test_a_catch_all_constrained_to_the_app_own_host_still_refuses(string $appUrl, string $domain): void
+    {
+        config(['app.url' => $appUrl]);
+        $router = $this->app->make(Router::class);
+        $router->domain($domain)->get('{path}', fn () => 'site')->where('path', '.*')->name('site.own-host');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('site.own-host');
+        ApiRoot::mount($router, 'fixture.api_root', 'widgets', function (Router $router): void {
+            $router->get('ping', fn () => 'unreachable');
+        });
+    }
+
+    public function test_a_patterned_catch_all_domain_still_refuses_an_undomained_root(): void
+    {
+        // A pattern can match the tenant hosts an undomained package route is served on.
+        config(['app.url' => 'http://app.test']);
+        $router = $this->app->make(Router::class);
+        $router->domain('{tenant}.app.test')->get('{path}', fn () => 'tenant site')->where('path', '.*')->name('tenant.catch-all');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('tenant.catch-all');
+        ApiRoot::mount($router, 'fixture.api_root', 'widgets', function (Router $router): void {
+            $router->get('ping', fn () => 'unreachable');
+        });
+    }
+
+    public function test_an_app_url_without_a_host_fails_closed(): void
+    {
+        config(['app.url' => '']);
+        $router = $this->app->make(Router::class);
+        $router->domain('schemas.app.test')->get('{path}', fn () => 'door')->where('path', '.*')->name('data-schemas.document');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('data-schemas.document');
+        ApiRoot::mount($router, 'fixture.api_root', 'widgets', function (Router $router): void {
+            $router->get('ping', fn () => 'unreachable');
+        });
     }
 
     public function test_null_and_empty_config_keep_the_package_default(): void
