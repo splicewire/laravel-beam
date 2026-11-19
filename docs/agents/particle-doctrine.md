@@ -591,15 +591,23 @@ session, a `['*']` token, a guest and MCP over stdio are unchanged. It reaches e
   first (36).
 - **`CredentialScopeGate::superuser()`**, for a host's allow-all `Gate::before` (the flagship's Root): under a scope
   the superuser keeps a flat name only if the token carries it, and a verb only if its own definition allows it with
-  the befores removed or the token carries its derived name (`hook.reset`). A Root grant written inside a policy uses
-  `superuserMay()` (the derived name only).
+  the befores removed or the token carries its derived name (`hook.reset`). A Root grant written inside a policy, or a
+  role fallback beside the cascade (beam-accounts `InvitationPolicy`), uses `superuserMay()` (the derived name only).
 
 Not narrowed, on purpose: the **entitlement plane** (`entitlement:{key}`, a plan feature, not a permission; MCP's tool
-gate asks it, so MCP calls are not narrowed); a **check for someone other than the acting principal**; a **decision
-that asks no permission** (membership, ownership, a participant or seller check: there is no name in a token's
-vocabulary to narrow it by); and **checks outside the Gate** (`tokenCan()`, which is the credential itself, and
-`hasRole()`/`isRoot()` read directly by a controller or middleware). The inventory of sites a token call can reach
-(beam, tower, the flagship; each file is cited in the gap-assessment-build 39 proof):
+gate asks it, so MCP calls are not narrowed). Under a scope an entitlement check is answered **principal-only**,
+including the permissions its definition asks (the flagship's `entitlement:analytics.view` asks `analytics.view`;
+`analytics.view` asked directly stays narrowed). Also not narrowed: a **check for someone other than the acting
+principal** (the acting principal is any user an already-resolved guard holds, a named `sanctum` guard included, or the
+default request user); a **decision that asks no permission** (membership, ownership, a participant or seller check:
+there is no name in a token's vocabulary to narrow it by; an owner question); and **checks outside the Gate**
+(`tokenCan()`, which is the credential itself, and `hasRole()`/`isRoot()` read directly by a controller or middleware).
+**A scoped token cannot mint a wider one** (owner ruling 2026-11-19): a token minted or replaced by a call authenticated
+with a scoped token may carry only abilities the acting token carries; the minting surface refuses more with a coded
+error (`CredentialScopeGate::beyondActingCredential()`), and a session or `*` token mints as before.
+
+The inventory of sites a token call can reach (beam, tower, the flagship and the beam packages they compose; each file is
+cited in the gap-assessment-build 39 proof):
 
 | Site a token call can reach | 39 status | Why |
 |---|---|---|
@@ -608,11 +616,13 @@ vocabulary to narrow it by); and **checks outside the Gate** (`tokenCan()`, whic
 | Controller `Gate::authorize('x.y')` (`embeddings.embed`, `schemas.manage`, `workflows.author`), `can:x.y` routes (`site.edit`, `schemas.manage`, `billing.*`, `embed.view`), `Gate::define`d flat names (`entity-evidence.write`, `disclosures.record`, `entity-obligations.record-receipt`, `connected-sites.revoke`, `beam.config-section.*`, `ux.author`) | narrowed | gate `before` |
 | Resource read guard: a declared flat read ability; `ScaffoldPackReadPolicy` tenant arm (`market-listing.view`) | narrowed | gate `before` |
 | Host befores that grant through `site.edit` (flagship `ux.author`, tenant manifest `viewAny`, tenant records) | narrowed | their grant asks `site.edit` |
-| Flagship Root `Gate::before`; `RunnerTransformPolicy`'s `isRoot()` arms | narrowed | `superuser()` / `superuserMay()` |
-| `entitlement:{key}` (`can:entitlement:exec.view`, `RequireRootRole` → `entitlement:os.operate`, MCP tool gate, realm doors, can maps) | exempt | entitlement plane (owner 2026-11-18) |
+| Flagship Root `Gate::before`; Root grants inside policies: `RunnerTransformPolicy` and beam-accounts `UserPolicy` `isRoot()` arms, tower `ConduitPolicy::before`, beam-market `reviewMarketListing` | narrowed | `superuser()` / `superuserMay()` (`runner-transform.{verb}`, `user.{verb}`, `conduit.{verb}`, `reviewMarketListing`) |
+| beam-accounts `InvitationPolicy` team-role fallback (`create`, `delete`) beside the cascade | narrowed | `superuserMay()` to `invitation.create` / `invitation.delete` (`invitation.{id}.delete`) |
+| `entitlement:{key}` (`can:entitlement:exec.view`, `RequireRootRole` → `entitlement:os.operate`, MCP tool gate, realm doors, can maps) | exempt | entitlement plane (owner 2026-11-18), answered principal-only; permission-asking definitions audited: `entitlement:analytics.view` (asks `analytics.view`), `entitlement:commerce.manage` (asks `entitlement:os.operate`) |
 | Membership / ownership / participant / seller decisions (`TenantMemberReadPolicy` member arm, `RulePolicy`, `EntitySectionRevisionPolicy`, `EntityObligation/Registration/AssessmentPolicy::view`, `TenantSyncPolicy`, `MessagePolicy`, `TokenPolicy`, `SavedFilterPolicy`, calendar `ActionPolicy`, `SellerRepoAuthorizationPolicy`) | exempt | asks no permission; no name in a token's vocabulary |
+| Token minting and replacement: tower `ApiTokenController` store/rotate (flagship `routes/tenant.php:1153`), beam-accounts `ApiTokenController` store/rotate | narrowed (owner ruling 2026-11-19) | a scoped acting token mints nothing beyond its abilities; refused with a coded error |
 | `tokenCan()` gates (`provision.tenant`'s `tenant:provision`, `consume.engine`'s `engine:consume`), the federation resolve grant | exempt | the credential's own abilities |
-| Root grants inside a policy outside these repos or outside the Gate: tower `ConduitPolicy::before`, beam-accounts `UserPolicy` `isRoot()` arms, beam-market `reviewMarketListing`, `hasRole`/`isRoot` in controllers and middleware (`TenantSyncController`, `KnowledgeGraphController`, `AuthorizeTenantProvisioning`, `RequireAdminRole`) | not narrowed (follow-up) | each needs `superuserMay()` at its own site |
+| Role checks outside the Gate: `hasRole`/`isRoot` in controllers and middleware (tower `TenantSyncController`, `KnowledgeGraphController`; flagship `AuthorizeTenantProvisioning`, `RequireAdminRole`) | not narrowed | not a policy or gate; recorded in the 39 proof |
 
 ## Reference implementations
 

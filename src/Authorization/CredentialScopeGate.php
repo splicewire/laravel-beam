@@ -153,8 +153,9 @@ class CredentialScopeGate
 
     /**
      * The narrower half of {@see superuser()}, for a superuser grant made INSIDE a policy (a policy `before`, an
-     * `isRoot()` arm), where evaluating the definition again would recurse: `true` when no scope governs the check;
-     * under a scope, a flat name by the scope and a bare verb by its derived permission name only.
+     * `isRoot()` arm) or a role fallback beside the cascade (beam-accounts `InvitationPolicy`), where evaluating the
+     * definition again would recurse: `true` when no scope governs the check; under a scope, a flat name by the scope
+     * and a bare verb by its derived permission name only (`invitation.create`, `invitation.12.delete`).
      */
     public function superuserMay(mixed $user, string $ability, mixed $subject = null): bool
     {
@@ -192,6 +193,31 @@ class CredentialScopeGate
         }
 
         return false;
+    }
+
+    /**
+     * Owner ruling 2026-11-19 (standwell gap-assessment-build 39): a token minted or replaced by a call that is itself
+     * authenticated with a scoped token can carry no ability outside the acting token's abilities. Returns the abilities
+     * of `$abilities` the acting credential does not carry, so the minting surface can refuse them with its own coded
+     * error (never trim). `null` asks for an unscoped (`*`) token, which a scoped credential never carries (`['*']`).
+     * A session, a `*` token and an unbound resolver are unscoped: always `[]`.
+     *
+     * @param  list<string>|null  $abilities
+     * @return list<string>
+     */
+    public function beyondActingCredential(?array $abilities): array
+    {
+        if (! app()->bound(CredentialScopeResolver::class)) {
+            return [];
+        }
+
+        $acting = app(CredentialScopeResolver::class)->resolve();
+
+        if ($acting === null) {
+            return [];
+        }
+
+        return $abilities === null ? ['*'] : array_values(array_diff($abilities, $acting));
     }
 
     /** A flat namespaced name (`declarations.check`, `tenant:provision`), not a bare verb or an entitlement key. */
