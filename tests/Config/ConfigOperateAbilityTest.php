@@ -92,6 +92,20 @@ class ConfigOperateAbilityTest extends TestCase
         ];
     }
 
+    public function test_every_operator_tier_op_lists_as_a_frame_action_including_versions(): void // config-sections 10b
+    {
+        // The Config area calls each op through frame's useResourceAction, which only sees a mounted op that declares an
+        // affordance. `versions` is a Read op and declared none until 10b, so the area could not list versions.
+        $actions = collect(app(ParticleResourceRegistry::class)->definition(ConfigSectionAccess::RESOURCE)->actions)->keyBy('key');
+
+        foreach (['save-draft', 'publish', 'discard-draft', 'restore', 'versions'] as $key) {
+            $this->assertTrue($actions->has($key), "{$key} is a frame action on beam-config");
+            $this->assertSame('resource', $actions[$key]->scope, $key);
+        }
+        $this->assertSame('Config versions', $actions['versions']->label);
+        $this->assertSame('/beam-config/versions', $actions['versions']->url);
+    }
+
     public function test_every_operator_tier_op_asks_the_core_defined_ability_not_the_staff_key(): void
     {
         foreach (self::OPS as $op) {

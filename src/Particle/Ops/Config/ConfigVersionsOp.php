@@ -10,6 +10,7 @@ use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
 use Splicewire\Beam\Data\Config\ConfigSectionRefInputData;
 use Splicewire\Beam\Data\Config\ConfigVersionData;
 use Splicewire\Beam\Data\Config\ConfigVersionsData;
+use Splicewire\Beam\Particle\ActionAffordance;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\Subject\NoSubject;
@@ -24,6 +25,9 @@ use Splicewire\Beam\Particle\Subject\NoSubject;
     input: ConfigSectionRefInputData::class,
     output: ConfigVersionsData::class,
     subject: NoSubject::class,
+    // config-sections 10b: a frame action, so the Config area lists versions through `useResourceAction` as it does
+    // the other operator-tier ops.
+    affordance: new ActionAffordance(label: 'Config versions'),
     summary: 'List a section\'s operator-tier versions',
 )]
 final class ConfigVersionsOp
