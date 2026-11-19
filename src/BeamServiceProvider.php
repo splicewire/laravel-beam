@@ -2699,8 +2699,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      */
     protected function registerCredentialScopeBefore(Gate $gate): void
     {
-        $gate->before(fn ($user = null, $ability = null) => $this->app->make(CredentialScopeGate::class)
-            ->before($user, $ability));
+        $gate->before(fn ($user = null, $ability = null, $arguments = []) => $this->app->make(CredentialScopeGate::class)
+            ->before($user, $ability, $arguments));
     }
 
     /**

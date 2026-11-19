@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Authorization;
 
 use Closure;
 use Illuminate\Auth\Access\Gate as LaravelGate;
+use Illuminate\Auth\AuthManager;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
@@ -38,18 +39,26 @@ use Rushing\PermissionCascade\Support\CredentialScope;
  * Unchanged, on purpose (each also stated in the particle doctrine's inventory):
  *
  *  - the ENTITLEMENT plane (`entitlement:{key}`): a plan feature of the tenant, not a principal permission
- *    (ADR-0109 decision 1, owner 2026-11-18);
+ *    (ADR-0109 decision 1, owner 2026-11-18). Under a scope it is answered principal-only, permissions its
+ *    definition asks included ({@see principalOnly()});
  *  - an unscoped call: a session, a `['*']` token, an unknown token, no bound resolver;
  *  - a guest, and a check made for anyone but the request's authenticated principal (a recipient, another member):
  *    the scope belongs to the credential that authenticated THIS request;
  *  - a decision that asks no permission at all (membership, ownership, a closure that returns a constant): there is
  *    no permission name in a token's vocabulary to narrow it by. Those sites are listed, not narrowed.
  *
- * It can only subtract: every answer here is `false` or "no say", except {@see superuser()}, which is the host's
- * grant itself, made narrower.
+ * It can only subtract: every answer here is `false`, "no say", the chain's own principal-only answer (an
+ * entitlement), or {@see superuser()}, which is the host's grant itself, made narrower.
  */
 class CredentialScopeGate
 {
+    /**
+     * How deep the current evaluation is inside an entitlement check answered principal-only ({@see before()}). While
+     * it is above zero no scope governs any check, so an entitlement definition that asks a permission internally
+     * (`entitlement:analytics.view` => `$user->can('analytics.view')`) keeps its principal answer.
+     */
+    protected static int $principalOnly = 0;
+
     public function __construct(protected Gate $gate) {}
 
     /**
@@ -59,6 +68,7 @@ class CredentialScopeGate
     public function scopes(mixed $user): bool
     {
         if ($user === null
+            || static::$principalOnly > 0
             || ! app()->bound(CredentialScopeResolver::class)
             || ! app(CredentialScope::class)->isScoped()) {
             return false;
@@ -76,14 +86,49 @@ class CredentialScopeGate
     /**
      * The `Gate::before` body: a flat permission name the scope does not carry is refused for the acting principal;
      * every other check is left to the rest of the chain (`null`).
+     *
+     * An ENTITLEMENT check under a scope is answered here, by the full chain evaluated principal-only: the plane is
+     * exempt, and an entitlement definition may ask a permission internally (the flagship's `entitlement:analytics.view`
+     * asks `analytics.view`), which this before would otherwise refuse and so change the entitlement's answer. The same
+     * permission asked directly stays narrowed.
+     *
+     * @param  array<int, mixed>|mixed  $arguments
      */
-    public function before(mixed $user, mixed $ability): ?bool
+    public function before(mixed $user, mixed $ability, mixed $arguments = []): ?bool
     {
-        if (! is_string($ability) || ! self::isPermissionName($ability) || ! $this->scopes($user)) {
+        if (! is_string($ability) || ! $this->scopes($user)) {
+            return null;
+        }
+
+        if (str_starts_with($ability, AbilityResolver::ENTITLEMENT_PREFIX)) {
+            return $this->principalOnly(fn (): bool => $this->gate->forUser($user)
+                ->allows($ability, is_array($arguments) ? $arguments : [$arguments]));
+        }
+
+        if (! self::isPermissionName($ability)) {
             return null;
         }
 
         return $this->permits($ability) ? null : false;
+    }
+
+    /**
+     * Run `$check` with no scope governing any check it makes (see {@see $principalOnly}).
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $check
+     * @return T
+     */
+    public function principalOnly(Closure $check): mixed
+    {
+        static::$principalOnly++;
+
+        try {
+            return $check();
+        } finally {
+            static::$principalOnly--;
+        }
     }
 
     /**
@@ -175,10 +220,46 @@ class CredentialScopeGate
         return $bare->allows($ability, $arguments);
     }
 
+    /**
+     * Whether `$user` is a principal this request authenticated: the user any already-resolved guard holds (a named
+     * guard such as `sanctum` included, so `Gate::forUser(auth('sanctum')->user())` is narrowed while the default
+     * guard is empty or holds someone else), or the default request user. Same object, or the same auth identifier
+     * (a tenant `TenantUser` mirror shares its central user's). Any other user is not narrowed.
+     */
     protected function isActingPrincipal(mixed $user): bool
     {
-        $acting = request()?->user();
+        foreach ($this->resolvedGuardUsers() as $acting) {
+            if ($this->samePrincipal($acting, $user)) {
+                return true;
+            }
+        }
 
+        return $this->samePrincipal(request()?->user(), $user);
+    }
+
+    /** @return list<mixed> the users the auth manager's already-resolved guards hold, resolving no new guard */
+    protected function resolvedGuardUsers(): array
+    {
+        $auth = app('auth');
+
+        if (! $auth instanceof AuthManager) {
+            return [];
+        }
+
+        $guards = Closure::bind(fn (): array => $this->guards, $auth, AuthManager::class)();
+        $users = [];
+
+        foreach ($guards as $guard) {
+            if (method_exists($guard, 'hasUser') && $guard->hasUser()) {
+                $users[] = $guard->user();
+            }
+        }
+
+        return $users;
+    }
+
+    protected function samePrincipal(mixed $acting, mixed $user): bool
+    {
         if ($acting === null) {
             return false;
         }

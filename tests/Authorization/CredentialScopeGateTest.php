@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Authorization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -37,6 +38,8 @@ class CredentialScopeGateTest extends TestCase
         Gate::define('widgets.approve', fn (?User $user = null) => $user instanceof ScopedPrivilegedUser);
         Gate::define('widgets.public', fn (?User $user = null) => true);
         Gate::define('entitlement:widgets.premium', fn (?User $user = null) => true);
+        // An entitlement whose definition asks a permission internally (the flagship's entitlement:analytics.view).
+        Gate::define('entitlement:widgets.insight', fn (?User $user = null) => $user !== null && $user->can('widgets.export'));
         Gate::policy(ScopedWidget::class, ScopedWidgetPolicy::class);
 
         // A host superuser before (the flagship's Root), made scope-aware through the seam.
@@ -65,6 +68,15 @@ class CredentialScopeGateTest extends TestCase
 
             return ['ok' => true];
         });
+        Route::get('/scoped/insight', function () {
+            Gate::authorize('entitlement:widgets.insight');
+
+            return ['ok' => true];
+        });
+        Route::get('/scoped/named-guard', fn () => [
+            'self' => Gate::forUser(auth('cb39-probe')->user())->allows('widgets.export'),
+            'other' => Gate::forUser(new ScopedPrivilegedUser)->allows('widgets.export'),
+        ]);
         Route::get('/scoped/other-user', fn () => ['other' => Gate::forUser(new ScopedPrivilegedUser)->allows('widgets.export')]);
     }
 
@@ -141,6 +153,39 @@ class CredentialScopeGateTest extends TestCase
         $this->getJson('/scoped/entitlement')->assertOk();
     }
 
+    public function test_an_entitlement_that_asks_a_permission_keeps_its_principal_answer_while_the_permission_stays_narrowed(): void
+    {
+        $this->actingAs(new ScopedPrivilegedUser);
+        $this->scopeTo(['widgets.approve']);
+
+        // The entitlement's own `$user->can('widgets.export')` is answered for the principal, not the token.
+        $this->getJson('/scoped/insight')->assertOk();
+        // The same permission asked directly is still narrowed, after and outside the entitlement check.
+        $this->getJson('/scoped/flat')->assertForbidden();
+        $this->assertFalse(Gate::allows('widgets.export'));
+        $this->assertTrue(Gate::allows('entitlement:widgets.insight'));
+        $this->assertFalse(Gate::allows('widgets.export'));
+
+        // A principal the definition refuses is still refused.
+        $this->actingAs(new ScopedPlainUser);
+        $this->getJson('/scoped/insight')->assertForbidden();
+    }
+
+    public function test_the_principal_of_a_named_guard_is_narrowed_while_the_default_guard_is_empty(): void
+    {
+        // A bearer guard other than the default (`sanctum` in a host) authenticated this request; the default `web`
+        // guard holds nobody. A check for that guard's user is narrowed; a genuinely different user is not.
+        $principal = new ScopedPrivilegedUser;
+        Auth::viaRequest('cb39-probe', fn () => $principal);
+        config(['auth.guards.cb39-probe' => ['driver' => 'cb39-probe']]);
+        $this->scopeTo(['widgets.approve']);
+
+        $this->getJson('/scoped/named-guard')->assertOk()->assertJson(['self' => false, 'other' => true]);
+
+        $this->scopeTo(['widgets.export']);
+        $this->getJson('/scoped/named-guard')->assertOk()->assertJson(['self' => true, 'other' => true]);
+    }
+
     public function test_a_guest_and_a_check_for_someone_other_than_the_acting_principal_are_not_narrowed(): void
     {
         $this->scopeTo([]);
@@ -199,6 +244,12 @@ class ScopedWidgetPolicy
 }
 
 class ScopedPrivilegedUser extends User
+{
+    protected $table = 'users';
+}
+
+/** A principal the test abilities refuse. */
+class ScopedPlainUser extends User
 {
     protected $table = 'users';
 }
