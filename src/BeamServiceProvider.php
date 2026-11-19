@@ -65,6 +65,7 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\BeamSchemaPolicy;
+use Splicewire\Beam\Authorization\CredentialScopeGate;
 use Splicewire\Beam\Authorization\GitRepoPolicy;
 use Splicewire\Beam\Authorization\GuardActorAdapter;
 use Splicewire\Beam\Authorization\SeatGate;
@@ -880,7 +881,12 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->singleton(EntitlementKeyUniverse::class);
         // Its Gate::before is attached as the Gate is first resolved: the earliest a before callback can exist, so it
         // runs ahead of any added in a provider's boot (see registerEntitlementBefore() for why the order matters).
-        $this->callAfterResolving(Gate::class, fn (Gate $gate) => $this->registerEntitlementBefore($gate));
+        // standwell gap-assessment-build 39: the credential-scope before rides the same first-resolution hook, so it too
+        // runs ahead of spatie's permission before and a host's superuser before (see registerCredentialScopeBefore()).
+        $this->callAfterResolving(Gate::class, function (Gate $gate): void {
+            $this->registerCredentialScopeBefore($gate);
+            $this->registerEntitlementBefore($gate);
+        });
 
         // The host's API taxonomy and the chain that resolves a route into it (api-surface-coherence 17).
         // Beam ships the registry EMPTY on purpose: a taxonomy belongs to the host, and seeding this
@@ -959,6 +965,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // ambient user (MCP over stdio) binds its own. The resolver itself is transport-blind and stateless.
         $this->app->bindIf(ActorPort::class, GuardActorAdapter::class);
         $this->app->bind(AbilityResolver::class);
+        $this->app->bind(CredentialScopeGate::class);
         // Seat declarations are registered by host navigation during boot and consumed later by
         // projection, I6 and the gate stage. They must share one registry-bearing instance.
         $this->app->singleton(SeatGate::class);
@@ -2680,6 +2687,20 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $defineKnown();
         $this->app->booted($defineKnown);
         $universe->whenContributed($defineKnown);
+    }
+
+    /**
+     * standwell gap-assessment-build 39: the `Gate::before` through which a scoped credential narrows every check its
+     * principal makes by a flat permission name ({@see CredentialScopeGate::before()}): a controller's
+     * `Gate::authorize('x.y')`, a `can:x.y` route, an op's `ability:`, and each name a policy outside the permission
+     * cascade asks. Attached at first resolution, beside the entitlement before, so spatie's permission before (which
+     * answers a held permission `true`) and a host's superuser before cannot answer first. It only refuses or says
+     * nothing; an unscoped call (no bound resolver, a session, a `*` token) is untouched.
+     */
+    protected function registerCredentialScopeBefore(Gate $gate): void
+    {
+        $gate->before(fn ($user = null, $ability = null) => $this->app->make(CredentialScopeGate::class)
+            ->before($user, $ability));
     }
 
     /**

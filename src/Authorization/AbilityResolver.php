@@ -65,8 +65,10 @@ use Splicewire\Beam\Entitlements\EntitlementGate;
  *     (`entity.view`, `entity.own.view`); checking the raw verb against a scope of permission names would
  *     refuse every scoped token. Under a scoped credential, a verb on a cascade-backed subject is asked of
  *     its `BaseModelPolicy` directly ({@see cascadePolicyPermits()}), because a host's `Gate::before` (the
- *     flagship's Root) can answer the Gate before that policy runs. A policy outside the cascade is not
- *     narrowed yet (standwell gap-assessment-build 39).
+ *     flagship's Root) can answer the Gate before that policy runs. A policy outside the cascade narrows
+ *     through the flat names it asks, which {@see CredentialScopeGate::before()} refuses for a scope that lacks
+ *     them, and a host superuser before narrows through {@see CredentialScopeGate::superuser()} (standwell
+ *     gap-assessment-build 39).
  *   - the ENTITLEMENT plane (`entitlement:{key}`): a plan feature of the tenant, not a principal
  *     permission, so it is not in a token's vocabulary (ADR-0109 decision 1).
  */
@@ -132,7 +134,8 @@ class AbilityResolver
      * before it, so a Root token scoped to `entity.view` would otherwise reach a write. Asking the policy directly
      * leaves the principal half to it (`$user->can()`, where Root's `before` still answers) and keeps its own
      * rungs (steward, grants, reach, `#[UseCascadePolicy]` overrides) as they are. Unscoped calls, a guest, a
-     * flat name (narrowed above) and a policy outside the cascade are unchanged here; the last is ticket 39.
+     * flat name (narrowed above) and a policy outside the cascade are unchanged here; the last narrows through
+     * {@see CredentialScopeGate} (ticket 39).
      */
     protected function cascadePolicyPermits(mixed $actor, string $ability, mixed $subject): bool
     {

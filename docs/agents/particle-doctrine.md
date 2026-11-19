@@ -576,15 +576,43 @@ without), and the **transport owns the deny shape** — HTTP throws 403, MCP omi
 is always allowed. Command abilities exist only for the **MCP projection** — that gate gates the
 *agent*, not the operation.
 
-A **scoped credential narrows the permission plane** (ADR-0109): when `ability:` is a flat permission
-name (`declarations.check`, checked with a subject or as a subject-free override target), a call made
-with a scoped token passes only if the token's abilities also hold that name. The scope comes from the
-permission cascade's `CredentialScope` seam, so a session or a `['*']` token is unchanged. A bare policy
-verb (`view`) is not matched against the scope as a raw name; on a cascade-backed subject a scoped call is
-also asked of its `BaseModelPolicy` directly, which narrows the name the verb derives to (`hook.update`), so a
-host's `Gate::before` grant (the flagship's Root) cannot carry a scoped token past it. A verb on a policy
-outside the cascade is not narrowed yet (standwell gap-assessment-build 39). An `entitlement:` key is a plan
-feature, not a permission, and is not narrowed; MCP's tool gate asks that plane, so MCP calls are not narrowed.
+A **scoped credential narrows the permission plane** (ADR-0109): effective authority is what the principal may,
+intersected with what the token carries. The scope comes from the permission cascade's `CredentialScope` seam, so a
+session, a `['*']` token, a guest and MCP over stdio are unchanged. It reaches every check in three places:
+
+- **`CredentialScopeGate::before()`**, a `Gate::before` beam registers the moment the Gate resolves (ahead of
+  spatie's and a host's): for the request's authenticated principal, a **flat permission name** (`declarations.check`,
+  `schemas.manage`, `tenant:provision`) is refused unless the token carries it. That covers an op's `ability:`, a
+  controller's `Gate::authorize('x.y')`, a `can:x.y` route, and every name a policy outside the cascade asks
+  (`$user->can('entity-evidence.write')`), so that policy's verbs narrow through the names it asks (standwell
+  gap-assessment-build 39).
+- **The cascade's `BaseModelPolicy`** narrows the name a bare verb derives to (`entity.view`, `entity.12.view`,
+  `entity.own.view`); `AbilityResolver` also asks it directly under a scope so a host `Gate::before` cannot answer
+  first (36).
+- **`CredentialScopeGate::superuser()`**, for a host's allow-all `Gate::before` (the flagship's Root): under a scope
+  the superuser keeps a flat name only if the token carries it, and a verb only if its own definition allows it with
+  the befores removed or the token carries its derived name (`hook.reset`). A Root grant written inside a policy uses
+  `superuserMay()` (the derived name only).
+
+Not narrowed, on purpose: the **entitlement plane** (`entitlement:{key}`, a plan feature, not a permission; MCP's tool
+gate asks it, so MCP calls are not narrowed); a **check for someone other than the acting principal**; a **decision
+that asks no permission** (membership, ownership, a participant or seller check: there is no name in a token's
+vocabulary to narrow it by); and **checks outside the Gate** (`tokenCan()`, which is the credential itself, and
+`hasRole()`/`isRoot()` read directly by a controller or middleware). The inventory of sites a token call can reach
+(beam, tower, the flagship; each file is cited in the gap-assessment-build 39 proof):
+
+| Site a token call can reach | 39 status | Why |
+|---|---|---|
+| Op `ability:` / frame affordance (`AbilityResolver`): flat name, cascade verb | narrowed | 36; flat names now also by the gate `before` |
+| Op or controller verb on a policy outside the cascade (`EntityEvidenceItemPolicy::create`, `RunnerTransformPolicy::viewAny`, `FragmentConceptAnchorPolicy`) | narrowed | through the flat names (or cascade verbs) it asks |
+| Controller `Gate::authorize('x.y')` (`embeddings.embed`, `schemas.manage`, `workflows.author`), `can:x.y` routes (`site.edit`, `schemas.manage`, `billing.*`, `embed.view`), `Gate::define`d flat names (`entity-evidence.write`, `disclosures.record`, `entity-obligations.record-receipt`, `connected-sites.revoke`, `beam.config-section.*`, `ux.author`) | narrowed | gate `before` |
+| Resource read guard: a declared flat read ability; `ScaffoldPackReadPolicy` tenant arm (`market-listing.view`) | narrowed | gate `before` |
+| Host befores that grant through `site.edit` (flagship `ux.author`, tenant manifest `viewAny`, tenant records) | narrowed | their grant asks `site.edit` |
+| Flagship Root `Gate::before`; `RunnerTransformPolicy`'s `isRoot()` arms | narrowed | `superuser()` / `superuserMay()` |
+| `entitlement:{key}` (`can:entitlement:exec.view`, `RequireRootRole` → `entitlement:os.operate`, MCP tool gate, realm doors, can maps) | exempt | entitlement plane (owner 2026-11-18) |
+| Membership / ownership / participant / seller decisions (`TenantMemberReadPolicy` member arm, `RulePolicy`, `EntitySectionRevisionPolicy`, `EntityObligation/Registration/AssessmentPolicy::view`, `TenantSyncPolicy`, `MessagePolicy`, `TokenPolicy`, `SavedFilterPolicy`, calendar `ActionPolicy`, `SellerRepoAuthorizationPolicy`) | exempt | asks no permission; no name in a token's vocabulary |
+| `tokenCan()` gates (`provision.tenant`'s `tenant:provision`, `consume.engine`'s `engine:consume`), the federation resolve grant | exempt | the credential's own abilities |
+| Root grants inside a policy outside these repos or outside the Gate: tower `ConduitPolicy::before`, beam-accounts `UserPolicy` `isRoot()` arms, beam-market `reviewMarketListing`, `hasRole`/`isRoot` in controllers and middleware (`TenantSyncController`, `KnowledgeGraphController`, `AuthorizeTenantProvisioning`, `RequireAdminRole`) | not narrowed (follow-up) | each needs `superuserMay()` at its own site |
 
 ## Reference implementations
 
