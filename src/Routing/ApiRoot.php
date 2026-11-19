@@ -54,18 +54,20 @@ final class ApiRoot
     /**
      * Whether the earlier route can answer on a host the package route is served on.
      *
-     * An UNDOMAINED package route answers on every host, but it is served where the app is: the app's own host and the
-     * tenant hosts under it. An earlier catch-all constrained to a LITERAL domain only shadows it on that one host, so
-     * it overlaps only when that host IS the app's own host (a constraint to the app's own host constrains nothing).
-     * A dedicated host, such as data-schemas' `schemas.<host>` door, therefore does not refuse the mount. This mirrors
-     * `Schemastud\DataSchemas\Http\SchemaDoorMount::claimsTheSite()`, which judges the same door from the other side.
-     * A PATTERNED earlier domain can match tenant hosts, so it stays guarded. An app URL that names no host cannot be
-     * judged, so the guard fails closed and refuses.
+     * An UNDOMAINED package route answers on every host. An earlier catch-all constrained to a LITERAL domain shadows
+     * it only on that one host. The guard treats a literal host other than the app's own (`app.url`) as a dedicated
+     * host, such as data-schemas' `schemas.<host>` door, and does not refuse the mount. A literal domain equal to the
+     * app's own host constrains nothing, so it still refuses. This mirrors
+     * `Schemastud\DataSchemas\Http\SchemaDoorMount::claimsTheSite()`, which judges the same door from the other side,
+     * with one difference: when `app.url` names no host, this guard FAILS CLOSED and refuses, where `claimsTheSite()`
+     * allows a constrained tier. A PATTERNED earlier domain can match many hosts, so it stays guarded.
+     *
+     * Laravel treats an empty-string domain as no constraint (it matches every host), so `''` is read as no domain.
      */
     private static function domainsOverlap(Route $earlier, Route $mounted): bool
     {
-        $left = $earlier->getDomain();
-        $right = $mounted->getDomain();
+        $left = $earlier->getDomain() ?: null;
+        $right = $mounted->getDomain() ?: null;
         if ($right === null && $left !== null && ! str_contains($left, '{')) {
             return self::isAppHost($left);
         }

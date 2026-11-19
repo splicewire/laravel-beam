@@ -146,6 +146,36 @@ class ApiRootTest extends TestCase
         });
     }
 
+    public function test_an_empty_string_domain_catch_all_still_refuses(): void
+    {
+        // Laravel reads domain('') as no constraint: it matches every host, so it shadows like an undomained catch-all.
+        config(['app.url' => 'http://app.test']);
+        $router = $this->app->make(Router::class);
+        $router->domain('')->get('{path}', fn () => 'site')->where('path', '.*')->name('site.empty-domain');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('site.empty-domain');
+        ApiRoot::mount($router, 'fixture.api_root', 'widgets', function (Router $router): void {
+            $router->get('ping', fn () => 'unreachable');
+        });
+    }
+
+    public function test_an_undomained_earlier_catch_all_still_refuses_a_domained_package_root(): void
+    {
+        // Unchanged behaviour: an undomained catch-all answers on every host, the package's domain included.
+        config(['app.url' => 'http://app.test']);
+        $router = $this->app->make(Router::class);
+        $router->get('{path}', fn () => 'site')->where('path', '.*')->name('site.every-host');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('site.every-host');
+        $router->domain('package.test')->group(function (Router $router): void {
+            ApiRoot::mount($router, 'fixture.api_root', 'widgets', function (Router $router): void {
+                $router->get('ping', fn () => 'unreachable');
+            });
+        });
+    }
+
     public function test_null_and_empty_config_keep_the_package_default(): void
     {
         foreach ([null, '', '/'] as $value) {
