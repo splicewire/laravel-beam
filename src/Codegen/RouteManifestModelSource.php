@@ -41,7 +41,7 @@ class RouteManifestModelSource
     /**
      * The adapter validates optional metadata from sources before forwarding it into codegen facets.
      *
-     * @param  array<string, array{path: string, methods?: list<string>, returns?: string, returnsMany?: bool, returnsBody?: bool, input?: mixed, streams?: array<string, list<string>>}>  $manifest
+     * @param  array<string, array{path: string, methods?: list<string>, returns?: string, returnsMany?: bool, returnsBody?: bool, input?: mixed, streams?: array<string, list<string>>, urlFormats?: list<string>}>  $manifest
      */
     private function addRealm(CodegenModel $model, array $manifest, string $realm): void
     {
@@ -65,6 +65,13 @@ class RouteManifestModelSource
             // facet. `CodegenModel::operation(body:)` is a structural record, not a reference to a host DTO.
             if (array_key_exists('input', $entry) && (is_string($entry['input']) || $entry['input'] === false)) {
                 $meta['input'] = $entry['input'];
+            }
+
+            // pe08 G9: a document-delivery route's declared `?format` axis rides the same host-facet meta. It
+            // drives a typed URL builder (`<domain><Action>Url(params?, format?)`), not a hook, so it is not a
+            // core-model `returns`.
+            if (isset($entry['urlFormats']) && is_array($entry['urlFormats']) && $entry['urlFormats'] !== []) {
+                $meta['urlFormats'] = array_values($entry['urlFormats']);
             }
 
             $model->operation(

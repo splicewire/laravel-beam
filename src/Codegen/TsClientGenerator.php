@@ -80,6 +80,15 @@ class TsClientGenerator implements Generator
         $files = $this->emitHooks($files, $typed);
         $files = $this->emitStreamHooks($files, $streamed);
 
+        // pe08 G9: typed URL builders for document-delivery routes (their op declares a `?format` axis). A
+        // separate transport: no hook, no name collision with the `use…`/`…Stream` families (the `…Url` suffix),
+        // so it rides the realm maps directly and appends into the same `hooks/<domain>.ts` files.
+        $urls = array_merge(
+            $this->urlEntries($tenantMap, 'tenant'),
+            $this->urlEntries($adminMap, 'operator'),
+        );
+        $files = $this->emitUrlBuilders($files, $urls);
+
         if ((bool) ($this->options['emit_stores'] ?? false)) {
             $files = $this->emitStores($files, $typed);
         }
@@ -127,6 +136,11 @@ class TsClientGenerator implements Generator
 
             if (isset($op['meta']['streams'])) {
                 $entry['streams'] = $op['meta']['streams'];
+            }
+
+            // pe08 G9: a document-delivery route's declared `?format` axis → a typed URL builder (no hook).
+            if (isset($op['meta']['urlFormats'])) {
+                $entry['urlFormats'] = $op['meta']['urlFormats'];
             }
 
             if (array_key_exists('input', $op['meta'] ?? [])) {
@@ -536,6 +550,97 @@ class TsClientGenerator implements Generator
 
         return "export function {$e['hookName']}({$sig}) {\n"
             ."    return useSseStream<{$e['eventTypeName']}>({$client}, {$routeCall}, { method: '{$e['writeVerb']}' });\n"
+            ."}\n";
+    }
+
+    // ── <domain>Url builders (pe08 G9: document-delivery routes — a typed URL, not a hook) ──────────
+
+    /**
+     * Select the document-delivery entries (an op that declared a `?format` axis carries `urlFormats`). Mirrors
+     * {@see streamEntries()}: these are exactly the entries {@see typedEntries()} drops for having no `returns`.
+     *
+     * @param  array<string, array<string, mixed>>  $map
+     * @return list<array<string, mixed>>
+     */
+    private function urlEntries(array $map, string $realm): array
+    {
+        $out = [];
+
+        foreach ($map as $name => $entry) {
+            if (empty($entry['urlFormats'])) {
+                continue;
+            }
+
+            $remainder = $realm === 'operator'
+                ? preg_replace('/^api\.operator\./', '', $name)
+                : preg_replace('/^api\.v1\./', '', $name);
+
+            $segments = explode('.', $remainder);
+            $action = array_pop($segments);
+            $domainSlug = implode('-', $segments) ?: 'root';
+
+            preg_match_all('/\{(\w+)\}/', $entry['path'], $paramMatches);
+
+            $out[] = [
+                'name' => $name,
+                'realm' => $realm,
+                'domainKey' => $domainSlug,
+                'originalDomainKey' => $domainSlug,
+                'builderName' => Str::camel(Str::studly($domainSlug).Str::studly($action)).'Url',
+                'params' => $paramMatches[1],
+                'formats' => array_values($entry['urlFormats']),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, string>  $files
+     * @param  list<array<string, mixed>>  $urls
+     * @return array<string, string>
+     */
+    private function emitUrlBuilders(array $files, array $urls): array
+    {
+        foreach ($this->byDomain($urls) as $domainKey => $entries) {
+            [, $routeFn] = $this->realmBindings($entries[0]['realm']);
+            $key = 'hooks/'.$domainKey.'.ts';
+            $appending = isset($files[$key]);
+
+            // When the domain file already exists (its hooks imported `routeFn`), only the builders are new;
+            // otherwise the builders are the file's only content and import `routeFn` themselves.
+            $body = $appending
+                ? ''
+                : "import { {$routeFn} } from '{$this->routesImport()}';\n\n";
+
+            foreach ($entries as $entry) {
+                $body .= $this->renderUrlBuilder($entry, $routeFn)."\n";
+            }
+
+            $files[$key] = $appending
+                ? rtrim($files[$key])."\n\n".rtrim($body)."\n"
+                : $this->banner().rtrim($body)."\n";
+        }
+
+        return $files;
+    }
+
+    /**
+     * `<domain><Action>Url(params?, format?): string` — the existing route-name path builder plus the declared
+     * `?format`. The `format?` union is the op's own declared `formats()`, so a wrong format is a type error.
+     *
+     * @param  array<string, mixed>  $e
+     */
+    private function renderUrlBuilder(array $e, string $routeFn): string
+    {
+        $hasParams = ! empty($e['params']);
+        $sig = $hasParams ? 'params: '.$this->paramsType($e['params']) : '';
+        $sep = $hasParams ? ', ' : '';
+        $routeCall = $hasParams ? "{$routeFn}('{$e['name']}', params)" : "{$routeFn}('{$e['name']}')";
+        $formatUnion = implode(' | ', array_map(fn (string $f) => "'".$f."'", $e['formats']));
+
+        return "export function {$e['builderName']}({$sig}{$sep}format?: {$formatUnion}): string {\n"
+            ."    return {$routeCall} + (format ? '?format=' + encodeURIComponent(format) : '');\n"
             ."}\n";
     }
 

@@ -41,6 +41,11 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
  *                    source RECORDED the absence rather than silently omitting the key — never fabricate a
  *                    type, but keep the negative space reportable (particle-doctrine-followups 14; both the
  *                    satellite `ParticleRouteManifestSource` and the platform `RouteManifest` stamp it).
+ *   - `urlFormats`  (optional) a non-empty `list<string>` ⇒ a document-delivery route (its operation declares a
+ *                    `?format` axis via `delivery:`/`formats()`). It gets NO hook and NO `returns`, but a typed
+ *                    URL builder `<domain><Action>Url(params?, format?)` whose `format?` union is this list. The
+ *                    declared formats ARE the marker — declared, not detected (pe08 G9). Mutually exclusive with
+ *                    `returns`/`streams`; replaces `unresolved` for such a route.
  *
  * A host binds ONE source per realm into the generator (see `beam.client.sources`). A satellite has a
  * single tier, so the admin/second source is OPTIONAL — the generator emits an empty `adminDefaults` map
@@ -49,7 +54,7 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
 interface RouteManifestSource
 {
     /**
-     * @return array<string, array{path: string, methods: list<string>, visibility?: string, returns?: string, returnsMany?: bool, returnsBody?: bool, input?: string|false, streams?: array<string, list<string>>, unresolved?: bool}>
+     * @return array<string, array{path: string, methods: list<string>, visibility?: string, returns?: string, returnsMany?: bool, returnsBody?: bool, input?: string|false, streams?: array<string, list<string>>, unresolved?: bool, urlFormats?: list<string>}>
      */
     public function toArray(): array;
 }

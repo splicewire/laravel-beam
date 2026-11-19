@@ -102,6 +102,11 @@ class ParticleRouteManifestSource implements RouteManifestSource
                     fn (array $classes) => array_map($this->toTsType(...), $classes),
                     $streams
                 );
+            } elseif ($urlFormats = $this->urlFormatsFor($route)) {
+                // A document-delivery route: its operation declares a `?format` axis (`delivery:` → `formats()`),
+                // so there is no typed hook but a typed URL builder. The DECLARED formats ARE the marker —
+                // declared, not detected (pe08 G9). Absent here falls through to the recorded-absence branch.
+                $entry['urlFormats'] = $urlFormats;
             } else {
                 // RECORD the absence. Degrading to a route-map-only entry is correct — never fabricate a type
                 // — but a silent degradation is indistinguishable from a verb that genuinely returns nothing,
@@ -270,6 +275,26 @@ class ParticleRouteManifestSource implements RouteManifestSource
         }
 
         return $this->operations->find($resource, $name)?->output;
+    }
+
+    /**
+     * The declared `?format` axis of a document-delivery operation (its `delivery:` contributes `formats()`),
+     * keyed off the operation controller's route defaults exactly as {@see operationOutputFor()}. A non-empty
+     * list marks the route for a typed URL builder (`<domain><Action>Url(params?, format?)`) rather than a hook;
+     * an empty list is not a marker. Declared, not detected (pe08 G9).
+     *
+     * @return list<string>
+     */
+    private function urlFormatsFor(Route $route): array
+    {
+        $resource = $route->defaults[ParticleOperationController::RESOURCE] ?? null;
+        $name = $route->defaults[ParticleOperationController::NAME] ?? null;
+
+        if (! is_string($resource) || ! is_string($name)) {
+            return [];
+        }
+
+        return $this->operations->find($resource, $name)?->formats() ?? [];
     }
 
     /**
