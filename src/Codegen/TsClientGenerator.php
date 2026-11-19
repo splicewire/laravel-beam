@@ -567,7 +567,9 @@ class TsClientGenerator implements Generator
         $out = [];
 
         foreach ($map as $name => $entry) {
-            if (empty($entry['urlFormats'])) {
+            // pe08 N1: a URL builder is only meaningful for a GET route — a non-GET download URL would 405. The
+            // marker (a declared `?format` axis) does not itself imply GET, so gate emission on it here.
+            if (empty($entry['urlFormats']) || ! in_array('GET', $entry['methods'] ?? [], true)) {
                 continue;
             }
 
@@ -637,7 +639,8 @@ class TsClientGenerator implements Generator
         $sig = $hasParams ? 'params: '.$this->paramsType($e['params']) : '';
         $sep = $hasParams ? ', ' : '';
         $routeCall = $hasParams ? "{$routeFn}('{$e['name']}', params)" : "{$routeFn}('{$e['name']}')";
-        $formatUnion = implode(' | ', array_map(fn (string $f) => "'".$f."'", $e['formats']));
+        // pe08 N3: escape each format into a TS string literal (reuse tsKey) rather than raw single-quoting.
+        $formatUnion = implode(' | ', array_map($this->tsKey(...), $e['formats']));
 
         return "export function {$e['builderName']}({$sig}{$sep}format?: {$formatUnion}): string {\n"
             ."    return {$routeCall} + (format ? '?format=' + encodeURIComponent(format) : '');\n"

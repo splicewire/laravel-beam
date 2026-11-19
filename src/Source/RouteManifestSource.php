@@ -41,11 +41,13 @@ use Splicewire\Beam\Console\GenerateClientSdkCommand;
  *                    source RECORDED the absence rather than silently omitting the key — never fabricate a
  *                    type, but keep the negative space reportable (particle-doctrine-followups 14; both the
  *                    satellite `ParticleRouteManifestSource` and the platform `RouteManifest` stamp it).
- *   - `urlFormats`  (optional) a non-empty `list<string>` ⇒ a document-delivery route (its operation declares a
- *                    `?format` axis via `delivery:`/`formats()`). It gets NO hook and NO `returns`, but a typed
- *                    URL builder `<domain><Action>Url(params?, format?)` whose `format?` union is this list. The
- *                    declared formats ARE the marker — declared, not detected (pe08 G9). Mutually exclusive with
- *                    `returns`/`streams`; replaces `unresolved` for such a route.
+ *   - `urlFormats`  (optional) a non-empty `list<string>` ⇒ a GET route whose operation declares a `?format`
+ *                    axis (`delivery:` → `formats()`). It gets NO hook and NO `returns`, but a typed URL builder
+ *                    `<domain><Action>Url(params, format?)` whose `format?` union is this list (path params are
+ *                    REQUIRED). The declared formats ARE the marker — declared, not detected (pe08 G9). It marks
+ *                    "has a `?format` axis", NOT "is a download": a formatless binary download (`formats() === []`,
+ *                    the canonical empty case) carries no `urlFormats` and is unaffected. Emission is gated to GET
+ *                    (a non-GET URL would 405). Mutually exclusive with `returns`/`streams`; replaces `unresolved`.
  *
  * A host binds ONE source per realm into the generator (see `beam.client.sources`). A satellite has a
  * single tier, so the admin/second source is OPTIONAL — the generator emits an empty `adminDefaults` map

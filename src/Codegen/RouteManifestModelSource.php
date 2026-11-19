@@ -70,8 +70,8 @@ class RouteManifestModelSource
             // pe08 G9: a document-delivery route's declared `?format` axis rides the same host-facet meta. It
             // drives a typed URL builder (`<domain><Action>Url(params?, format?)`), not a hook, so it is not a
             // core-model `returns`.
-            if (isset($entry['urlFormats']) && is_array($entry['urlFormats']) && $entry['urlFormats'] !== []) {
-                $meta['urlFormats'] = array_values($entry['urlFormats']);
+            if (isset($entry['urlFormats']) && $entry['urlFormats'] !== []) {
+                $meta['urlFormats'] = $entry['urlFormats'];
             }
 
             $model->operation(

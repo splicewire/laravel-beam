@@ -64,3 +64,21 @@ it('invents no URL builder for a format-less route (the unmarked case degrades t
     expect($files['hooks/examples.ts'] ?? '')->not->toContain('Url(')
         ->and($files['routes.ts'])->toContain("'examples.export'");
 });
+
+it('emits no URL builder for a non-GET route even when it declares formats (a POST URL would 405)', function () {
+    $source = new class implements RouteManifestSource
+    {
+        public function toArray(): array
+        {
+            // A POST op that declares a `?format` axis: the marker is present, but a URL builder for a POST
+            // endpoint would point at a URL that 405s, so emission is gated to GET.
+            return ['examples.export' => ['path' => 'examples/{id}/export', 'methods' => ['POST'], 'urlFormats' => ['pdf']]];
+        }
+    };
+
+    $model = (new RouteManifestModelSource($source))->model()->toArray();
+    $files = (new TsClientGenerator)->invoke(['model' => $model, 'options' => []])['files'];
+
+    expect($files['hooks/examples.ts'] ?? '')->not->toContain('Url(')
+        ->and($files['routes.ts'])->toContain("'examples.export'");
+});
