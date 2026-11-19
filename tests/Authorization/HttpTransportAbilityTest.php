@@ -9,6 +9,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Rushing\PermissionCascade\Contracts\CredentialScopeResolver;
+use Rushing\PermissionCascade\Facades\PermissionNamer;
 use Rushing\PermissionCascade\Policies\BaseModelPolicy;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
@@ -302,15 +303,22 @@ class HttpTransportAbilityTest extends TestCase
         $this->postJson('/gadgets/1/named')->assertForbidden();
     }
 
-    public function test_a_policy_verb_is_left_to_the_policy_under_a_scoped_credential(): void
+    public function test_a_policy_verb_fails_closed_unless_the_scoped_credential_carries_its_derived_name(): void
     {
-        // `tune` is a verb: the policy owns the name it derives to (the cascade narrows that itself), so a scope of
-        // permission names that does not literally contain `tune` must not refuse it.
+        // Fleet ADR 0006 (credential-scope 02): a verb on a subject is named `{model}.{verb}` / `{model}.{id}.{verb}`;
+        // a scope that does not carry the name refuses it (it used to be left to the definition), and the principal
+        // half still decides once it does.
         $this->mount($this->op(ability: 'tune'));
         $this->actingAs(new PrivilegedUser);
-        $this->scopeCredentialTo(['gadgets.view']);
 
+        $this->scopeCredentialTo(['gadgets.view']);
+        $this->postJson('/gadgets/1/tune')->assertForbidden();
+
+        $this->scopeCredentialTo([PermissionNamer::assemble(Gadget::class, 'tune')]);
         $this->postJson('/gadgets/1/tune')->assertOk();
+
+        $this->actingAs(new PlainUser);
+        $this->postJson('/gadgets/1/tune')->assertForbidden();
     }
 
     public function test_a_subject_free_permission_override_is_narrowed_by_a_scoped_credential(): void

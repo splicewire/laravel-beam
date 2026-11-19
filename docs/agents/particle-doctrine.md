@@ -576,48 +576,51 @@ without), and the **transport owns the deny shape** — HTTP throws 403, MCP omi
 is always allowed. Command abilities exist only for the **MCP projection** — that gate gates the
 *agent*, not the operation.
 
-A **scoped credential narrows the permission plane** (ADR-0109): effective authority is what the principal may,
-intersected with what the token carries. The scope comes from the permission cascade's `CredentialScope` seam, so a
-session, a `['*']` token, a guest and MCP over stdio are unchanged. It reaches every check in three places:
+A **scoped credential fails closed** (ADR-0109 as amended by fleet ADR 0006, `rushing/splicewire-beam-runbook`
+`docs/adr/0006-a-credential-scope-fails-closed-and-machine-tokens-are-never-unscoped.md`): for the request's
+authenticated principal acting with a scoped credential, every Gate decision is **the principal may AND the token
+carries the decision's name**, and a decision with no name refuses the token. The scope comes from the permission
+cascade's `CredentialScope` seam, so a session, a `['*']` token, a guest and MCP over stdio are unchanged. The rule
+lives in the cascade (`Rushing\PermissionCascade\Authorization\CredentialScopeGate`; credential-scope 02 moved it down
+from beam), and beam keeps only its **registration**: the first `Gate::before`, attached the moment the Gate resolves
+(ahead of spatie's and a host's), with its refusals coded through `AccessError` (`credential_scope_unnamed_decision`,
+`credential_scope_name_not_carried`, a 403).
 
-- **`CredentialScopeGate::before()`**, a `Gate::before` beam registers the moment the Gate resolves (ahead of
-  spatie's and a host's): for the request's authenticated principal, a **flat permission name** (`declarations.check`,
-  `schemas.manage`, `tenant:provision`) is refused unless the token carries it. That covers an op's `ability:`, a
-  controller's `Gate::authorize('x.y')`, a `can:x.y` route, and every name a policy outside the cascade asks
-  (`$user->can('entity-evidence.write')`), so that policy's verbs narrow through the names it asks (standwell
-  gap-assessment-build 39).
-- **The cascade's `BaseModelPolicy`** narrows the name a bare verb derives to (`entity.view`, `entity.12.view`,
-  `entity.own.view`); `AbilityResolver` also asks it directly under a scope so a host `Gate::before` cannot answer
-  first (36).
-- **`CredentialScopeGate::superuser()`**, for a host's allow-all `Gate::before` (the flagship's Root): under a scope
-  the superuser keeps a flat name only if the token carries it, and a verb only if its own definition allows it with
-  the befores removed or the token carries its derived name (`hook.reset`). A Root grant written inside a policy, or a
-  role fallback beside the cascade (beam-accounts `InvitationPolicy`), uses `superuserMay()` (the derived name only).
+A decision's name: a flat permission name is itself; otherwise a name registered in the cascade's `DecisionNames`
+(the package that owns the decision registers it: beam-market names `reviewMarketListing`); otherwise the names the
+subject's policy declares (`NamesDecisions`; `BaseModelPolicy` names its rungs `{model}.{action}`, `{model}.{id}.{action}`,
+`{model}.own.{action}`, `{model}.shared.{action}`); otherwise the derivation `{model}.{verb}` / `{model}.{id}.{verb}`
+for a verb on a model subject. A carried name only admits the decision: the policy still decides for the principal,
+and every permission it asks is narrowed in turn. A host's allow-all `Gate::before` (the flagship's Root) answers through
+`CredentialScopeGate::superuser()`, and a Root arm inside a policy through `superuserMay()` (strict names only).
+`AbilityResolver` still asks a cascade policy directly under a scope (36).
 
 Not narrowed, on purpose: the **entitlement plane** (`entitlement:{key}`, a plan feature, not a permission; MCP's tool
 gate asks it, so MCP calls are not narrowed). Under a scope an entitlement check is answered **principal-only**,
 including the permissions its definition asks (the flagship's `entitlement:analytics.view` asks `analytics.view`;
 `analytics.view` asked directly stays narrowed). Also not narrowed: a **check for someone other than the acting
 principal** (the acting principal is any user an already-resolved guard holds, a named `sanctum` guard included, or the
-default request user); a **decision that asks no permission** (membership, ownership, a participant or seller check:
-there is no name in a token's vocabulary to narrow it by; an owner question); and **checks outside the Gate**
-(`tokenCan()`, which is the credential itself, and `hasRole()`/`isRoot()` read directly by a controller or middleware).
-The inventory of sites a token call can reach (beam, tower, the flagship and the beam packages they compose; each file is
-cited in the gap-assessment-build 39 proof):
+default request user). With beam-accounts' `scope_enforcement` OFF, a scoped token is refused at authentication
+(ADR 0006 C5), so "off" never means "unscoped".
 
-| Site a token call can reach | 39 status | Why |
+The inventory of sites a token call can reach (beam, tower, the flagship and the beam packages they compose; the
+gap-assessment-build 39 proof cites each file; credential-scope 02 the changes):
+
+| Site a token call can reach | status | Why |
 |---|---|---|
-| Op `ability:` / frame affordance (`AbilityResolver`): flat name, cascade verb | narrowed | 36; flat names now also by the gate `before` |
-| Op or controller verb on a policy outside the cascade (`EntityEvidenceItemPolicy::create`, `RunnerTransformPolicy::viewAny`, `FragmentConceptAnchorPolicy`) | narrowed | through the flat names (or cascade verbs) it asks |
-| Controller `Gate::authorize('x.y')` (`embeddings.embed`, `schemas.manage`, `workflows.author`), `can:x.y` routes (`site.edit`, `schemas.manage`, `billing.*`, `embed.view`), `Gate::define`d flat names (`entity-evidence.write`, `disclosures.record`, `entity-obligations.record-receipt`, `connected-sites.revoke`, `beam.config-section.*`, `ux.author`) | narrowed | gate `before` |
-| Resource read guard: a declared flat read ability; `ScaffoldPackReadPolicy` tenant arm (`market-listing.view`) | narrowed | gate `before` |
-| Host befores that grant through `site.edit` (flagship `ux.author`, tenant manifest `viewAny`, tenant records) | narrowed | their grant asks `site.edit` |
-| Flagship Root `Gate::before`; Root grants inside policies: `RunnerTransformPolicy` and beam-accounts `UserPolicy` `isRoot()` arms, tower `ConduitPolicy::before`, beam-market `reviewMarketListing` | narrowed | `superuser()` / `superuserMay()` (`runner-transform.{verb}`, `user.{verb}`, `conduit.{verb}`, `reviewMarketListing`) |
-| beam-accounts `InvitationPolicy` team-role fallback (`create`, `delete`) beside the cascade | narrowed | `superuserMay()` to `invitation.create` / `invitation.delete` (`invitation.{id}.delete`) |
-| `entitlement:{key}` (`can:entitlement:exec.view`, `RequireRootRole` → `entitlement:os.operate`, MCP tool gate, realm doors, can maps) | exempt | entitlement plane (owner 2026-11-18), answered principal-only; permission-asking definitions audited: `entitlement:analytics.view` (asks `analytics.view`), `entitlement:commerce.manage` (asks `entitlement:os.operate`) |
-| Membership / ownership / participant / seller decisions (`TenantMemberReadPolicy` member arm, `RulePolicy`, `EntitySectionRevisionPolicy`, `EntityObligation/Registration/AssessmentPolicy::view`, `TenantSyncPolicy`, `MessagePolicy`, `TokenPolicy`, `SavedFilterPolicy`, calendar `ActionPolicy`, `SellerRepoAuthorizationPolicy`) | exempt | asks no permission; no name in a token's vocabulary |
-| `tokenCan()` gates (`provision.tenant`'s `tenant:provision`, `consume.engine`'s `engine:consume`), the federation resolve grant | exempt | the credential's own abilities |
-| Role checks outside the Gate: `hasRole`/`isRoot` in controllers and middleware (tower `TenantSyncController`, `KnowledgeGraphController`; flagship `AuthorizeTenantProvisioning`, `RequireAdminRole`) | not narrowed | not a policy or gate; recorded in the 39 proof |
+| Op `ability:` / frame affordance (`AbilityResolver`): flat name, cascade verb | narrowed | 36; and the gate `before` |
+| Controller `Gate::authorize('x.y')`, `can:x.y` routes, `Gate::define`d flat names | narrowed | the name is the ability |
+| Any policy verb on a model, in or outside the cascade (membership, ownership, participant and seller arms included: `TenantMemberReadPolicy`, `RulePolicy`, `EntitySectionRevisionPolicy`, `EntityObligation/Registration/AssessmentPolicy::view`, `TenantSyncPolicy`, `MessagePolicy`, `TokenPolicy`, `UserPolicy` self arm, `MembershipPolicy`, `SavedFilterPolicy`, calendar `ActionPolicy`, `SellerRepoAuthorizationPolicy`) | narrowed (fails closed) | derived `{model}.{verb}` / `{model}.{id}.{verb}`, or the policy's declared names; ADR 0006 C2. Each package's naming of these is credential-scope 05 |
+| `BaseModelPolicy` rungs that ask no permission: steward, morph owner, grants, reach tier | narrowed | the action's or the rung's (`.own.`, `.shared.`) name |
+| `BaseModelPolicy::scopeForUser()` (a listing's row scope; tower `ThreadPolicy` copies it) | not yet narrowed | a query scope, not a Gate decision; credential-scope 05 |
+| A subjectless `Gate::define` verb, a policy over a non-model subject | refused unless registered | no name; `DecisionNames` (beam-market `reviewMarketListing`) |
+| Host befores that grant through `site.edit` (flagship `ux.author`, tenant manifest `viewAny`, tenant records) | narrowed | the outer decision's name, then `site.edit` |
+| Flagship Root `Gate::before`; Root grants inside policies (`RunnerTransformPolicy`, beam-accounts `UserPolicy`, tower `ConduitPolicy::before`, beam-market `reviewMarketListing`) | narrowed | `superuser()` / `superuserMay()` |
+| beam-accounts `InvitationPolicy` team-role fallback | narrowed | `superuserMay()` to `invitation.create` / `invitation.delete` |
+| `entitlement:{key}` (`can:entitlement:exec.view`, `RequireRootRole` → `entitlement:os.operate`, MCP tool gate, realm doors) | exempt | entitlement plane, answered principal-only (ADR 0006 C4) |
+| `tokenCan()` gates (`provision.tenant`'s `tenant:provision`, `consume.engine`'s `engine:consume`), the federation resolve grant | exempt | the credential's own abilities, inert to the intersection (ADR-0109 2026-09-01) |
+| Flagship hop issue (`HopController::issue`) | refused for any scoped token | the exchange ends in a `*` login token (ADR 0006 C9) |
+| Role and membership checks outside the Gate: tower `TenantSyncController:78`, `KnowledgeGraphController:381`; flagship `AuthorizeTenantProvisioning`, `RequireAdminRole` | not yet narrowed | credential-scope 05's inventory (route through a named Gate decision, or ask the scope directly) |
 
 ## Reference implementations
 

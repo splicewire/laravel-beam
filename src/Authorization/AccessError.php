@@ -36,4 +36,12 @@ enum AccessError: string implements CodedError
 
     #[Message('A capture matching an earlier one was refused for [:type].')]
     case DuplicateRejected = 'duplicate_rejected';
+
+    /** A scoped credential reached a decision that has no name a token can carry (fleet ADR 0006 C1). */
+    #[Message('This token cannot be used for [:key], a decision with no name a token can carry.')]
+    case CredentialScopeUnnamedDecision = 'credential_scope_unnamed_decision';
+
+    /** A scoped credential reached a decision whose name it does not carry (fleet ADR 0006 C2). */
+    #[Message('This token does not carry the name [:key] requires.')]
+    case CredentialScopeNameNotCarried = 'credential_scope_name_not_carried';
 }
