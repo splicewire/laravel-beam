@@ -604,15 +604,17 @@ default request user). With beam-accounts' `scope_enforcement` OFF, a scoped tok
 (ADR 0006 C5), so "off" never means "unscoped".
 
 The inventory of sites a token call can reach (beam, tower, the flagship and the beam packages they compose; the
-gap-assessment-build 39 proof cites each file; credential-scope 02 the changes):
+gap-assessment-build 39 proof cites each file; credential-scope 02 and 05 the changes). The fleet-wide record, every
+repo and every decision with its name, is the permission cascade's `docs/credential-scope-decision-inventory.md`:
 
 | Site a token call can reach | status | Why |
 |---|---|---|
 | Op `ability:` / frame affordance (`AbilityResolver`): flat name, cascade verb | narrowed | 36; and the gate `before` |
 | Controller `Gate::authorize('x.y')`, `can:x.y` routes, `Gate::define`d flat names | narrowed | the name is the ability |
-| Any policy verb on a model, in or outside the cascade (membership, ownership, participant and seller arms included: `TenantMemberReadPolicy`, `RulePolicy`, `EntitySectionRevisionPolicy`, `EntityObligation/Registration/AssessmentPolicy::view`, `TenantSyncPolicy`, `MessagePolicy`, `TokenPolicy`, `UserPolicy` self arm, `MembershipPolicy`, `SavedFilterPolicy`, calendar `ActionPolicy`, `SellerRepoAuthorizationPolicy`) | narrowed (fails closed) | derived `{model}.{verb}` / `{model}.{id}.{verb}`, or the policy's declared names; ADR 0006 C2. Each package's naming of these is credential-scope 05 |
+| Any policy verb on a model, in or outside the cascade (membership, ownership, participant and seller arms included: `RulePolicy`, `EntitySectionRevisionPolicy`, `EntityObligation/Registration/AssessmentPolicy::view`, `TenantSyncPolicy`, `MessagePolicy`, `TokenPolicy`, `UserPolicy` self arm, `MembershipPolicy`, `SavedFilterPolicy`, calendar `ActionPolicy`, `SellerRepoAuthorizationPolicy`) | narrowed (fails closed) | derived `{model}.{verb}` / `{model}.{id}.{verb}`, or the policy's declared names; ADR 0006 C2. Each package's naming of these is credential-scope 05 |
 | `BaseModelPolicy` rungs that ask no permission: steward, morph owner, grants, reach tier | narrowed | the action's or the rung's (`.own.`, `.shared.`) name |
-| `BaseModelPolicy::scopeForUser()` (a listing's row scope; tower `ThreadPolicy` copies it) | not yet narrowed | a query scope, not a Gate decision; credential-scope 05 |
+| `BaseModelPolicy::scopeForUser()` (a listing's row scope; tower `ThreadPolicy` copies it) | narrowed | the morph owner's inherent rows by `{model}.view` / `{model}.own.view`, the tier and grant rows by `{model}.view` / `{model}.shared.view` (credential-scope 05) |
+| A particle resource's `readPolicy` (`ResourceReadPolicy`: tower `TenantMemberReadPolicy`'s member arm, `AuthenticatedReadPolicy`, …) and a read `ResourceReadGuard` admits by a tenancy or declared row scope with no policy | not yet narrowed | asked outside the Gate; credential-scope 05 records it as a remainder for beam (the cascade inventory) |
 | A subjectless `Gate::define` verb, a policy over a non-model subject | refused unless registered | no name; `DecisionNames` (beam-market `reviewMarketListing`) |
 | Host befores that grant through `site.edit` (flagship `ux.author`, tenant manifest `viewAny`, tenant records) | narrowed | the outer decision's name, then `site.edit` |
 | Flagship Root `Gate::before`; Root grants inside policies (`RunnerTransformPolicy`, beam-accounts `UserPolicy`, tower `ConduitPolicy::before`, beam-market `reviewMarketListing`) | narrowed | `superuser()` / `superuserMay()` |
@@ -620,7 +622,7 @@ gap-assessment-build 39 proof cites each file; credential-scope 02 the changes):
 | `entitlement:{key}` (`can:entitlement:exec.view`, `RequireRootRole` → `entitlement:os.operate`, MCP tool gate, realm doors) | exempt | entitlement plane, answered principal-only (ADR 0006 C4) |
 | `tokenCan()` gates (`provision.tenant`'s `tenant:provision`, `consume.engine`'s `engine:consume`), the federation resolve grant | exempt | the credential's own abilities, inert to the intersection (ADR-0109 2026-09-01) |
 | Flagship hop issue (`HopController::issue`) | refused for any scoped token | the exchange ends in a `*` login token (ADR 0006 C9) |
-| Role and membership checks outside the Gate: tower `TenantSyncController:78`, `KnowledgeGraphController:381`; flagship `AuthorizeTenantProvisioning`, `RequireAdminRole` | not yet narrowed | credential-scope 05's inventory (route through a named Gate decision, or ask the scope directly) |
+| Role and membership checks outside the Gate: tower `TenantSyncController` Root arm, `KnowledgeGraphController` corpus re-anchor, `TenantIndexController`; flagship `AuthorizeTenantProvisioning` Root arm, `RequireAdminRole`, `ChooserController`, `RoleReachabilityProbe` | narrowed | asked of the scope by name (`CredentialScopeGate::carries()` / `authorizeCarried()` / `superuserMay()`: `tenants.sync`, `concept.update`, `tenant.view`, `tenant:provision`, `tenant.administer`) or routed through a named Gate decision (the chooser's `view` on the reader's own record); credential-scope 05 |
 
 ## Reference implementations
 

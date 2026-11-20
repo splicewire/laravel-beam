@@ -71,9 +71,10 @@ class CredentialScopeRegistrationTest extends TestCase
         $this->assertSame(AccessError::CredentialScopeNameNotCarried->value, CredentialScopeRefusal::NOT_CARRIED);
     }
 
-    public function test_the_old_beam_class_name_resolves_to_the_cascade_gate(): void
+    /** credential-scope 05: the deprecated alias is gone once its last consumer (tower ConduitPolicy) imports the cascade's. */
+    public function test_the_old_beam_class_name_is_gone(): void
     {
-        $this->assertInstanceOf(CredentialScopeGate::class, app(\Splicewire\Beam\Authorization\CredentialScopeGate::class));
+        $this->assertFalse(class_exists('Splicewire\\Beam\\Authorization\\CredentialScopeGate'));
     }
 
     /** @param  list<string>|null  $scope */
