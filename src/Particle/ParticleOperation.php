@@ -9,7 +9,10 @@ use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Agreements\Data\RequirementRefusalData;
+use Splicewire\Beam\Agreements\RequirementDeclarations;
 use Splicewire\Beam\Authorization\AbilityResolver;
+use Splicewire\Beam\Doctor\RequirementRefusalDeclaredAudit;
 use Splicewire\Beam\Doctor\UndeclaredAffordanceAudit;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
@@ -648,6 +651,29 @@ class ParticleOperation implements HasRegistryKey
     public function key(): string
     {
         return "{$this->resource}.{$this->name}";
+    }
+
+    /**
+     * The refusals this op answers with, as every READER sees them: the author's `errors:` plus, when the host has
+     * attached a Requirement to this behavior ({@see RequirementDeclarations::declares()}), an implied
+     * `428 => RequirementRefusalData::class` (agreements 04, ADR-0247 amendment).
+     *
+     * `$errors` stays the author's declaration, untouched. An author's own 428 is never replaced: a different class
+     * there is the conflict {@see RequirementRefusalDeclaredAudit} fails and the controller's guard throws on. Under
+     * {@see \Splicewire\Beam\Agreements\NullRequirementDeclarations} this returns `$errors` itself, so a host without the
+     * seam reads exactly what it read before.
+     *
+     * @return array<int, class-string<Data>>|null
+     */
+    public function declaredErrors(): ?array
+    {
+        if (isset($this->errors[428])
+            || ! app()->bound(RequirementDeclarations::class)
+            || ! app(RequirementDeclarations::class)->declares($this->key())) {
+            return $this->errors;
+        }
+
+        return ($this->errors ?? []) + [428 => RequirementRefusalData::class];
     }
 
     /**

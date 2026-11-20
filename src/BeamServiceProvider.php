@@ -147,6 +147,7 @@ use Splicewire\Beam\Doctor\PackageStubConflictAudit;
 use Splicewire\Beam\Doctor\ParticleCapabilityDisagreementAudit;
 use Splicewire\Beam\Doctor\ParticleIdConstraintKeyTypeAudit;
 use Splicewire\Beam\Doctor\RegistryConformanceAudit;
+use Splicewire\Beam\Doctor\RequirementRefusalDeclaredAudit;
 use Splicewire\Beam\Doctor\RetiredMigrationAudit;
 use Splicewire\Beam\Doctor\ScopedReadAuthenticationAudit;
 use Splicewire\Beam\Doctor\StubStaticReferenceAudit;
@@ -971,6 +972,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bind(AbilityResolver::class);
         $this->app->bindIf(Agreements\RequirementResolver::class,
             Agreements\NullRequirementResolver::class);
+        // agreements 04: which behaviors a host attached a Requirement to; ParticleOperation::declaredErrors() implies
+        // errors:428 for each. The Null default declares none, so a host without the seam reads exactly as before.
+        $this->app->bindIf(Agreements\RequirementDeclarations::class,
+            Agreements\NullRequirementDeclarations::class);
         $this->app->bind(Agreements\RequirementAdmission::class);
         // Seat declarations are registered by host navigation during boot and consumed later by
         // projection, I6 and the gate stage. They must share one registry-bearing instance.
@@ -1551,6 +1556,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // branching on severity inside it: the gate flag is per REGISTRATION, so one class would fail
         // the legitimate `kind: Read` residue at `--floor=warn`.
         $manifest->register('splicewire/laravel-beam', UngatedWriteOperationAudit::class, gate: true);
+        // agreements 04: a behavior the host attached a Requirement to whose author declared a DIFFERENT 428 body. The
+        // controller throws on that op the first time a requirement is outstanding, so it gates; under the Null port it
+        // has no population and passes.
+        $manifest->register('splicewire/laravel-beam', RequirementRefusalDeclaredAudit::class, gate: true);
         // The `input:` twin of the audit above (api-surface-coherence 117). Two checks from one class,
         // because the axes are decoupled: the RESOURCE axis counts REACHABLE write mounts, derived from
         // the router every run — a declaration count reports the 22-route saved-filters sub-surface and

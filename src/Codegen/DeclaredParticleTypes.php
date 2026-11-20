@@ -118,7 +118,8 @@ class DeclaredParticleTypes
 
             $note($operation->input, "operation [{$key}] input:");
 
-            foreach ($operation->errors ?? [] as $status => $error) {
+            // The declared read, not `$errors`: a host-attached Requirement implies 428 (agreements 04).
+            foreach ($operation->declaredErrors() ?? [] as $status => $error) {
                 $note($error, "operation [{$key}] errors: [{$status}]");
             }
 

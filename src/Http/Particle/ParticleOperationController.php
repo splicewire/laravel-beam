@@ -190,7 +190,9 @@ class ParticleOperationController extends Controller
         );
 
         if ($refusal !== null) {
-            if (($operation->errors[428] ?? null) !== RequirementRefusalData::class) {
+            // The declared read, so a host-attached Requirement implies the slot (agreements 04); an author's
+            // conflicting 428, or a 428 neither declared nor implied, still fails loudly.
+            if (($operation->declaredErrors()[428] ?? null) !== RequirementRefusalData::class) {
                 throw new LogicException(sprintf(
                     'Operation [%s] has outstanding requirements but does not declare [%s] at errors:428.',
                     $operation->key(), RequirementRefusalData::class,

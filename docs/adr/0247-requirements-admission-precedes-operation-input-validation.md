@@ -39,3 +39,14 @@ The same transport-neutral admission seam can be called by any future transport 
 ## Scope
 
 This ticket wires particle operations only. Requirement declarations on resources, ordinary routes, route middleware and workflow steps are integrated by the tickets that own those surfaces. The shared admission seam does not depend on the agreements package, and the agreements package may bind a resolver without adding a reverse dependency from beam.
+
+## Amendment (agreements 04)
+
+A host may attach a Requirement, by behavior key (`ParticleOperation::key()`, `{resource}.{name}`), to an operation it does not own. That operation's author typically declared no `errors:428`, so the guard above would throw the first time the requirement is outstanding. Ticket 04 closes the gap this ADR left open for it:
+
+- **The port.** `Splicewire\Beam\Agreements\RequirementDeclarations::declares(string $behavior): bool` reports which behaviors carry a host-attached Requirement. Beam binds `NullRequirementDeclarations` (declares nothing) with `bindIf`, beside the `RequirementResolver` default; the agreements package binds its own.
+- **The implied 428.** `ParticleOperation::declaredErrors()` returns the author's `errors:` plus `428 => RequirementRefusalData::class` when the port declares the operation's behavior and the author declared no 428. `$errors` itself stays the author's declaration. Every reader of an operation's declared refusals reads `declaredErrors()`: the controller's 428 guard and the generated types (`DeclaredParticleTypes`). The OpenAPI spec is emitted outside beam (laravel-beam-docs `ParticleResponseStrategy`), which must read the same method for the spec to show the implied 428.
+- **Byte-identical without a seam.** Under the Null port `declaredErrors()` returns `$errors` unchanged, so a host without the agreements seam answers, documents and generates exactly as before.
+- **The audit.** An author's own 428 is never overwritten. If it names a different class while the port declares the behavior, the controller's guard still throws, and `RequirementRefusalDeclaredAudit` (check `requirements.refusal-declared`, registered as a gate) fails the doctor for that operation before a request finds it. It passes trivially under the Null port.
+
+This satisfies the contract above for ticket 04: registration of a Requirement on an operation implies `errors:428`, or the doctor flags the conflicting declaration. Ticket 05's `requires` slot carries the same contract through the same port.
