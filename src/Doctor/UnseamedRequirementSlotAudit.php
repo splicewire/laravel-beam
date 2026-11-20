@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Doctor;
 
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Splicewire\Beam\Agreements\Http\RouteRequirementGate;
 use Splicewire\Beam\Agreements\RequirementResolver;
 use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Agreements\SlotRequirementDeclarations;
@@ -35,7 +36,13 @@ class UnseamedRequirementSlotAudit implements DoctorAudit
     /** @return list<Finding> */
     public function run(): array
     {
-        $declared = $this->slots->all();
+        // agreements 07: a route's Requirement (`route:{name}`) PASSES while no seam is installed (ADR-0247 amendment 07),
+        // so it is never refused as unknown and isn't this check's business.
+        $declared = array_filter(
+            $this->slots->all(),
+            fn (string $behavior): bool => ! str_starts_with($behavior, RouteRequirementGate::BEHAVIOR_PREFIX),
+            ARRAY_FILTER_USE_KEY,
+        );
 
         if ($declared === []) {
             return [Finding::pass(self::CHECK, 'No operation or resource declares a `requires:` slot.')];

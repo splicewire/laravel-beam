@@ -17,6 +17,7 @@ use Illuminate\Foundation\Events\LocaleUpdated;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Router;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Event;
@@ -65,6 +66,8 @@ use Schemastud\Frame\Realm\RealmDefinition;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
+use Splicewire\Beam\Agreements\Http\EnforceRouteRequirements;
+use Splicewire\Beam\Agreements\Http\RequireAgreement;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\AccessError;
 use Splicewire\Beam\Authorization\ActorPort;
@@ -167,6 +170,7 @@ use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Doctor\UngatedWriteAudit;
 use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
+use Splicewire\Beam\Doctor\UnnamedRequirementRouteAudit;
 use Splicewire\Beam\Doctor\UnrehearsableStubAudit;
 use Splicewire\Beam\Doctor\UnseamedRequirementSlotAudit;
 use Splicewire\Beam\Doctor\UnverifiedOnPopulatedTableAudit;
@@ -1350,6 +1354,42 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
     }
 
     /**
+     * agreements 07 (ADR-0247 amendment 07; lead rulings Q-07b, Q-07c): an ordinary route requires an Agreement.
+     *
+     * - `agreement` aliases {@see RequireAgreement}: `->middleware('agreement:terms')` on a NAMED route declares a
+     *   Requirement for `route:{name}`.
+     * - {@see EnforceRouteRequirements} joins the host's `web` and `api` groups (only groups the host has; through the
+     *   kernel, as localization does above, so a later kernel mutation can't drop it), so a Requirement a provider
+     *   attaches to `route:{name}` gates that route without editing it. Inert for an undeclared route.
+     * - Both sit in the priority list after the session, authentication AND route-model binding, so the route's own
+     *   `auth` refuses a guest first and the subject parameter is the bound record.
+     */
+    protected function bootRouteRequirements(): void
+    {
+        $router = $this->app->make(Router::class);
+        $router->aliasMiddleware(RequireAgreement::ALIAS, RequireAgreement::class);
+
+        $kernel = $this->app->bound(HttpKernel::class) ? $this->app->make(HttpKernel::class) : null;
+        $groups = $kernel instanceof FoundationHttpKernel ? $kernel->getMiddlewareGroups() : null;
+        foreach (['web', 'api'] as $group) {
+            if ($groups !== null && array_key_exists($group, $groups)) {
+                $kernel->appendMiddlewareToGroup($group, EnforceRouteRequirements::class);
+            } elseif ($router->hasMiddlewareGroup($group)) {
+                $router->pushMiddlewareToGroup($group, EnforceRouteRequirements::class);
+            }
+        }
+
+        if ($kernel instanceof FoundationHttpKernel) {
+            foreach ([EnforceRouteRequirements::class, RequireAgreement::class] as $gate) {
+                $kernel->addToMiddlewarePriorityAfter(
+                    [StartSession::class, AuthenticatesRequests::class, Authenticate::class, SubstituteBindings::class],
+                    $gate,
+                );
+            }
+        }
+    }
+
+    /**
      * config-sections 05 (ADR-0245 §9; PRD §Overlay application): the operator tier's published overrides are applied
      * from THREE hooks, each keyed by the one published-version counter, so a publish reaches the next request, job and
      * command with no deploy and no restart:
@@ -1579,6 +1619,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // agreements 05: a `requires:` slot while beam's slot resolver is still bound refuses every caller as an unknown
         // Agreement. One reading and a host remedy (install the seam or drop the slot), so it gates; no slot ⇒ pass.
         $manifest->register('splicewire/laravel-beam', UnseamedRequirementSlotAudit::class, gate: true);
+        $manifest->register('splicewire/laravel-beam', UnnamedRequirementRouteAudit::class, gate: true);
         // The `input:` twin of the audit above (api-surface-coherence 117). Two checks from one class,
         // because the axes are decoupled: the RESOURCE axis counts REACHABLE write mounts, derived from
         // the router every run — a declaration count reports the 22-route saved-filters sub-surface and
@@ -2167,6 +2208,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // cascade's own default).
         CascadePolicyRegistrar::register(Hook::class);
 
+        // agreements 07 joins the web/api groups BEFORE localization, which keeps ResolveLocale last in each group (its
+        // own tests pin that); execution order is the priority list's either way.
+        $this->bootRouteRequirements();
         $this->bootLocalization();
 
         // `BeamSchema` — the same shape, one line later (api-surface-coherence 147). Its docblock had
