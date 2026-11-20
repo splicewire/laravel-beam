@@ -528,7 +528,8 @@ class ParticleOperation implements HasRegistryKey
      * Data class written as the whole body at that status, e.g. a bare `422` naming the refusal's code. It is the refusal
      * twin of `output:`, at the same declaration site (particle-doctrine §The invariant, site 2): the spec documents each
      * declared status from it and the generated clients hydrate a typed refusal from it, instead of every caller parsing the
-     * body by hand. The runtime does not read it; the op still writes its own response.
+     * body by hand. Requirement admission reads the 428 slot to build its refusal response; other
+     * refusal responses remain the operation's responsibility.
      *
      * A success or non-HTTP status, or a body that is not a Data class, is a declaration the author could have spelled
      * right, so it fails here at registration rather than generating a wrong client.

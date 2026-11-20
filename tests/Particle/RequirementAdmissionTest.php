@@ -6,6 +6,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
+use LogicException;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Agreements\Data\AgreementMemberData;
@@ -95,11 +96,46 @@ class RequirementAdmissionTest extends TestCase
 
     public function test_outstanding_requirement_refuses_before_input_validation(): void
     {
-        $this->bindOutstandingResolver();
+        $resolver = $this->bindOutstandingResolver();
         $this->mount();
         $this->createProbeRow();
 
-        $this->postJson('/requirement-probe-rows/1/act', [])->assertStatus(428);
+        $this->postJson('/requirement-probe-rows/1/act', [
+            'agreement_member' => ['key' => 123, 'version' => 'bad', 'digest' => null],
+        ])->assertStatus(428)->assertExactJson([
+            'requirements' => [[
+                'key' => 'voice-release',
+                'version' => 2,
+                'digest' => 'sha256:abc',
+                'kind' => 'voice',
+                'title' => 'Voice release',
+                'scope' => 'party',
+                'subject' => null,
+                'readUrl' => '/agreements/voice-release',
+                'acceptOperation' => null,
+                'member' => 'agreement_member',
+            ]],
+        ]);
+
+        $this->assertSame([], $resolver->submittedMembers);
+    }
+
+    public function test_outstanding_requirement_without_declared_428_fails_loudly(): void
+    {
+        $this->bindOutstandingResolver();
+        $this->mount(declareRefusal: false);
+        $this->createProbeRow();
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->postJson('/requirement-probe-rows/1/act', []);
+            $this->fail('an outstanding requirement without errors:428 did not fail loudly');
+        } catch (LogicException $exception) {
+            $this->assertSame(
+                'Operation [requirement-probe-rows.act] has outstanding requirements but does not declare [Splicewire\\Beam\\Agreements\\Data\\RequirementRefusalData] at errors:428.',
+                $exception->getMessage(),
+            );
+        }
     }
 
     public function test_an_outstanding_requirement_declares_exactly_one_remedy(): void
@@ -138,7 +174,7 @@ class RequirementAdmissionTest extends TestCase
         return $resolver;
     }
 
-    private function mount(?string $ability = null): void
+    private function mount(?string $ability = null, bool $declareRefusal = true): void
     {
         $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'requirement-probe-rows',
@@ -153,7 +189,7 @@ class RequirementAdmissionTest extends TestCase
             ability: $ability,
             input: RequirementProbeInput::class,
             output: RequirementProbeOutput::class,
-            errors: [428 => RequirementRefusalData::class],
+            errors: $declareRefusal ? [428 => RequirementRefusalData::class] : null,
             handle: fn () => ['ok' => true],
         );
         $this->app->make(ParticleOperationRegistry::class)->register($operation);
