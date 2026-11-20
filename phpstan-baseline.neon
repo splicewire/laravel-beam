@@ -97,12 +97,6 @@ parameters:
 			path: src/Authorization/BeamSchemaPolicy.php
 
 		-
-			message: '#^Class Splicewire\\Beam\\Authorization\\CredentialScopeGate not found\.$#'
-			identifier: class.notFound
-			count: 1
-			path: src/Authorization/CredentialScopeGate.php
-
-		-
 			message: '#^Property Splicewire\\Beam\\Authorization\\GitRepoPolicy\:\:\$defaultModelClass has no type specified\.$#'
 			identifier: missingType.property
 			count: 1
@@ -599,6 +593,18 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: src/Config/Overrides/ConfigOverrideStore.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\<string, Splicewire\\Beam\\Config\\Overrides\\ConfigOverrideEntry\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Config/Overrides/ConfigTenantOverlay.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\<string, array\<string, Splicewire\\Beam\\Config\\Overrides\\ConfigOverrideEntry\>\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Config/Overrides/ConfigTenantOverlay.php
 
 		-
 			message: '#^Argument of an invalid type list\<string\>\|false supplied for foreach, only iterables are supported\.$#'
@@ -1991,6 +1997,18 @@ parameters:
 			identifier: missingType.generics
 			count: 1
 			path: src/Filters/SavedFilterService.php
+
+		-
+			message: '#^Class Splicewire\\Beam\\Flows\\FlowCatalog implements generic interface Rushing\\Popcorn\\Registries\\Registry but does not specify its types\: TEntry$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Flows/FlowCatalog.php
+
+		-
+			message: '#^Trait Splicewire\\Beam\\Flows\\ListsFlows is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Flows/ListsFlows.php
 
 		-
 			message: '#^Parameter \#2 \$ability of method Splicewire\\Beam\\Authorization\\AbilityResolver\:\:allows\(\) expects string, string\|false\|null given\.$#'
