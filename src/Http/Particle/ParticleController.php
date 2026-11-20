@@ -27,12 +27,14 @@ use Splicewire\Beam\Authorization\RowAuthorization;
 use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Contracts\ResponseEnvelope;
+use Splicewire\Beam\Localization\CodedNotFoundHttpException;
 use Splicewire\Beam\Localization\CodedValidationException;
 use Splicewire\Beam\Particle\Backing\AcceptsPayloadWrites;
 use Splicewire\Beam\Particle\Backing\BackingResolver;
 use Splicewire\Beam\Particle\Backing\EnrichesProjectedRecords;
 use Splicewire\Beam\Particle\Backing\ProjectsPayload;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
+use Splicewire\Beam\Particle\Backing\ResolvesRecord;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
 use Splicewire\Beam\Particle\Backing\SuppliesParticleWriter;
 use Splicewire\Beam\Particle\Backing\UsesActorOwnership;
@@ -348,6 +350,31 @@ class ParticleController extends Controller
     public function show(Request $request, string $id): Responsable
     {
         $resource = $this->particleResource($request);
+        $backing = $resource->backing($request);
+
+        // A model-less detail read follows Frame's resolved-record path. Keep the established
+        // QueriesRecords flow below unchanged: its model policy and scoped lookup still apply.
+        if ($backing instanceof ResolvesRecord && ! ($backing instanceof QueriesRecords)) {
+            ResourceReadGuard::forApp()->inspectReadFor($resource, $request, $request->user())->authorize();
+
+            $filters = (array) $request->input('filter', []);
+            $filters['source'] = (string) $request->query('source', '');
+            $resolved = $backing->resolve($this->subjectId($request, $id), $filters);
+
+            if ($resolved === null) {
+                throw new CodedNotFoundHttpException(ParticleRequestError::RecordNotFound, ['resource' => $resource->key]);
+            }
+
+            $this->admitRequirements($resource->readBehavior(), null, $resource, $request);
+
+            // Keep schemaRef on the resolved record's REST data payload to match Frame's resolvedShow;
+            // ResponseEnvelope has no meta argument.
+            return $this->envelope->item(array_merge(
+                $resolved->record->toArray(),
+                ['schemaRef' => $resolved->schemaRef],
+            ));
+        }
+
         // UX-08c: a declared read ability refuses before the record is even looked up.
         ResourceReadGuard::forApp()->inspectDeclaredAbility($resource, Gate::forUser($request->user()), $request)->authorize();
         // ADR-0230: a guest reads a resource only through its declared Public Read — so the model policy's
