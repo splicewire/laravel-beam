@@ -49,6 +49,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\Subject\ResourceRecordLookup;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
+use Splicewire\Beam\Read\ResolvedRecordPublicProjector;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
 use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ModelAttributeMapper;
@@ -361,12 +362,8 @@ class ParticleController extends Controller
 
             $this->admitRequirements($resource->readBehavior(), null, $resource, $request);
 
-            // Keep schemaRef on the resolved record's REST data payload to match Frame's resolvedShow;
-            // ResponseEnvelope has no meta argument.
-            return $this->envelope->item(array_merge(
-                $resolved->record->toArray(),
-                ['schemaRef' => $resolved->schemaRef],
-            ));
+            // ResponseEnvelope has no meta argument, so the shared projector keeps schemaRef in the payload.
+            return $this->envelope->item(ResolvedRecordPublicProjector::project($resource, $resolved, $request));
         }
 
         // UX-08c: a declared read ability refuses before the record is even looked up.
