@@ -280,6 +280,7 @@ use Splicewire\Beam\Surgeon\CentralPinResolvabilityAudit;
 use Splicewire\Beam\Surgeon\ClientRuntimeContractAudit;
 use Splicewire\Beam\Surgeon\ComposedTableConfigAudit;
 use Splicewire\Beam\Surgeon\DeclarationDocblockAudit;
+use Splicewire\Beam\Surgeon\ClosedVocabularyAudit;
 use Splicewire\Beam\Surgeon\DocblockTierAudit;
 use Splicewire\Beam\Surgeon\DuplicateRouteNameAudit;
 use Splicewire\Beam\Surgeon\EnvelopeCopyAudit;
@@ -1774,6 +1775,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // PHP roots (each package's structural JS sibling) plus whatever the host declares, so nothing
         // per-machine is committed anywhere.
         $this->app->bind(DeclarationDocblockAudit::class, fn () => DeclarationDocblockAudit::forApp());
+        // attention-surfaces 16: the closed-vocabulary audit — a sibling that reads the LiteralTypeScriptType ARGUMENT the docblock audit never looks at. Same host-scoped roots.
+        $this->app->bind(ClosedVocabularyAudit::class, fn () => ClosedVocabularyAudit::forApp());
         // Reads the resource registry — membership is a registered value, not a syntactic one, so there
         // is nothing for a parser to do and no host path to scope. Its skip branch is what keeps it
         // quiet in the 19 of 20 bootable Herd roots that declare no realms at all. The database manager
@@ -1855,6 +1858,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // standing. The registration is advisory because the POPULATION — which packages this host composes
         // — is a host fact either way, and a foundation package does not decide what fails a root's build.
         $manifest->register('splicewire/laravel-beam', DeclarationDocblockAudit::class);
+        $manifest->register('splicewire/laravel-beam', ClosedVocabularyAudit::class);
         // Advisory: every Eloquent model a family package ships should have its alias registered by that
         // package's OWN provider, not by the host composing it. Not a gate, and for the same reason the
         // others here are not — the scope is every model in every installed family package, which includes

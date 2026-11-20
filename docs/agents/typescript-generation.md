@@ -117,6 +117,8 @@ response type reaches the tree only through a scanned directory.
 
 Each line names the target first.
 
+- **Declare the set, don't type it by hand.** A closed set of strings is a backed enum and an object is a Data class; see
+  `closed-vocabulary.convention.md`.
 - **A content file is content, not a type source.** Content, docs, legal and ToS pages are MDX, and a page's file is
   never a type source: no PHP mirror of a page, no `#[TypeScript]` for one, no root over content files. The root half is
   mechanical: `.mdx` is never autoloaded PHP, so no package can declare it.
