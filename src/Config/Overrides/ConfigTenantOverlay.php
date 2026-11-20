@@ -7,6 +7,7 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Log;
 use Schemastud\DataSchemas\Overlay\JsonPathMutator;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
+use Splicewire\Beam\Config\Events\TenantConfigLayerLaid;
 use Splicewire\Beam\Config\JsonPointer;
 use Splicewire\Beam\Config\RegisteredConfigSection;
 use Splicewire\Beam\Enums\ConfigMerge;
@@ -44,11 +45,24 @@ use WeakMap;
  * **Operator sync during a hop.** {@see ConfigOverlay} lifts this layer before it writes the operator tier and lays it
  * back after ({@see lift()}, {@see lay()}), so the operator's base never captures a tenant's value and a tenant's value
  * survives an operator re-apply, whichever of the two `JobProcessing` listeners runs first.
+ *
+ * **Two extension points, opt-in and inert** (config-sections ticket 09):
+ * - {@see contribute()}: a package adds entries to the tenant layer (beam-tenancy's cutover source lays a tenant's legacy
+ *   values). A contributor runs inside {@see apply()}, so also on {@see refresh()} after a tenant publish, and ONLY after
+ *   the tenant store was read: a store read that FAILS leaves the hop on central, contributors included (a tenant with no
+ *   store yet is not a failure: it reads as nothing published, and contributors run). A contributor that
+ *   throws is logged by class and skipped; a lay of contributed layers that throws is undone and the published layer alone
+ *   is laid. With none registered, apply() is exactly what it was.
+ * - {@see TenantConfigLayerLaid}: dispatched whenever a non-empty tenant layer is laid, here or by ConfigOverlay's mid-hop
+ *   re-sync, carrying root => pointers only (never a value). A feature that rewrites a laid value re-applies itself on it.
  */
 class ConfigTenantOverlay
 {
     /** @var WeakMap<Repository, array{central: array<string, mixed>, layers: array<string, array<string, ConfigOverrideEntry>>}> */
     protected WeakMap $applied;
+
+    /** @var list<callable(array<string, array<string, ConfigOverrideEntry>>): array<string, array<string, ConfigOverrideEntry>>> */
+    protected array $contributors = [];
 
     public function __construct(protected Container $container)
     {
@@ -78,7 +92,75 @@ class ConfigTenantOverlay
             return;
         }
 
-        $this->lay($config, $layers);
+        if ($this->contributors === []) {
+            $this->lay($config, $layers);
+
+            return;
+        }
+
+        $this->layContributed($config, $layers);
+    }
+
+    /**
+     * Register a contributor to the tenant layer: given the tenant's restricted PUBLISHED layers (root => pointer => entry),
+     * it returns the layers to lay. It runs in {@see apply()} with the central values in the repository (so `config()` reads
+     * central), only when the tenant store was read, and must be cheap: it runs on every hop. Opt-in; none is registered
+     * by laravel-beam.
+     *
+     * @param  callable(array<string, array<string, ConfigOverrideEntry>>): array<string, array<string, ConfigOverrideEntry>>  $contributor
+     */
+    public function contribute(callable $contributor): void
+    {
+        $this->contributors[] = $contributor;
+    }
+
+    /**
+     * The published layers, then each contributor's; laid in one {@see lay()}. Never throws: a contributor that throws (or
+     * answers anything but an array) is skipped, and a lay that throws is undone and the published layers alone are laid.
+     *
+     * @param  array<string, array<string, ConfigOverrideEntry>>  $published
+     */
+    protected function layContributed(Repository $config, array $published): void
+    {
+        $layers = $published;
+
+        foreach ($this->contributors as $contributor) {
+            try {
+                $next = $contributor($layers);
+            } catch (Throwable $e) {
+                Log::warning('[beam] a tenant config contributor failed; its entries are not applied.', ['exception' => $e::class]);
+
+                continue;
+            }
+
+            if (is_array($next)) {
+                $layers = array_filter($next, fn ($entries): bool => is_array($entries) && $entries !== []);
+            }
+        }
+
+        // The central value of every root about to be written: lay() records them only once it finishes, so a lay that
+        // throws part-way is undone from here.
+        $central = [];
+        foreach (array_keys($layers) as $root) {
+            $central[$root] = $config->get($root);
+        }
+
+        try {
+            $this->lay($config, $layers);
+        } catch (Throwable $e) {
+            Log::warning('[beam] contributed tenant config entries could not be laid; the tenant runs on its published layer.', ['exception' => $e::class]);
+
+            foreach ($central as $root => $value) {
+                $config->set($root, $value);
+            }
+            unset($this->applied[$config]);
+
+            try {
+                $this->lay($config, $published);
+            } catch (Throwable) {
+                $this->restore($config);
+            }
+        }
     }
 
     /** Put the central values back into the CURRENT repository. A no-op when nothing was applied to it. */
@@ -165,6 +247,31 @@ class ConfigTenantOverlay
 
         if ($central !== []) {
             $this->applied[$config] = ['central' => $central, 'layers' => $layers];
+            $this->announceLaid($layers);
+        }
+    }
+
+    /**
+     * {@see TenantConfigLayerLaid}, inside a tenant hop: root => the pointers laid (never a value). Only when something
+     * listens, so an inert host pays one `hasListeners` check. A listener's failure is reported, never thrown.
+     *
+     * @param  array<string, array<string, ConfigOverrideEntry>>  $layers
+     */
+    protected function announceLaid(array $layers): void
+    {
+        try {
+            $events = $this->container->make('events');
+
+            if (! $events->hasListeners(TenantConfigLayerLaid::class)) {
+                return;
+            }
+
+            $events->dispatch(new TenantConfigLayerLaid(array_map(
+                fn (array $entries): array => array_map('strval', array_keys($entries)),
+                array_filter($layers, fn (array $entries): bool => $entries !== []),
+            )));
+        } catch (Throwable $e) {
+            report($e);
         }
     }
 

@@ -5,6 +5,10 @@ namespace Splicewire\Beam\Tests\Config;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Splicewire\Beam\Enums\ConfigOverrideOp;
+use Splicewire\Beam\Config\Overrides\ConfigOverrideEntry;
+use Splicewire\Beam\Config\Events\TenantConfigLayerLaid;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -31,6 +35,7 @@ use Splicewire\Beam\Tests\Fixtures\Config\EnterFakeTenant;
 use Splicewire\Beam\Tests\Fixtures\Config\FakeTenancyContext;
 use Splicewire\Beam\Tests\Fixtures\Config\TenantCatalogSection;
 use Splicewire\Beam\Tests\Fixtures\Config\TenantPanelsSection;
+use Splicewire\Beam\Tests\Fixtures\Config\UnreadableTenantStore;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -1452,5 +1457,157 @@ class ConfigTenantTierTest extends TestCase
         } finally {
             $context->leave();
         }
+    }
+
+    /*
+     * config-sections ticket 09: the tenant layer's two extension points, contribute() and TenantConfigLayerLaid. Opt-in
+     * and inert: with no contributor and no listener, apply() is exactly what it was.
+     */
+
+    private static function entry(string $pointer, mixed $value): ConfigOverrideEntry
+    {
+        return new ConfigOverrideEntry($pointer, ConfigOverrideOp::Set, $value, false, 'contributed', null, null);
+    }
+
+    /** Inside tenant `$id`'s hop: apply, run `$inside`, revert. */
+    private function hop(string $id, callable $inside): mixed
+    {
+        $context = app(FakeTenancyContext::class);
+        $context->enter($id);
+
+        try {
+            app(ConfigTenantOverlay::class)->apply();
+
+            return $inside();
+        } finally {
+            app(ConfigTenantOverlay::class)->revert();
+            $context->leave();
+        }
+    }
+
+    public function test_with_no_contributor_and_no_listener_apply_takes_the_old_path_and_dispatches_nothing(): void
+    {
+        $this->as('tenant-admin');
+        $this->set('/theme', 'pink', 'a')->assertOk();
+        $this->publish('a')->assertOk();
+
+        // The contributed path refuses to run: with none registered, apply() must never reach it.
+        $this->app->instance(ConfigTenantOverlay::class, new class($this->app) extends ConfigTenantOverlay
+        {
+            protected function layContributed(\Illuminate\Contracts\Config\Repository $config, array $published): void
+            {
+                throw new \LogicException('the contributed path ran with no contributor');
+            }
+        });
+        Event::fake([TenantConfigLayerLaid::class]);
+
+        $this->assertSame('pink', $this->hop('a', fn () => config('tpanels.theme')));
+        $this->assertSame('light', config('tpanels.theme'));
+        Event::assertNotDispatched(TenantConfigLayerLaid::class);
+    }
+
+    public function test_a_contributors_entries_are_laid_in_the_hop_beside_the_published_ones_and_reverted_with_them(): void
+    {
+        $this->as('tenant-admin');
+        $this->set('/theme', 'pink', 'a')->assertOk();
+        $this->publish('a')->assertOk();
+        $seen = null;
+        app(ConfigTenantOverlay::class)->contribute(function (array $layers) use (&$seen): array {
+            $seen = [array_keys($layers['tpanels'] ?? []), config('tpanels.theme')];
+            $layers['tpanels']['/review'] = self::entry('/review', true);
+
+            return $layers;
+        });
+
+        $this->assertSame(['pink', true], $this->hop('a', fn () => [config('tpanels.theme'), config('tpanels.review')]));
+        $this->assertSame([['/theme'], 'light'], $seen, 'it receives the restricted published layers, with central in the repository');
+        $this->assertSame(['light', false], [config('tpanels.theme'), config('tpanels.review')], 'both revert together');
+    }
+
+    public function test_a_contributor_runs_again_on_the_refresh_after_a_tenant_publish_mid_hop(): void
+    {
+        app(ConfigTenantOverlay::class)->contribute(function (array $layers): array {
+            $layers['tpanels']['/review'] = self::entry('/review', true);
+
+            return $layers;
+        });
+
+        $this->hop('a', function (): void {
+            $this->assertTrue(config('tpanels.review'));
+            $store = app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant);
+            $store->saveDraft('tpanels', [['pointer' => '/theme', 'op' => 'set', 'value' => 'pink']]);
+            $store->publish('tpanels');
+
+            $this->assertSame(['pink', true], [config('tpanels.theme'), config('tpanels.review')], "the publish's refresh re-applies the contributor too");
+        });
+    }
+
+    public function test_a_contributor_is_never_called_when_the_tenant_store_read_fails(): void
+    {
+        // A read that FAILS (not a tenant with no store yet, which reads as nothing published and still runs contributors).
+        $this->app->instance(ConfigOverrideStore::class, $this->app->make(UnreadableTenantStore::class));
+        $called = false;
+        app(ConfigTenantOverlay::class)->contribute(function (array $layers) use (&$called): array {
+            $called = true;
+            $layers['tpanels']['/review'] = self::entry('/review', true);
+
+            return $layers;
+        });
+
+        $this->assertFalse($this->hop('a', fn () => config('tpanels.review')), 'central, never a contributed value');
+        $this->assertFalse($called);
+    }
+
+    public function test_a_throwing_contributor_or_a_throwing_lay_leaves_the_hop_on_the_published_layer(): void
+    {
+        $this->as('tenant-admin');
+        $this->set('/theme', 'pink', 'a')->assertOk();
+        $this->publish('a')->assertOk();
+        $overlay = app(ConfigTenantOverlay::class);
+        $overlay->contribute(fn (array $layers): array => throw new \RuntimeException('contributor failed'));
+
+        $this->assertSame('pink', $this->hop('a', fn () => config('tpanels.theme')), 'a throwing contributor is skipped');
+
+        // A contributor that answers a layer lay() cannot write (an entry that is no ConfigOverrideEntry), after a valid one.
+        $overlay->contribute(function (array $layers): array {
+            $layers['tpanels']['/review'] = self::entry('/review', true);
+            $layers['tpanels']['/zz-not-an-entry'] = 'not an entry';
+
+            return $layers;
+        });
+
+        $inside = $this->hop('a', fn () => [config('tpanels.theme'), config('tpanels.review')]);
+        $this->assertSame(['pink', false], $inside, 'the failed lay is undone and the published layer alone is laid');
+        $this->assertSame(['light', false], [config('tpanels.theme'), config('tpanels.review')], 'central intact after the hop');
+    }
+
+    public function test_the_laid_event_names_roots_and_pointers_only_at_the_hop_and_on_a_mid_hop_operator_re_sync(): void
+    {
+        $this->as('tenant-admin');
+        $this->set('/theme', 'pink', 'a')->assertOk();
+        $this->publish('a')->assertOk();
+        $events = [];
+        Event::listen(TenantConfigLayerLaid::class, function (TenantConfigLayerLaid $event) use (&$events): void {
+            $events[] = $event->pointers;
+        });
+
+        $context = app(FakeTenancyContext::class);
+        $context->enter('a');
+        app(ConfigTenantOverlay::class)->apply();
+        $this->assertSame([['tpanels' => ['/theme']]], $events, 'at the hop: where, never what');
+
+        $context->leave();
+        app(ConfigOverrideStore::class)->forTier(ConfigTier::Operator)->saveDraft('tpanels', [['pointer' => '/review', 'op' => 'set', 'value' => true]]);
+        $context->enter('a');
+        app(ConfigOverrideStore::class)->forTier(ConfigTier::Operator)->publish('tpanels');
+        app(ConfigOverlay::class)->recheckNow();
+        app(ConfigOverlay::class)->sync();
+
+        $this->assertCount(2, $events, 'the operator re-sync re-laid the tenant layer and said so');
+        $this->assertSame(['tpanels' => ['/theme']], $events[1]);
+        $this->assertStringNotContainsString('pink', json_encode($events), 'no value in the payload');
+
+        app(ConfigTenantOverlay::class)->revert();
+        $context->leave();
     }
 }

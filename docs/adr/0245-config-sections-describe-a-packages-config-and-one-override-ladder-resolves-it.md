@@ -230,6 +230,28 @@ Raised by the cross-review. Two are decided here because ticket 05 builds on the
    A version snapshot carries each pointer's revision id with `set` and `setAt`, and a value only for a non-secret
    `set`. Ticket 08's Release member names a revision id the same way.
 
+## Amendment, 2026-11-20 (config-sections 09): two extension points on the tenant tier
+
+`ConfigTenantOverlay` gains two seams, both **opt-in and inert**: with no contributor registered and nothing listening,
+`apply()` takes exactly its earlier path at its earlier cost (a test pins it).
+
+- **`contribute(callable $contributor)`.** A package adds entries to the tenant layer. A contributor receives the tenant's
+  restricted *published* layers (root => pointer => entry) and returns the layers to lay. It runs inside `apply()`, so
+  also on `refresh()` after a tenant publish, and **only after the tenant store was read**: a read that fails leaves
+  the hop on the central values, contributors included. A tenant with no store yet (its schema not migrated) is not a
+  failure: it reads as nothing published, and contributors still run. It must stay cheap, since it runs on every hop. A contributor
+  that throws is logged by class and skipped. A lay of contributed layers that throws is undone, and the published layer
+  alone is laid. So the tier's "never throws" holds whatever a contributor returns. beam-tenancy's cutover source,
+  which lays a tenant's legacy `tenants.data` values until they are imported, is the first contributor.
+- **`Splicewire\Beam\Config\Events\TenantConfigLayerLaid`.** Dispatched, only when something listens, whenever a
+  non-empty tenant layer is laid: at the hop, and again when `ConfigOverlay`'s operator re-sync lifts the layer, writes
+  the operator tier and lays it back mid-hop. It carries root => pointers, **never a value**. A feature that rewrites a
+  laid value re-applies itself on it; otherwise the re-lay hands back the raw value. beam-tenancy's role alias is the
+  first listener.
+
+Why seams rather than a subclass: rebinding the overlay singleton from another package would hand every resolver that
+package's subclass, and the result would depend on provider registration order.
+
 ## Consequences
 
 - Declaring a section changes no behaviour: every undeclared key is deploy-only and not overridable. On the first day,
