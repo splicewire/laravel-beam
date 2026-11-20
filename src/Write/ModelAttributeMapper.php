@@ -55,14 +55,14 @@ class ModelAttributeMapper
     public static function map(mixed $input): array
     {
         if ($input instanceof MapsToModelAttributes) {
-            return $input->toModelAttributes();
+            return self::withoutAgreementMembers($input, $input->toModelAttributes());
         }
 
         // The duck type this interface supersedes. Kept until the audit's count reaches zero — the
         // advisory-then-flip schedule, not a permanent second door.
         if (is_object($input) && method_exists($input, 'toModelAttributes')) {
             /** @var array<string, mixed> */
-            return $input->toModelAttributes();
+            return self::withoutAgreementMembers($input, $input->toModelAttributes());
         }
 
         return self::columns($input);
@@ -91,6 +91,26 @@ class ModelAttributeMapper
             }
 
             $attributes[Str::snake((string) $key)] = $value;
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * An author's own column map, minus any declared agreement member it passed through (agreements 05): the member
+     * is admission input, never a column. Every other mapped column is returned unchanged.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private static function withoutAgreementMembers(mixed $input, array $attributes): array
+    {
+        $members = self::agreementMemberKeys($input);
+
+        foreach ($attributes as $key => $value) {
+            if ($value instanceof AgreementMemberData || isset($members[(string) $key])) {
+                unset($attributes[$key]);
+            }
         }
 
         return $attributes;

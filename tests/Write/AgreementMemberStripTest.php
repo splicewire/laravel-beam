@@ -16,6 +16,7 @@ use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
+use Splicewire\Beam\Write\Contracts\MapsToModelAttributes;
 use Splicewire\Beam\Write\ModelAttributeMapper;
 
 /**
@@ -33,6 +34,7 @@ class AgreementMemberStripTest extends TestCase
         Schema::create('member_rows', function (Blueprint $table): void {
             $table->id();
             $table->string('name')->nullable();
+            $table->string('note')->nullable();
         });
         Gate::policy(MemberRow::class, MemberRowPolicy::class);
     }
@@ -76,13 +78,73 @@ class AgreementMemberStripTest extends TestCase
         $this->assertSame(['name' => 'a'], ModelAttributeMapper::map(new PlainRowInput('a')));
     }
 
-    private function resource(bool $mount = true): ParticleResource
+    /** review-r1 amend check: an input's own column map (both branches) must not pass a member through either. */
+    public function test_rest_writes_through_a_declared_map_drop_a_member_it_passes_through(): void
+    {
+        $this->assertRestWriteDropsTheMember(DeclaredMapInput::class);
+    }
+
+    public function test_rest_writes_through_a_duck_typed_map_drop_a_member_it_passes_through(): void
+    {
+        $this->assertRestWriteDropsTheMember(DuckMapInput::class);
+    }
+
+    public function test_frame_writes_through_a_declared_map_drop_a_member_it_passes_through(): void
+    {
+        $this->assertFrameWriteDropsTheMember(DeclaredMapInput::class);
+    }
+
+    public function test_frame_writes_through_a_duck_typed_map_drop_a_member_it_passes_through(): void
+    {
+        $this->assertFrameWriteDropsTheMember(DuckMapInput::class);
+    }
+
+    public function test_the_mapper_filters_a_member_out_of_both_mapped_branches_and_keeps_every_other_column(): void
+    {
+        $member = new AgreementMemberData('terms', 1, str_repeat('a', 64));
+
+        $this->assertSame(['name' => 'a', 'note' => 'kept'], ModelAttributeMapper::map(new DeclaredMapInput('a', $member)));
+        $this->assertSame(['name' => 'a', 'note' => 'kept'], ModelAttributeMapper::map(new DuckMapInput('a', $member)));
+    }
+
+    private function assertRestWriteDropsTheMember(string $input): void
+    {
+        $this->resource(input: $input);
+        $this->actingAs(new GenericUser(['id' => 1, 'name' => 'Ada']));
+        $member = ['agreementMember' => ['key' => 'terms', 'version' => 1, 'digest' => str_repeat('a', 64)]];
+
+        $this->postJson('/member-rows', ['name' => 'a'] + $member)->assertSuccessful();
+        $this->putJson('/member-rows/'.MemberRow::query()->sole()->getKey(), ['name' => 'b'] + $member)->assertSuccessful();
+
+        $row = MemberRow::query()->sole();
+        $this->assertSame('b', $row->name, 'the mapped column is written');
+        $this->assertSame('kept', $row->note, 'every other mapped column is unchanged');
+        $this->assertArrayNotHasKey('agreement_member', $row->getAttributes());
+    }
+
+    private function assertFrameWriteDropsTheMember(string $input): void
+    {
+        $definition = $this->resource(mount: false, input: $input)->toResourceDefinition();
+        $actor = new GenericUser(['id' => 1, 'name' => 'Ada']);
+        $this->actingAs($actor);
+        $handler = $this->app->make(ParticleFrameResourceHandler::class)->forActor($actor);
+        $member = ['agreementMember' => ['key' => 'terms', 'version' => 1, 'digest' => str_repeat('a', 64)]];
+
+        $handler->store($definition, ['name' => 'a'] + $member);
+        $this->assertSame('b', $handler->update($definition, (string) MemberRow::query()->sole()->getKey(), ['name' => 'b'] + $member)['name']);
+
+        $row = MemberRow::query()->sole();
+        $this->assertSame('kept', $row->note);
+        $this->assertArrayNotHasKey('agreement_member', $row->getAttributes());
+    }
+
+    private function resource(bool $mount = true, string $input = MemberRowInput::class): ParticleResource
     {
         $resource = new ParticleResource(
             key: 'member-rows',
             backing: MemberRow::class,
             data: MemberRowData::class,
-            input: MemberRowInput::class,
+            input: $input,
             project: fn (MemberRow $row): MemberRowData => new MemberRowData($row->getKey(), $row->name),
             label: 'Member rows',
             scope: fn ($query) => $query->whereNotNull('id'),
@@ -123,6 +185,28 @@ class MappedMemberInput extends Data
         public ?string $name = null,
         #[MapInputName('agreement_member')] public ?AgreementMemberData $member = null,
     ) {}
+}
+
+/** An input with a DECLARED column map that (carelessly) passes the member through beside a real column. */
+class DeclaredMapInput extends Data implements MapsToModelAttributes
+{
+    public function __construct(public ?string $name = null, public ?AgreementMemberData $agreementMember = null) {}
+
+    public function toModelAttributes(): array
+    {
+        return ['name' => $this->name, 'agreement_member' => $this->agreementMember, 'note' => 'kept'];
+    }
+}
+
+/** The same through the duck-typed map. */
+class DuckMapInput extends Data
+{
+    public function __construct(public ?string $name = null, public ?AgreementMemberData $agreementMember = null) {}
+
+    public function toModelAttributes(): array
+    {
+        return ['name' => $this->name, 'agreement_member' => $this->agreementMember, 'note' => 'kept'];
+    }
 }
 
 class PlainRowInput extends Data
