@@ -31,6 +31,7 @@ use Rushing\DataFilters\SavedFilters\SavedFilter;
 use Rushing\Doctor\DoctorAudit;
 use Rushing\PermissionCascade\Authorization\CredentialScopeGate;
 use Rushing\PermissionCascade\Authorization\CredentialScopeRefusal;
+use Rushing\PermissionCascade\Authorization\DecisionNames;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Rushing\PermissionCascade\Support\CascadePolicyRegistrar;
 use Rushing\Popcorn\Concerns\ChainsTraitMethods;
@@ -237,6 +238,7 @@ use Splicewire\Beam\Particle\Mount\ParticleMounter;
 use Splicewire\Beam\Particle\Mount\ParticleMountManager;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleRelativeRegistry;
+use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceModelResolver;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Particle\ParticleWriteSubjectResolver;
@@ -901,6 +903,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->callAfterResolving(Gate::class, function (Gate $gate): void {
             $this->registerCredentialScopeBefore($gate);
             $this->registerEntitlementBefore($gate);
+        });
+        // credential-scope 07 R1: a read the ResourceReadGuard admits without a narrowed Gate decision asks the
+        // resource's `{key}.view` under a scope, so every registered particle resource offers that name to the widest
+        // token set (read lazily: hosts and packages register resources after this provider).
+        $this->callAfterResolving(DecisionNames::class, function (DecisionNames $names): void {
+            $names->offer(fn (): array => array_map(
+                static fn (ParticleResource $resource): string => "{$resource->key}.view",
+                $this->app->make(ParticleResourceRegistry::class)->all(),
+            ));
         });
 
         // The host's API taxonomy and the chain that resolves a route into it (api-surface-coherence 17).

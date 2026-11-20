@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterResourceDefinition;
+use Rushing\PermissionCascade\Authorization\CredentialScopeRefusal;
+use Rushing\PermissionCascade\Contracts\CredentialScopeResolver;
 use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -172,6 +174,46 @@ class UngatedIndexReadTest extends TestCase
         });
 
         $this->getJson('/parents/1/gadgets')->assertOk()->assertJsonCount(1, 'data');
+    }
+
+    /** credential-scope 07 R1: the relative list never reaches the read binding, so a scoped token is asked here. */
+    public function test_a_relative_mount_asks_a_scoped_token_for_the_childs_read_name(): void
+    {
+        $this->declare();
+        Particle::relative('parents', Gadget::class, fn (Gadget $parent) => Gadget::query()->where('user_id', $parent->user_id), function (): void {
+            Particle::mount('gadgets')->only(['index'])->register();
+        });
+
+        $this->app->instance(CredentialScopeResolver::class, new IndexFixedScope(['entity.view']));
+        $this->getJson('/parents/1/gadgets')->assertForbidden()->assertJsonPath('code', CredentialScopeRefusal::NOT_CARRIED);
+
+        $this->app->instance(CredentialScopeResolver::class, new IndexFixedScope(['gadgets.view']));
+        $this->getJson('/parents/1/gadgets')->assertOk()->assertJsonCount(1, 'data');
+    }
+
+    /** credential-scope 07 R1: a tenancy group admits the list without a Gate decision, so a scoped token is asked. */
+    public function test_a_tenancy_admitted_list_asks_a_scoped_token_for_its_read_name(): void
+    {
+        $this->declare();
+        Route::middleware('tenant')->group(fn () => Particle::mount('gadgets')->only(['index'])->register());
+        app('router')->aliasMiddleware('tenant', PassThroughTenancy::class);
+
+        $this->app->instance(CredentialScopeResolver::class, new IndexFixedScope(['entity.view']));
+        $this->getJson('/gadgets')->assertForbidden()->assertJsonPath('code', CredentialScopeRefusal::NOT_CARRIED);
+
+        $this->app->instance(CredentialScopeResolver::class, new IndexFixedScope(['gadgets.view']));
+        $this->getJson('/gadgets')->assertOk()->assertJsonCount(2, 'data');
+    }
+}
+
+class IndexFixedScope implements CredentialScopeResolver
+{
+    /** @param  list<string>|null  $scope */
+    public function __construct(private ?array $scope) {}
+
+    public function resolve(): ?array
+    {
+        return $this->scope;
     }
 }
 

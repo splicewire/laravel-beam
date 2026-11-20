@@ -12,12 +12,16 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Rushing\PermissionCascade\Authorization\CredentialScopeGate;
+use Rushing\PermissionCascade\Authorization\CredentialScopeRefusal;
+use Rushing\PermissionCascade\Facades\PermissionNamer;
 use Splicewire\Beam\Frame\ParticleResourceActions;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\Backing\QueriesRecords;
 use Splicewire\Beam\Particle\ParticleListQuery;
 use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Read\ReadContext;
 use Splicewire\Beam\Realm\RealmEntitlementResourceGate;
 use Splicewire\Beam\Surface\RuntimeCorroborator;
@@ -174,6 +178,94 @@ class ResourceReadGuard
             : Response::deny("Reading [{$resource->key}] requires a declared Public Read for a guest.");
     }
 
+    /**
+     * The decision a scoped read asks when the guard admits it other than through a narrowed Gate decision, as the
+     * coded refusal names it ({@see inspectScopeFor()}).
+     */
+    public const SCOPE_DECISION = 'beam.resource.read';
+
+    /**
+     * The names a scoped token carries to read `$resource` (fleet ADR 0006 C2, credential-scope 07 R1): the resource's
+     * own `{key}.view`, and its model's derived `{model}.view` (plus `{model}.{id}.view` for one persisted record), the
+     * name a model policy's `view` / `viewAny` derives. Every particle resource's `{key}.view` is offered to the widest
+     * token set ({@see \Splicewire\Beam\BeamServiceProvider}).
+     *
+     * @return list<string>
+     */
+    public function readNames(ParticleResource|string $resource, ?Model $record = null): array
+    {
+        if (is_string($resource)) {
+            $resource = app(ParticleResourceRegistry::class)->find($resource) ?? $resource;
+        }
+        $key = is_string($resource) ? $resource : $resource->key;
+        $names = ["{$key}.view"];
+        $model = $record !== null ? $record::class : (is_string($resource) ? null : $resource->modelClass());
+
+        if (is_string($model) && is_subclass_of($model, Model::class)) {
+            $names[] = PermissionNamer::assemble($model, 'view');
+
+            if ($record !== null && $record->exists) {
+                $names[] = PermissionNamer::assemble($record, 'view');
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * The SCOPE half of a read the guard admits without a narrowed Gate decision (fleet ADR 0006 rule 1, Option 3:
+     * reads fail closed too; credential-scope 07 R1). A `ResourceReadPolicy`, a tenancy or declared row scope, a policy
+     * with no `viewAny`, a hard realm entitlement or an `entitlement:` read gate admits a reader without asking any
+     * name, so under a scoped credential the token must also carry one of {@see readNames()}. Allows when no scope
+     * governs `$actor` (a session, a `*` token, a guest, another principal). Never grants: the caller's own admission
+     * is the principal half.
+     *
+     * Asked by {@see inspect()} and by every read path that does not reach it: a relative-mount list, a bespoke Frame
+     * handler (`SavedFilterResourceHandler`, tower's `ConduitResourceHandler`, beam-commerce's `BillingLedgerHandler`),
+     * `GET /me`.
+     */
+    public function inspectScopeFor(ParticleResource|string $resource, ?Authenticatable $actor, ?Model $record = null): Response
+    {
+        $scope = app(CredentialScopeGate::class);
+
+        if ($actor === null || ! $scope->scopes($actor)) {
+            return Response::allow();
+        }
+
+        $names = $this->readNames($resource, $record);
+
+        return $scope->permitsAny($names)
+            ? Response::allow()
+            : CredentialScopeRefusal::notCarried(self::SCOPE_DECISION.':'.(is_string($resource) ? $resource : $resource->key), $names);
+    }
+
+    /**
+     * {@see inspectScopeFor()} for a read path whose only other question is the declared read ability (a relative-mount
+     * list): a declared Gate ability already names the read; otherwise the scope must carry {@see readNames()}.
+     */
+    public function inspectScopeUnlessDeclared(ParticleResource $resource, Request $request, ?string $realm = null): Response
+    {
+        return $this->declaredAbilityNames($this->declaredReadAbility($resource, $realm, $request))
+            ? Response::allow()
+            : $this->inspectScopeFor($resource, $request->user());
+    }
+
+    /** {@see inspectScopeFor()} for the request's own reader, thrown as the coded 403 when refused. */
+    public function authorizeScopedRead(ParticleResource|string $resource, ?Model $record = null, ?Request $request = null): void
+    {
+        $this->inspectScopeFor($resource, ($request ?? request())->user(), $record)->authorize();
+    }
+
+    /**
+     * Does a declared read ability NAME the read for a scoped token? A Gate ability is narrowed by the credential-scope
+     * gate (its own name, or what the registry names for it); an `entitlement:` ability is answered principal-only
+     * (ADR 0006 C4), so a read admitted by it alone still asks {@see readNames()}.
+     */
+    private function declaredAbilityNames(?string $ability): bool
+    {
+        return $ability !== null && ! str_starts_with($ability, CredentialScopeGate::ENTITLEMENT_PREFIX);
+    }
+
     private function inspect(
         ParticleResource $resource,
         Request $request,
@@ -181,21 +273,45 @@ class ResourceReadGuard
         ?Authenticatable $actor,
         ?string $mountedRealm = null,
     ): Response {
+        [$verdict, $named] = $this->admission($resource, $request, $gate, $actor, $mountedRealm);
+
+        if ($verdict->denied() || $named) {
+            return $verdict;
+        }
+
+        return $this->inspectScopeFor($resource, $actor);
+    }
+
+    /**
+     * The principal half of {@see inspect()}, and whether the admission went through a Gate decision the credential
+     * scope narrows (a non-entitlement declared read ability, or `viewAny` on the model's policy). An admission that did
+     * not is completed by {@see inspectScopeFor()}.
+     *
+     * @return array{0: Response, 1: bool}
+     */
+    private function admission(
+        ParticleResource $resource,
+        Request $request,
+        GateContract $gate,
+        ?Authenticatable $actor,
+        ?string $mountedRealm = null,
+    ): array {
         // ADR-0230: a guest reads a resource only through its declared Public Read. A null actor is refused a
         // resource that declares none, overriding whatever the route middleware let through and whatever the
         // resource's readPolicy or model policy would answer; a declared Public Read admits the guest here and
         // the read pipeline narrows the rows and fields to it (ParticleListQuery, ParticleController::projectRecord).
         // A signed-in reader is untouched and keeps the existing guard below.
         if ($actor === null) {
-            return $resource->publicRead !== null
+            return [$resource->publicRead !== null
                 ? Response::allow()
-                : Response::deny("Reading [{$resource->key}] requires a declared Public Read for a guest.");
+                : Response::deny("Reading [{$resource->key}] requires a declared Public Read for a guest."), true];
         }
 
         $declared = $this->inspectDeclaredAbility($resource, $gate, $request, $mountedRealm);
         if ($declared->denied()) {
-            return $declared;
+            return [$declared, true];
         }
+        $named = $this->declaredAbilityNames($this->declaredReadAbility($resource, $mountedRealm, $request));
 
         // A bound policy with viewAny and the resource's scope are CONJUNCTIVE (integrator ruling 2026-10-10 02:43Z):
         // the policy says which actors may list, while tenancy / a declared predicate / a hard realm entitlement says
@@ -212,20 +328,23 @@ class ResourceReadGuard
                 : $gate->inspect('viewAny', $resource->modelClass());
 
             if ($policy->denied()) {
-                return $policy;
+                return [$policy, true];
             }
+
+            // `viewAny` on the model's policy is a Gate decision the credential scope narrows; a ResourceReadPolicy is not.
+            $named = $named || $resource->readPolicy === null;
         }
 
         if ($resource->readBoundary === ParticleResource::READ_BOUNDARY_GLOBAL) {
             if (! $policyRequiresViewAny && $this->declaredReadAbility($resource) === null) {
-                return Response::deny("Reading [{$resource->key}] requires a declared authority for its global boundary.");
+                return [Response::deny("Reading [{$resource->key}] requires a declared authority for its global boundary."), true];
             }
 
-            return Response::allow();
+            return [Response::allow(), $named];
         }
 
         if ($resource->readPolicy === null && $policyBound === true && ! $policyRequiresViewAny) {
-            return Response::allow();
+            return [Response::allow(), $named];
         }
 
         $route = $request->route();
@@ -235,7 +354,7 @@ class ResourceReadGuard
                 $middleware[] = is_string($entry) ? $entry : (is_object($entry) ? $entry::class : (string) json_encode($entry));
             }
             if (self::suppliesScope($middleware)) {
-                return Response::allow();
+                return [Response::allow(), $named];
             }
         }
 
@@ -255,10 +374,10 @@ class ResourceReadGuard
             // A hard realm entitlement is authority too: the scope narrows what it authorized, never cancels it.
             if ($policyRequiresViewAny || $this->declaredReadAbility($resource) !== null
                 || app(RealmEntitlementResourceGate::class)->entitledThroughRealm($resource->key, $gate, $mountedRealm)) {
-                return Response::allow();
+                return [Response::allow(), $named];
             }
 
-            return $gate->inspect('viewAny', $resource->modelClass());
+            return [$gate->inspect('viewAny', $resource->modelClass()), true];
         }
 
         // A DECLARED scope is the boundary (integrator ruling c353ac01, 16:13Z): its privileged branch may return every
@@ -266,20 +385,20 @@ class ResourceReadGuard
         // empty WHERE is the scope's own decision. Authority has already passed above; the declaration is read from the
         // resource, never by running the scope as anyone else. A boundary that threw is not admitted by its declaration.
         if ($built && $policyRequiresViewAny && $this->declaresScope($resource)) {
-            return Response::allow();
+            return [Response::allow(), $named];
         }
 
         // A hard realm entitlement the caller holds: the realm gate has already refused everyone else at
         // the socket, so this population is exactly what the caller was authorized for.
         if (app(RealmEntitlementResourceGate::class)->entitledThroughRealm($resource->key, $gate, $mountedRealm)) {
-            return Response::allow();
+            return [Response::allow(), $named];
         }
 
         if ($policyRequiresViewAny) {
-            return Response::deny("Reading [{$resource->key}] requires a tenant, declared row, or realm-entitlement scope.");
+            return [Response::deny("Reading [{$resource->key}] requires a tenant, declared row, or realm-entitlement scope."), true];
         }
 
-        return $gate->inspect('viewAny', $resource->modelClass());
+        return [$gate->inspect('viewAny', $resource->modelClass()), true];
     }
 
     /**

@@ -149,6 +149,12 @@ class ParticleController extends Controller
         // the guest gate is asked here for both. A signed-in reader is left to the binding below.
         ResourceReadGuard::forApp()->inspectGuestReadFor($resource, $request->user())->authorize();
 
+        // credential-scope 07 R1: a relative mount lists through the bound parent and never reaches the read binding
+        // below, so a scoped token is asked the resource's read name here (fleet ADR 0006: reads fail closed too).
+        if ($relativeQuery !== null) {
+            ResourceReadGuard::forApp()->inspectScopeUnlessDeclared($resource, $request)->authorize();
+        }
+
         // beam-docs-satellite 65: a standalone list whose read is gated by NOTHING fails closed here, on
         // read — never at the mount, because whether a host's mount is scoped is a host fact.
         if ($relativeQuery === null) {

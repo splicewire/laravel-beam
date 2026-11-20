@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Gate;
 use Rushing\DataFilters\Facades\DataFilter;
 use Rushing\DataFilters\Query\ResourceQuery;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterDefinition;
+use Rushing\PermissionCascade\Authorization\CredentialScopeGate;
+use Rushing\PermissionCascade\Authorization\DecisionNames;
 use Schemastud\DataSchemas\Generators\JsonSchemaGenerator;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceRegistry;
@@ -117,11 +119,32 @@ class ResourceFilters
             }
         });
         abort_unless(in_array($ref, $refs, true) && ResourceFilterConstraints::options()->contains($ref), 404);
+        $this->authorizeOptionsSource($ref);
 
         return new FilterOptionsResponseData(array_map(
             fn (array $option) => new FilterOptionData(value: (string) $option['value'], label: (string) $option['label']),
             DataFilter::resolveOptions($ref, $search),
         ));
+    }
+
+    /** The decision an options source's own read is registered under, in the cascade's DecisionNames. */
+    public const OPTIONS_DECISION = 'filter-options:';
+
+    /**
+     * An options source that reads ANOTHER model's rows (tower's `agents`, `circuits`, `silos`, `tags`: names and ids,
+     * owner-filtered or not) is a read of that model, made after only the parent resource was authorized. Its owner
+     * registers the names a scoped token must carry for it under `filter-options:{ref}`
+     * (`app(DecisionNames::class)->name('filter-options:agents', ['agent.view', 'agent.own.view'])`), and the scope is
+     * asked here before the source runs (fleet ADR 0006 C2; credential-scope 07 R5). A source with no registration is
+     * part of the parent's read (a static vocabulary, a facet over the parent's own rows) and is asked nothing more.
+     */
+    private function authorizeOptionsSource(string $ref): void
+    {
+        $decision = self::OPTIONS_DECISION.$ref;
+
+        if (app(DecisionNames::class)->for($decision, []) !== null) {
+            app(CredentialScopeGate::class)->authorizeCarried(request()->user(), $decision);
+        }
     }
 
     public function variants(string $key): FilterVariantsResponseData

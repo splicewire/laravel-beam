@@ -17,6 +17,8 @@ use Rushing\DataFilters\Operators\Exact;
 use Rushing\DataFilters\Query\ResourceQuery;
 use Rushing\DataFilters\Registry\ResourceDefinition as FilterDefinition;
 use Rushing\DataFilters\SavedFilters\SavedFilter;
+use Rushing\PermissionCascade\Authorization\CredentialScopeRefusal;
+use Rushing\PermissionCascade\Contracts\CredentialScopeResolver;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceRegistry;
@@ -110,6 +112,29 @@ class FrameResourceFiltersTest extends TestCase
         $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.name', 'Updated')->assertJsonPath('data.queryParameters.filter.count', 7);
         $this->deleteJson("frame/resources/saved-filters/records/{$id}")->assertNoContent();
         $this->getJson("frame/resources/saved-filters/records/{$id}")->assertNotFound();
+    }
+
+    /** credential-scope 07 R5: the bespoke handler's own-or-shared read asks a scoped token for the saved filter's read name. */
+    public function test_a_scoped_token_reads_saved_filters_only_with_their_read_name(): void
+    {
+        $id = $this->create();
+        $this->app->instance(CredentialScopeResolver::class, new SavedFilterFixedScope(['papers.view']));
+
+        $this->getJson('frame/resources/saved-filters?filter[resource]=papers')->assertForbidden()
+            ->assertJsonPath('code', CredentialScopeRefusal::NOT_CARRIED);
+        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertForbidden()
+            ->assertJsonPath('code', CredentialScopeRefusal::NOT_CARRIED);
+
+        $this->app->instance(CredentialScopeResolver::class, new SavedFilterFixedScope(['saved-filters.view']));
+        $this->getJson('frame/resources/saved-filters?filter[resource]=papers')->assertOk()->assertJsonPath('data.0.id', $id);
+
+        $this->app->instance(CredentialScopeResolver::class, new SavedFilterFixedScope(["saved-filter.{$id}.view"]));
+        $this->getJson("frame/resources/saved-filters/records/{$id}")->assertOk()->assertJsonPath('data.id', $id);
+
+        // the ownership restriction still holds for a token that carries the name
+        $this->actingAs($this->actor(2));
+        $this->app->instance(CredentialScopeResolver::class, new SavedFilterFixedScope(['saved-filters.view']));
+        $this->getJson('frame/resources/saved-filters?filter[resource]=papers')->assertOk()->assertJsonCount(0, 'data');
     }
 
     public function test_a_malformed_saved_filter_uuid_is_404_before_the_lookup_queries_postgres(): void
@@ -525,5 +550,16 @@ class UnscopedResourceFilterQuery extends ResourceQuery
     protected function baseQuery(Request $request): Builder
     {
         return FilterRecord::query()->when($request->input('filter.count'), fn ($query, $count) => $query->where('count', $count));
+    }
+}
+
+class SavedFilterFixedScope implements CredentialScopeResolver
+{
+    /** @param  list<string>|null  $scope */
+    public function __construct(private ?array $scope) {}
+
+    public function resolve(): ?array
+    {
+        return $this->scope;
     }
 }
