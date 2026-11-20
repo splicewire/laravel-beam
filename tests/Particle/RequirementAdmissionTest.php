@@ -40,7 +40,7 @@ class RequirementAdmissionTest extends TestCase
 
         $this->postJson('/requirement-probe-rows/1/act', ['agreement_member' => ['key' => 'voice-release', 'version' => 2, 'digest' => 'sha256:abc'], 'value' => 'ok'])
             ->assertOk()
-            ->assertJsonPath('data.ok', true);
+            ->assertExactJson(['ok' => true]);
     }
 
     public function test_non_http_admission_returns_the_same_declared_list_as_the_http_428(): void
