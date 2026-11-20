@@ -5,6 +5,10 @@ namespace Splicewire\Beam\Tests\Config;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Splicewire\Beam\Enums\ConfigOverrideOp;
+use Splicewire\Beam\Config\Overrides\ConfigOverrideEntry;
+use Splicewire\Beam\Config\Events\TenantConfigLayerLaid;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -29,7 +33,9 @@ use Splicewire\Beam\Realm\Contracts\TenancyContext;
 use Splicewire\Beam\Tests\Fixtures\Config\ConfigOperatorActor;
 use Splicewire\Beam\Tests\Fixtures\Config\EnterFakeTenant;
 use Splicewire\Beam\Tests\Fixtures\Config\FakeTenancyContext;
+use Splicewire\Beam\Tests\Fixtures\Config\TenantCatalogSection;
 use Splicewire\Beam\Tests\Fixtures\Config\TenantPanelsSection;
+use Splicewire\Beam\Tests\Fixtures\Config\UnreadableTenantStore;
 use Splicewire\Beam\Tests\TestCase;
 
 /**
@@ -1381,6 +1387,60 @@ class ConfigTenantTierTest extends TestCase
         }
     }
 
+    /** config-sections 09: register the extend fixture (`tcatalog`) for the tests that need it. */
+    private function withCatalog(): void
+    {
+        config()->set('tcatalog', require self::FIXTURES.'/package/tcatalog.php');
+        app(ConfigSectionRegistry::class)->section(TenantCatalogSection::class, owner: 'acme/tcatalog', packageFile: realpath(self::FIXTURES.'/package/tcatalog.php'));
+    }
+
+    private function setCatalog(string $pointer, mixed $value, string $tenant): TestResponse
+    {
+        return $this->op('save-draft', ['root' => 'tcatalog', 'pointer' => $pointer, 'op' => 'set', 'value' => json_encode($value)], $tenant);
+    }
+
+    public function test_an_extend_entry_a_tenant_adds_applies_beside_the_platforms_entries_in_its_hop_only(): void
+    {
+        $this->withCatalog();
+        $this->as('tenant-admin');
+        $this->setCatalog('/catalog/mine', 'tenant model', 'a')->assertOk();
+        $this->op('publish', ['root' => 'tcatalog'], 'a')->assertOk();
+
+        $this->assertSame(['floor' => 'platform floor', 'mine' => 'tenant model'], $this->probe('a', 'tcatalog')['catalog'], 'the tenant adds an entry; the platform entry stays');
+        $this->assertSame(['floor' => 'platform floor'], $this->probe('b', 'tcatalog')['catalog'], 'tenant B never sees it');
+        $this->assertSame(['floor' => 'platform floor'], config('tcatalog.catalog'), 'the process holds the central value between hops');
+    }
+
+    public function test_a_platform_entry_added_after_a_tenants_extend_entry_wins_in_that_tenants_hop(): void
+    {
+        // TenantModelCatalog's floor-wins merge (array_merge($tenant, $floor)): a platform model added LATER, under the
+        // same id a tenant already added, reaches the tenant. Extend is enforced at APPLY, not only at write.
+        $this->withCatalog();
+        $this->as('tenant-admin');
+        $this->setCatalog('/catalog/shared', 'tenant version', 'a')->assertOk();
+        $this->setCatalog('/catalog/mine', 'tenant model', 'a')->assertOk();
+        $this->op('publish', ['root' => 'tcatalog'], 'a')->assertOk();
+        $this->assertSame('tenant version', $this->probe('a', 'tcatalog')['catalog']['shared'], 'before the platform adds it, the tenant entry applies');
+
+        config()->set('tcatalog.catalog.shared', 'platform version');
+
+        $catalog = $this->probe('a', 'tcatalog')['catalog'];
+        $this->assertSame('platform version', $catalog['shared'], 'the platform entry wins over the tenant entry it now collides with');
+        $this->assertSame('tenant model', $catalog['mine'], "the tenant's other entries still apply");
+        $this->assertSame('platform floor', $catalog['floor']);
+    }
+
+    public function test_a_non_extend_key_still_lets_the_tenant_replace_the_platforms_entry(): void
+    {
+        $this->withCatalog();
+        $this->as('tenant-admin');
+        $this->setCatalog('/routes/a', 'tenant A route', 'a')->assertOk();
+        $this->op('publish', ['root' => 'tcatalog'], 'a')->assertOk();
+
+        $this->assertSame('tenant A route', $this->probe('a', 'tcatalog')['routes']['a'], 'replace is unchanged: the tenant value wins');
+        $this->assertSame('A', $this->probe('b', 'tcatalog')['routes']['a']);
+    }
+
     public function test_the_guard_is_public_so_a_caller_naming_its_own_connection_asks_it_of_that_connection(): void
     {
         $context = app(FakeTenancyContext::class);
@@ -1397,5 +1457,157 @@ class ConfigTenantTierTest extends TestCase
         } finally {
             $context->leave();
         }
+    }
+
+    /*
+     * config-sections ticket 09: the tenant layer's two extension points, contribute() and TenantConfigLayerLaid. Opt-in
+     * and inert: with no contributor and no listener, apply() is exactly what it was.
+     */
+
+    private static function entry(string $pointer, mixed $value): ConfigOverrideEntry
+    {
+        return new ConfigOverrideEntry($pointer, ConfigOverrideOp::Set, $value, false, 'contributed', null, null);
+    }
+
+    /** Inside tenant `$id`'s hop: apply, run `$inside`, revert. */
+    private function hop(string $id, callable $inside): mixed
+    {
+        $context = app(FakeTenancyContext::class);
+        $context->enter($id);
+
+        try {
+            app(ConfigTenantOverlay::class)->apply();
+
+            return $inside();
+        } finally {
+            app(ConfigTenantOverlay::class)->revert();
+            $context->leave();
+        }
+    }
+
+    public function test_with_no_contributor_and_no_listener_apply_takes_the_old_path_and_dispatches_nothing(): void
+    {
+        $this->as('tenant-admin');
+        $this->set('/theme', 'pink', 'a')->assertOk();
+        $this->publish('a')->assertOk();
+
+        // The contributed path refuses to run: with none registered, apply() must never reach it.
+        $this->app->instance(ConfigTenantOverlay::class, new class($this->app) extends ConfigTenantOverlay
+        {
+            protected function layContributed(\Illuminate\Contracts\Config\Repository $config, array $published): void
+            {
+                throw new \LogicException('the contributed path ran with no contributor');
+            }
+        });
+        Event::fake([TenantConfigLayerLaid::class]);
+
+        $this->assertSame('pink', $this->hop('a', fn () => config('tpanels.theme')));
+        $this->assertSame('light', config('tpanels.theme'));
+        Event::assertNotDispatched(TenantConfigLayerLaid::class);
+    }
+
+    public function test_a_contributors_entries_are_laid_in_the_hop_beside_the_published_ones_and_reverted_with_them(): void
+    {
+        $this->as('tenant-admin');
+        $this->set('/theme', 'pink', 'a')->assertOk();
+        $this->publish('a')->assertOk();
+        $seen = null;
+        app(ConfigTenantOverlay::class)->contribute(function (array $layers) use (&$seen): array {
+            $seen = [array_keys($layers['tpanels'] ?? []), config('tpanels.theme')];
+            $layers['tpanels']['/review'] = self::entry('/review', true);
+
+            return $layers;
+        });
+
+        $this->assertSame(['pink', true], $this->hop('a', fn () => [config('tpanels.theme'), config('tpanels.review')]));
+        $this->assertSame([['/theme'], 'light'], $seen, 'it receives the restricted published layers, with central in the repository');
+        $this->assertSame(['light', false], [config('tpanels.theme'), config('tpanels.review')], 'both revert together');
+    }
+
+    public function test_a_contributor_runs_again_on_the_refresh_after_a_tenant_publish_mid_hop(): void
+    {
+        app(ConfigTenantOverlay::class)->contribute(function (array $layers): array {
+            $layers['tpanels']['/review'] = self::entry('/review', true);
+
+            return $layers;
+        });
+
+        $this->hop('a', function (): void {
+            $this->assertTrue(config('tpanels.review'));
+            $store = app(ConfigOverrideStore::class)->forTier(ConfigTier::Tenant);
+            $store->saveDraft('tpanels', [['pointer' => '/theme', 'op' => 'set', 'value' => 'pink']]);
+            $store->publish('tpanels');
+
+            $this->assertSame(['pink', true], [config('tpanels.theme'), config('tpanels.review')], "the publish's refresh re-applies the contributor too");
+        });
+    }
+
+    public function test_a_contributor_is_never_called_when_the_tenant_store_read_fails(): void
+    {
+        // A read that FAILS (not a tenant with no store yet, which reads as nothing published and still runs contributors).
+        $this->app->instance(ConfigOverrideStore::class, $this->app->make(UnreadableTenantStore::class));
+        $called = false;
+        app(ConfigTenantOverlay::class)->contribute(function (array $layers) use (&$called): array {
+            $called = true;
+            $layers['tpanels']['/review'] = self::entry('/review', true);
+
+            return $layers;
+        });
+
+        $this->assertFalse($this->hop('a', fn () => config('tpanels.review')), 'central, never a contributed value');
+        $this->assertFalse($called);
+    }
+
+    public function test_a_throwing_contributor_or_a_throwing_lay_leaves_the_hop_on_the_published_layer(): void
+    {
+        $this->as('tenant-admin');
+        $this->set('/theme', 'pink', 'a')->assertOk();
+        $this->publish('a')->assertOk();
+        $overlay = app(ConfigTenantOverlay::class);
+        $overlay->contribute(fn (array $layers): array => throw new \RuntimeException('contributor failed'));
+
+        $this->assertSame('pink', $this->hop('a', fn () => config('tpanels.theme')), 'a throwing contributor is skipped');
+
+        // A contributor that answers a layer lay() cannot write (an entry that is no ConfigOverrideEntry), after a valid one.
+        $overlay->contribute(function (array $layers): array {
+            $layers['tpanels']['/review'] = self::entry('/review', true);
+            $layers['tpanels']['/zz-not-an-entry'] = 'not an entry';
+
+            return $layers;
+        });
+
+        $inside = $this->hop('a', fn () => [config('tpanels.theme'), config('tpanels.review')]);
+        $this->assertSame(['pink', false], $inside, 'the failed lay is undone and the published layer alone is laid');
+        $this->assertSame(['light', false], [config('tpanels.theme'), config('tpanels.review')], 'central intact after the hop');
+    }
+
+    public function test_the_laid_event_names_roots_and_pointers_only_at_the_hop_and_on_a_mid_hop_operator_re_sync(): void
+    {
+        $this->as('tenant-admin');
+        $this->set('/theme', 'pink', 'a')->assertOk();
+        $this->publish('a')->assertOk();
+        $events = [];
+        Event::listen(TenantConfigLayerLaid::class, function (TenantConfigLayerLaid $event) use (&$events): void {
+            $events[] = $event->pointers;
+        });
+
+        $context = app(FakeTenancyContext::class);
+        $context->enter('a');
+        app(ConfigTenantOverlay::class)->apply();
+        $this->assertSame([['tpanels' => ['/theme']]], $events, 'at the hop: where, never what');
+
+        $context->leave();
+        app(ConfigOverrideStore::class)->forTier(ConfigTier::Operator)->saveDraft('tpanels', [['pointer' => '/review', 'op' => 'set', 'value' => true]]);
+        $context->enter('a');
+        app(ConfigOverrideStore::class)->forTier(ConfigTier::Operator)->publish('tpanels');
+        app(ConfigOverlay::class)->recheckNow();
+        app(ConfigOverlay::class)->sync();
+
+        $this->assertCount(2, $events, 'the operator re-sync re-laid the tenant layer and said so');
+        $this->assertSame(['tpanels' => ['/theme']], $events[1]);
+        $this->assertStringNotContainsString('pink', json_encode($events), 'no value in the payload');
+
+        app(ConfigTenantOverlay::class)->revert();
+        $context->leave();
     }
 }

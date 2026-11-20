@@ -17,6 +17,10 @@ use Schemastud\Frame\Http\Controllers\FrameManifestController;
 use Schemastud\Frame\Registry\ResourceActionDefinition;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\Optional;
+use Splicewire\Beam\Agreements\RequirementDeclarations;
+use Splicewire\Beam\Agreements\Requires;
+use Splicewire\Beam\Agreements\SlotRequirementDeclarations;
 use Splicewire\Beam\Doctor\UndeclaredAffordanceAudit;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Frame\ParticleActionAuthorizer;
@@ -110,6 +114,82 @@ class ParticleResourceActionsTest extends TestCase
             Gate::forUser($actor)->allows('probe-nonexistent-ability'),
             'The gate is OPEN in this harness; no authorization reading below can be trusted.',
         );
+    }
+
+    /**
+     * frame-foundation 83: frame's manifest carries the agreement keys the requirements port answers, keys only: the
+     * resource's `{key}:read` / `{key}:write` on its definition and context block, and each action's op key.
+     */
+    public function test_the_frame_manifest_carries_requires_for_resource_verbs_and_actions(): void
+    {
+        $this->app->instance(RequirementDeclarations::class, new class implements RequirementDeclarations
+        {
+            private array $map = ['vaults:write' => ['terms', 'privacy'], 'vaults.publish' => ['terms']];
+
+            public function declares(string $behavior): bool
+            {
+                return $this->requirementsFor($behavior) !== [];
+            }
+
+            public function requirementsFor(string $behavior): array
+            {
+                return array_map(fn (string $key): Requires => new Requires($key), $this->map[$behavior] ?? []);
+            }
+
+            public function all(): array
+            {
+                return array_map(fn (array $keys): array => array_map(fn (string $key): Requires => new Requires($key), $keys), $this->map);
+            }
+        });
+        $this->op('publish', NoSubject::class, 'action', ability: false, abilityModel: null, input: false);
+        $this->op('reload', NoSubject::class, 'action', ability: false, abilityModel: null, input: false);
+        Particle::ops('api/vaults', 'vaults', ['publish', 'reload']);
+
+        $definition = $this->app->make(ParticleResourceRegistry::class)->definition('vaults');
+        $this->assertSame(['vaults:write' => ['terms', 'privacy']], $definition->requires);
+        $actions = collect($definition->actions)->keyBy('key');
+        $this->assertSame(['terms'], $actions['publish']->requires);
+        $this->assertInstanceOf(Optional::class, $actions['reload']->requires);
+
+        $this->actingAs(new ActionOwner);
+        $context = $this->getJson('/frame/manifest')->assertOk()->json('contexts.vaults');
+        $this->assertSame(['vaults:write' => ['terms', 'privacy']], $context['requires']);
+        $served = collect($context['actions'])->keyBy('key');
+        $this->assertSame(['terms'], $served['publish']['requires']);
+        $this->assertArrayNotHasKey('requires', $served['reload']);
+    }
+
+    /** review NIT 6: a `requires` slot declared on: 'read' reaches frame's definition as `{key}:read` through beam's REAL slot port. */
+    public function test_a_read_slot_reaches_the_frame_definition_through_the_real_slot_port(): void
+    {
+        $this->assertInstanceOf(SlotRequirementDeclarations::class, $this->app->make(RequirementDeclarations::class));
+
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'read-vaults',
+            backing: ActionVault::class,
+            data: ActionVaultData::class,
+            label: 'Read vaults',
+            readOnly: true,
+            requires: [new Requires('terms', on: 'read')],
+        ));
+
+        $this->assertSame(['read-vaults:read' => ['terms']], $this->app->make(ParticleResourceRegistry::class)->definition('read-vaults')->requires);
+    }
+
+    /** frame-foundation 83: with no Requirement anywhere, frame's manifest carries no `requires` key at all. */
+    public function test_with_no_requirement_the_frame_manifest_carries_no_requires_key(): void
+    {
+        $this->op('reload', NoSubject::class, 'action', ability: false, abilityModel: null, input: false);
+        Particle::ops('api/vaults', 'vaults', ['reload']);
+
+        $this->assertInstanceOf(Optional::class, $this->app->make(ParticleResourceRegistry::class)->definition('vaults')->requires);
+
+        $this->actingAs(new ActionOwner);
+        $manifest = $this->getJson('/frame/manifest')->assertOk()->json();
+        $entry = collect($manifest['resources'])->firstWhere('key', 'vaults');
+        $this->assertArrayNotHasKey('requires', $entry);
+        $this->assertArrayNotHasKey('requires', $manifest['contexts']['vaults']);
+        $this->assertArrayNotHasKey('requires', $manifest['contexts']['vaults']['actions'][0]);
     }
 
     public function test_opted_in_ops_project_with_their_placement_url_input_and_presentation(): void

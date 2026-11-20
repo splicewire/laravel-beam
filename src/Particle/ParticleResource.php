@@ -17,6 +17,7 @@ use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceActionDefinition;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Agreements\RequirementDeclarations;
 use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
@@ -537,7 +538,28 @@ class ParticleResource implements HasRegistryKey
             // mounted. Read off the operation registry and the router rather than declared here, because the
             // op is the declaration — a second list on the resource would be a second place to say it.
             actions: $this->frameActions($realm),
+            // frame-foundation 83: the agreement keys this resource's read and write behaviours require (agreements 05),
+            // from the requirements port, keys only; Optional (no `requires` key on the wire) when there are none.
+            requires: ResourceDefinition::requiresFor($this->frameRequires()),
         );
+    }
+
+    /**
+     * The agreement keys per behaviour for frame's manifest (frame-foundation 83): `{key}:read` and `{key}:write`, each
+     * the distinct agreement keys the requirements port answers for it.
+     *
+     * @return array<string, list<string>>
+     */
+    private function frameRequires(): array
+    {
+        $declarations = app(RequirementDeclarations::class);
+        $map = [];
+
+        foreach ([$this->readBehavior(), $this->writeBehavior()] as $behavior) {
+            $map[$behavior] = array_values(array_unique(array_map(fn (Requires $requires): string => $requires->agreement, $declarations->requirementsFor($behavior))));
+        }
+
+        return $map;
     }
 
     /** @return list<ResourceActionDefinition> */

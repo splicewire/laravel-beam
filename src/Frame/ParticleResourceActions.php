@@ -6,6 +6,9 @@ use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Str;
 use Schemastud\Frame\Registry\ResourceActionDefinition;
+use Spatie\LaravelData\Optional;
+use Splicewire\Beam\Agreements\RequirementDeclarations;
+use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -102,7 +105,21 @@ class ParticleResourceActions
             input: is_string($operation->input) ? $operation->input : null,
             result: $affordance->result,
             destructive: $affordance->destructive,
+            // frame-foundation 83: the agreement keys this action's op requires (its dotted behaviour key), keys only;
+            // Optional (no `requires` key) when it requires none.
+            requires: $this->requires($operation),
         );
+    }
+
+    /** @return list<string>|Optional */
+    private function requires(ParticleOperation $operation): array|Optional
+    {
+        $keys = array_values(array_unique(array_map(
+            fn (Requires $requires): string => $requires->agreement,
+            app(RequirementDeclarations::class)->requirementsFor($operation->key()),
+        )));
+
+        return $keys === [] ? new Optional : $keys;
     }
 
     /** The ability enforced by the matched mount, including its narrow tenant author mapping. */
@@ -110,8 +127,7 @@ class ParticleResourceActions
         ParticleOperation $operation,
         ?string $realm = null,
         ?array $routeOverrides = null,
-    ): string|false|null
-    {
+    ): string|false|null {
         $ability = $operation->ability;
 
         if (! is_string($ability) || $ability !== 'ux.author' || $realm !== 'tenant') {
