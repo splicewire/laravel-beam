@@ -361,7 +361,12 @@ class ParticleController extends Controller
 
             $this->admitRequirements($resource->readBehavior(), null, $resource, $request);
 
-            return $this->envelope->item($resolved->record);
+            // Keep schemaRef on the resolved record's REST data payload to match Frame's resolvedShow;
+            // ResponseEnvelope has no meta argument.
+            return $this->envelope->item(array_merge(
+                $resolved->record->toArray(),
+                ['schemaRef' => $resolved->schemaRef],
+            ));
         }
 
         // UX-08c: a declared read ability refuses before the record is even looked up.
