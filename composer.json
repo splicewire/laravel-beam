@@ -52,7 +52,8 @@
             "Splicewire\\Beam\\": "src/"
         },
         "files": [
-            "src/helpers.php"
+            "src/helpers.php",
+            "src/Testing/flow-helper.php"
         ]
     },
     "autoload-dev": {

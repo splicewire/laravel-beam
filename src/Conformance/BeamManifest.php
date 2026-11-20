@@ -134,6 +134,18 @@ class BeamManifest
      */
     public function deviates(string $surfaceFlow): bool
     {
+        return $this->covering($surfaceFlow) !== null;
+    }
+
+    /**
+     * The Deviation entry covering `surface.flow`, or null when none does — the same matching
+     * {@see deviates()} answers as a bool. The covering entry carries the free `note:` a shipped browser
+     * test shows as its skip reason (browser-journeys 10), and the optional `package:` the doctor reads.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function covering(string $surfaceFlow): ?array
+    {
         [$branch, $flow] = array_pad(explode('.', $surfaceFlow, 2), 2, null);
 
         foreach ($this->deviations() as $deviation) {
@@ -144,23 +156,23 @@ class BeamManifest
             $status = $deviation['status'] ?? 'omitted';
 
             if ($status === 'omitted') {
-                return true;
+                return $deviation;
             }
 
             // partial: the branch is installed; only the named flows (and their descendants) are off.
             if ($flow === null) {
                 // Bare-surface compatibility rule: any Deviation on the branch matches.
-                return true;
+                return $deviation;
             }
 
             foreach (array_values((array) ($deviation['flows'] ?? [])) as $declared) {
                 if (self::flowCovers((string) $declared, $flow)) {
-                    return true;
+                    return $deviation;
                 }
             }
         }
 
-        return false;
+        return null;
     }
 
     /**
