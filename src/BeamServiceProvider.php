@@ -968,6 +968,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // ambient user (MCP over stdio) binds its own. The resolver itself is transport-blind and stateless.
         $this->app->bindIf(ActorPort::class, GuardActorAdapter::class);
         $this->app->bind(AbilityResolver::class);
+        $this->app->bindIf(Agreements\RequirementResolver::class,
+            Agreements\NullRequirementResolver::class);
+        $this->app->bind(Agreements\RequirementAdmission::class);
         // Seat declarations are registered by host navigation during boot and consumed later by
         // projection, I6 and the gate stage. They must share one registry-bearing instance.
         $this->app->singleton(SeatGate::class);

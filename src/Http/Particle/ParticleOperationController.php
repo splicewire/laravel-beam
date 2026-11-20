@@ -11,6 +11,8 @@ use Illuminate\Routing\Controller;
 use LogicException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Agreements\Data\RequirementRefusalData;
+use Splicewire\Beam\Agreements\RequirementAdmission;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Data\ResponseBody;
@@ -79,6 +81,7 @@ class ParticleOperationController extends Controller
         protected ResponseEnvelope $envelope,
         protected AbilityResolver $abilities,
         protected ActorPort $actor,
+        protected RequirementAdmission $requirements,
     ) {}
 
     /**
@@ -173,6 +176,29 @@ class ParticleOperationController extends Controller
         // (`StopImpersonating` — an ability there locks the operator inside the impersonated session),
         // `null` is the residue {@see ParticleOperation::permissionName()} is scheduled to close.
         // {@see \Splicewire\Beam\Doctor\UngatedOperationAudit} is what keeps the residue counted.
+
+        // Requirements are asked only after ability admission, and before any request validation. The actor
+        // and subject are transport-neutral values; only this controller chooses the HTTP refusal shape.
+        $refusal = $this->requirements->inspect(
+            $this->actor->actor(),
+            $operation->key(),
+            $model,
+            $this->requirements->submittedMembers(
+                is_string($operation->input) ? $operation->input : null,
+                $request->all(),
+            ),
+        );
+
+        if ($refusal !== null) {
+            if (($operation->errors[428] ?? null) !== RequirementRefusalData::class) {
+                throw new LogicException(sprintf(
+                    'Operation [%s] has outstanding requirements but does not declare [%s] at errors:428.',
+                    $operation->key(), RequirementRefusalData::class,
+                ));
+            }
+
+            return response()->json($refusal->toArray(), 428);
+        }
 
         $this->format($operation, $request);
 
