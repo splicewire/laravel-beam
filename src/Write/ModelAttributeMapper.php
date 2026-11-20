@@ -4,8 +4,11 @@ namespace Splicewire\Beam\Write;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use ReflectionClass;
+use ReflectionNamedType;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Agreements\Data\AgreementMemberData;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Surgeon\UndeclaredWriteMapAudit;
@@ -74,9 +77,16 @@ class ModelAttributeMapper
     public static function columns(mixed $input): array
     {
         $attributes = [];
+        $members = self::agreementMemberKeys($input);
 
         foreach (self::arrayFrom($input) as $key => $value) {
             if ($key === 'id') {
+                continue;
+            }
+
+            // A declared agreement member (agreements 05) is admission input, never a column: requirements
+            // admission reads it, and the Assent is recorded on the ledger (ticket 08), not on the record.
+            if ($value instanceof AgreementMemberData || isset($members[(string) $key])) {
                 continue;
             }
 
@@ -84,6 +94,43 @@ class ModelAttributeMapper
         }
 
         return $attributes;
+    }
+
+    /**
+     * The body keys an input's declared agreement members arrive under: each property typed
+     * {@see AgreementMemberData}, by its own name, its snake form and its mapped input name.
+     *
+     * @return array<string, true>
+     */
+    private static function agreementMemberKeys(mixed $input): array
+    {
+        if (! is_object($input)) {
+            return [];
+        }
+
+        $keys = [];
+
+        foreach ((new ReflectionClass($input))->getProperties() as $property) {
+            $type = $property->getType();
+
+            if (! $type instanceof ReflectionNamedType || $type->getName() !== AgreementMemberData::class) {
+                continue;
+            }
+
+            $name = $property->getName();
+            $keys[$name] = true;
+            $keys[Str::snake($name)] = true;
+
+            foreach ($property->getAttributes(MapInputName::class) as $attribute) {
+                $mapped = $attribute->getArguments()[0] ?? null;
+
+                if (is_string($mapped)) {
+                    $keys[$mapped] = true;
+                }
+            }
+        }
+
+        return $keys;
     }
 
     /**
