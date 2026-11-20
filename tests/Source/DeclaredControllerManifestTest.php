@@ -20,6 +20,7 @@ use Splicewire\Beam\Versioning\Data\VersionData;
 use Splicewire\Beam\Versioning\Data\VersionInputData;
 use Splicewire\Beam\Versioning\Data\VersionListResponseData;
 use Splicewire\Beam\Versioning\Data\VersionResponseData;
+use Splicewire\Beam\Versioning\Data\VersionSnapshotResponseData;
 
 class DeclaredControllerManifestTest extends TestCase
 {
@@ -32,22 +33,22 @@ class DeclaredControllerManifestTest extends TestCase
         Route::getRoutes()->refreshNameLookups();
 
         $manifest = $this->app->make(ParticleRouteManifestSource::class)->toArray();
-        $names = ['tenant.timeline-projects.versions.index', 'tenant.timeline-projects.versions.store', 'tenant.timeline-projects.versions.restore'];
+        $names = ['tenant.timeline-projects.versions.index', 'tenant.timeline-projects.versions.store', 'tenant.timeline-projects.versions.restore', 'tenant.timeline-projects.versions.show'];
         $found = array_values(array_filter(array_keys($manifest), fn ($name) => str_starts_with($name, 'tenant.timeline-projects.versions.')));
         $sorted = $names;
         sort($sorted);
         $this->assertSame($sorted, $found);
 
-        foreach (['index' => 'GET', 'store' => 'POST', 'restore' => 'POST'] as $verb => $method) {
+        foreach (['index' => 'GET', 'store' => 'POST', 'restore' => 'POST', 'show' => 'GET'] as $verb => $method) {
             $name = 'tenant.timeline-projects.versions.'.$verb;
             $entry = $manifest[$name];
-            $this->assertSame('tenant/runtime/timeline-projects/{id}/versions'.($verb === 'restore' ? '/{ref}/restore' : ''), $entry['path']);
+            $this->assertSame('tenant/runtime/timeline-projects/{id}/versions'.match ($verb) { 'restore' => '/{ref}/restore', 'show' => '/{ref}', default => '' }, $entry['path']);
             $this->assertSame([$method], $entry['methods']);
-            $this->assertSame(str_replace('\\', '.', $verb === 'index' ? VersionListResponseData::class : VersionResponseData::class), $entry['returns']);
+            $this->assertSame(str_replace('\\', '.', match ($verb) { 'index' => VersionListResponseData::class, 'show' => VersionSnapshotResponseData::class, default => VersionResponseData::class }), $entry['returns']);
             $this->assertTrue($entry['returnsBody']);
             $this->assertFalse($entry['returnsMany'] ?? false, 'The list is inside the HTTP body, not a list of response bodies.');
             $route = Route::getRoutes()->getByName($name);
-            $this->assertSame($verb === 'restore' ? ['id', 'ref'] : ['id'], $route->parameterNames());
+            $this->assertSame(in_array($verb, ['restore', 'show'], true) ? ['id', 'ref'] : ['id'], $route->parameterNames());
             $this->assertContains('auth', $route->gatherMiddleware());
             $this->assertArrayHasKey('id', $route->wheres);
             if ($method === 'POST') {
