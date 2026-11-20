@@ -7,6 +7,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate as GateFacade;
+use Rushing\PermissionCascade\Authorization\CredentialScopeRefusal;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Http\Controllers\FrameManifestController;
 use Schemastud\Frame\Http\Controllers\FrameResourceSummaryController;
@@ -200,8 +201,28 @@ class RealmEntitlementResourceGate implements ResourceAccessGate
     ): bool {
         $resource = $this->particles->find($definition->key);
 
-        return $resource === null
-            || ResourceReadGuard::forApp()->inspectReadFor($resource, request(), $actor, $mountedRealm)->allowed();
+        if ($resource === null) {
+            return true;
+        }
+
+        $verdict = ResourceReadGuard::forApp()->inspectReadFor($resource, request(), $actor, $mountedRealm);
+
+        // A summary request is an authoritative HTTP read. When it is refused and the acting token does not carry the
+        // resource's read name, the credential-scope refusal is thrown as itself, so the client gets the coded 403
+        // (`credential_scope_name_not_carried`) rather than frame's generic one: this port answers a bool, frame's
+        // ResourceAuthorizer turns `false` into an uncoded AccessDenied, and a read policy that asks a narrowed Gate
+        // decision flattens its coded Response to a plain deny (credential-scope 07, review cs07 #4). A refusal the
+        // token's names would not change keeps answering false.
+        if ($verdict->denied()) {
+            $scope = $verdict instanceof CredentialScopeRefusal
+                ? $verdict
+                : ResourceReadGuard::forApp()->inspectScopeFor($resource, $actor);
+            if ($scope instanceof CredentialScopeRefusal) {
+                $scope->authorize();
+            }
+        }
+
+        return $verdict->allowed();
     }
 
     /** A copy whose reach and declared-read gates are bound to one explicit actor, including a guest. */
