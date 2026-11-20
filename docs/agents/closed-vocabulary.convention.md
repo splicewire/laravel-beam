@@ -11,8 +11,13 @@ then read one declaration.
 union arm (equal to the property's default), a version number, `unknown`, a union with a literal
 member. Where a docblock or `#[TypeScriptType]` can say it, use that.
 
+**A validation vocabulary is a vocabulary.** A `string` property whose `#[In]` lists a fixed set of string
+literals — inline, as varargs, or through a class constant holding a literal array — is the same closed set.
+Type it a PHP backed enum and validate against its cases; `#[In]` over an enum's cases is already declared.
+
 **An open set is not a union.** Type it to an interface a host's enum can implement, or leave it
-`string`.
+`string`. An interface-typed property is outside both the `#[LiteralTypeScriptType]` and the `#[In]` checks
+by construction; a set left as a bare `string` cannot be told apart from a closed one and is reported.
 
 **Prove the enum reaches every host that serves the class.** A family enum goes in its package's
 `Enums` directory. Declared reach finds it anywhere; a host that discovers the class only by scanning
@@ -20,4 +25,4 @@ directories finds it only there. Regenerate, and read the run's log for an unres
 
 Enforced advisorily by `Splicewire\Beam\Surgeon\ClosedVocabularyAudit` (`typescript.literal-vocabulary`,
 `typescript.literal-inline-object`, `typescript.literal-discriminator-mismatch`,
-`typescript.docblock-vocabulary`), which reports through `surgeon:audit`.
+`typescript.docblock-vocabulary`, `typescript.validation-vocabulary`), which reports through `surgeon:audit`.
