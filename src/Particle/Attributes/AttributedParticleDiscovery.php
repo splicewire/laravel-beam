@@ -203,6 +203,7 @@ class AttributedParticleDiscovery
             schemaRef: $attribute->schemaRef,
             createAffordance: $attribute->createAffordance,
             graph: $attribute->graph,
+            requires: $attribute->requires,
         );
     }
 
@@ -246,6 +247,7 @@ class AttributedParticleDiscovery
             summary: $attribute->summary,
             description: $attribute->description,
             errors: $attribute->errors,
+            requires: $attribute->requires,
         ), by: Registrant::fromClass($class));
     }
 

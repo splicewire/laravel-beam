@@ -4,9 +4,12 @@ namespace Splicewire\Beam\Source;
 
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
+use Splicewire\Beam\Agreements\RequirementDeclarations;
+use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Http\Particle\ParticleController;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
+use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Routing\RouteMetadataReader;
 use Splicewire\Beam\Routing\RouteRequestType;
@@ -120,6 +123,12 @@ class ParticleRouteManifestSource implements RouteManifestSource
 
             if ($input !== null) {
                 $entry['input'] = $input === false ? false : $this->toTsType($input);
+            }
+
+            // agreements 05: the Agreement KEYS this route's behavior requires, per the port. The key is omitted —
+            // never an empty list — when it carries none, so a host with no Requirement reads a byte-identical manifest.
+            if (($requires = $this->requiresFor($route)) !== []) {
+                $entry['requires'] = $requires;
             }
 
             $manifest[$name] = $entry;
@@ -335,6 +344,53 @@ class ParticleRouteManifestSource implements RouteManifestSource
         }
 
         return $this->registry->get($key)->input;
+    }
+
+    /**
+     * The distinct Agreement keys the route's behavior requires (agreements 05), read through the
+     * {@see RequirementDeclarations} port: an operation's `{resource}.{name}`, a resource's `index`/`show` as
+     * `{key}:read` and `store`/`update`/`destroy` as `{key}:write`. Keys only — never a class name.
+     *
+     * @return list<string>
+     */
+    private function requiresFor(Route $route): array
+    {
+        if (! app()->bound(RequirementDeclarations::class)) {
+            return [];
+        }
+
+        $behavior = $this->behaviorOf($route);
+
+        if ($behavior === null) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map(
+            fn (Requires $requirement): string => $requirement->agreement,
+            app(RequirementDeclarations::class)->requirementsFor($behavior),
+        )));
+    }
+
+    private function behaviorOf(Route $route): ?string
+    {
+        $resource = $route->defaults[ParticleOperationController::RESOURCE] ?? null;
+        $name = $route->defaults[ParticleOperationController::NAME] ?? null;
+
+        if (is_string($resource) && is_string($name)) {
+            return "{$resource}.{$name}";
+        }
+
+        $key = $route->defaults[ParticleController::RESOURCE] ?? null;
+
+        if (! is_string($key)) {
+            return null;
+        }
+
+        return match ($route->getActionMethod()) {
+            'index', 'show' => ParticleResource::behaviorFor($key, 'read'),
+            'store', 'update', 'destroy' => ParticleResource::behaviorFor($key, 'write'),
+            default => null,
+        };
     }
 
     /**

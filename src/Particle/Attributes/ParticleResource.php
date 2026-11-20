@@ -6,6 +6,7 @@ use Attribute;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\ResourceFilterProvider;
 use Schemastud\Frame\Contracts\ResourceSummaryProvider;
+use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Graph\Edges\GraphEdges;
 use Splicewire\Beam\Http\Particle\ParticleController;
@@ -152,6 +153,14 @@ class ParticleResource
          * {@see \Splicewire\Beam\Particle\ParticleResource::$graph}.
          */
         public ?GraphEdges $graph = null,
+        /**
+         * @var list<Requires>|null agreements 05: the Requirements this resource's verbs carry —
+         *                          `requires: [new Requires('terms', on: 'write')]`. Carried verbatim onto
+         *                          {@see \Splicewire\Beam\Particle\ParticleResource::$requires}, whose docblock carries the
+         *                          rules (behavior keys, admission order, and that a read Requirement refuses a guest
+         *                          even where `publicRead` is declared). Null declares none and is never counted.
+         */
+        public ?array $requires = null,
         /**
          * @deprecated Removed by aeee2b2 (2026-09-22): filtering derives from declarations. Accepted and
          * ignored for one release so an extension built before it (beam-extension-demo v1.0.0/v2.0.0)

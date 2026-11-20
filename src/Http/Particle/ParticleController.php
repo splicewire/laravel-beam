@@ -20,6 +20,8 @@ use RuntimeException;
 use Rushing\LaravelDataSchemasScribe\Attributes\QueryFromData;
 use Schemastud\Frame\Data\ResourceQueryData;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Agreements\RequirementAdmission;
+use Splicewire\Beam\Authorization\ActorPort;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Authorization\RowAuthorization;
 use Splicewire\Beam\Doctor\UngatedResourceReadAudit;
@@ -50,6 +52,7 @@ use Splicewire\Beam\Write\GateWriteGate;
 use Splicewire\Beam\Write\ModelAttributeMapper;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\PolicyWriteGate;
+use Splicewire\Beam\Write\WriteRequirement;
 
 /**
  * The generic REST controller every model-backed resource can ride instead of hand-rolling
@@ -170,9 +173,14 @@ class ParticleController extends Controller
                     ResourceReadGuard::forApp()->inspectRead($resource, $request)->authorize();
                 }
 
+                $this->admitRequirements($resource->readBehavior(), null, $resource, $request);
+
                 return $this->streamedIndex($request, $resource, $ctx, $facets);
             }
         }
+
+        // agreements 05: after every read guard above, so a caller refused the read never learns its Requirements.
+        $this->admitRequirements($resource->readBehavior(), null, $resource, $request);
 
         $query = app(ParticleListQuery::class)->forList($resource, $facets, $request, $relativeQuery);
 
@@ -358,6 +366,9 @@ class ParticleController extends Controller
             $this->authorize('view', $model);
         }
 
+        // agreements 05: after the view/ownership checks; a guest admitted by a Public Read still meets it.
+        $this->admitRequirements($resource->readBehavior(), $model, $resource, $request);
+
         return $this->respond($resource, $model, $request);
     }
 
@@ -423,6 +434,8 @@ class ParticleController extends Controller
         } else {
             $this->authorize('delete', $model);
         }
+        // agreements 05: after the delete ability, before anything is removed.
+        $this->admitRequirements($resource->writeBehavior(), $model, $resource, $request);
         $model->delete();
 
         return $this->envelope->item(null);
@@ -604,7 +617,45 @@ class ParticleController extends Controller
             ? $backing->writer($gate)
             : $this->writer;
 
-        return $writer->write($model, $attributes, $actor, $this->afterHook($resource, $input));
+        // agreements 05: the pipeline's RequirementAdmissionStage asks this right after the write gate, so a create or
+        // update the gate refuses is a 403 and an admitted one with outstanding Requirements is a 428, before validation.
+        $requirement = new WriteRequirement(
+            $resource->writeBehavior(),
+            $model->exists ? $model : null,
+            $request === null ? [] : $this->submittedRequirementMembers($resource, $request),
+        );
+
+        return $writer->requiring($requirement)->write($model, $attributes, $actor, $this->afterHook($resource, $input));
+    }
+
+    /**
+     * agreements 05 (ADR-0247 amendment): ask the requirements plane about a resource read or delete, AFTER the verb's
+     * own ability, and refuse with the declared 428 body. Resolved through the container rather than injected, so a
+     * controller that extends this one keeps its constructor.
+     *
+     * @throws HttpResponseException 428 with {@see \Splicewire\Beam\Agreements\Data\RequirementRefusalData}
+     */
+    protected function admitRequirements(string $behavior, mixed $subject, ParticleResource $resource, Request $request): void
+    {
+        $refusal = app(RequirementAdmission::class)->inspect(
+            app(ActorPort::class)->actor(),
+            $behavior,
+            $subject,
+            $this->submittedRequirementMembers($resource, $request),
+        );
+
+        if ($refusal !== null) {
+            throw new HttpResponseException(response()->json($refusal->toArray(), 428));
+        }
+    }
+
+    /** @return array<string, \Splicewire\Beam\Agreements\Data\AgreementMemberData> */
+    protected function submittedRequirementMembers(ParticleResource $resource, Request $request): array
+    {
+        return app(RequirementAdmission::class)->submittedMembers(
+            is_string($resource->input) ? $resource->input : null,
+            $request->all(),
+        );
     }
 
     /**

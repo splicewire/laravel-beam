@@ -5,7 +5,7 @@ namespace {{ namespace }};
 use {{ namespacedInputClass }};
 {{ modelImport }}use {{ namespacedOutputClass }};
 use Illuminate\Http\Request;
-use Splicewire\Beam\Particle\Attributes\ParticleOp;
+{{ requiresImport }}use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\OperationKind;
 {{ noSubjectImport }}
 /**
@@ -43,7 +43,7 @@ use Splicewire\Beam\Particle\OperationKind;
     affordance: {{ affordance }},
     input: {{ inputClass }}::class,
     output: {{ outputClass }}::class,
-{{ subjectSlots }})]
+{{ subjectSlots }}{{ requiresSlot }})]
 class {{ class }}
 {
     public static function handle({{ subjectParam }}, Request $request, mixed $actor): {{ outputClass }}

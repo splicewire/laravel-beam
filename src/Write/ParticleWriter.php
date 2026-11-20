@@ -19,6 +19,7 @@ use Splicewire\Beam\Write\Stages\AuthorizeStage;
 use Splicewire\Beam\Write\Stages\DedupeStage;
 use Splicewire\Beam\Write\Stages\EmitStage;
 use Splicewire\Beam\Write\Stages\PersistStage;
+use Splicewire\Beam\Write\Stages\RequirementAdmissionStage;
 use Splicewire\Beam\Write\Stages\ValidateStage;
 
 /**
@@ -31,6 +32,10 @@ use Splicewire\Beam\Write\Stages\ValidateStage;
  *
  *   1. {@see AuthorizeStage} — deny-by-default {@see WriteGate}; refused ⇒ {@see WriteNotAuthorized}, nothing
  *      persists;
+ *   1a. {@see RequirementAdmissionStage} (agreements 05) — a write that carries a {@see WriteRequirement} (a
+ *      resource's create/update) is refused with {@see \Splicewire\Beam\Agreements\RequirementRefused} (428) while
+ *      Requirements remain outstanding, after the gate so a refused caller never learns them; a write without one
+ *      passes untouched;
  *   2. {@see ValidateStage} — payload vs. the record type's resolved target schema via the
  *      {@see AcceptanceGate}; non-conforming ⇒ {@see PayloadRejected}, nothing persists (skipped when the
  *      type has no registered schema: a plain app model validates at its own DTO boundary);
@@ -82,6 +87,22 @@ class ParticleWriter
         private ?array $stages = null,
     ) {}
 
+    /** agreements 05: the Requirement question this writer's writes carry; null on every writer not made by {@see requiring()}. */
+    private ?WriteRequirement $requirement = null;
+
+    /**
+     * agreements 05: a copy of this writer whose writes carry `$requirement`, so its {@see RequirementAdmissionStage}
+     * asks admission right after the write gate. A copy rather than a `write()` argument, so a subclass or fake that
+     * overrides `write()` keeps its signature; the original writer is unchanged.
+     */
+    public function requiring(?WriteRequirement $requirement): static
+    {
+        $copy = clone $this;
+        $copy->requirement = $requirement;
+
+        return $copy;
+    }
+
     /** Preserve this writer's authorization when a backing decorates its persistence stages. */
     public function gate(): WriteGate
     {
@@ -109,11 +130,11 @@ class ParticleWriter
     public function write(Model|string $target, array $payload, mixed $actor = null, ?Closure $after = null, bool $emit = true): Model
     {
         $model = $target instanceof Model ? $target : new $target;
-        $context = new WriteContext($model, $payload, $actor, $this->authorized($after), $emit);
+        $context = new WriteContext($model, $payload, $actor, $this->authorized($after), $emit, $this->requirement);
 
         return (new Pipeline)
             ->send($context)
-            ->through($this->stages ?? $this->defaultStages())
+            ->through($this->stagesFor($this->requirement))
             ->then(fn (WriteContext $context) => $context)
             ->model;
     }
@@ -148,7 +169,42 @@ class ParticleWriter
     }
 
     /**
-     * The shipped default chain — authorize → validate → dedupe → persist → emit — built from THIS writer's own
+     * The chain one write runs. A write that carries a {@see WriteRequirement} must meet a
+     * {@see RequirementAdmissionStage}: a caller-composed `$stages` list that has none (written before agreements 05)
+     * gets one inserted right after its first {@see AuthorizeStage} — at the front when it has none — so a Requirement
+     * can never be skipped by a custom chain. A write without one runs the chain exactly as composed.
+     *
+     * @return list<WriteStage>
+     */
+    private function stagesFor(?WriteRequirement $requirement): array
+    {
+        $stages = $this->stages ?? $this->defaultStages();
+
+        if ($requirement === null) {
+            return $stages;
+        }
+
+        foreach ($stages as $stage) {
+            if ($stage instanceof RequirementAdmissionStage) {
+                return $stages;
+            }
+        }
+
+        $at = 0;
+        foreach ($stages as $index => $stage) {
+            if ($stage instanceof AuthorizeStage) {
+                $at = $index + 1;
+                break;
+            }
+        }
+
+        array_splice($stages, $at, 0, [new RequirementAdmissionStage]);
+
+        return $stages;
+    }
+
+    /**
+     * The shipped default chain — authorize → requirements → validate → dedupe → persist → emit — built from THIS writer's own
      * collaborators (not resolved fresh from the container) so a caller that constructs the writer with a
      * bespoke gate (e.g. the public-intake host binding) has that gate govern authorization.
      *
@@ -158,6 +214,7 @@ class ParticleWriter
     {
         return [
             new AuthorizeStage($this->gate),
+            new RequirementAdmissionStage,
             new ValidateStage($this->targets, $this->acceptance),
             new DedupeStage($this->targets),
             new PersistStage,

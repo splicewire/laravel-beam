@@ -8,7 +8,7 @@ use {{ namespacedOutputClass }};
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Http\Request;
 use LogicException;
-use Splicewire\Beam\Particle\Attributes\ParticleOp;
+{{ requiresImport }}use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\OperationKind;
 
 /**
@@ -40,7 +40,7 @@ use Splicewire\Beam\Particle\OperationKind;
     affordance: {{ affordance }},
     input: {{ inputClass }}::class,
     output: {{ outputClass }}::class,
-)]
+{{ requiresSlot }})]
 class {{ class }}
 {
     /**

@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Entitlements;
 
 use Illuminate\Contracts\Auth\Access\Gate;
+use Splicewire\Beam\Agreements\RequirementDeclarations;
+use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Realm\RealmManifestProjector;
 use Splicewire\Beam\Realm\RealmRegistry;
 
@@ -18,6 +20,8 @@ use Splicewire\Beam\Realm\RealmRegistry;
  *  - APP/REALM keys — `app:{realmKey}` for each registered realm, true when the realm is REACHABLE by this
  *    principal (present in the projected manifest, whether unlocked or soft-locked; a hard-gated,
  *    unreachable realm is absent → false);
+ *  - AGREEMENT keys (agreements 05) — `agreement:{key}` for each Agreement a party- or organisation-scoped
+ *    Requirement names, asked of the Gate; absent when nothing declares a Requirement;
  *  - caller-supplied SUBJECT-scoped keys — window-mode ability strings like `song:{id}:update` the caller
  *    folds in via {@see with()}, each evaluated against the Laravel {@see Gate} (so subject policies decide
  *    them). The builder does not invent these keys — it only resolves the ones the caller passes.
@@ -100,12 +104,38 @@ class CanMapBuilder
             $can['app:'.$realmKey] = isset($reachable[$realmKey]);
         }
 
+        // AGREEMENT plane (agreements 05) — `agreement:{key}` for every distinct Agreement a party- or organisation-scoped
+        // Requirement names, asked of the Gate (an agreements seam defines the ability). Subject-scoped Requirements are
+        // per record and stay out of a flat map. No Requirement anywhere ⇒ nothing added.
+        foreach ($this->agreementKeys() as $key) {
+            $can['agreement:'.$key] = $this->gate->forUser($principal)->allows('agreement:'.$key);
+        }
+
         // SUBJECT-scoped / window-mode keys the caller folded in — resolved against the Laravel Gate.
         foreach ($this->extraAbilityChecks as $ability) {
             $can[$ability] = $this->gate->forUser($principal)->allows($ability);
         }
 
         return $can;
+    }
+
+    /** @return list<string> distinct Agreement keys of every party/organisation-scoped Requirement the port declares */
+    private function agreementKeys(): array
+    {
+        if (! app()->bound(RequirementDeclarations::class)) {
+            return [];
+        }
+
+        $keys = [];
+        foreach (app(RequirementDeclarations::class)->all() as $requirements) {
+            foreach ($requirements as $requirement) {
+                if ($requirement instanceof Requires && in_array($requirement->scope, ['party', 'organisation'], true)) {
+                    $keys[$requirement->agreement] = true;
+                }
+            }
+        }
+
+        return array_keys($keys);
     }
 
     /** @return list<string> the deduped feature-key universe */

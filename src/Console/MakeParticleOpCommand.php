@@ -335,6 +335,8 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             // tutorial-dx 06 (the read/write stub): a subject-free op declares it, imports no model and takes `mixed $subject`
             // (null at run time); an `--output` class is built from what the op has, not from a placeholder it lacks.
             ...$this->subjectTokens(),
+            // agreements 05: `--requires=terms` emits `requires: [new Requires('terms')],`; omitted, nothing.
+            ...$this->requiresTokens(),
         ];
     }
 
@@ -375,6 +377,7 @@ class MakeParticleOpCommand extends ParticleGeneratorCommand
             ['force', 'f', InputOption::VALUE_NONE, 'Overwrite the operation class if it already exists'],
             ['no-subject', null, InputOption::VALUE_NONE, 'Read/write only: a collection-level op (subject: NoSubject::class, abilityModel: false); no model is imported and handle() takes mixed $subject'],
             ['output', null, InputOption::VALUE_REQUIRED, 'Read/write only: name an EXISTING Data class as output: instead of emitting <Name>OutputData (a bare name resolves under the data namespace)'],
+            ['requires', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Declare a requires: slot naming this Agreement key (repeatable, or a comma list); omitted ⇒ no slot is written'],
         ];
     }
 }

@@ -11,6 +11,7 @@ use Rushing\Popcorn\Registries\RegistryKey;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Agreements\Data\RequirementRefusalData;
 use Splicewire\Beam\Agreements\RequirementDeclarations;
+use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Doctor\RequirementRefusalDeclaredAudit;
 use Splicewire\Beam\Doctor\UndeclaredAffordanceAudit;
@@ -499,6 +500,13 @@ class ParticleOperation implements HasRegistryKey
      *                                                       writes it; `null` is undeclared. It parallels `output:` at
      *                                                       the same declaration site (particle-doctrine §The invariant,
      *                                                       site 2), so it is not a fourth site. See the class docblock
+     * @param  list<Requires>|null  $requires  the Requirements this op's own declaration attaches to its behavior
+     *                                         ({@see key()}; agreements 05, ADR-0247 amendment). `null` declares none
+     *                                         and no audit counts the omission. Read through the
+     *                                         {@see RequirementDeclarations} port — beam's slot default reports it —
+     *                                         so {@see declaredErrors()} implies `errors:428` for it and the
+     *                                         controller asks admission for it after the ability check. A
+     *                                         Requires' `on:` splits a RESOURCE's verbs and is ignored here
      */
     public function __construct(
         public string $resource,
@@ -520,7 +528,9 @@ class ParticleOperation implements HasRegistryKey
         public ?string $summary = null,
         public ?string $description = null,
         public ?array $errors = null,
+        public ?array $requires = null,
     ) {
+        Requires::assertList($requires, "Particle operation [{$resource}.{$name}]");
         $this->assertOutputMatchesKind();
         $this->assertAffordanceSpelling();
         $this->assertErrorsDeclareRefusals();
@@ -655,7 +665,8 @@ class ParticleOperation implements HasRegistryKey
 
     /**
      * The refusals this op answers with, as every READER sees them: the author's `errors:` plus, when the host has
-     * attached a Requirement to this behavior ({@see RequirementDeclarations::declares()}), an implied
+     * attached a Requirement to this behavior ({@see RequirementDeclarations::declares()}) — or this op's own
+     * `requires:` slot carries one, which beam's slot default reports through the same port (agreements 05) — an implied
      * `428 => RequirementRefusalData::class` (agreements 04, ADR-0247 amendment).
      *
      * `$errors` stays the author's declaration, untouched. An author's own 428 is never replaced: a different class

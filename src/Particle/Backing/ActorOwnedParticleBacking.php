@@ -30,6 +30,7 @@ use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\Stages\AuthorizeStage;
 use Splicewire\Beam\Write\Stages\EmitStage;
 use Splicewire\Beam\Write\Stages\PersistStage;
+use Splicewire\Beam\Write\Stages\RequirementAdmissionStage;
 use Splicewire\Beam\Write\Stages\ValidateStage;
 
 /** Data-declared, actor-owned rows over the existing shared particle store and write engine. */
@@ -199,7 +200,8 @@ class ActorOwnedParticleBacking extends EloquentBacking implements AcceptsPayloa
         $events = app(Dispatcher::class);
 
         return new ParticleWriter($gate, $targets, $acceptance, $events, [
-            new AuthorizeStage($gate), new ActorOwnedParticleWriteStage($this),
+            // agreements 05: requirements after BOTH gates — the ownership stage is this backing's ability check.
+            new AuthorizeStage($gate), new ActorOwnedParticleWriteStage($this), new RequirementAdmissionStage,
             new CollectionValidateStage(new ValidateStage($targets, $acceptance)),
             new PersistStage, new EmitStage($events),
         ]);

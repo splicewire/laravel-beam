@@ -17,6 +17,7 @@ use Schemastud\Frame\Registry\NavMetadata;
 use Schemastud\Frame\Registry\ResourceActionDefinition;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Doctor\UndeclaredInputAudit;
 use Splicewire\Beam\Filters\BeamResourceFilterProvider;
@@ -326,7 +327,52 @@ class ParticleResource implements HasRegistryKey
          * ({@see assertGraphSlot()}).
          */
         public ?GraphEdges $graph = null,
-    ) {}
+        /**
+         * agreements 05 (ADR-0247 amendment): the Requirements this resource's verbs carry, e.g.
+         * `[new Requires('terms', on: 'write')]`. Null (the default) declares none, and no audit counts the omission.
+         *
+         * A resource is two behaviors: {@see readBehavior()} `{key}:read` (list + detail) and {@see writeBehavior()}
+         * `{key}:write` (create, update, delete). A Requires' `on:` picks one or `both`. The colon cannot collide
+         * with an operation's `{resource}.{name}`.
+         *
+         * Admission runs AFTER the verb's own ability, so a caller who lacks it gets 403 and never learns the
+         * Requirements: list after its read guards, detail and delete after their policy check, and create/update in
+         * the write pipeline's {@see \Splicewire\Beam\Write\Stages\RequirementAdmissionStage}, right after
+         * {@see \Splicewire\Beam\Write\Stages\AuthorizeStage}. An outstanding Requirement answers 428 with
+         * {@see \Splicewire\Beam\Agreements\Data\RequirementRefusalData}.
+         *
+         * ⚠️ **A read Requirement refuses a guest even where {@see $publicRead} is declared.** A guest has no party
+         * to have assented, so every outstanding Requirement stays outstanding: a Public Read admits a guest past
+         * the ability, not past a Requirement. Declare the Requirement `on: 'write'` to keep guest reads open.
+         *
+         * @var list<Requires>|null
+         */
+        public ?array $requires = null,
+    ) {
+        Requires::assertList($requires, "Particle resource [{$key}]");
+    }
+
+    /** agreements 05: the behavior key a list or detail read is admitted under. */
+    public function readBehavior(): string
+    {
+        return self::behaviorFor($this->key, 'read');
+    }
+
+    /** agreements 05: the behavior key a create, update or delete is admitted under. */
+    public function writeBehavior(): string
+    {
+        return self::behaviorFor($this->key, 'write');
+    }
+
+    /**
+     * `{key}:read` / `{key}:write`, for a caller that holds only the key (a frame definition).
+     *
+     * @param  'read'|'write'  $side
+     */
+    public static function behaviorFor(string $key, string $side): string
+    {
+        return "{$key}:{$side}";
+    }
 
     /**
      * ADR-0230 — does this resource declare a Public Read? A declaration admits a guest (a null actor) to a

@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Particle\Attributes;
 
 use Attribute;
+use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 use Splicewire\Beam\Particle\ActionAffordance;
 use Splicewire\Beam\Particle\OperationKind;
@@ -127,6 +128,9 @@ class ParticleOp
      * @param  array<int, class-string>|null  $errors  the body Data at each non-success status; the refusal twin of
      *                                                 `output:` at this same declaration site (site 2) —
      *                                                 {@see ParticleOperation} carries its rules
+     * @param  list<Requires>|null  $requires  the Requirements this op's behavior (`{resource}.{name}`) carries
+     *                                         (agreements 05) — `[new Requires('terms')]`; `null` declares none and
+     *                                         is never counted. {@see ParticleOperation} carries its rules
      */
     public function __construct(
         public string $resource,
@@ -146,5 +150,6 @@ class ParticleOp
         public ?string $summary = null,
         public ?string $description = null,
         public ?array $errors = null,
+        public ?array $requires = null,
     ) {}
 }

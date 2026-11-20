@@ -167,6 +167,7 @@ use Splicewire\Beam\Doctor\UngatedWriteAudit;
 use Splicewire\Beam\Doctor\UngatedWriteOperationAudit;
 use Splicewire\Beam\Doctor\UnguardedCreateAudit;
 use Splicewire\Beam\Doctor\UnrehearsableStubAudit;
+use Splicewire\Beam\Doctor\UnseamedRequirementSlotAudit;
 use Splicewire\Beam\Doctor\UnverifiedOnPopulatedTableAudit;
 use Splicewire\Beam\Entitlements\EntitlementGate;
 use Splicewire\Beam\Entitlements\EntitlementKeyUniverse;
@@ -970,12 +971,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // ambient user (MCP over stdio) binds its own. The resolver itself is transport-blind and stateless.
         $this->app->bindIf(ActorPort::class, GuardActorAdapter::class);
         $this->app->bind(AbilityResolver::class);
+        // agreements 05: the SLOT defaults. With no seam installed, a declaration's own `requires:` slot refuses every
+        // caller as an unknown (`unregistered`) Agreement; with no slot anywhere both answer exactly as the Null classes.
+        // An agreements seam replaces them with a plain bind, and reads the slots through SlotRequirementDeclarations.
         $this->app->bindIf(Agreements\RequirementResolver::class,
-            Agreements\NullRequirementResolver::class);
-        // agreements 04: which behaviors a host attached a Requirement to; ParticleOperation::declaredErrors() implies
-        // errors:428 for each. The Null default declares none, so a host without the seam reads exactly as before.
+            Agreements\SlotRequirementResolver::class);
+        // agreements 04: which behaviors carry a Requirement; ParticleOperation::declaredErrors() implies errors:428 for
+        // each.
         $this->app->bindIf(Agreements\RequirementDeclarations::class,
-            Agreements\NullRequirementDeclarations::class);
+            Agreements\SlotRequirementDeclarations::class);
         $this->app->bind(Agreements\RequirementAdmission::class);
         // Seat declarations are registered by host navigation during boot and consumed later by
         // projection, I6 and the gate stage. They must share one registry-bearing instance.
@@ -1560,6 +1564,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // controller throws on that op the first time a requirement is outstanding, so it gates; under the Null port it
         // has no population and passes.
         $manifest->register('splicewire/laravel-beam', RequirementRefusalDeclaredAudit::class, gate: true);
+        // agreements 05: a `requires:` slot while beam's slot resolver is still bound refuses every caller as an unknown
+        // Agreement. One reading and a host remedy (install the seam or drop the slot), so it gates; no slot ⇒ pass.
+        $manifest->register('splicewire/laravel-beam', UnseamedRequirementSlotAudit::class, gate: true);
         // The `input:` twin of the audit above (api-surface-coherence 117). Two checks from one class,
         // because the axes are decoupled: the RESOURCE axis counts REACHABLE write mounts, derived from
         // the router every run — a declaration count reports the 22-route saved-filters sub-surface and

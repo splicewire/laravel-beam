@@ -6,7 +6,7 @@ use {{ namespacedInputClass }};
 use {{ namespacedModel }};
 use {{ namespacedOutputClass }};
 use Illuminate\Http\Request;
-use Splicewire\Beam\Particle\Attributes\ParticleOp;
+{{ requiresImport }}use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\Emitter;
 use Splicewire\Beam\Particle\OperationKind;
 
@@ -41,7 +41,7 @@ use Splicewire\Beam\Particle\OperationKind;
     affordance: {{ affordance }},
     input: {{ inputClass }}::class,
     output: ['{{ event }}' => [{{ outputClass }}::class]],
-)]
+{{ requiresSlot }})]
 class {{ class }}
 {
     public static function handle({{ model }} $model, Request $request, mixed $actor, Emitter $emit): void

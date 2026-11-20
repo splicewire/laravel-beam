@@ -35,6 +35,8 @@ class WriteContext
         public mixed $actor = null,
         public ?Closure $after = null,
         public bool $emit = true,
+        /** agreements 05: what {@see Stages\RequirementAdmissionStage} asks admission about; null ⇒ not asked */
+        public ?WriteRequirement $requirement = null,
     ) {}
 
     /**

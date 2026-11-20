@@ -48,7 +48,10 @@ class ImpliedRequirementRefusalTest extends TestCase
 
     public function test_the_null_port_implies_nothing_and_the_guard_still_throws(): void
     {
-        $this->assertInstanceOf(NullRequirementDeclarations::class, $this->app->make(RequirementDeclarations::class));
+        // agreements 05: beam's default is the slot port, which with no `requires:` slot declares exactly what Null did.
+        $this->assertInstanceOf(\Splicewire\Beam\Agreements\SlotRequirementDeclarations::class, $this->app->make(RequirementDeclarations::class));
+        $this->assertSame([], $this->app->make(RequirementDeclarations::class)->all());
+        $this->assertFalse((new NullRequirementDeclarations)->declares('implied-probe-rows.act'));
         $this->app->instance(RequirementResolver::class, new ImpliedOutstandingResolver);
         $operation = $this->mount();
         ImpliedProbeRow::query()->create([]);
@@ -166,6 +169,16 @@ class FixedRequirementDeclarations implements RequirementDeclarations
     public function declares(string $behavior): bool
     {
         return in_array($behavior, $this->behaviors, true);
+    }
+
+    public function requirementsFor(string $behavior): array
+    {
+        return $this->declares($behavior) ? [new \Splicewire\Beam\Agreements\Requires('voice-release')] : [];
+    }
+
+    public function all(): array
+    {
+        return array_combine($this->behaviors, array_map($this->requirementsFor(...), $this->behaviors));
     }
 }
 

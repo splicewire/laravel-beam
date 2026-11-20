@@ -4,6 +4,8 @@ namespace Splicewire\Beam\Codegen;
 
 use ReflectionClass;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
+use Splicewire\Beam\Agreements\Data\RequirementRefusalData;
+use Splicewire\Beam\Agreements\RequirementDeclarations;
 use Splicewire\Beam\Frame\ParticleResourceRegistryAdapter;
 use Splicewire\Beam\Particle\Contribution\ResourceContribution;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
@@ -97,6 +99,8 @@ class DeclaredParticleTypes
             $declared[ltrim($class, '\\')][] = $slot;
         };
 
+        $declarations = app()->bound(RequirementDeclarations::class) ? app(RequirementDeclarations::class) : null;
+
         foreach ($this->resources->all() as $resource) {
             if (! $resource instanceof ParticleResource) {
                 continue;
@@ -107,6 +111,12 @@ class DeclaredParticleTypes
             $note($resource->editData, "resource [{$resource->key}] editData:");
             $note($resource->createResultData, "resource [{$resource->key}] createResultData:");
             $note($resource->publicRead, "resource [{$resource->key}] publicRead:");
+
+            // agreements 05: a resource verb with a Requirement may refuse at 428 with the declared refusal body.
+            if ($declarations !== null
+                && ($declarations->declares($resource->readBehavior()) || $declarations->declares($resource->writeBehavior()))) {
+                $note(RequirementRefusalData::class, "resource [{$resource->key}] requires: [428]");
+            }
         }
 
         foreach ($this->operations->all() as $operation) {

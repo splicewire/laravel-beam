@@ -74,6 +74,16 @@ class RequirementRefusalDeclaredAuditTest extends TestCase
             {
                 return in_array($behavior, $this->behaviors, true);
             }
+
+            public function requirementsFor(string $behavior): array
+            {
+                return $this->declares($behavior) ? [new \Splicewire\Beam\Agreements\Requires('terms')] : [];
+            }
+
+            public function all(): array
+            {
+                return array_combine($this->behaviors, array_map($this->requirementsFor(...), $this->behaviors));
+            }
         };
         $this->app->instance(RequirementDeclarations::class, $port);
 

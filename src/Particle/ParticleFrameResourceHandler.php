@@ -8,6 +8,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use LogicException;
@@ -18,6 +19,8 @@ use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Data\ResourcePageData;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Agreements\RequirementAdmission;
+use Splicewire\Beam\Agreements\RequirementRefused;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
 use Splicewire\Beam\Filters\ResourceFilterDefinition;
 use Splicewire\Beam\Http\Particle\ParticleController;
@@ -44,7 +47,9 @@ use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Write\ModelAttributeMapper;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\PolicyWriteGate;
+use Splicewire\Beam\Write\Stages\RequirementAdmissionStage;
 use Splicewire\Beam\Write\WriteNotAuthorized;
+use Splicewire\Beam\Write\WriteRequirement;
 
 /**
  * The **one** beam-native implementation of Frame's {@see FrameResourceHandler} port (ADR-0156) — it
@@ -133,6 +138,8 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         }
 
         $query = $this->indexQuery($definition);
+        // agreements 05: after the read guard the scoped query just ran.
+        $this->admitRequirements($definition, 'read', null);
 
         $rows = $query->get()->map(fn (Model $model) => $this->projectRead($definition, $model))->all();
 
@@ -145,7 +152,9 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         if ($limit < 1 || $limit > 101 || $offset < 0 || $this->streamsOnly($definition)) {
             throw new LogicException('A binding window requires a queryable resource and a bounded positive limit.');
         }
-        $rows = $this->indexQuery($definition)->offset($offset)->limit($limit)->get()
+        $query = $this->indexQuery($definition);
+        $this->admitRequirements($definition, 'read', null);
+        $rows = $query->offset($offset)->limit($limit)->get()
             ->map(fn (Model $model) => $this->projectRead($definition, $model))->all();
 
         return $this->enrichProjected($definition, $rows);
@@ -178,6 +187,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
             ResourceReadGuard::forApp()->inspectReadFor($resource, $request, $request->user())->authorize();
         }
         abort_if($request->query('filterVariant') !== null, 404);
+        $this->admitRequirements($definition, 'read', null);
 
         // The WHOLE `filter[...]` bag, passed through opaquely — the backing owns its own query
         // semantics and beam does not interpret it. Every backing reads only the keys it knows
@@ -258,6 +268,8 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         // matches a list row. An editable resource keeps its edit projection (`editData ?? data`) to pre-fill
         // the form.
         $model = $this->find($definition, $id);
+        // agreements 05: after the read guard and the scoped lookup; a guest admitted by a Public Read still meets it.
+        $this->admitRequirements($definition, 'read', $model);
 
         // Editable describes the resource, not the guest's permission to see its edit DTO.
         $guest = $this->contextRequest($resource)->user() === null;
@@ -295,6 +307,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         if ($resolved === null) {
             throw new CodedNotFoundHttpException(ParticleRequestError::RecordNotFound, ['resource' => $definition->key]);
         }
+        $this->admitRequirements($definition, 'read', null);
 
         return array_merge(
             $resolved->record->toArray(),
@@ -316,7 +329,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         }
         $parsed = $this->parseInput($definition, $input);
         $this->prepare($definition, $model, $parsed);
-        $model = $this->writer($definition)->write($model, $this->writePayload($definition, $parsed), $this->actorBound ? $this->boundActor : auth()->user(), $this->afterHook($definition, $parsed));
+        $model = $this->writeRecord($definition, $model, $parsed, $input);
 
         return $this->projectRead($definition, $model);
     }
@@ -343,7 +356,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         }
         $parsed = $this->parseInput($definition, $input);
         $this->prepare($definition, $model, $parsed);
-        $model = $this->writer($definition)->write($model, $this->writePayload($definition, $parsed), $this->actorBound ? $this->boundActor : auth()->user(), $this->afterHook($definition, $parsed));
+        $model = $this->writeRecord($definition, $model, $parsed, $input);
 
         return $this->projectRead($definition, $model->refresh());
     }
@@ -360,10 +373,69 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
             && (! $resource->policy || ! $this->gate->forUser($this->contextRequest($resource)->user())->allows($resource->policy, $model))) {
             throw WriteNotAuthorized::for($model);
         }
+        // agreements 05: after the ownership check, before anything is removed.
+        $this->admitRequirements($definition, 'write', $model);
         $model->delete();
     }
 
     // ---- internals -----------------------------------------------------------------------------------
+
+    /**
+     * Persist through this resource's write pipeline, carrying the `{key}:write` Requirement question so the
+     * pipeline's {@see RequirementAdmissionStage} asks it right after the write gate (agreements 05). A refusal leaves as
+     * an `HttpResponseException` with the declared 428 body.
+     *
+     * @param  array<string, mixed>  $input  the raw submitted input, read for agreement members
+     */
+    protected function writeRecord(ResourceDefinition $definition, Model $model, mixed $parsed, array $input): Model
+    {
+        $requirement = new WriteRequirement(
+            ParticleResource::behaviorFor($definition->key, 'write'),
+            $model->exists ? $model : null,
+            $this->submittedRequirementMembers($definition, $input),
+        );
+
+        try {
+            return $this->writer($definition)->requiring($requirement)->write(
+                $model,
+                $this->writePayload($definition, $parsed),
+                $this->actorBound ? $this->boundActor : auth()->user(),
+                $this->afterHook($definition, $parsed),
+            );
+        } catch (RequirementRefused $refused) {
+            throw new HttpResponseException($refused->toResponse());
+        }
+    }
+
+    /**
+     * agreements 05 (ADR-0247 amendment): ask the requirements plane about a read or delete of this resource, after the
+     * verb's own guards, and refuse with the declared 428 body.
+     *
+     * @param  'read'|'write'  $side
+     *
+     * @throws HttpResponseException 428 with {@see \Splicewire\Beam\Agreements\Data\RequirementRefusalData}
+     */
+    protected function admitRequirements(ResourceDefinition $definition, string $side, mixed $subject): void
+    {
+        $refusal = app(RequirementAdmission::class)->inspect(
+            $this->contextRequest($this->resource($definition))->user(),
+            ParticleResource::behaviorFor($definition->key, $side),
+            $subject,
+            $this->submittedRequirementMembers($definition, $this->contextRequest($this->resource($definition))->all()),
+        );
+
+        if ($refusal !== null) {
+            throw new HttpResponseException(response()->json($refusal->toArray(), 428));
+        }
+    }
+
+    /** @return array<string, \Splicewire\Beam\Agreements\Data\AgreementMemberData> */
+    protected function submittedRequirementMembers(ResourceDefinition $definition, array $input): array
+    {
+        $declared = $this->resource($definition)?->input;
+
+        return app(RequirementAdmission::class)->submittedMembers(is_string($declared) ? $declared : null, $input);
+    }
 
     protected function find(ResourceDefinition $definition, string $id): Model
     {

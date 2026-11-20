@@ -195,6 +195,51 @@ abstract class ParticleGeneratorCommand extends GeneratorCommand
      * framework's `resolveStubPath` convention, so customizing beam's stubs works the way customizing
      * Laravel's does.
      */
+    /**
+     * agreements 05: the Agreement keys named by a repeatable or comma-listed `--requires`, in order, deduplicated.
+     *
+     * @return list<string>
+     */
+    protected function requiredAgreements(): array
+    {
+        $keys = [];
+        foreach ((array) ($this->option('requires') ?? []) as $value) {
+            foreach (explode(',', (string) $value) as $key) {
+                if (($key = trim($key)) !== '') {
+                    $keys[$key] = true;
+                }
+            }
+        }
+
+        return array_map('strval', array_keys($keys));
+    }
+
+    /**
+     * agreements 05: the `requires:` slot line and its import, emitted ONLY when `--requires` names a key — an omitted
+     * slot declares none and is never counted, so the generator writes nothing for it (the `graphLine` precedent).
+     *
+     * @param  'read'|'write'|'both'|null  $on  a resource's verb split; null or `both` is the default and not spelled
+     * @return array{requiresImport: string, requiresSlot: string}
+     */
+    protected function requiresTokens(?string $on = null): array
+    {
+        $keys = $this->requiredAgreements();
+
+        if ($keys === []) {
+            return ['requiresImport' => '', 'requiresSlot' => ''];
+        }
+
+        $suffix = $on !== null && $on !== 'both' ? ", on: '{$on}'" : '';
+
+        return [
+            'requiresImport' => "use Splicewire\\Beam\\Agreements\\Requires;\n",
+            'requiresSlot' => sprintf("    requires: [%s],\n", implode(', ', array_map(
+                fn (string $key): string => 'new Requires('.var_export($key, true).$suffix.')',
+                $keys,
+            ))),
+        ];
+    }
+
     protected function resolveStubPath(string $stub): string
     {
         $custom = $this->laravel->basePath(trim($stub, '/'));

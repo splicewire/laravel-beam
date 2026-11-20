@@ -37,7 +37,7 @@ class AttributeCarryParityTest extends TestCase
      * @var array<string, string>
      */
     private const OP_CARRY_NOTES = [
-        // none yet: ParticleOperation mirrors all 17 names. The day one diverges, document it here
+        // none yet: ParticleOperation mirrors all 18 names. The day one diverges, document it here
         // with the mapping a reader needs, or the plain property assertion below fails naming it.
     ];
 
@@ -117,6 +117,12 @@ class AttributeCarryParityTest extends TestCase
         }
     }
 
+    /** An object, or a list of objects (`requires:`), is rebuilt per newInstance(), so carried means equal. */
+    private function holdsObjects(mixed $value): bool
+    {
+        return is_object($value) || (is_array($value) && $value !== [] && is_object(reset($value)));
+    }
+
     public function test_every_particle_op_slot_is_carried_into_the_registration(): void
     {
         $values = $this->attributeValues(ParticleOp::class, CarryFixtureOp::class);
@@ -136,7 +142,8 @@ class AttributeCarryParityTest extends TestCase
                 property_exists($operation, $name),
                 "ParticleOperation no longer exposes \${$name}; carry it, or document the reshape in OP_CARRY_NOTES",
             );
-            $this->assertSame(
+            // `requires: [new Requires(…)]` is a fresh instance list on every newInstance(): carried means equal.
+            $this->{$this->holdsObjects($declared) ? 'assertEquals' : 'assertSame'}(
                 $declared,
                 $operation->{$name},
                 "#[ParticleOp] \${$name} was declared but did not arrive on the registration — the carry list dropped it",
@@ -162,7 +169,7 @@ class AttributeCarryParityTest extends TestCase
             );
             // An object value (`graph: new ParentEdge(…)`) is a fresh instance on every newInstance(): carried means
             // equal, never identical. Every scalar, array and class-string value is still compared by identity.
-            $this->{is_object($declared) ? 'assertEquals' : 'assertSame'}(
+            $this->{$this->holdsObjects($declared) ? 'assertEquals' : 'assertSame'}(
                 $declared,
                 $resource->{$name},
                 "#[ParticleResource] \${$name} was declared but did not arrive on the registration — the carry list dropped it",
@@ -189,6 +196,7 @@ class AttributeCarryParityTest extends TestCase
     summary: 'Probe the carry',
     description: 'The carry fixture operation.',
     errors: [422 => CarryFixtureOutput::class],
+    requires: [new \Splicewire\Beam\Agreements\Requires('carry-terms', scope: 'organisation')],
 )]
 class CarryFixtureOp
 {
@@ -236,6 +244,7 @@ class CarryFixtureOp
     graph: new \Splicewire\Beam\Graph\Edges\ParentEdge('parent_id', label: 'name'),
     filterable: true,
     publicRead: 'carry-public-read',
+    requires: [new \Splicewire\Beam\Agreements\Requires('carry-terms', on: 'write')],
 )]
 class CarryFixtureResource {}
 

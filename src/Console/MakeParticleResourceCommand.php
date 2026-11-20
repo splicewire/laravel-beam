@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Schemastud\Frame\Registry\ContextManifest;
+use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Doctor\GraphSlotIntegrityAudit;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Graph\Edges\EdgeTable;
@@ -129,6 +130,11 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
         $ownership = $this->option('ownership');
         if (! in_array($ownership, ['actor', 'workspace', 'central'], true)) {
             $this->components->error('--ownership must be actor, workspace or central.');
+
+            return self::FAILURE;
+        }
+        if (! in_array($this->option('requires-on'), Requires::ON, true)) {
+            $this->components->error('--requires-on must be read, write or both.');
 
             return self::FAILURE;
         }
@@ -398,6 +404,8 @@ PHP;
             'inputNote' => $readOnly ? '`false`: this resource accepts no writes' : 'the write DTO '.class_basename($this->inputClass),
             'readOnly' => $readOnly ? 'true' : 'false',
             'publicRead' => $this->option('public') ? $readClass.'::class' : 'null',
+            // agreements 05: `--requires=terms [--requires-on=write]` emits the slot; omitted, nothing.
+            ...$this->requiresTokens((string) $this->option('requires-on')),
             'graphLine' => ($graph = $this->graphEdges()) !== null ? sprintf("    graph: %s,\n", $graph->describe()) : '',
             'sectionLine' => is_string($section = $this->option('section')) && $section !== ''
                 ? sprintf("    section: '%s',\n", $section)
@@ -653,6 +661,8 @@ PHP;
             ['graph', null, InputOption::VALUE_REQUIRED, 'Declare the model-backed resource\'s edges (graph-operations 04): parent:<column>, or edges:<table>,<from>,<to>[,<type>[,<weight>]]. Needs --model'],
             ['graph-label', null, InputOption::VALUE_REQUIRED, 'The column a graph node\'s label is read from (with --graph); the id when omitted'],
             ['public', null, InputOption::VALUE_NONE, 'Declare the read class as the Public Read (publicRead: <Name>Data::class): a guest may read every field it projects'],
+            ['requires', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Declare a requires: slot naming this Agreement key (repeatable, or a comma list); omitted ⇒ no slot is written'],
+            ['requires-on', null, InputOption::VALUE_REQUIRED, 'With --requires: which verbs it binds — read (list + detail), write (create, update, delete) or both', 'both'],
         ];
     }
 }
