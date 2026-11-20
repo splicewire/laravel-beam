@@ -8,7 +8,6 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
-use Rushing\PermissionCascade\Authorization\CredentialScopeGate;
 use Rushing\PermissionCascade\Authorization\CredentialScopeRefusal;
 use Rushing\PermissionCascade\Contracts\CredentialScopeResolver;
 use Splicewire\Beam\Authorization\AccessError;
