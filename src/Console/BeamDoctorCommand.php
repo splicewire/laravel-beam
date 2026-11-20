@@ -436,8 +436,12 @@ class BeamDoctorCommand extends Command
 
     /**
      * Minimal front-matter reader: pull the leading `---`-fenced block and its top-level scalar
-     * keys. Deliberately not a general YAML parser — beam only needs `satellite` + `variant`, and
-     * stays free of a YAML dependency (and of laravel-satellite's Manifest class).
+     * keys. Deliberately not a general YAML parser — the doctor needs only `satellite` + `variant`
+     * and keeps this inline reader rather than booting the full
+     * {@see \Splicewire\Beam\Conformance\BeamManifest} reader. (The pre-relocation note that this
+     * stayed "free of a YAML dependency and of laravel-satellite's Manifest class" no longer holds:
+     * browser-journeys 07 moved that reader into beam core and beam now declares symfony/yaml.
+     * Folding this method into BeamManifest is browser-journeys 11.)
      *
      * @return array<string, string>
      */

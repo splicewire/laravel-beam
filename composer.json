@@ -29,7 +29,8 @@
         "spatie/typescript-transformer": "^3.0",
         "rushing/laravel-schema-convergence": "*",
         "rushing/php-graphine": "dev-main",
-        "rushing/php-popcorn": "dev-main"
+        "rushing/php-popcorn": "dev-main",
+        "symfony/yaml": "^6.4|^7.0|^8.0"
     },
     "require-dev": {
         "larastan/larastan": "^3.9",

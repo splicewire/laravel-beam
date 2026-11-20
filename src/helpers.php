@@ -1,5 +1,6 @@
 <?php
 
+use Splicewire\Beam\Conformance\BeamManifest;
 use Splicewire\Beam\Http\Particle\ParticleOperationController;
 
 if (! function_exists('set_min_time_limit')) {
@@ -78,5 +79,40 @@ if (! function_exists('set_min_time_limit')) {
         if ($current === false || $current < $seconds) {
             ini_set('max_execution_time', (string) $seconds);
         }
+    }
+}
+
+if (! function_exists('beam_manifest')) {
+    /**
+     * The current site's Beam Manifest (BEAM.md at base_path()), memoized as a container singleton
+     * so repeated reads in a request/test don't re-parse the file. A test injects a fixture with
+     * `app()->instance(BeamManifest::class, …)`.
+     */
+    function beam_manifest(): BeamManifest
+    {
+        if (app()->bound(BeamManifest::class)) {
+            return app(BeamManifest::class);
+        }
+
+        $manifest = BeamManifest::load();
+        app()->instance(BeamManifest::class, $manifest);
+
+        return $manifest;
+    }
+}
+
+if (! function_exists('manifest_deviates')) {
+    /**
+     * Does the site declare a Deviation covering `surface.flow` (e.g. `billing.gifting`)? Shipped
+     * browser tests use this to `->skip()` declared Deviations rather than fail them.
+     *
+     * Relocated from splicewire/laravel-satellite into beam core (browser-journeys 07) — the one
+     * manifest helper with callers outside satellite. Keeping the name makes the move cost nothing at
+     * those call sites: composer emits beam's `files` autoload before a consumer's, so wherever
+     * satellite is installed (satellite requires beam) this definition is the live one.
+     */
+    function manifest_deviates(string $surfaceFlow): bool
+    {
+        return beam_manifest()->deviates($surfaceFlow);
     }
 }
