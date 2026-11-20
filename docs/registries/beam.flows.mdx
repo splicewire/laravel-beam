@@ -1,0 +1,75 @@
+---
+title: Flows
+segment: beam.flows
+nav_order: 20
+excerpt: The host-visible capability paths each installed package declares, that browser tests prove and BEAM.md Deviations switch off.
+---
+
+# Flows
+
+`beam.flows` holds the **flows** every installed package declares: a named, host-visible capability
+path — `account.security.passkeys`, `auth.register`, `teams.team-of-one` — that a browser test
+proves, a `BEAM.md` Deviation may switch off, and the doctor reasons about. Each entry is a
+`FlowDeclaration`, filed under its own flow key. A package ships one static `DeclaresFlows` class and
+its provider declares it; the first segment of a key is its **surface** (`account`, `auth`, `teams`),
+itself a declared flow with no entry routes.
+
+{/* registry-facts:start — generated from the #[IsRegistry] declaration; regenerate it, do not edit between these markers. */}
+
+- **Root:** `beam.flows`
+- **Entries:** `Splicewire\Beam\Flows\FlowDeclaration`
+- **Duplicate keys:** Admit — every registration is kept; a single-entry read of a shared key refuses as ambiguous
+- **Population:** Optional — an empty registry is normal
+- **Order:** `20` (display order, ascending)
+- **Declared by:** `Splicewire\Beam\Flows\FlowCatalog`
+
+{/* registry-facts:end */}
+
+<RegistryRegistrants root="beam.flows" />
+
+## What a flow declaration carries
+
+A `FlowDeclaration` is a plain readonly value object — data and class-strings only — with six
+author-typed fields, none defaulted (an omission and a decision must not be spelled the same):
+
+- **`key`**: `surface[.flow[.subflow…]]`, each segment `[a-z][a-z0-9]*(-[a-z0-9]+)*`. The parent is
+  the key minus its last segment; a surface (one segment) has none.
+- **`label`**: an English literal. Its text key is derived, `<ns>::flows.<key with dots as '/'>.label`.
+- **`routes`**: entry route **names** (`[]` for a surface, or a page the host renders).
+- **`gate`**: a `class-string<FlowGate>`; `Gates\AlwaysOn::class` when there is no runtime switch.
+- **`checkpoint`**: a nullable `class-string` (ticket 04's Checkpoint contract; `null` until ticket 16
+  ships checkpoints).
+- **`roles`**: the demo-subject roles this flow is verified for; `[]` is a guest flow.
+
+The **declaring package** is not a field: it is the registrant, recorded by the catalog when the
+package's provider calls `declare()` under its `ScopesRegistrant` scope.
+
+## Declaring your flows
+
+```php
+use Splicewire\Beam\Flows\{DeclaresFlows, FlowDeclaration, ListsFlows};
+use Splicewire\Beam\Flows\Gates\AlwaysOn;
+
+final class AccountFlows implements DeclaresFlows
+{
+    use ListsFlows; // adds static flow($key), safe to call before Laravel boots
+
+    public static function flows(): array
+    {
+        return [
+            new FlowDeclaration('account', 'Account', [], AlwaysOn::class, null, []),
+            // …
+        ];
+    }
+}
+
+// in your provider, inside its ScopesRegistrant scope:
+$this->app->make(\Splicewire\Beam\Flows\FlowCatalog::class)->declare(AccountFlows::class);
+```
+
+## The gate answers for the host, now
+
+A `FlowGate` is resolved from the container and answers one `FlowState` — `On`, `Off` or `Absent` —
+for the host, with no actor and no role. `Absent` is the structural third answer: a host that has
+declared a whole capability estate absent, or has not wired the feature, has no flow to switch. A gate
+must not throw; the doctor reports a throw as a finding. A flow with no switch names `AlwaysOn`.

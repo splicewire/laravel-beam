@@ -9,6 +9,7 @@ use Splicewire\Beam\Capabilities\CapabilityRegistry;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\Support\FacadeConformanceScope;
 use Splicewire\Beam\Events\EventTypeRegistry;
+use Splicewire\Beam\Flows\FlowCatalog;
 use Splicewire\Beam\Install\BeamInstallManifest;
 use Splicewire\Beam\Nav\NavSectionRegistry;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
@@ -67,6 +68,7 @@ class BeamRegistryDeclarationTest extends TestCase
             GroupRegistry::class => 'beam.surface.groups',
             RealmRegistry::class => 'beam.realm',
             RealmOverlayRegistry::class => 'beam.realm.overlays',
+            FlowCatalog::class => 'beam.flows',
             NavSectionRegistry::class => 'beam.nav.sections',
             RealmResourceRegistry::class => 'beam.realm.resource-overrides',
             CapabilityRegistry::class => 'beam.capabilities',

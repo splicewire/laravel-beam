@@ -53,6 +53,7 @@ use Schemastud\DataSchemas\Lifecycle\FilesystemSchemaRegistry;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Schemastud\Frame\Authorization\DenyingResourceActionAuthorizer;
 use Schemastud\Frame\Authorization\OpenResourceAccessGate;
+use Schemastud\Frame\Authorization\ResourceAuthorizer;
 use Schemastud\Frame\Contracts\FrameResourceHandlerResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceActionAuthorizer;
@@ -179,6 +180,7 @@ use Splicewire\Beam\Events\ResourceKeyOracle;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Filters\Data\SavedFilterData;
 use Splicewire\Beam\Filters\SavedFilterPolicy;
+use Splicewire\Beam\Flows\FlowCatalog;
 use Splicewire\Beam\Frame\DefaultParticleResourceHandlerResolver;
 use Splicewire\Beam\Frame\FrameResourceManifest;
 use Splicewire\Beam\Frame\ParticleActionAuthorizer;
@@ -722,8 +724,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 $this->app->bind(ResourceActionAuthorizer::class, ParticleActionAuthorizer::class);
             }
             // Replace only Frame's concrete default; an explicitly supplied host authorizer remains authoritative.
-            if (get_class($this->app->make(\Schemastud\Frame\Authorization\ResourceAuthorizer::class)) === \Schemastud\Frame\Authorization\ResourceAuthorizer::class) {
-                $this->app->bind(\Schemastud\Frame\Authorization\ResourceAuthorizer::class, Particle\OwnedParticleResourceAuthorizer::class);
+            if (get_class($this->app->make(ResourceAuthorizer::class)) === ResourceAuthorizer::class) {
+                $this->app->bind(ResourceAuthorizer::class, Particle\OwnedParticleResourceAuthorizer::class);
             }
         });
         $this->app->singleton(Particle\Backing\OwnedRecordExclusion::class);
@@ -759,6 +761,13 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // byte. Unlike RealmRegistry it has no realm-creation verb — an overlay can only enrich a realm
         // RealmRegistry already ships, never conjure a new realm/tile.
         $this->app->singleton(RealmOverlayRegistry::class, fn () => new RealmOverlayRegistry);
+
+        // Flow catalog (browser-journeys 01/02) — `beam.flows`, the host-visible capability paths every
+        // installed package declares. A SINGLETON so a package declaring its flows from its own provider
+        // (through FlowCatalog::declare() under a ScopesRegistrant scope) mutates the one instance the
+        // doctor, the browser-test helper, the docs generator and the listing read. Ships EMPTY ⇒ inert:
+        // a host with no flow-shipping package has a legal, empty catalog.
+        $this->app->singleton(FlowCatalog::class, fn () => new FlowCatalog);
 
         // Config Sections (ADR-0245) — the typed description of every config root a package or host declares,
         // served by the `beam-config` particle resource. A SINGLETON so a package (or the host) registering its

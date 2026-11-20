@@ -3,7 +3,7 @@
 **The rule.** Declared text stays an English literal on the declaration; never write a key there. Imperative text (an
 abort, a validation message, a notification, a view) uses an explicit key in your package's namespace,
 `<ns>::<group>.<name>`, with its English in `lang/en/<group>.php`, where the group is not `resources`, `data`, `enums`,
-`actions`, `nav`, `groups` or `realms`. Never use a sentence as a key, and never call `__()` on a value that might be a key or a
+`actions`, `nav`, `groups`, `flows` or `realms`. Never use a sentence as a key, and never call `__()` on a value that might be a key or a
 literal.
 
 Decided by [ADR-0244](../adr/0244-a-declarations-text-has-a-derived-key-and-imperative-text-an-explicit-one.md)
@@ -29,6 +29,7 @@ key or route name has its dots written `/`.
 | a realm gate's upsell (`beam.core.realms.r.gate.upsell`) | `beam::realms.r.upsell.<field>`; copy fields only, never a URL or an identifier |
 | brand copy (`beam.brand.*`; not a declaration) | explicit `beam::brand.tagline`, `.passkey_copy`, `.title_template`; `name` and `legal_entity` are not keyed |
 | `#[ConfigRoot(root: 'a.b', title:, description:)]` (ADR-0244 amendment, localization 41, **accepted**) | `<ns>::config.a/b.title`, `.description`, `<ns>` the registered section's owner (a host section: `config.a/b.title`); the section's keys keep the `data` rows above, `C` each property's DECLARING class at any depth, in that class's owner's namespace (the section or `entries:` class only starts the traversal; an inherited property keeps its declaring class's key); a map root's own entry description is its `entries:` class's `data.E.description`; only the root's title/description follow the winning registry entry; config VALUES are never keyed here |
+| a `FlowDeclaration`'s `label` (`beam.flows`; ADR-0244 amendment, browser-journeys 08, **accepted**) | `<ns>::flows.<key with dots as '/'>.label`, `<ns>` the flow's registrant (`beam-accounts::flows.account/security/passkeys.label`; a host-declared flow: `flows.<key>.label`); `flows` is a reserved derived-kind group, and developer output (doctor, console) prints the literal, so no `lang/en` line is owed until a renderer puts a flow label in front of a person |
 
 `<ns>` is your composer name less the vendor and a leading `laravel-` (`splicewire/laravel-beam-ux` → `beam-ux`). If two
 installed packages shorten to one name, neither gets derived keys until one declares `extra.beam.lang-namespace` in its
