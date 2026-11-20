@@ -84,6 +84,15 @@ final class RouteRequirementGate
 
         $behavior = self::behaviorOf($route);
         $subjectParameter ??= RequireAgreement::subjectParameterOf($route);
+        // review P2 3 (lead ruling): a subject-scoped Requirement needs a bound subject. Without a parameter to resolve it
+        // the person could accept forever and never pass, so the configuration is rejected, never asked.
+        if ($subjectParameter === null && $this->subjectScoped($behavior)) {
+            throw new LogicException(sprintf(
+                'Route [%s] (%s) has a subject-scoped Requirement but names no route parameter for the subject. Spell it agreement:{key},{parameter} (ADR-0247 amendment 07).',
+                $route->getName(),
+                $route->uri(),
+            ));
+        }
         $subject = $subjectParameter === null ? null : $route->parameter($subjectParameter);
 
         $refusal = $this->admission->inspect($this->actors->actor(), $behavior, $subject, []);
@@ -91,20 +100,64 @@ final class RouteRequirementGate
             return $next($request);
         }
 
-        if ($this->isDataRequest($request) || ! RouteFacade::has(self::PROMPT_ROUTE)) {
+        // review P2 2 (lead ruling): the page-visit path needs a session to carry the destination. A session-less request
+        // (a stateless `api` group) gets the data refusal whatever it accepts.
+        if ($this->isDataRequest($request) || ! $request->hasSession() || ! RouteFacade::has(self::PROMPT_ROUTE)) {
             return (new RequirementRefused($refusal, $behavior))->toResponse();
         }
 
-        $intended = $request->isMethod('GET') || $request->isMethod('HEAD') ? $request->fullUrl() : url()->previous();
+        // review P2 1 (lead ruling): url()->previous() trusts the raw Referer, so only a SAME-ORIGIN destination is kept.
+        $home = url('/');
+        $previous = self::sameOrigin(url()->previous(), $home);
+        $intended = $request->isMethod('GET') || $request->isMethod('HEAD') ? $request->fullUrl() : $previous;
         $request->session()->put(self::SESSION_KEY, [
             'behavior' => $behavior,
             'subject' => $subject instanceof Model ? $subject->getKey() : (is_scalar($subject) ? $subject : null),
             'refusal' => $refusal->toArray(),
             'intended' => $intended,
-            'back' => url()->previous() !== $request->fullUrl() ? url()->previous() : url('/'),
+            'back' => $previous !== $request->fullUrl() ? $previous : $home,
         ]);
 
         return redirect()->route(self::PROMPT_ROUTE, status: 303);
+    }
+
+    /**
+     * A same-origin destination, or $fallback. Same-origin means a relative path (`/x`, never `//host` or a scheme) or an
+     * absolute http(s) URL whose scheme, host and port are the app's own (`url('/')`). Anything else (another host, a
+     * protocol-relative `//evil.example`, `javascript:`) is replaced, so the prompt never sends anyone off-site.
+     */
+    public static function sameOrigin(?string $url, string $fallback): string
+    {
+        if ($url === null || $url === '') {
+            return $fallback;
+        }
+        if (str_starts_with($url, '/') && ! str_starts_with($url, '//') && ! str_starts_with($url, '/\\')) {
+            return $url;
+        }
+        $candidate = parse_url($url);
+        $app = parse_url(url('/'));
+        if (! is_array($candidate) || ! is_array($app) || ! in_array(strtolower($candidate['scheme'] ?? ''), ['http', 'https'], true)) {
+            return $fallback;
+        }
+        $port = static fn (array $u): int => (int) ($u['port'] ?? (strtolower($u['scheme'] ?? '') === 'https' ? 443 : 80));
+
+        return strtolower($candidate['scheme']) === strtolower($app['scheme'] ?? '')
+            && strtolower($candidate['host'] ?? '') === strtolower($app['host'] ?? '')
+            && $port($candidate) === $port($app)
+            ? $url
+            : $fallback;
+    }
+
+    /** Does any Requirement on this behavior need a subject? */
+    private function subjectScoped(string $behavior): bool
+    {
+        foreach ($this->declarations->requirementsFor($behavior) as $requirement) {
+            if ($requirement->scope === 'subject') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Q-07d: a data request asks for JSON and isn't Inertia's (whose visits, full or partial, follow a redirect). */

@@ -83,6 +83,10 @@ Ticket 07 gives an ordinary (hand-written) route the same gate as a declared ope
   - The helper is `RequireAgreement::using($agreement, subject:, scope:)`.
   - It holds no agreement logic. `RouteRequirementGate` takes the actor from `ActorPort` and asks the SAME `RequirementAdmission` (and so the same `RequirementResolver`) the operation transport asks, with no submitted members.
   - An unnamed route carrying it throws a `LogicException` on its first request, and the gate check `requirements.route-unnamed` (`UnnamedRequirementRouteAudit`) fails at boot, naming the URI.
+  - **Subject scope needs a subject parameter.** `agreement:terms,,subject`, `RequireAgreement::using(..., scope: 'subject')` without `subject:`, or a subject-scoped Requirement a provider attaches to `route:{name}` on a route that names no parameter, is REJECTED, because the person could accept forever and never pass:
+    - `using()` throws at once;
+    - the gate throws a `LogicException` naming the route before asking anything;
+    - the doctor check `requirements.route-subject` fails at boot (review P2, lead ruling).
 - **The declaration reaches the port.** `SlotRequirementDeclarations::all()` also reads, from the router on every call, each named route's `agreement:` middleware into `route:{name}`. The resolver, the ability map (`agreement:{key}`) and any other port reader therefore see a route's Requirement like a slot's. A seam that reads the slots through this class sees them too.
 - **Attaching without editing.** A host may attach a Requirement to `route:{name}` (for example from a provider, through the seam's registry) for a route it doesn't own (lead ruling Q-07c).
   - Beam appends one global `EnforceRouteRequirements` to the host's `web` and `api` groups, through the kernel like localization's `ResolveLocale`.
@@ -99,6 +103,8 @@ Ticket 07 gives an ordinary (hand-written) route the same gate as a declared ope
   - Every other request (a browser visit, or an Inertia visit, full or partial) is a PAGE visit. It is redirected (303) to the seam's prompt route, `beam.agreements.required`, with the refusal, the behavior, the subject's key, the intended destination and a way back in the session (`agreements.required`), like password confirmation's `url.intended`.
   - The intended destination of a GET or HEAD is its full URL. For any other method it is the previous URL: the request is NOT replayed.
   - With a seam but no prompt route, a page visit gets the 428 too.
+  - **Only with a session.** The page-visit path stores the destination in the session, so it applies only when the request HAS one. A session-less request (a standard stateless `api` group) gets the data refusal, 428 plus the declared body, whatever it accepts (review P2, lead ruling).
+  - **Same-origin destinations only.** `url()->previous()` trusts the raw `Referer`, so `back` and a non-GET's `intended` keep a destination only when it is same-origin: a relative path, or an http(s) URL with the app's own scheme, host and port. Anything else falls back: `back` to the home URL, and a non-GET's `intended` to the home URL (a GET's `intended` is the gated URL itself). The prompt page checks the same rule again before it links or navigates (review P2, lead ruling).
 - **The prompt page** is the seam's to mount and `@splicewire/beam-agreements`' to draw, reusing the step-up dialog (lead ruling Q-07e). Accepting returns the person to the intended destination; declining leaves them on the prompt with a way back.
 - **Not here:** a page's record bound through its resource's read (E17) stays out of scope.
 

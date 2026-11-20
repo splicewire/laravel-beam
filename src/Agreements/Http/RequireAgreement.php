@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Agreements\Http;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use LogicException;
 use Splicewire\Beam\Agreements\Requires;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -30,6 +31,10 @@ final class RequireAgreement
 
     public static function using(string $agreement, ?string $subject = null, ?string $scope = null): string
     {
+        if ($scope === 'subject' && ($subject === null || $subject === '')) {
+            throw new LogicException(sprintf('agreement:%s has subject scope but names no route parameter for the subject; pass subject: (ADR-0247 amendment 07).', $agreement));
+        }
+
         $arguments = array_map(static fn (?string $value): string => $value ?? '', [$agreement, $subject, $scope]);
 
         return self::ALIAS.':'.rtrim(implode(',', $arguments), ',');

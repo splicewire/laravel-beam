@@ -239,13 +239,123 @@ class RouteRequirementTest extends TestCase
         $this->actingAs(new RouteReqUser);
         $this->withoutExceptionHandling();
 
-        $finding = app(UnnamedRequirementRouteAudit::class)->run()[0];
+        $finding = collect(app(UnnamedRequirementRouteAudit::class)->run())->firstWhere('check', UnnamedRequirementRouteAudit::CHECK);
         $this->assertSame(\Rushing\Doctor\DoctorStatus::Fail, $finding->status);
         $this->assertStringContainsString('GET|HEAD unnamed', $finding->detail);
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('no name');
         $this->get('/unnamed');
+    }
+
+    // ---- review P2 1: same-origin destinations only ----------------------------------------------------------
+
+    public function test_a_foreign_referer_never_becomes_back_or_a_non_get_intended(): void
+    {
+        $this->bindSeam(['route:reports.index', 'route:reports.store']);
+        $this->prompt();
+        $this->routes(function (): void {
+            Route::get('/reports', fn () => 'reports')->name('reports.index')->middleware('agreement:terms');
+            Route::post('/reports', fn () => 'stored')->name('reports.store')->middleware('agreement:terms');
+        });
+        $this->actingAs(new RouteReqUser);
+
+        // A foreign host (or a protocol-relative one) falls back to home.
+        foreach (['https://evil.example/phish', '//evil.example/x', 'http://localhost.evil.example/'] as $referer) {
+            $this->withHeader('referer', $referer)->get('/reports')
+                ->assertStatus(303)
+                ->assertSessionHas(RouteRequirementGate::SESSION_KEY.'.back', url('/'))
+                ->assertSessionHas(RouteRequirementGate::SESSION_KEY.'.intended', url('/reports'));
+
+            $this->withHeader('referer', $referer)->post('/reports')
+                ->assertStatus(303)
+                ->assertSessionHas(RouteRequirementGate::SESSION_KEY.'.intended', url('/'));
+        }
+
+        // A `javascript:` Referer never leaves the app: Laravel's url()->previous() already reads it as a path on this
+        // origin, and whatever is stored is same-origin (the property the ruling asks for).
+        $sameOrigin = fn (string $url): bool => RouteRequirementGate::sameOrigin($url, 'FOREIGN') === $url;
+        $this->withHeader('referer', 'javascript:alert(1)')->get('/reports')->assertStatus(303);
+        $this->assertTrue($sameOrigin(session(RouteRequirementGate::SESSION_KEY.'.back')));
+        $this->withHeader('referer', 'javascript:alert(1)')->post('/reports')->assertStatus(303);
+        $this->assertTrue($sameOrigin(session(RouteRequirementGate::SESSION_KEY.'.intended')));
+        $this->assertStringStartsWith(url('/'), session(RouteRequirementGate::SESSION_KEY.'.intended'));
+
+        // A same-origin Referer is kept.
+        $this->withHeader('referer', url('/reports/new'))->post('/reports')
+            ->assertSessionHas(RouteRequirementGate::SESSION_KEY.'.intended', url('/reports/new'))
+            ->assertSessionHas(RouteRequirementGate::SESSION_KEY.'.back', url('/reports/new'));
+    }
+
+    public function test_same_origin_accepts_only_this_app_s_paths_and_urls(): void
+    {
+        $home = url('/');
+        $this->assertSame('/reports?q=1', RouteRequirementGate::sameOrigin('/reports?q=1', $home));
+        $this->assertSame(url('/x'), RouteRequirementGate::sameOrigin(url('/x'), $home));
+        foreach (['//evil.example', '/\\evil.example', 'javascript:alert(1)', 'https://evil.example', 'ftp://localhost/', '', null] as $bad) {
+            $this->assertSame($home, RouteRequirementGate::sameOrigin($bad, $home), (string) $bad);
+        }
+        $port = preg_replace('#^(https?://[^/:]+)#', '$1:8443', $home);
+        $this->assertSame($home, RouteRequirementGate::sameOrigin($port, $home), 'another port is another origin');
+    }
+
+    // ---- review P2 2: a session-less group gets the data refusal ---------------------------------------------
+
+    public function test_a_browser_request_on_a_stateless_api_route_gets_the_428_not_a_500(): void
+    {
+        $this->bindSeam(['route:api.reports']);
+        $this->prompt();
+        Route::middleware('api')->get('/api/reports', fn () => ['ok' => true])->name('api.reports')->middleware('agreement:terms');
+        app('router')->getRoutes()->refreshNameLookups();
+        $this->actingAs(new RouteReqUser);
+
+        $this->withHeaders(['Accept' => 'text/html'])->get('/api/reports')
+            ->assertStatus(428)
+            ->assertJsonPath('requirements.0.key', 'terms');
+    }
+
+    // ---- review P2 3: subject scope needs a subject parameter -------------------------------------------------
+
+    public function test_subject_scope_without_a_parameter_is_rejected_by_the_helper(): void
+    {
+        $this->expectException(LogicException::class);
+        RequireAgreement::using('terms', scope: 'subject');
+    }
+
+    public function test_subject_scope_spelled_without_a_parameter_throws_on_the_route_and_fails_the_doctor_check(): void
+    {
+        $this->bindSeam(['route:reports.mine']);
+        $this->routes(fn () => Route::get('/mine', fn () => 'mine')->name('reports.mine')->middleware('agreement:terms,,subject'));
+        $this->actingAs(new RouteReqUser);
+
+        $subject = collect(app(UnnamedRequirementRouteAudit::class)->run())->firstWhere('check', UnnamedRequirementRouteAudit::CHECK_SUBJECT);
+        $this->assertSame(\Rushing\Doctor\DoctorStatus::Fail, $subject->status);
+        $this->assertStringContainsString('route:reports.mine', $subject->detail);
+
+        $this->withoutExceptionHandling();
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('names no route parameter');
+        $this->get('/mine');
+    }
+
+    public function test_a_provider_attached_subject_requirement_on_a_route_without_a_parameter_is_rejected(): void
+    {
+        $seam = $this->bindSeam(['route:billing.export']);
+        $this->app->instance(RequirementDeclarations::class, new RouteReqDeclarations(['route:billing.export'], 'subject'));
+        $this->routes(fn () => Route::get('/billing/export', fn () => 'x')->name('billing.export'));
+        $this->actingAs(new RouteReqUser);
+
+        $subject = collect(app(UnnamedRequirementRouteAudit::class)->run())->firstWhere('check', UnnamedRequirementRouteAudit::CHECK_SUBJECT);
+        $this->assertSame(\Rushing\Doctor\DoctorStatus::Fail, $subject->status);
+
+        $this->withoutExceptionHandling();
+        try {
+            $this->get('/billing/export');
+            $this->fail('expected a LogicException');
+        } catch (LogicException $e) {
+            $this->assertStringContainsString('billing.export', $e->getMessage());
+        }
+        $this->assertSame([], $seam->asked, 'never asked: the configuration is rejected first');
     }
 
     public function test_the_helper_spells_the_middleware(): void
@@ -309,7 +419,7 @@ class RouteReqDeclarations implements RequirementDeclarations
     public array $lookups = [];
 
     /** @param list<string> $declared */
-    public function __construct(private array $declared) {}
+    public function __construct(private array $declared, private string $scope = 'party') {}
 
     public function declares(string $behavior): bool
     {
@@ -320,11 +430,11 @@ class RouteReqDeclarations implements RequirementDeclarations
 
     public function requirementsFor(string $behavior): array
     {
-        return in_array($behavior, $this->declared, true) ? [new Requires('terms')] : [];
+        return in_array($behavior, $this->declared, true) ? [new Requires('terms', scope: $this->scope)] : [];
     }
 
     public function all(): array
     {
-        return array_fill_keys($this->declared, [new Requires('terms')]);
+        return array_fill_keys($this->declared, [new Requires('terms', scope: $this->scope)]);
     }
 }
