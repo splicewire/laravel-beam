@@ -20,6 +20,7 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Agreements\RequirementDeclarations;
 use Splicewire\Beam\Agreements\Requires;
+use Splicewire\Beam\Agreements\SlotRequirementDeclarations;
 use Splicewire\Beam\Doctor\UndeclaredAffordanceAudit;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Frame\ParticleActionAuthorizer;
@@ -156,6 +157,23 @@ class ParticleResourceActionsTest extends TestCase
         $served = collect($context['actions'])->keyBy('key');
         $this->assertSame(['terms'], $served['publish']['requires']);
         $this->assertArrayNotHasKey('requires', $served['reload']);
+    }
+
+    /** review NIT 6: a `requires` slot declared on: 'read' reaches frame's definition as `{key}:read` through beam's REAL slot port. */
+    public function test_a_read_slot_reaches_the_frame_definition_through_the_real_slot_port(): void
+    {
+        $this->assertInstanceOf(SlotRequirementDeclarations::class, $this->app->make(RequirementDeclarations::class));
+
+        $this->app->make(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'read-vaults',
+            backing: ActionVault::class,
+            data: ActionVaultData::class,
+            label: 'Read vaults',
+            readOnly: true,
+            requires: [new Requires('terms', on: 'read')],
+        ));
+
+        $this->assertSame(['read-vaults:read' => ['terms']], $this->app->make(ParticleResourceRegistry::class)->definition('read-vaults')->requires);
     }
 
     /** frame-foundation 83: with no Requirement anywhere, frame's manifest carries no `requires` key at all. */
