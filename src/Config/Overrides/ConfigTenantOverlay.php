@@ -9,6 +9,8 @@ use Schemastud\DataSchemas\Overlay\JsonPathMutator;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\JsonPointer;
 use Splicewire\Beam\Config\RegisteredConfigSection;
+use Splicewire\Beam\Enums\ConfigMerge;
+use Splicewire\Beam\Enums\ConfigOverrideOp;
 use Splicewire\Beam\Enums\ConfigTier;
 use Splicewire\Beam\Realm\Contracts\TenancyContext;
 use Throwable;
@@ -240,6 +242,10 @@ class ConfigTenantOverlay
                 continue;
             }
 
+            if (self::extendCollision($registered, $pointer, $entry, $central)) {
+                continue;
+            }
+
             $value = $entry->value;
             $cut = [];
 
@@ -262,6 +268,31 @@ class ConfigTenantOverlay
         }
 
         return $kept;
+    }
+
+    /**
+     * Whether an entry is an EXTEND entry the platform now also holds (config-sections ticket 09). `ConfigMerge::Extend`
+     * lets the tenant tier ADD map entries and never replace the platform's: {@see ConfigOverrideStore::saveDraft()}
+     * refuses a set on an entry the tier below already holds, but a platform entry added AFTER the tenant's row would
+     * otherwise lose to it. So the same rule holds here, at apply (and in the row, which shares {@see restrict()}): a
+     * `set` under an extend declaration whose pointer exists in the central effective value is not applied, and the
+     * platform's entry wins, as the flagship's TenantModelCatalog merge did (`array_merge($tenant, $floor)`).
+     *
+     * @param  array<array-key, mixed>|null  $central
+     */
+    private static function extendCollision(RegisteredConfigSection $registered, string $pointer, ConfigOverrideEntry $entry, ?array $central): bool
+    {
+        if ($central === null || $entry->op !== ConfigOverrideOp::Set) {
+            return false;
+        }
+
+        if ($registered->section::keyDeclaration(JsonPointer::segments($pointer))->merge !== ConfigMerge::Extend) {
+            return false;
+        }
+
+        [$exists] = JsonPointer::get($central, $pointer);
+
+        return $exists;
     }
 
     /**

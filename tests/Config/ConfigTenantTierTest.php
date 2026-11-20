@@ -29,6 +29,7 @@ use Splicewire\Beam\Realm\Contracts\TenancyContext;
 use Splicewire\Beam\Tests\Fixtures\Config\ConfigOperatorActor;
 use Splicewire\Beam\Tests\Fixtures\Config\EnterFakeTenant;
 use Splicewire\Beam\Tests\Fixtures\Config\FakeTenancyContext;
+use Splicewire\Beam\Tests\Fixtures\Config\TenantCatalogSection;
 use Splicewire\Beam\Tests\Fixtures\Config\TenantPanelsSection;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -1379,6 +1380,60 @@ class ConfigTenantTierTest extends TestCase
         } finally {
             $context->leave();
         }
+    }
+
+    /** config-sections 09: register the extend fixture (`tcatalog`) for the tests that need it. */
+    private function withCatalog(): void
+    {
+        config()->set('tcatalog', require self::FIXTURES.'/package/tcatalog.php');
+        app(ConfigSectionRegistry::class)->section(TenantCatalogSection::class, owner: 'acme/tcatalog', packageFile: realpath(self::FIXTURES.'/package/tcatalog.php'));
+    }
+
+    private function setCatalog(string $pointer, mixed $value, string $tenant): TestResponse
+    {
+        return $this->op('save-draft', ['root' => 'tcatalog', 'pointer' => $pointer, 'op' => 'set', 'value' => json_encode($value)], $tenant);
+    }
+
+    public function test_an_extend_entry_a_tenant_adds_applies_beside_the_platforms_entries_in_its_hop_only(): void
+    {
+        $this->withCatalog();
+        $this->as('tenant-admin');
+        $this->setCatalog('/catalog/mine', 'tenant model', 'a')->assertOk();
+        $this->op('publish', ['root' => 'tcatalog'], 'a')->assertOk();
+
+        $this->assertSame(['floor' => 'platform floor', 'mine' => 'tenant model'], $this->probe('a', 'tcatalog')['catalog'], 'the tenant adds an entry; the platform entry stays');
+        $this->assertSame(['floor' => 'platform floor'], $this->probe('b', 'tcatalog')['catalog'], 'tenant B never sees it');
+        $this->assertSame(['floor' => 'platform floor'], config('tcatalog.catalog'), 'the process holds the central value between hops');
+    }
+
+    public function test_a_platform_entry_added_after_a_tenants_extend_entry_wins_in_that_tenants_hop(): void
+    {
+        // TenantModelCatalog's floor-wins merge (array_merge($tenant, $floor)): a platform model added LATER, under the
+        // same id a tenant already added, reaches the tenant. Extend is enforced at APPLY, not only at write.
+        $this->withCatalog();
+        $this->as('tenant-admin');
+        $this->setCatalog('/catalog/shared', 'tenant version', 'a')->assertOk();
+        $this->setCatalog('/catalog/mine', 'tenant model', 'a')->assertOk();
+        $this->op('publish', ['root' => 'tcatalog'], 'a')->assertOk();
+        $this->assertSame('tenant version', $this->probe('a', 'tcatalog')['catalog']['shared'], 'before the platform adds it, the tenant entry applies');
+
+        config()->set('tcatalog.catalog.shared', 'platform version');
+
+        $catalog = $this->probe('a', 'tcatalog')['catalog'];
+        $this->assertSame('platform version', $catalog['shared'], 'the platform entry wins over the tenant entry it now collides with');
+        $this->assertSame('tenant model', $catalog['mine'], "the tenant's other entries still apply");
+        $this->assertSame('platform floor', $catalog['floor']);
+    }
+
+    public function test_a_non_extend_key_still_lets_the_tenant_replace_the_platforms_entry(): void
+    {
+        $this->withCatalog();
+        $this->as('tenant-admin');
+        $this->setCatalog('/routes/a', 'tenant A route', 'a')->assertOk();
+        $this->op('publish', ['root' => 'tcatalog'], 'a')->assertOk();
+
+        $this->assertSame('tenant A route', $this->probe('a', 'tcatalog')['routes']['a'], 'replace is unchanged: the tenant value wins');
+        $this->assertSame('A', $this->probe('b', 'tcatalog')['routes']['a']);
     }
 
     public function test_the_guard_is_public_so_a_caller_naming_its_own_connection_asks_it_of_that_connection(): void
