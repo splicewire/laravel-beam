@@ -94,6 +94,23 @@ final class RouteRequirementGate
             ));
         }
         $subject = $subjectParameter === null ? null : $route->parameter($subjectParameter);
+        // review P2 3, completion (lead rule): a subject Requirement needs the named parameter ON the route and BOUND to a
+        // model. A missing name or a scalar would leave it outstanding while accepting records only a party Assent: an
+        // endless prompt. Like an unnamed route, it's a developer misconfiguration, so it fails loud and never prompts.
+        if ($subjectParameter !== null && $this->subjectScoped($behavior)) {
+            if (! in_array($subjectParameter, $route->parameterNames(), true)) {
+                throw new LogicException(sprintf(
+                    'Route [%s] (%s) names [%s] as the subject of its Requirement, but the route has no such parameter (ADR-0247 amendment 07).',
+                    $route->getName(), $route->uri(), $subjectParameter,
+                ));
+            }
+            if (! $subject instanceof Model) {
+                throw new LogicException(sprintf(
+                    'Route [%s] (%s) names [%s] as the subject of its Requirement, but it isn\'t bound to a model (got %s). Bind it (an implicit or explicit route-model binding) (ADR-0247 amendment 07).',
+                    $route->getName(), $route->uri(), $subjectParameter, get_debug_type($subject),
+                ));
+            }
+        }
 
         $refusal = $this->admission->inspect($this->actors->actor(), $behavior, $subject, []);
         if ($refusal === null) {

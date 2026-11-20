@@ -358,6 +358,69 @@ class RouteRequirementTest extends TestCase
         $this->assertSame([], $seam->asked, 'never asked: the configuration is rejected first');
     }
 
+    // ---- review P2 3, completion: the subject parameter must exist and bind a model ----------------------------
+
+    public function test_a_subject_parameter_the_route_does_not_have_fails_loud_and_is_flagged(): void
+    {
+        $seam = $this->bindSeam(['route:reports.missing']);
+        $this->routes(fn () => Route::get('/reports/{report}/x', fn (RouteReqReport $report) => 'x')
+            ->name('reports.missing')->middleware('agreement:terms,missing'));
+        $this->actingAs(new RouteReqUser);
+
+        $finding = collect(app(UnnamedRequirementRouteAudit::class)->run())->firstWhere('check', UnnamedRequirementRouteAudit::CHECK_SUBJECT);
+        $this->assertSame(\Rushing\Doctor\DoctorStatus::Fail, $finding->status);
+        $this->assertStringContainsString('[missing] is not a parameter of the route', $finding->detail);
+
+        $this->withoutExceptionHandling();
+        try {
+            $this->get('/reports/1/x');
+            $this->fail('expected a LogicException');
+        } catch (LogicException $e) {
+            $this->assertStringContainsString('reports.missing', $e->getMessage());
+            $this->assertStringContainsString('[missing]', $e->getMessage());
+        }
+        $this->assertSame([], $seam->asked, 'it never prompts');
+    }
+
+    public function test_a_scalar_subject_parameter_fails_loud_and_is_flagged(): void
+    {
+        $seam = $this->bindSeam(['route:reports.slug']);
+        $this->routes(fn () => Route::get('/reports/by/{slug}', fn (string $slug) => $slug)
+            ->name('reports.slug')->middleware('agreement:terms,slug'));
+        $this->actingAs(new RouteReqUser);
+
+        $finding = collect(app(UnnamedRequirementRouteAudit::class)->run())->firstWhere('check', UnnamedRequirementRouteAudit::CHECK_SUBJECT);
+        $this->assertSame(\Rushing\Doctor\DoctorStatus::Fail, $finding->status);
+        $this->assertStringContainsString('[slug] has no model binding', $finding->detail);
+
+        $this->withoutExceptionHandling();
+        try {
+            $this->get('/reports/by/q3');
+            $this->fail('expected a LogicException');
+        } catch (LogicException $e) {
+            $this->assertStringContainsString("isn't bound to a model", $e->getMessage());
+        }
+        $this->assertSame([], $seam->asked, 'it never prompts');
+    }
+
+    public function test_a_bound_model_subject_is_unchanged_it_prompts_and_a_subject_assent_satisfies_it(): void
+    {
+        $seam = $this->bindSeam(['route:reports.show']);
+        $this->prompt();
+        $this->routes(fn () => Route::get('/reports/{report}', fn (RouteReqReport $report) => $report->title)
+            ->name('reports.show')->middleware('agreement:data-use,report'));
+        $this->actingAs(new RouteReqUser);
+
+        $finding = collect(app(UnnamedRequirementRouteAudit::class)->run())->firstWhere('check', UnnamedRequirementRouteAudit::CHECK_SUBJECT);
+        $this->assertSame(\Rushing\Doctor\DoctorStatus::Pass, $finding->status);
+
+        $this->get('/reports/1')->assertStatus(303)->assertRedirect(route(RouteRequirementGate::PROMPT_ROUTE));
+        $this->assertInstanceOf(RouteReqReport::class, $seam->subjects[0]);
+
+        $seam->accepted = true; // the subject Assent is recorded
+        $this->get('/reports/1')->assertOk()->assertSee('Q3');
+    }
+
     public function test_the_helper_spells_the_middleware(): void
     {
         $this->assertSame('agreement:terms', RequireAgreement::using('terms'));
