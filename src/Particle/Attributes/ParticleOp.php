@@ -131,6 +131,7 @@ class ParticleOp
      * @param  list<Requires>|null  $requires  the Requirements this op's behavior (`{resource}.{name}`) carries
      *                                         (agreements 05) — `[new Requires('terms')]`; `null` declares none and
      *                                         is never counted. {@see ParticleOperation} carries its rules
+     * @param  bool  $recordsAssent  this Write handler records an Agreement member through the Beam port
      */
     public function __construct(
         public string $resource,
@@ -151,5 +152,6 @@ class ParticleOp
         public ?string $description = null,
         public ?array $errors = null,
         public ?array $requires = null,
+        public bool $recordsAssent = false,
     ) {}
 }

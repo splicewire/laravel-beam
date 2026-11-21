@@ -391,6 +391,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
             ParticleResource::behaviorFor($definition->key, 'write'),
             $model->exists ? $model : null,
             $this->submittedRequirementMembers($definition, $input),
+            $this->actorBound ? $this->boundActor : auth()->user(),
         );
 
         try {
