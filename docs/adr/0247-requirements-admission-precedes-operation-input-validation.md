@@ -121,3 +121,11 @@ If the subject is on a tenant connection and the Assent ledger is central, a fai
 ### Amendment (agreements 08, occurrence scope)
 
 `Requires::SCOPES` also accepts `occurrence`. This is a request-local precondition: only an affirmative `AgreementMemberData` in the same request, naming the Agreement version and digest currently in force, can satisfy it. A prior ledger entry never satisfies an occurrence Requirement. Beam without an Agreements seam keeps the 05 rule: a declared slot is refused as `unregistered`; accepting the scope spelling does not register an Agreement or make the slot pass. The agreements adapter owns member-declaration validation and recording the submitted form against the resulting subject inside the write transaction. A flat `agreement:{key}` Gate cannot satisfy an occurrence Requirement because it receives no request member, and therefore answers false whenever that key has an occurrence-scoped declaration.
+
+Agreement 08 also makes the recording obligation explicit for Write operations. `ParticleOp::recordsAssent` defaults
+to false and may be true only for `OperationKind::Write`; a handler that meets an occurrence Requirement, or a
+subject-scoped Requirement with a member input or a subject-creating operation, must declare it and call the shared
+`AssentRecorder` inside the handler's own transaction. Beam does not wrap operation handlers in a transaction. The
+agreements seam refuses attached invalid declarations and its doctor audit catches inline declarations independent
+of provider registration order. REST and Frame resource writes already record through `PersistStage`, so the flag
+applies to operations only.
