@@ -10,6 +10,7 @@ use Splicewire\Beam\Localization\Client\Data\ClientCatalogAddressData;
 use Splicewire\Beam\Localization\Client\Data\ClientCatalogData;
 use Splicewire\Beam\Localization\Client\Data\ClientLocalizationData;
 use Splicewire\Beam\Localization\Client\Data\ClientMessageLineData;
+use Splicewire\Beam\Localization\TextDirection;
 
 /**
  * The flattened, laddered client catalog (localization 16; ruling 02 §2 and §4).
@@ -110,7 +111,7 @@ final class ClientCatalogResolver
             version: 1,
             locale: $stored['locale'],
             realm: $stored['realm'],
-            direction: $stored['direction'],
+            direction: TextDirection::from($stored['direction']),
             messages: array_map(static fn (array $line): ClientMessageLineData => new ClientMessageLineData($line[0], $line[1]), $stored['messages']),
         );
     }
@@ -137,11 +138,11 @@ final class ClientCatalogResolver
         );
     }
 
-    public static function direction(string $locale): string
+    public static function direction(string $locale): TextDirection
     {
         $language = strtolower(strtok($locale, '-_') ?: $locale);
 
-        return in_array($language, self::RTL, true) ? 'rtl' : 'ltr';
+        return in_array($language, self::RTL, true) ? TextDirection::Rtl : TextDirection::Ltr;
     }
 
     /** @return array{locale: string, realm: ?string, direction: string, messages: array<string, array{0: string, 1: string}>} */
@@ -156,7 +157,7 @@ final class ClientCatalogResolver
                 : [$translator instanceof BeamTranslator ? $translator->present($default, $locale) : $default, 'en'];
         }
 
-        return ['locale' => $locale, 'realm' => $realm, 'direction' => self::direction($locale), 'messages' => $messages];
+        return ['locale' => $locale, 'realm' => $realm, 'direction' => self::direction($locale)->value, 'messages' => $messages];
     }
 
     /**

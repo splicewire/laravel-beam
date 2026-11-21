@@ -7,6 +7,7 @@ use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Localization\Client\Jcs;
 use Splicewire\Beam\Localization\Client\JsonObject;
+use Splicewire\Beam\Localization\TextDirection;
 
 /**
  * The flattened, laddered client catalog for one host, locale and realm (localization 16; ruling 02 §4). It maps 1:1
@@ -24,8 +25,7 @@ final class ClientCatalogData extends Data
         public int $version,
         public string $locale,
         public ?string $realm,
-        #[LiteralTypeScriptType("'ltr' | 'rtl'")]
-        public string $direction,
+        public TextDirection $direction,
         #[LiteralTypeScriptType('Record<string, ClientMessageLineData>')]
         public array $messages,
     ) {}
@@ -54,7 +54,7 @@ final class ClientCatalogData extends Data
             'version' => $this->version,
             'locale' => $this->locale,
             'realm' => $this->realm,
-            'direction' => $this->direction,
+            'direction' => $this->direction->value,
             'messages' => new JsonObject(array_map(
                 static fn (ClientMessageLineData $line): JsonObject => new JsonObject(['text' => $line->text, 'sourceLocale' => $line->sourceLocale]),
                 $this->messages,

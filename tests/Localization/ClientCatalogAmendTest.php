@@ -7,6 +7,7 @@ use Splicewire\Beam\Localization\Client\Data\ClientCatalogAddressData;
 use Splicewire\Beam\Localization\Client\Data\ClientCatalogData;
 use Splicewire\Beam\Localization\Client\Data\ClientLocalizationData;
 use Splicewire\Beam\Localization\Client\LangFingerprint;
+use Splicewire\Beam\Localization\TextDirection;
 use Splicewire\Beam\Localization\TextNamespaces;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -61,7 +62,7 @@ it('never lets the coverage audit pass over a partial client population', functi
 });
 
 it('keeps an empty catalog a map at the bootstrap boundary, as JSON and nested', function (): void {
-    $empty = new ClientCatalogData(version: 1, locale: 'es', realm: null, direction: 'ltr', messages: []);
+    $empty = new ClientCatalogData(version: 1, locale: 'es', realm: null, direction: TextDirection::Ltr, messages: []);
     $bootstrap = new ClientLocalizationData(
         address: new ClientCatalogAddressData(url: '/beam/localization/catalog/es?h='.$empty->hash(), hash: $empty->hash(), version: 1, locale: 'es', realm: null),
         initial: $empty,

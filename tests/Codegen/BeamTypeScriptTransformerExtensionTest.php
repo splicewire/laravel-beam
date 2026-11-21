@@ -36,6 +36,7 @@ use Splicewire\Beam\Codegen\DeclaredParticleTransformedProvider;
 use Splicewire\Beam\Codegen\DeclaredParticleTypes;
 use Splicewire\Beam\Codegen\DeclaredRouteTypes;
 use Splicewire\Beam\Codegen\PackageTypeRoots;
+use Splicewire\Beam\Localization\Client\Http\ClientCatalogController;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -277,6 +278,45 @@ class BeamTypeScriptTransformerExtensionTest extends TestCase
         $this->assertSame([], $warnings, json_encode($warnings));
         $this->assertMatchesRegularExpression('/\bupload: File,/', $generated, $generated);
         $this->assertMatchesRegularExpression('/\blabel: string,?/', $generated, $generated);
+    }
+
+    /**
+     * ticket 19 (text-direction enum): `ClientCatalogData::$direction` is the backed enum {@see TextDirection}. The
+     * catalog is a route-declared shape (`#[ResponseFromData]` on {@see ClientCatalogController}), so beam's extension
+     * reaches it by reference-walk and follows the property to the enum wherever it lives (decision 03, F9) — the enum
+     * need not sit in a scanned directory. The generated client names the enum as its own alias with the two string
+     * members it has always served, and the run logs no unresolved reference for it.
+     */
+    public function test_the_catalog_direction_emits_the_text_direction_enum_without_an_unresolved_reference(): void
+    {
+        $particles = new ParticleResourceRegistry;
+        $operations = new ParticleOperationRegistry;
+        $router = new Router(new Dispatcher($this->app), $this->app);
+        // Resolvable Class@method form: the declaration reader skips an invokable single-action controller registered
+        // by class alone (RouteReturnType::declarationsFor), so the route is seeded as the controller's `__invoke`.
+        $router->get('beam/localization/catalog/{locale}/{realm?}', [ClientCatalogController::class, '__invoke'])->name('beam.localization.catalog');
+
+        $config = $this->factory()
+            ->extension(new BeamTypeScriptTransformerExtension(
+                new DeclaredParticleTypes($particles, $operations, new ResourceContributionRegistry),
+                new PackageTypeRoots([]),
+                new DeclaredRouteTypes($router, new RouteReturnType($particles, $operations)),
+            ))
+            ->writer(new GlobalNamespaceWriter('generated.d.ts'))
+            ->get();
+        $log = new ArrayLogger;
+
+        TypeScriptTransformer::create($config, $log)->execute();
+
+        $generated = (string) file_get_contents($this->directory.'/types/generated.d.ts');
+
+        // No unresolved reference: the walk completes warning-free (the enum resolves to a declared type, not `undefined`).
+        $warnings = array_values(array_filter($log->messages, fn (array $m) => $m['level'] === 'warning'));
+        $this->assertSame([], $warnings, json_encode($warnings));
+        // The enum emits as its own named alias listing the two string members it has always served, in beam's
+        // localization namespace, and the catalog property references that alias by its resolved path.
+        $this->assertMatchesRegularExpression("/export type TextDirection = 'ltr' \\| 'rtl';/", $generated, $generated);
+        $this->assertMatchesRegularExpression('/\bdirection: Splicewire\.Beam\.Localization\.TextDirection,/', $generated, $generated);
     }
 }
 
