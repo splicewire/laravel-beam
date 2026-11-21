@@ -66,3 +66,54 @@ Ticket 05 lets a declaration attach its own Requirements, and extends admission 
 - **Route manifest.** Each entry of `ParticleRouteManifestSource` gains `requires: [<agreement keys>]` (distinct keys, declaration order) only when the route's behavior has Requirements per the port: operations by their key, `index`/`show` as `:read`, `store`/`update`/`destroy` as `:write`. Keys only. The key is omitted, never an empty list, when there are none.
 - **Ability map.** `CanMapBuilder::forPrincipal()` adds `agreement:{key}`, asked of the Gate, for every distinct key whose Requirement is party- or organisation-scoped across `RequirementDeclarations::all()`. Subject-scoped Requirements are per record and stay out of the flat map. Nothing is added when nothing is declared.
 - **Generated types.** `DeclaredParticleTypes` notes `RequirementRefusalData` for a resource whose `:read` or `:write` behavior has Requirements, as the operation loop already does through `declaredErrors()`.
+
+## Amendment (agreements 07)
+
+Ticket 07 gives an ordinary (hand-written) route the same gate as a declared operation.
+
+- **The behavior key of a route is `route:{name}`.** It is the route's name with a `route:` prefix (lead ruling Q-07a).
+  - The prefix is needed: beam names a particle operation's own route after the operation key (`{resource}.{op}`), so a bare route name would collide with operation behaviors and gate operation routes twice.
+  - An operation key is dotted and has no colon, so it can't start with `route:`. A resource behavior is `{resource}:read|write`, so `route:read` and `route:write` are RESERVED: no resource may be keyed `route`.
+  - A route with no name has no behavior key. See the doctor check below.
+- **The middleware.** `Splicewire\Beam\Agreements\Http\RequireAgreement`, aliased `agreement`, is in beam core (lead ruling Q-07b).
+  - Spelling:
+    - `->middleware('agreement:terms')` is party scope;
+    - `agreement:data-use,report` is subject scope, where the named route parameter's BOUND record is the subject;
+    - `agreement:terms,,organisation` is organisation scope.
+  - The helper is `RequireAgreement::using($agreement, subject:, scope:)`.
+  - It holds no agreement logic. `RouteRequirementGate` takes the actor from `ActorPort` and asks the SAME `RequirementAdmission` (and so the same `RequirementResolver`) the operation transport asks, with no submitted members.
+  - An unnamed route carrying it throws a `LogicException` on its first request, and the gate check `requirements.route-unnamed` (`UnnamedRequirementRouteAudit`) fails at boot, naming the URI.
+  - **Subject scope needs a subject parameter.** `agreement:terms,,subject`, `RequireAgreement::using(..., scope: 'subject')` without `subject:`, or a subject-scoped Requirement a provider attaches to `route:{name}` on a route that names no parameter, is REJECTED, because the person could accept forever and never pass:
+    - `using()` throws at once;
+    - the gate throws a `LogicException` naming the route before asking anything;
+    - the doctor check `requirements.route-subject` fails at boot (review P2, lead ruling).
+- **The declaration reaches the port.** `SlotRequirementDeclarations::all()` also reads, from the router on every call, each named route's `agreement:` middleware into `route:{name}`. The resolver, the ability map (`agreement:{key}`) and any other port reader therefore see a route's Requirement like a slot's. A seam that reads the slots through this class sees them too.
+- **Attaching without editing.** A host may attach a Requirement to `route:{name}` (for example from a provider, through the seam's registry) for a route it doesn't own (lead ruling Q-07c).
+  - Beam appends one global `EnforceRouteRequirements` to the host's `web` and `api` groups, through the kernel like localization's `ResolveLocale`.
+  - It asks admission only for a route whose `route:{name}` the port declares. For every other route it is INERT: with no seam it returns at once; with one it makes one port lookup and never calls the resolver or the database (a test counts both).
+  - A request is asked at most once, whichever middleware reaches it first.
+- **Order.** Both middlewares are placed in the priority list after `StartSession`, `AuthenticatesRequests` / `Authenticate` AND `SubstituteBindings` (`addToMiddlewarePriorityAfter`). The route's own authentication therefore refuses a guest first, and the gate never runs for that request. The subject parameter is already the bound record.
+- **No seam, no gate.** While the bound resolver is still beam's own `SlotRequirementResolver` or `NullRequirementResolver`, both middlewares pass every request (ticket 07's criterion), and a route answers exactly as without the middleware. This DIFFERS from amendment 05's rule for operation and resource slots, which refuse as `unregistered`:
+  - a route gate is opt-in per host deployment (the seam is what knows Agreements);
+  - a hand-written route has no declared 428 body for a client to expect.
+
+  `requirements.unseamed-slot` therefore ignores `route:` behaviors.
+- **The refusal on a route** (lead ruling Q-07d):
+  - A DATA request (`expectsJson()` and no `X-Inertia` header) gets status 428 and the declared `RequirementRefusalData` body, exactly as an operation's.
+  - Every other request (a browser visit, or an Inertia visit, full or partial) is a PAGE visit. It is redirected (303) to the seam's prompt route, `beam.agreements.required`, with the refusal, the behavior, the subject's key, the intended destination and a way back in the session (`agreements.required`), like password confirmation's `url.intended`.
+  - The intended destination of a GET or HEAD is its full URL. For any other method it is the previous URL: the request is NOT replayed.
+  - With a seam but no prompt route, a page visit gets the 428 too.
+  - **Only with a session.** The page-visit path stores the destination in the session, so it applies only when the request HAS one. A session-less request (a standard stateless `api` group) gets the data refusal, 428 plus the declared body, whatever it accepts (review P2, lead ruling).
+  - **Same-origin destinations only.** `url()->previous()` trusts the raw `Referer`, so `back` and a non-GET's `intended` keep a destination only when it is same-origin: a relative path, or an http(s) URL with the app's own scheme, host and port. Anything else falls back: `back` to the home URL, and a non-GET's `intended` to the home URL (a GET's `intended` is the gated URL itself). The prompt page checks the same rule again before it links or navigates (review P2, lead ruling).
+- **The prompt page** is the seam's to mount and `@splicewire/beam-agreements`' to draw, reusing the step-up dialog (lead ruling Q-07e). Accepting returns the person to the intended destination; declining leaves them on the prompt with a way back.
+- **Not here:** a page's record bound through its resource's read (E17) stays out of scope.
+
+## Amendment (agreements 08, beam core)
+
+Beam exposes one `Agreements\AssentRecorder` container port with `record(Model $subject, WriteRequirement $requirement): void`. Its default `NullAssentRecorder` does nothing, so hosts that install no recording adapter keep the existing write behavior. An agreements adapter may replace the binding. This is a single port, not a registry on `ParticleWriter`.
+
+`PersistStage` calls the port immediately after saving a model and before the optional after-write callback, whenever the `WriteContext` carries a `WriteRequirement`. REST and Frame create/update always build one, even when no Requirement is declared, so the recorder runs on every transport write. An adapter must filter using `RequirementDeclarations` and/or `submittedMembers`, treating other writes as a no-op. `WriteRequirement::subject` is null on create and is the existing model on update. The call is inside the transaction on the subject model's own connection, after the subject has its identity and before that transaction commits. A thrown recording failure therefore rolls back that subject write. The call deliberately bypasses `ScopedWriteGate`: recording authority belongs to the agreements adapter, not to the model write gate.
+
+Standard REST and Frame create/update writes, `ActorOwnedParticleBacking`'s custom pipeline, and collection persistence all reuse `PersistStage`, so they reach the same port. Dedupe modes `ignore` and `reject` that persist nothing do not call it; whether a repeated capture records is the seam half's decision, and it must preserve the byte-identical `ignore` oracle. Deletes are out of scope. Write-kind operation handlers do not use this stage and Beam supplies no operation transaction; a handler that records an Assent calls this same port inside its own transaction before its first irreversible effect. The seam half of agreements 08 owns the registration/doctor check for handlers that declare a creates-its-subject Requirement without declaring that they record it.
+
+If the subject is on a tenant connection and the Assent ledger is central, a failed central append rolls back the tenant write. The two connections are not a distributed transaction: a successful central append can remain if the tenant transaction later rolls back, as described in agreements decision 17.

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
+use Splicewire\Beam\Agreements\AssentRecorder;
 use Splicewire\Beam\Collections\CollectionWriter;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Facades\Beam;
@@ -16,9 +17,11 @@ use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
+use Splicewire\Beam\Tests\Support\AssentRecorderSpy;
 use Splicewire\Beam\Tests\TestCase;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\WriteNotAuthorized;
+use Splicewire\Beam\Write\WriteRequirement;
 
 class CollectionWriterTest extends TestCase
 {
@@ -77,6 +80,22 @@ class CollectionWriterTest extends TestCase
         $this->assertSame(1, DB::table(Beam::table('particles'))->count());
         Event::assertDispatched(BeamParticlePersisted::class);
         $this->assertSame(0, DB::connection()->transactionLevel());
+    }
+
+    public function test_collection_persist_stage_delegates_to_the_assent_recording_point(): void
+    {
+        $recorder = new AssentRecorderSpy;
+        $this->app->instance(AssentRecorder::class, $recorder);
+
+        $model = app(CollectionWriter::class)->pipeline()->requiring(
+            new WriteRequirement('articles:write'),
+        )->write($this->record(), ['slug' => 'recorded'], 'author');
+
+        $this->assertCount(1, $recorder->calls);
+        $this->assertTrue($recorder->calls[0]['subject']->is($model));
+        $this->assertNotNull($recorder->calls[0]['subject']->getKey());
+        $this->assertSame('articles:write', $recorder->calls[0]['requirement']->behavior);
+        $this->assertGreaterThan(0, $recorder->calls[0]['transactionLevel']);
     }
 
     public function test_unauthorized_duplicate_does_not_expose_the_unique_collision(): void

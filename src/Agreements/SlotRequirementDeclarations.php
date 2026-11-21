@@ -2,6 +2,9 @@
 
 namespace Splicewire\Beam\Agreements;
 
+use Illuminate\Routing\Route;
+use Splicewire\Beam\Agreements\Http\RequireAgreement;
+use Splicewire\Beam\Agreements\Http\RouteRequirementGate;
 use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
@@ -62,6 +65,24 @@ class SlotRequirementDeclarations implements RequirementDeclarations
             }
         }
 
+        // agreements 07: a named route's own `agreement:` middleware declares for `route:{name}` (ADR-0247 amendment 07).
+        // Read from the router on every call, like the registries above, so a route registered after boot is seen.
+        foreach ($this->routes() as $route) {
+            $name = $route->getName();
+            if ($name === null || $name === '') {
+                continue;
+            }
+            foreach (RequireAgreement::declaredOn($route) as $declaration) {
+                $declared[RouteRequirementGate::BEHAVIOR_PREFIX.$name][] = $declaration['requires'];
+            }
+        }
+
         return $declared;
+    }
+
+    /** @return iterable<Route> */
+    private function routes(): iterable
+    {
+        return app()->bound('router') ? app('router')->getRoutes()->getRoutes() : [];
     }
 }

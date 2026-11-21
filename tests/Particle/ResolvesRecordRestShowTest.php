@@ -131,7 +131,7 @@ final class ResolvesRecordRestShowTest extends TestCase
         $this->assertFalse(ResolvesAndQueriesRecordRestShowBacking::$resolverCalled);
     }
 
-    public function test_a_guest_can_read_only_the_declared_public_projection_of_a_resolved_record(): void
+    public function test_a_guest_can_read_a_resolved_record_when_its_data_is_the_declared_public_read(): void
     {
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'public-resolved-records',

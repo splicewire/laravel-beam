@@ -42,6 +42,7 @@ use Splicewire\Beam\Particle\Contribution\ContributionProjector;
 use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Read\Contracts\ParticleHydrator;
 use Splicewire\Beam\Read\ReadContext;
+use Splicewire\Beam\Read\ResolvedRecordPublicProjector;
 use Splicewire\Beam\Routing\RecordKey;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Write\ModelAttributeMapper;
@@ -309,10 +310,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         }
         $this->admitRequirements($definition, 'read', null);
 
-        return array_merge(
-            $resolved->record->toArray(),
-            ['schemaRef' => $resolved->schemaRef],
-        );
+        return ResolvedRecordPublicProjector::project($resource, $resolved, $request);
     }
 
     public function store(ResourceDefinition $definition, array $input): array
