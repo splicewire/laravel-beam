@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
+use Splicewire\Beam\Agreements\AssentRecorder;
 use Splicewire\Beam\Concerns\Deduplicates;
 use Splicewire\Beam\Data\BeamData;
 use Splicewire\Beam\Events\BeamParticlePersisted;
@@ -19,10 +21,12 @@ use Splicewire\Beam\Particle\ParticleFrameResourceHandler;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
+use Splicewire\Beam\Tests\Support\AssentRecorderSpy;
 use Splicewire\Beam\Tests\TestCase;
 use Splicewire\Beam\Write\Contracts\WriteGate;
 use Splicewire\Beam\Write\ParticleWriter;
 use Splicewire\Beam\Write\WriteNotAuthorized;
+use Splicewire\Beam\Write\WriteRequirement;
 
 /** One writable declaration, exercised through Frame and REST using the shipped writer chain. */
 class ParticleWriteResultTest extends TestCase
@@ -147,15 +151,54 @@ class ParticleWriteResultTest extends TestCase
         Event::assertDispatchedTimes(BeamParticlePersisted::class, 2);
     }
 
-    #[DataProvider('writeModes')]
-    public function test_a_refused_frame_after_hook_rolls_back_the_write(bool $update): void
+    public function test_rest_and_frame_create_and_update_record_the_saved_subject_before_after_write(): void
+    {
+        $recorder = new AssentRecorderSpy;
+        $this->app->instance(AssentRecorder::class, $recorder);
+        $this->resource->afterWrite = function (Model $model) use ($recorder): void {
+            $this->assertTrue($model->exists);
+            $recorder->order[] = 'after';
+        };
+        $startingLevel = \Illuminate\Support\Facades\DB::connection()->transactionLevel();
+
+        $handler = $this->app->make(ParticleFrameResourceHandler::class);
+        $frameCreated = $handler->store($this->resource->toResourceDefinition(), ['email' => 'frame-created@example.test']);
+        $handler->update($this->resource->toResourceDefinition(), (string) $frameCreated['id'], ['email' => 'frame-updated@example.test']);
+        $restCreated = $this->postJson('/frame-write-records', ['email' => 'rest-created@example.test'])->assertCreated()->json('data');
+        $this->patchJson('/frame-write-records/'.$restCreated['id'], ['email' => 'rest-updated@example.test'])->assertOk();
+
+        $this->assertCount(4, $recorder->calls);
+        $this->assertSame(['record', 'after', 'record', 'after', 'record', 'after', 'record', 'after'], $recorder->order);
+        foreach ($recorder->calls as $call) {
+            $this->assertTrue($call['subject']->exists);
+            $this->assertNotNull($call['subject']->getKey());
+            $this->assertSame($startingLevel + 1, $call['transactionLevel']);
+            $this->assertSame('frame-write-records:write', $call['requirement']->behavior);
+        }
+        $this->assertSame((string) $frameCreated['id'], (string) $recorder->calls[0]['subject']->getKey());
+        $this->assertSame((string) $restCreated['id'], (string) $recorder->calls[2]['subject']->getKey());
+    }
+
+    #[DataProvider('frameWriteFailures')]
+    public function test_a_frame_write_failure_rolls_back_the_write(bool $update, string $failure): void
     {
         $handler = $this->app->make(ParticleFrameResourceHandler::class);
         $definition = $this->resource->toResourceDefinition();
         $original = $update ? $handler->store($definition, ['email' => 'ada@example.test']) : null;
-        $this->resource->afterWrite = function (Model $model): void {
-            throw WriteNotAuthorized::for($model);
-        };
+
+        if ($failure === 'recorder') {
+            $this->app->instance(AssentRecorder::class, new class implements AssentRecorder
+            {
+                public function record(Model $subject, WriteRequirement $requirement): void
+                {
+                    throw new RuntimeException('recording failed');
+                }
+            });
+        } else {
+            $this->resource->afterWrite = function (Model $model): void {
+                throw WriteNotAuthorized::for($model);
+            };
+        }
 
         try {
             if ($update) {
@@ -163,8 +206,13 @@ class ParticleWriteResultTest extends TestCase
             } else {
                 $handler->store($definition, ['email' => 'changed@example.test']);
             }
-            $this->fail('The after-write refusal must reach the caller.');
-        } catch (WriteNotAuthorized) {
+            $this->fail('The frame write failure must reach the caller.');
+        } catch (RuntimeException|WriteNotAuthorized $error) {
+            if ($failure === 'recorder') {
+                $this->assertSame('recording failed', $error->getMessage());
+            } else {
+                $this->assertInstanceOf(WriteNotAuthorized::class, $error);
+            }
             $this->assertDatabaseCount('frame_write_records', $update ? 1 : 0);
             $this->assertDatabaseMissing('frame_write_records', ['email' => 'changed@example.test']);
             if ($update) {
@@ -199,6 +247,16 @@ class ParticleWriteResultTest extends TestCase
     public static function writeModes(): array
     {
         return ['create' => [false], 'update' => [true]];
+    }
+
+    public static function frameWriteFailures(): array
+    {
+        return [
+            'create after hook' => [false, 'after'],
+            'update after hook' => [true, 'after'],
+            'create recorder' => [false, 'recorder'],
+            'update recorder' => [true, 'recorder'],
+        ];
     }
 }
 

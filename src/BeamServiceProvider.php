@@ -990,6 +990,9 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         $this->app->bindIf(Agreements\RequirementDeclarations::class,
             Agreements\SlotRequirementDeclarations::class);
         $this->app->bind(Agreements\RequirementAdmission::class);
+        // agreements 08: hosts with an agreements adapter may replace this one container port.
+        // It is not a ParticleWriter registry; the no-op preserves existing writes by default.
+        $this->app->bindIf(Agreements\AssentRecorder::class, Agreements\NullAssentRecorder::class);
         // Seat declarations are registered by host navigation during boot and consumed later by
         // projection, I6 and the gate stage. They must share one registry-bearing instance.
         $this->app->singleton(SeatGate::class);

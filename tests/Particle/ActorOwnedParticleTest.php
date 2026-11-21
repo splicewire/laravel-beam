@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Schema;
 use Schemastud\DataSchemas\Contracts\SchemaRegistry;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Agreements\AssentRecorder;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Models\BeamParticle;
@@ -18,6 +19,7 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Schema\Contracts\SchemaTargetResolver;
 use Splicewire\Beam\Schema\DatabaseSchemaRegistry;
 use Splicewire\Beam\Schema\RegistrySchemaTargetResolver;
+use Splicewire\Beam\Tests\Support\AssentRecorderSpy;
 use Splicewire\Beam\Tests\TestCase;
 
 class ActorOwnedParticleTest extends TestCase
@@ -105,6 +107,20 @@ class ActorOwnedParticleTest extends TestCase
         $this->actingAs($this->owner);
         $this->deleteJson('/notes/'.$id)->assertOk();
         $this->assertDatabaseCount(Beam::table('particles'), 0);
+    }
+
+    public function test_actor_owned_custom_pipeline_reaches_the_assent_recorder(): void
+    {
+        $recorder = new AssentRecorderSpy;
+        $this->app->instance(AssentRecorder::class, $recorder);
+        $row = $this->postJson('/notes', ['name' => 'recorded owned row'])->assertCreated()->json('data');
+
+        $this->assertCount(1, $recorder->calls);
+        $call = $recorder->calls[0];
+        $this->assertInstanceOf(BeamParticle::class, $call['subject']);
+        $this->assertSame($row['id'], $call['subject']->getKey());
+        $this->assertSame('notes:write', $call['requirement']->behavior);
+        $this->assertGreaterThan(0, $call['transactionLevel']);
     }
 
     public function test_invalid_and_forged_envelopes_never_persist(): void

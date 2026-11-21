@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Write\Stages;
 
 use Closure;
+use Splicewire\Beam\Agreements\AssentRecorder;
 use Splicewire\Beam\Concerns\PersistsBeamParticle;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Write\Contracts\WriteStage;
@@ -45,6 +46,13 @@ class PersistStage implements WriteStage
                 $model->fill($context->payload);
             }
             $model->save();
+
+            // agreements 08: the subject now has its identity, but this model-connection transaction
+            // has not committed. This is a direct port call, deliberately outside ScopedWriteGate;
+            // the agreements adapter owns the authority to record assent.
+            if ($context->requirement !== null) {
+                app(AssentRecorder::class)->record($model, $context->requirement);
+            }
 
             if ($context->after !== null) {
                 ($context->after)($model);
