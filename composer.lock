@@ -4118,7 +4118,7 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/stephenr85/laravel-permission-cascade.git",
-                "reference": "6cdef64250bd3179ecb2d310ea7f68cf8dc1ff5d"
+                "reference": "1f34f7ba4a7d13baffe9caebb4aebe6805d60568"
             },
             "require": {
                 "illuminate/auth": "^11.0|^12.0|^13.0",
@@ -4181,7 +4181,7 @@
                 "policy",
                 "spatie"
             ],
-            "time": "2026-11-20T14:48:17+00:00"
+            "time": "2026-11-21T03:57:13+00:00"
         },
         {
             "name": "rushing/laravel-pipeline-registry",
@@ -13088,6 +13088,7 @@
     "minimum-stability": "dev",
     "stability-flags": {
         "rushing/codegen": 20,
+        "rushing/laravel-permission-cascade": 20,
         "rushing/laravel-popcorn": 20,
         "rushing/laravel-versioning": 20,
         "rushing/php-graphine": 20,
