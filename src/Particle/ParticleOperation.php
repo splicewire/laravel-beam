@@ -531,6 +531,7 @@ class ParticleOperation implements HasRegistryKey
         public ?array $requires = null,
     ) {
         Requires::assertList($requires, "Particle operation [{$resource}.{$name}]");
+        Requires::assertMemberInput($requires, $input, "Particle operation [{$resource}.{$name}]");
         $this->assertOutputMatchesKind();
         $this->assertAffordanceSpelling();
         $this->assertErrorsDeclareRefusals();

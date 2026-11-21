@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Agreements\Data\AgreementMemberData;
 use Splicewire\Beam\Agreements\Data\OutstandingRequirementData;
 use Splicewire\Beam\Agreements\Data\RequirementRefusalData;
 use Splicewire\Beam\Agreements\NullRequirementDeclarations;
@@ -107,6 +108,43 @@ class RequiresSlotTest extends TestCase
         $this->postJson('/requires-rows/1/act', [])->assertStatus(428)
             ->assertJsonPath('requirements.0.scope', 'subject')
             ->assertJsonPath('requirements.0.subject', 1);
+    }
+
+    public function test_an_occurrence_scoped_requirement_without_a_seam_still_refuses_as_unregistered(): void
+    {
+        $this->resource();
+        $this->op(requires: [new Requires('terms', scope: 'occurrence')], input: RequiresRowMemberInput::class);
+        RequiresRow::query()->create(['name' => 'a']);
+        $this->actingAs($this->actor());
+
+        $this->postJson('/requires-rows/1/act', [])->assertStatus(428)
+            ->assertJsonPath('requirements.0.key', 'terms')
+            ->assertJsonPath('requirements.0.kind', 'unregistered')
+            ->assertJsonPath('requirements.0.scope', 'occurrence');
+    }
+
+    public function test_an_occurrence_requirement_without_member_input_is_refused_at_registration(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('requires [terms] at scope [occurrence], but its input declares no AgreementMemberData field');
+
+        $this->op(requires: [new Requires('terms', scope: 'occurrence')]);
+    }
+
+    public function test_a_resource_occurrence_requirement_requires_a_write_member_input(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Particle resource [requires-rows] requires [terms] at scope [occurrence]');
+
+        $this->resource(requires: [new Requires('terms', scope: 'occurrence', on: 'write')], input: false);
+    }
+
+    public function test_a_resource_cannot_attach_an_occurrence_requirement_to_reads(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('cannot declare an occurrence Requirement on reads');
+
+        $this->resource(requires: [new Requires('terms', scope: 'occurrence', on: 'both')]);
     }
 
     public function test_an_installed_seam_resolver_answers_instead_and_the_audit_passes(): void
@@ -374,6 +412,7 @@ class RequiresSlotTest extends TestCase
     public function test_requires_validates_its_scope_on_and_slot_entries(): void
     {
         $this->assertSame(['terms', 'party', 'both'], [($r = new Requires('terms'))->agreement, $r->scope, $r->on]);
+        $this->assertSame('occurrence', (new Requires('terms', scope: 'occurrence'))->scope);
 
         foreach ([fn () => new Requires('terms', scope: 'team'), fn () => new Requires('terms', on: 'list'), fn () => new Requires(' ')] as $bad) {
             try {
@@ -391,13 +430,18 @@ class RequiresSlotTest extends TestCase
     // ── fixtures ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     /** @param  list<Requires>|null  $requires */
-    private function resource(?array $requires = null, ?string $publicRead = null, bool $mount = true, ?string $policy = null): ParticleResource
-    {
+    private function resource(
+        ?array $requires = null,
+        ?string $publicRead = null,
+        bool $mount = true,
+        ?string $policy = null,
+        string|false|null $input = RequiresRowInput::class,
+    ): ParticleResource {
         $resource = new ParticleResource(
             key: 'requires-rows',
             backing: RequiresRow::class,
             data: RequiresRowData::class,
-            input: RequiresRowInput::class,
+            input: $input,
             project: fn (RequiresRow $row): RequiresRowData => new RequiresRowData($row->getKey(), $row->name),
             label: 'Requires rows',
             // Integrator ruling 2026-10-10: an explicit all-row population, so the read guard admits the list.
@@ -416,7 +460,7 @@ class RequiresSlotTest extends TestCase
     }
 
     /** @param  list<Requires>|null  $requires */
-    private function op(?array $requires = null, string $name = 'act', bool $mount = true): ParticleOperation
+    private function op(?array $requires = null, string $name = 'act', bool $mount = true, string|false|null $input = false): ParticleOperation
     {
         $operation = new ParticleOperation(
             resource: 'requires-rows',
@@ -424,7 +468,7 @@ class RequiresSlotTest extends TestCase
             kind: OperationKind::Write,
             handle: fn () => ['ok' => true],
             ability: false,
-            input: false,
+            input: $input,
             output: RequiresRowData::class,
             requires: $requires,
         );
@@ -516,6 +560,11 @@ class RequiresRowData extends Data
 class RequiresRowInput extends Data
 {
     public function __construct(public ?string $name = null) {}
+}
+
+class RequiresRowMemberInput extends Data
+{
+    public function __construct(public ?AgreementMemberData $agreementMember = null) {}
 }
 
 class RequiresRowPolicy

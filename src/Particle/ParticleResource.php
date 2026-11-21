@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Particle;
 
 use Closure;
+use InvalidArgumentException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -351,6 +352,19 @@ class ParticleResource implements HasRegistryKey
         public ?array $requires = null,
     ) {
         Requires::assertList($requires, "Particle resource [{$key}]");
+
+        foreach ($requires ?? [] as $requirement) {
+            if ($requirement->scope === 'occurrence' && $requirement->bindsRead()) {
+                throw new InvalidArgumentException("Particle resource [{$key}] cannot declare an occurrence Requirement on reads; reads have no AgreementMemberData input.");
+            }
+        }
+
+        $createsSubjectRequirement = false;
+        foreach ($requires ?? [] as $requirement) {
+            $createsSubjectRequirement = $createsSubjectRequirement
+                || ($requirement->scope === 'subject' && $requirement->bindsWrite());
+        }
+        Requires::assertMemberInput($requires, $input, "Particle resource [{$key}]", $createsSubjectRequirement);
     }
 
     /** agreements 05: the behavior key a list or detail read is admitted under. */
