@@ -76,9 +76,17 @@ class ResourceContributionRegistry implements Gated, RecordsRegistrants, Registr
      */
     private BasicRegistry $store;
 
-    public function __construct()
+    private WidgetContextProjector $projector;
+
+    /**
+     * frame-foundation 89: the projector the row-cell refusal reads is handed in (the container autowires the bound
+     * one into beam's singleton); null = a plain one, which is what the unbound fallbacks
+     * (`new ResourceContributionRegistry` where nothing is bound) get.
+     */
+    public function __construct(?WidgetContextProjector $projector = null)
     {
         $this->store = BasicRegistry::for($this);
+        $this->projector = $projector ?? new WidgetContextProjector;
     }
 
     /**
@@ -174,7 +182,7 @@ class ResourceContributionRegistry implements Gated, RecordsRegistrants, Registr
             );
         }
 
-        $projector = new WidgetContextProjector;
+        $projector = $this->projector;
 
         foreach ($reflection->getProperties() as $property) {
             if (! isset($projector->forProperty($property)['row-cell'])) {

@@ -65,6 +65,7 @@ use Schemastud\Frame\Contracts\WidgetLabel;
 use Schemastud\Frame\Contracts\WriteSubjectResolver;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
+use Schemastud\Frame\Registry\WidgetContextProjector;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Agreements\Http\EnforceRouteRequirements;
@@ -846,7 +847,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // fields. Collection selection is request-scoped because one Data class serves many schema
         // stems; Frame still learns only the final byNode map, not Beam's producer internals.
         $this->app->scoped(ResourceContextContributor::class, fn ($app) => new CollectionResourceContextNodes(
-            new ContributionContextNodes($app->make(ResourceContributionRegistry::class)),
+            new ContributionContextNodes($app->make(ResourceContributionRegistry::class), $app->make(WidgetContextProjector::class)),
             $app->make(Request::class),
             $app->make(CollectionSchemaResolver::class),
         ));

@@ -37,9 +37,15 @@ use Schemastud\Frame\Registry\WidgetContextProjector;
  */
 class ContributionContextNodes implements ResourceContextContributor
 {
+    protected WidgetContextProjector $projector;
+
+    /** frame-foundation 89: the projector is handed in (beam's provider passes the container's); null = a plain one. */
     public function __construct(
         protected ResourceContributionRegistry $contributions,
-    ) {}
+        ?WidgetContextProjector $projector = null,
+    ) {
+        $this->projector = $projector ?? new WidgetContextProjector;
+    }
 
     /**
      * @return array<string, array<string, mixed>>
@@ -52,7 +58,7 @@ class ContributionContextNodes implements ResourceContextContributor
             return [];
         }
 
-        $projector = new WidgetContextProjector;
+        $projector = $this->projector;
         $nodes = [];
 
         foreach ($this->contributions->for($key) as $contribution) {

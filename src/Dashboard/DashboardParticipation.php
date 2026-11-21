@@ -37,14 +37,17 @@ final class DashboardParticipation
      *                              beam-ux's `DashboardBacking`, which orders a card with no declared
      *                              `navOrder` by it — reads the match this rule already made instead of
      *                              walking the rail a second time and risking a different answer.
+     * @param  WidgetContextProjector|null  $projector  frame-foundation 89: the projector, handed in by the caller (beam's
+     *                                                  doctor audit passes the container's). TRAILING and nullable so every
+     *                                                  existing call compiles unchanged; null = a plain one.
      * @return 'summary'|'overview'|null
      */
-    public static function contextFor(ResourceDefinition $definition, RailLeaves $rail, ?string $href = null, ?NavLeaf &$seat = null): ?string
+    public static function contextFor(ResourceDefinition $definition, RailLeaves $rail, ?string $href = null, ?NavLeaf &$seat = null, ?WidgetContextProjector $projector = null): ?string
     {
         $seat = null;
 
         try {
-            $contexts = (new WidgetContextProjector)->forClass(new ReflectionClass($definition->data));
+            $contexts = ($projector ?? new WidgetContextProjector)->forClass(new ReflectionClass($definition->data));
         } catch (Throwable) {
             return null; // a declaration frame's projector rejects is another audit's finding
         }
@@ -83,8 +86,10 @@ final class DashboardParticipation
      * Whether the read Data class binds a dashboard context ITSELF — participates with no rail at all.
      * The "declared" tier's first test, distinct from being seated; an opt-out reads false here too.
      */
-    public static function declares(ResourceDefinition $definition): bool
+    public static function declares(ResourceDefinition $definition, ?WidgetContextProjector $projector = null): bool
     {
-        return self::contextFor($definition, new RailLeaves([])) !== null;
+        // frame-foundation 89: the projector is handed through (trailing, nullable: no call breaks). No family production
+        // code calls declares() today (scanned at every package's HEAD); a caller that does hands its projector in.
+        return self::contextFor($definition, new RailLeaves([]), projector: $projector) !== null;
     }
 }

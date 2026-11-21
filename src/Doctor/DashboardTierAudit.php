@@ -8,6 +8,7 @@ use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Schemastud\Frame\Contracts\ResourceSummaryProvider;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Schemastud\Frame\Registry\WidgetContextProjector;
 use Splicewire\Beam\Dashboard\DashboardParticipation;
 use Splicewire\Beam\Dashboard\RailLeaves;
 use Splicewire\Beam\Dashboard\RealmDashboard;
@@ -49,6 +50,7 @@ class DashboardTierAudit implements DoctorAudit
         private NavSectionRegistry $sections,
         private ScopedIndexQuery $query,
         private Container $container,
+        private ?WidgetContextProjector $projector = null, // frame-foundation 89: handed to DashboardParticipation
     ) {}
 
     /** @return list<Finding> */
@@ -74,7 +76,7 @@ class DashboardTierAudit implements DoctorAudit
                     continue; // a declaration that cannot be projected is another audit's finding
                 }
 
-                if (DashboardParticipation::contextFor($definition, $rail) === null) {
+                if (DashboardParticipation::contextFor($definition, $rail, projector: $this->projector) === null) {
                     continue; // not an eligible card; a product rail destination may still render as a tile
                 }
 

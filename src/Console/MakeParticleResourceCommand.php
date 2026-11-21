@@ -306,7 +306,7 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
                 array_push($findings, ...GraphSlotIntegrityAudit::problemsFor($resource));
             }
         }
-        $block = (new ContextManifest)->forResource($read);
+        $block = $this->laravel->make(ContextManifest::class)->forResource($read); // frame-foundation 89: the container's manifest (and projector), never one built in place
         $hasColumn = false;
         foreach ($block['byNode'] as $contexts) {
             $hasColumn = $hasColumn || array_key_exists('list-column', $contexts);
