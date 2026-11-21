@@ -133,6 +133,7 @@ use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\EnvPrefixAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
 use Splicewire\Beam\Doctor\FamilyTokenContractAudit;
+use Splicewire\Beam\Doctor\FlowDoctorAudit;
 use Splicewire\Beam\Doctor\FramedDeclarationAudit;
 use Splicewire\Beam\Doctor\FrameWireKeysAudit;
 use Splicewire\Beam\Doctor\GlobalReadBoundaryAudit;
@@ -1673,6 +1674,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // files rather than package stubs because both facts it needs — the stamp and the resolved
         // table name — only exist after publish; see the class docblock for what that trade cost.
         $manifest->register('splicewire/laravel-beam', MigrationOrderingAudit::class);
+        // browser-journeys 11: the doctor's catalog join — classifies every declared flow against this
+        // host's gates and BEAM.md Deviations, and checks each Deviation key back against the catalog.
+        // It GATES: a live flow pointing at an entry route the host never registered, or a BEAM.md key
+        // no installed package declares, is a catalog↔host disagreement with a host remedy. Everything
+        // host-dependent (a structurally-absent flow, a deviated one correctly off, a gate that threw)
+        // is a note or a WARN, never fatal — see the audit's docblock. Registry-side, so it reads the
+        // live catalog this host composed, and in the manifest like beam-core's newer audits.
+        $manifest->register('splicewire/laravel-beam', FlowDoctorAudit::class, gate: true);
 
         // Surgeon side — the three position-sensitive shapes, which need the AST. A host that composes beam
         // without `rushing/laravel-surgeon` autoloads nothing here and pays nothing; SurgeonWiringAudit

@@ -9,6 +9,7 @@ use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\DoctorRunner;
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
+use Splicewire\Beam\Conformance\BeamManifest;
 use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BeamManifestAudit;
@@ -320,18 +321,20 @@ class BeamDoctorCommand extends Command
 
     /**
      * The site is self-describing (ADR-0001): a valid BEAM.md must exist and declare its identity.
-     * Reads + parses the front matter and hands the parsed identity to the pure audit.
+     * Reads the identity through the shared {@see BeamManifest} reader (browser-journeys 07/11) — the
+     * command no longer keeps its own front-matter parser — and hands it to the pure audit. A missing
+     * file yields an empty manifest (null identity), so `$exists` still carries the absence the audit
+     * FAILs on, exactly as before the fold.
      */
     private function manifestFinding(BeamManifestAudit $audit, string $base): Finding
     {
         $path = $this->manifestPath($base);
-        $exists = is_file($path);
-        $frontMatter = $exists ? $this->frontMatter((string) file_get_contents($path)) : [];
+        $manifest = BeamManifest::load($path);
 
         return $audit->run(
-            $exists,
-            $frontMatter['satellite'] ?? null,
-            $frontMatter['variant'] ?? null,
+            is_file($path),
+            $manifest->satellite(),
+            $manifest->variant(),
         );
     }
 
@@ -432,33 +435,6 @@ class BeamDoctorCommand extends Command
     private function manifestPath(string $base): string
     {
         return $base.'/BEAM.md';
-    }
-
-    /**
-     * Minimal front-matter reader: pull the leading `---`-fenced block and its top-level scalar
-     * keys. Deliberately not a general YAML parser — the doctor needs only `satellite` + `variant`
-     * and keeps this inline reader rather than booting the full
-     * {@see \Splicewire\Beam\Conformance\BeamManifest} reader. (The pre-relocation note that this
-     * stayed "free of a YAML dependency and of laravel-satellite's Manifest class" no longer holds:
-     * browser-journeys 07 moved that reader into beam core and beam now declares symfony/yaml.
-     * Folding this method into BeamManifest is browser-journeys 11.)
-     *
-     * @return array<string, string>
-     */
-    private function frontMatter(string $contents): array
-    {
-        if (! preg_match('/\A\x{FEFF}?\s*---\R(.*?)\R---\s*(?:\R|\z)/us', $contents, $m)) {
-            return [];
-        }
-
-        $values = [];
-        foreach (preg_split('/\R/', $m[1]) as $line) {
-            if (preg_match('/^([A-Za-z0-9_-]+):\s*(\S.*?)\s*$/', $line, $kv)) {
-                $values[$kv[1]] = trim($kv[2], "\"'");
-            }
-        }
-
-        return $values;
     }
 
     /**

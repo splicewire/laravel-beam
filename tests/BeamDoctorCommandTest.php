@@ -13,6 +13,7 @@ use Splicewire\Beam\Doctor\BeamDependencyContractAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BeamManifestAudit;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
+use Splicewire\Beam\Doctor\FlowDoctorAudit;
 use Splicewire\Beam\Doctor\FrameManifestAudit;
 use Splicewire\Beam\Doctor\IntakeDoorAudit;
 use Splicewire\Beam\Doctor\MarqueeGateAudit;
@@ -177,6 +178,26 @@ class BeamDoctorCommandTest extends TestCase
             $this->assertFalse($registrations[$audit]->gate, "{$audit} must be advisory, not a gate.");
             $this->assertSame('splicewire/laravel-beam', $registrations[$audit]->package);
         }
+    }
+
+    /**
+     * browser-journeys 11: the flow catalog join registers as a GATE (a live flow at an unregistered
+     * route, or a BEAM.md key no installed package declares, is a catalog↔host disagreement with a host
+     * remedy). It rides the aggregated consumer tail, not a hardcoded head, because every input it needs
+     * — the catalog, the gates, the manifest, the installed packages — is container- or statically
+     * resolvable, unlike the head audits the command feeds by hand.
+     */
+    public function test_flow_doctor_audit_is_registered_as_a_gate(): void
+    {
+        $registrations = [];
+
+        foreach ($this->app->make(BeamDoctorManifest::class)->registrations() as $registration) {
+            $registrations[$registration->audit] = $registration;
+        }
+
+        $this->assertArrayHasKey(FlowDoctorAudit::class, $registrations, 'FlowDoctorAudit is not registered in the doctor manifest.');
+        $this->assertTrue($registrations[FlowDoctorAudit::class]->gate, 'FlowDoctorAudit must register as a gate.');
+        $this->assertSame('splicewire/laravel-beam', $registrations[FlowDoctorAudit::class]->package);
     }
 
     /** The bridge is gone, so nothing may still be registering a check that only knew how to look for it. */
