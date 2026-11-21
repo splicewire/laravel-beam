@@ -39,12 +39,12 @@ class ContributionContextNodes implements ResourceContextContributor
 {
     protected WidgetContextProjector $projector;
 
-    /** frame-foundation 89: the projector is handed in (beam's provider passes the container's); null = a plain one. */
+    /** frame-foundation 89: the projector is handed in (beam's provider passes the container's); null = WidgetContextProjector::resolved(). */
     public function __construct(
         protected ResourceContributionRegistry $contributions,
         ?WidgetContextProjector $projector = null,
     ) {
-        $this->projector = $projector ?? new WidgetContextProjector;
+        $this->projector = $projector ?? WidgetContextProjector::resolved();   // 89 step 3 (review LOW 2)
     }
 
     /**

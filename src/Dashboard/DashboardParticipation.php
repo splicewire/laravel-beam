@@ -39,7 +39,7 @@ final class DashboardParticipation
      *                              walking the rail a second time and risking a different answer.
      * @param  WidgetContextProjector|null  $projector  frame-foundation 89: the projector, handed in by the caller (beam's
      *                                                  doctor audit passes the container's). TRAILING and nullable so every
-     *                                                  existing call compiles unchanged; null = a plain one.
+     *                                                  existing call compiles unchanged; null = WidgetContextProjector::resolved().
      * @return 'summary'|'overview'|null
      */
     public static function contextFor(ResourceDefinition $definition, RailLeaves $rail, ?string $href = null, ?NavLeaf &$seat = null, ?WidgetContextProjector $projector = null): ?string
@@ -47,7 +47,7 @@ final class DashboardParticipation
         $seat = null;
 
         try {
-            $contexts = ($projector ?? new WidgetContextProjector)->forClass(new ReflectionClass($definition->data));
+            $contexts = ($projector ?? WidgetContextProjector::resolved())->forClass(new ReflectionClass($definition->data));   // 89 step 3 (review LOW 2)
         } catch (Throwable) {
             return null; // a declaration frame's projector rejects is another audit's finding
         }
