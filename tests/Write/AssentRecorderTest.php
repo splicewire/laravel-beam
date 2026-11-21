@@ -55,7 +55,8 @@ class AssentRecorderTest extends TestCase
         };
         $this->app->instance(AssentRecorder::class, $recorder);
         $startingLevel = DB::connection()->transactionLevel();
-        $requirement = new WriteRequirement('assent-recorder-subjects:write');
+        $actor = new AssentRecorderSubject;
+        $requirement = new WriteRequirement('assent-recorder-subjects:write', actor: $actor);
 
         $subject = $this->app->make(ParticleWriter::class)->requiring($requirement)->write(
             new AssentRecorderSubject,
@@ -68,6 +69,7 @@ class AssentRecorderTest extends TestCase
         $this->assertTrue($seen->exists);
         $this->assertNotNull($seen->getKey());
         $this->assertSame($requirement, $seenRequirement);
+        $this->assertSame($actor, $seenRequirement->actor);
         $this->assertSame($startingLevel + 1, $transactionLevel);
         $this->assertSame($startingLevel, DB::connection()->transactionLevel());
     }

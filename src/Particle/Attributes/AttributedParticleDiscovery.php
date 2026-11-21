@@ -248,6 +248,7 @@ class AttributedParticleDiscovery
             description: $attribute->description,
             errors: $attribute->errors,
             requires: $attribute->requires,
+            recordsAssent: $attribute->recordsAssent,
         ), by: Registrant::fromClass($class));
     }
 

@@ -507,6 +507,9 @@ class ParticleOperation implements HasRegistryKey
      *                                         so {@see declaredErrors()} implies `errors:428` for it and the
      *                                         controller asks admission for it after the ability check. A
      *                                         Requires' `on:` splits a RESOURCE's verbs and is ignored here
+     * @param  bool  $recordsAssent  for a Write operation, declares that its handler records the submitted Agreement
+     *                               member through {@see \Splicewire\Beam\Agreements\AssentRecorder}; required when
+     *                               an occurrence or creates-its-subject Requirement is attached
      */
     public function __construct(
         public string $resource,
@@ -529,7 +532,11 @@ class ParticleOperation implements HasRegistryKey
         public ?string $description = null,
         public ?array $errors = null,
         public ?array $requires = null,
+        public bool $recordsAssent = false,
     ) {
+        if ($recordsAssent && $kind !== OperationKind::Write) {
+            throw new InvalidArgumentException("Particle operation [{$resource}.{$name}] can declare recordsAssent only when its kind is Write.");
+        }
         Requires::assertList($requires, "Particle operation [{$resource}.{$name}]");
         Requires::assertMemberInput($requires, $input, "Particle operation [{$resource}.{$name}]");
         $this->assertOutputMatchesKind();

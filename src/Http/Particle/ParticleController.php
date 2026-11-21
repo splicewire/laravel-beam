@@ -647,6 +647,7 @@ class ParticleController extends Controller
             $resource->writeBehavior(),
             $model->exists ? $model : null,
             $request === null ? [] : $this->submittedRequirementMembers($resource, $request),
+            $actor,
         );
 
         return $writer->requiring($requirement)->write($model, $attributes, $actor, $this->afterHook($resource, $input));
