@@ -197,6 +197,7 @@ class AttributeCarryParityTest extends TestCase
     description: 'The carry fixture operation.',
     errors: [422 => CarryFixtureOutput::class],
     requires: [new \Splicewire\Beam\Agreements\Requires('carry-terms', scope: 'organisation')],
+    recordsAssent: true,
 )]
 class CarryFixtureOp
 {
