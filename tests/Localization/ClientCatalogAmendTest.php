@@ -7,7 +7,7 @@ use Splicewire\Beam\Localization\Client\Data\ClientCatalogAddressData;
 use Splicewire\Beam\Localization\Client\Data\ClientCatalogData;
 use Splicewire\Beam\Localization\Client\Data\ClientLocalizationData;
 use Splicewire\Beam\Localization\Client\LangFingerprint;
-use Splicewire\Beam\Localization\TextDirection;
+use Splicewire\Beam\Localization\Enums\TextDirection;
 use Splicewire\Beam\Localization\TextNamespaces;
 use Splicewire\Beam\Tests\TestCase;
 

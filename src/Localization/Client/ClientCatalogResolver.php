@@ -10,7 +10,7 @@ use Splicewire\Beam\Localization\Client\Data\ClientCatalogAddressData;
 use Splicewire\Beam\Localization\Client\Data\ClientCatalogData;
 use Splicewire\Beam\Localization\Client\Data\ClientLocalizationData;
 use Splicewire\Beam\Localization\Client\Data\ClientMessageLineData;
-use Splicewire\Beam\Localization\TextDirection;
+use Splicewire\Beam\Localization\Enums\TextDirection;
 
 /**
  * The flattened, laddered client catalog (localization 16; ruling 02 §2 and §4).
@@ -99,9 +99,15 @@ final class ClientCatalogResolver
             $fingerprint, LangFingerprint::config(), self::admission($refused),
         ]));
         $stored = cache()->get($key);
-        if (! is_array($stored)) {
+        // A cached entry whose `direction` no longer parses (a poisoned or pre-enum store) is rebuilt rather than
+        // served, so `from()` never throws on an unknown value — tryFrom gates the rebuild, build() then yields a valid case.
+        $direction = is_array($stored) && is_string($stored['direction'] ?? null)
+            ? TextDirection::tryFrom($stored['direction'])
+            : null;
+        if (! is_array($stored) || $direction === null) {
             self::refreshTranslator($fingerprint);
             $stored = $this->build($locale, $realm);
+            $direction = TextDirection::from($stored['direction']);
             if (LangFingerprint::translations() === $fingerprint) {
                 cache()->put($key, $stored, (int) config('beam.localization.client_catalog_ttl', 86400));
             }
@@ -111,7 +117,7 @@ final class ClientCatalogResolver
             version: 1,
             locale: $stored['locale'],
             realm: $stored['realm'],
-            direction: TextDirection::from($stored['direction']),
+            direction: $direction,
             messages: array_map(static fn (array $line): ClientMessageLineData => new ClientMessageLineData($line[0], $line[1]), $stored['messages']),
         );
     }

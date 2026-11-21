@@ -7,7 +7,7 @@ use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Localization\Client\Jcs;
 use Splicewire\Beam\Localization\Client\JsonObject;
-use Splicewire\Beam\Localization\TextDirection;
+use Splicewire\Beam\Localization\Enums\TextDirection;
 
 /**
  * The flattened, laddered client catalog for one host, locale and realm (localization 16; ruling 02 §4). It maps 1:1

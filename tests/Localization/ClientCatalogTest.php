@@ -1,11 +1,13 @@
 <?php
 
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Splicewire\Beam\Localization\Catalog\KeyCatalog;
 use Splicewire\Beam\Localization\Client\ClientCatalogResolver;
 use Splicewire\Beam\Localization\Client\ClientNamespaces;
 use Splicewire\Beam\Localization\Client\DiscoveryState;
 use Splicewire\Beam\Localization\Client\LangFingerprint;
+use Splicewire\Beam\Localization\Enums\TextDirection;
 use Splicewire\Beam\Tests\TestCase;
 
 uses(TestCase::class);
@@ -107,6 +109,32 @@ it('serves the catalog by hash: private, ETag, 304, and the existing 404 for an 
     $this->getJson('/beam/localization/catalog/es', ['If-None-Match' => '"'.$catalog->hash().'"'])->assertStatus(304);
     $this->getJson('/beam/localization/catalog/fr')->assertNotFound()->assertJsonPath('code', 'client_catalog_locale_unsupported');
     $this->getJson('/beam/localization/catalog/es/no-such-realm')->assertNotFound()->assertJsonPath('code', 'client_catalog_realm_unknown');
+});
+
+it('serves the writing direction as the bare string on the real HTTP response (ticket 19)', function (): void {
+    config(['app.key' => 'base64:'.base64_encode(random_bytes(32))]);
+    clientResolver()->resolve('es', null);
+
+    $this->getJson('/beam/localization/catalog/es')->assertOk()->assertJsonPath('direction', 'ltr');
+});
+
+it('rebuilds rather than 500s when a cached entry carries an unknown direction (ticket 19)', function (): void {
+    $good = clientResolver()->resolve('es', null);
+    expect($good->direction)->toBe(TextDirection::Ltr);
+
+    // Poison the one cached catalog entry's direction with a value the enum does not know, under the same key.
+    $store = Cache::store()->getStore();
+    $storage = (new ReflectionClass($store))->getProperty('storage');
+    $storage->setAccessible(true);
+    $key = collect(array_keys($storage->getValue($store)))->first(fn (string $k): bool => str_contains($k, 'beam.client-catalog'));
+    expect($key)->not->toBeNull();
+    $value = Cache::get($key);
+    $value['direction'] = 'sideways';
+    Cache::put($key, $value, 3600);
+
+    // tryFrom gates the rebuild: no ValueError (a 500 for the cache TTL), and the rebuilt catalog is correct.
+    $recovered = clientResolver()->resolve('es', null);
+    expect($recovered->direction)->toBe(TextDirection::Ltr);
 });
 
 it('addresses a catalog by its content hash, and shares no initial catalog without a valid discovery', function (): void {

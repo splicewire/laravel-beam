@@ -281,19 +281,25 @@ class BeamTypeScriptTransformerExtensionTest extends TestCase
     }
 
     /**
-     * ticket 19 (text-direction enum): `ClientCatalogData::$direction` is the backed enum {@see TextDirection}. The
-     * catalog is a route-declared shape (`#[ResponseFromData]` on {@see ClientCatalogController}), so beam's extension
-     * reaches it by reference-walk and follows the property to the enum wherever it lives (decision 03, F9) — the enum
-     * need not sit in a scanned directory. The generated client names the enum as its own alias with the two string
-     * members it has always served, and the run logs no unresolved reference for it.
+     * ticket 19 (text-direction enum): when the declaration reader CAN see the catalog route, the reference walk reaches
+     * `ClientCatalogData::$direction`'s backed enum {@see TextDirection} and emits it as its own alias, with no
+     * unresolved reference. This is only the route form the reader sees — a `Class@__invoke` action.
+     *
+     * It is NOT how production registers the route. The catalog is mounted by class alone
+     * (`Route::get('beam/localization/catalog/{locale}/{realm?}', ClientCatalogController::class)`, BeamServiceProvider
+     * ~3051), and {@see RouteReturnType} skips an invokable single-action controller registered that way until it is
+     * read as `Class@__invoke` (ts-transformer-convergence ticket 07; docs/agents/typescript-generation.md §"One gap
+     * remains"). So the catalog's response type reaches a host ONLY through a scanned directory — no real host reaches it
+     * by reference-walk today. The enum therefore lives under a scanned `Enums` directory (ruling 03), and whether any
+     * host emits the class at all is the ticket's host-emission question, established separately in the report.
      */
-    public function test_the_catalog_direction_emits_the_text_direction_enum_without_an_unresolved_reference(): void
+    public function test_the_catalog_enum_resolves_when_the_declaration_reader_sees_the_route(): void
     {
         $particles = new ParticleResourceRegistry;
         $operations = new ParticleOperationRegistry;
         $router = new Router(new Dispatcher($this->app), $this->app);
-        // Resolvable Class@method form: the declaration reader skips an invokable single-action controller registered
-        // by class alone (RouteReturnType::declarationsFor), so the route is seeded as the controller's `__invoke`.
+        // The resolvable Class@__invoke form the reader can see — NOT production's class-alone registration, which
+        // RouteReturnType::declarationsFor skips (ts-transformer-convergence 07). This isolates the reference-walk step.
         $router->get('beam/localization/catalog/{locale}/{realm?}', [ClientCatalogController::class, '__invoke'])->name('beam.localization.catalog');
 
         $config = $this->factory()
@@ -313,10 +319,10 @@ class BeamTypeScriptTransformerExtensionTest extends TestCase
         // No unresolved reference: the walk completes warning-free (the enum resolves to a declared type, not `undefined`).
         $warnings = array_values(array_filter($log->messages, fn (array $m) => $m['level'] === 'warning'));
         $this->assertSame([], $warnings, json_encode($warnings));
-        // The enum emits as its own named alias listing the two string members it has always served, in beam's
-        // localization namespace, and the catalog property references that alias by its resolved path.
+        // The enum emits as its own named alias listing the two string members it has always served, under beam's
+        // localization Enums namespace, and the catalog property references that alias by its resolved path.
         $this->assertMatchesRegularExpression("/export type TextDirection = 'ltr' \\| 'rtl';/", $generated, $generated);
-        $this->assertMatchesRegularExpression('/\bdirection: Splicewire\.Beam\.Localization\.TextDirection,/', $generated, $generated);
+        $this->assertMatchesRegularExpression('/\bdirection: Splicewire\.Beam\.Localization\.Enums\.TextDirection,/', $generated, $generated);
     }
 }
 
