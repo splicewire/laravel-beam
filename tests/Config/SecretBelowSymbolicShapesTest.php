@@ -136,9 +136,12 @@ class SecretBelowSymbolicShapesTest extends TestCase
         $this->assertStringNotContainsString('fake-int-host', $this->wire('qa.intersect'), 'the reader redacts the host value');
 
         $this->store()->saveDraft('qa.intersect', [['pointer' => '/creds', 'op' => 'set', 'value' => ['label' => 'op label', 'token' => 'fake-int-op']]]);
+        $this->store()->publish('qa.intersect');
+        app(ConfigOverlay::class)->sync();
 
         $this->assertNoOperatorSecretStored();
         $this->assertTrue($this->store()->scope('qa.intersect')->draft['/creds/token']['secret'] ?? false);
+        $this->assertSame('fake-int-op', config('qa.intersect.creds.token'), 'published, the running configuration holds it');
     }
 
     // ---- self and parent ----
@@ -165,15 +168,16 @@ class SecretBelowSymbolicShapesTest extends TestCase
             $this->assertStringNotContainsString($secret, $this->wire('qa.tree'), "the reader redacts {$secret}");
         }
 
+        // Strict (review r2 LOW 5): today the schema refuses. When F2 is fixed this goes red on purpose: then assert the
+        // split (`draft['/node/child/pin']['secret']`) instead, which the declaration test above already guarantees.
         try {
             $this->store()->saveDraft('qa.tree', [
                 ['pointer' => '/node/child/pin', 'op' => 'set', 'value' => 'fake-tree-op-child'],
                 ['pointer' => '/node/up/pin', 'op' => 'set', 'value' => 'fake-tree-op-up'],
             ]);
-            $draft = $this->store()->scope('qa.tree')->draft;
-            $this->assertSame([true, true], [$draft['/node/child/pin']['secret'] ?? false, $draft['/node/up/pin']['secret'] ?? false], 'once the schema accepts the section, the split applies');
+            $this->fail('F2 is fixed (the schema accepted a ?self section): replace this refusal check with the split assertion');
         } catch (ValidationException $refused) {
-            $this->assertStringContainsString('does not validate against its section schema', json_encode($refused->errors(), JSON_UNESCAPED_SLASHES), 'today: the schema refuses the whole draft');
+            $this->assertStringContainsString('does not validate against its section schema', json_encode($refused->errors(), JSON_UNESCAPED_SLASHES));
         }
 
         $this->assertNoOperatorSecretStored();

@@ -206,9 +206,17 @@ class ConfigOverrideStore
             $pending = [];
 
             foreach ($normalized as $i => [$pointer, $op, $value, $secret, $merge, $via, $inherit]) {
-                // A parent op replaces what its earlier set split out: drop the secret children derived from it.
+                // A parent op replaces what its earlier set split out: drop the secret children derived from it, and
+                // (config-sections 20 r3) every split child BELOW it, by pointer prefix. A secret split out of a list
+                // item is addressed by its index, and a list index is not a stable identity: kept past a later set of
+                // the list or of any ancestor, it would re-apply at that position to whatever record now sits there.
                 if ($via === null) {
-                    $draft = array_filter($draft, fn (array $entry): bool => ($entry['via'] ?? null) !== $pointer);
+                    $draft = array_filter(
+                        $draft,
+                        fn (array $entry, string|int $at): bool => ($entry['via'] ?? null) === null
+                            || ($entry['via'] !== $pointer && ! str_starts_with((string) $at, $pointer.'/')),
+                        ARRAY_FILTER_USE_BOTH,
+                    );
                 }
 
                 if ($merge === ConfigMerge::Extend && $op === ConfigOverrideOp::Set) {
@@ -847,7 +855,7 @@ class ConfigOverrideStore
     {
         $derived = [];
 
-        foreach (JsonPointer::leaves($value) as $leaf) {
+        foreach ($this->secretCandidates($registered, $pointer, $value) as $leaf) {
             $segments = JsonPointer::segments($leaf);
             $declared = $registered->section::keyDeclaration([...JsonPointer::segments($pointer), ...$segments]);
 
@@ -861,6 +869,41 @@ class ConfigOverrideStore
         }
 
         return [$value, $derived];
+    }
+
+    /**
+     * The relative pointers {@see splitSecrets()} asks about: every leaf of `$value` ({@see JsonPointer::leaves()}), and,
+     * where a leaf is a non-empty LIST below a key that is not itself secret, the leaves of each of its records under an
+     * index segment, at any depth (config-sections 20 r3). `leaves()` treats a list as one value, which the ceiling and
+     * boundary walks need; secrecy cannot, or a declared secret inside a list of records BELOW the pointer written (a list
+     * in a nested Data, a map entry or a union member) stayed in the owned value in plain. A list declared secret itself
+     * stays one leaf and is split whole, as before.
+     *
+     * @param  array<array-key, mixed>  $value
+     * @return list<string>
+     */
+    private function secretCandidates(RegisteredConfigSection $registered, string $pointer, array $value, string $prefix = ''): array
+    {
+        $candidates = [];
+
+        foreach (JsonPointer::leaves($value) as $leaf) {
+            [, $item] = JsonPointer::get($value, $leaf);
+
+            if (is_array($item) && $item !== [] && array_is_list($item)
+                && ! $registered->section::keyDeclaration(JsonPointer::segments($pointer.$prefix.$leaf))->secret) {
+                foreach ($item as $index => $element) {
+                    if (is_array($element) && $element !== []) {
+                        array_push($candidates, ...$this->secretCandidates($registered, $pointer, $element, $prefix.$leaf.'/'.$index));
+                    }
+                }
+
+                continue;
+            }
+
+            $candidates[] = $prefix.$leaf;
+        }
+
+        return $candidates;
     }
 
     /**

@@ -272,11 +272,35 @@ The walk:
   map's declaration, so a full descent would make every generated map entry non-overridable;
 - **folds Data members that disagree.** `secret` holds if any member is secret. The ceiling is the strictest (the lowest
   rank). The effect is the heaviest (deploy over reload over live). Merge is `extend` if any member says extend, else
-  `replace` when the members differ. `env` is kept only when every member names the same one. A member that does not
-  declare the segment contributes the declaration above it;
-- **does not walk** interfaces, untyped properties, an array with no item attribute, or properties declared only on a
-  concrete subclass of an abstract Data type. A secret declared there is NOT found and reads as its nearest declared
-  ancestor.
+  `replace` when the members differ. `env` is kept only when every member names the same one (no env and the empty name
+  `''` are different). A member that does not declare the segment contributes the declaration above it;
+- **does not walk** interfaces, untyped properties, an array with no item attribute, properties declared only on a
+  concrete subclass of an abstract Data type, entry classes that are a `BaseData` but not a `Data`, and a
+  `SomeData|array` property's `#[MapValues]` entry (the Data member wins). A secret declared there is NOT found and reads
+  as its nearest declared ancestor.
+
+**Authorization changes too, below a union, an intersection and `self`/`parent`.** The walk descends fully into them, so
+a key below one now takes the inner class's own ceiling, merge and effect, exactly as a key below a plain `Nested` always
+did. Before, it took the outer property's. An operator-raised outer ceiling over an inner bare `#[ConfigKey]` (host) is
+now refused, and an inner ceiling above the outer one (say tenant under operator) is now admitted. Map and list ENTRIES
+are unchanged: they keep the map's or list's ceiling, merge and effect. No real section is affected. The only
+union-typed section property in any package or flagship main, on either fleet host, is the flagship's
+`MeterEntry::$unit_cost_usd` (`float|Optional`, a scalar), and generated sections declare a bare `#[ConfigKey]` at both
+levels.
+
+**The store splits a secret inside a LIST of records below the pointer it writes.** The store asks every leaf of the
+value written, and also each record of a list that sits below a non-secret key (a list in a nested Data class, a map
+entry or a union member), by index. A list declared secret itself is still split whole. A list index is not a stable
+identity, so a parent op now drops EVERY split child below its pointer (by pointer prefix, not only those it split
+itself). A secret split out of a list item never outlives a later set of the list or of an ancestor, so it can never
+re-apply to whatever record later sits at that index. The consequence, unchanged in kind from before: a list of records
+holding secrets loses those secrets on a re-save of the list or an ancestor that does not resend them. Use a map keyed by
+a stable name for records that hold secrets.
+
+**That prefix drop is a behaviour change for maps and objects too.** Before it, a set of `/a` dropped only the secrets
+it had split out itself. A secret a deeper set of `/a/b` had split out survived, by accident of pointer order, and
+missing from `/a`'s `inherit`. Now that set of `/a` drops it. Config-sections 19 (the next amendment) gives such a child
+back, kept and re-pointed, when the re-save of `/a` leaves it out. Tickets 20 and 19 should therefore land together.
 
 The two walks differ on purpose, and tests state how. Coverage resolves only a single Data member (`ConfigDataTypes::single()`:
 a two-Data union, a Data with a scalar and an intersection stay unresolved, as before), and it walks maps but not lists.

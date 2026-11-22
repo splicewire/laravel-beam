@@ -170,10 +170,16 @@ class SecretBelowNestedShapesTest extends TestCase
 
     public function test_an_operator_secret_in_a_map_below_a_union_is_never_stored_in_plain(): void
     {
-        $this->store()->saveDraft(self::ROOT, [['pointer' => '/group/mailers/g1/password', 'op' => 'set', 'value' => 'fake-group-op-pw']]);
+        // Through a PARENT set of the union-typed property, then published (Codex r2 LOW: through to a snapshot).
+        $this->store()->saveDraft(self::ROOT, [['pointer' => '/group', 'op' => 'set', 'value' => [
+            'mailers' => ['g1' => ['driver' => 'group', 'host' => 'g1.op.test', 'password' => 'fake-group-op-pw']],
+        ]]]);
+        $this->store()->publish(self::ROOT);
+        app(ConfigOverlay::class)->sync();
 
         $this->assertNoOperatorSecretStored();
         $this->assertTrue($this->store()->scope(self::ROOT)->draft['/group/mailers/g1/password']['secret'] ?? false);
+        $this->assertSame('fake-group-op-pw', config(self::ROOT.'.group.mailers.g1.password'));
     }
 
     public function test_the_reader_redacts_secrets_in_map_and_list_entries_on_the_wire(): void
@@ -209,7 +215,8 @@ class SecretBelowNestedShapesTest extends TestCase
                 $this->store()->saveDraft($root, [['pointer' => '/x/k', 'op' => 'set', 'value' => 'operator k']]);
                 $this->fail("{$root}: the operator tier wrote /x/k, which one member declares host-only");
             } catch (ValidationException $refused) {
-                $this->assertStringContainsString('/x/k', json_encode($refused->errors(), JSON_UNESCAPED_SLASHES), $root);
+                // The CEILING refusal, not the extend one (FoldTenantData also says extend; review r2 MEDIUM 1).
+                $this->assertStringContainsString('/x/k has the ceiling host', json_encode($refused->errors(), JSON_UNESCAPED_SLASHES), $root);
             }
         }
     }

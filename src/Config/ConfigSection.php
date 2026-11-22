@@ -167,7 +167,8 @@ abstract class ConfigSection extends Data
             $ceiling = $candidate->ceiling->rank() < $ceiling->rank() ? $candidate->ceiling : $ceiling;
             $effect = array_search($candidate->effect, $effects, true) > array_search($effect, $effects, true) ? $candidate->effect : $effect;
             $merges[$candidate->merge->value] = $candidate->merge;
-            $envs[(string) $candidate->env] = $candidate->env;
+            // null (no env) and '' are different declarations: key them apart (Codex r2 LOW).
+            $envs[$candidate->env === null ? "\0none" : 'env:'.$candidate->env] = $candidate->env;
         }
 
         $env = count($envs) === 1 ? reset($envs) : null;
