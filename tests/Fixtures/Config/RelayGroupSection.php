@@ -31,6 +31,8 @@ class RelayGroupSection extends ConfigSection
         public RelayGroup|Optional $maybe,
         #[ConfigKey(ceiling: ConfigTier::Operator, effect: ConfigEffect::Live)]
         public RelayHolder $holder,
+        #[ConfigKey(ceiling: ConfigTier::Operator, effect: ConfigEffect::Live)]
+        public SecretBoxes|Optional $boxes,
         #[ConfigKey(ceiling: ConfigTier::Operator, effect: ConfigEffect::Live), MapValues(RelayEntry::class)]
         public array|Optional $byId,
         #[ConfigKey(ceiling: ConfigTier::Operator, effect: ConfigEffect::Live)]

@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Tests\Config;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Splicewire\Beam\Config\ConfigSectionReader;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\Overrides\ConfigOverlay;
@@ -65,7 +66,10 @@ class SecretInListItemsTenantTest extends TestCase
         $this->app->instance(FakeTenancyContext::class, new FakeTenancyContext);
         $this->app->instance(TenancyContext::class, app(FakeTenancyContext::class));
 
-        config(['qa.trelay' => ['group' => ['relays' => [['host' => 'relay.host.test', 'password' => 'fake-lt-host-0']]]]]);
+        config(['qa.trelay' => [
+            'group' => ['relays' => [['host' => 'relay.host.test', 'password' => 'fake-lt-host-0']]],
+            'holder' => ['primary' => ['host' => 'p.host.test', 'password' => 'fake-lt-host-p']],
+        ]]);
         $this->app->when(ConfigSectionReader::class)->needs('$configDirectory')->give(realpath(__DIR__.'/../Fixtures/Config/host'));
         $this->app->instance(ConfigSectionRegistry::class, new ConfigSectionRegistry);
         foreach ([ConfigOverrideStore::class, ConfigOverlay::class, ConfigTenantOverlay::class] as $singleton) {
@@ -109,6 +113,38 @@ class SecretInListItemsTenantTest extends TestCase
         } finally {
             $context->leave();
         }
+    }
+
+    /**
+     * config-sections 19 r4 (Codex r3, lead LIST-1745): a LOCKED key's kept child is dropped. A tenant split its secret out of
+     * /holder; the operator then locks that key; the tenant's next re-save that inherits it does not keep its own entry
+     * (refusal() at the child's pointer), so the tier below (central, then the host) applies. The drop is SILENT to the
+     * saver: no notice is returned (stated in NOTES). A re-save that leaves the locked key out is refused, as before.
+     */
+    public function test_a_locked_keys_kept_child_is_dropped_from_the_tenants_draft_on_a_parent_re_save(): void
+    {
+        $this->asTenant(function (ConfigOverrideStore $tenant): void {
+            $tenant->saveDraft('qa.trelay', [['pointer' => '/holder', 'op' => 'set', 'value' => ['primary' => ['host' => 'p.tenant.test', 'password' => 'fake-lt-tenant-p']]]]);
+            $tenant->publish('qa.trelay');
+        });
+        $this->assertSame('fake-lt-tenant-p', $this->tenantView()['holder']['primary']['password'] ?? null, 'precondition: the tenant secret applies');
+
+        app(ConfigOverrideStore::class)->forTier(ConfigTier::Operator)->lock('qa.trelay', '/holder/primary/password', 'set centrally');
+
+        $this->asTenant(function (ConfigOverrideStore $tenant): void {
+            $tenant->saveDraft('qa.trelay', [['pointer' => '/holder', 'op' => 'set', 'value' => ['primary' => ['host' => 'p.tenant-2.test']], 'inherit' => ['/primary/password']]]);
+            $tenant->publish('qa.trelay');
+            $this->assertArrayNotHasKey('/holder/primary/password', $tenant->scope('qa.trelay')->draft, 'the locked child is not kept');
+
+            try {
+                $tenant->saveDraft('qa.trelay', [['pointer' => '/holder', 'op' => 'set', 'value' => ['primary' => ['host' => 'p.tenant-3.test']]]]);
+                $this->fail('the tenant removed a locked key');
+            } catch (ValidationException $refused) {
+                $this->assertStringContainsString('locked', json_encode($refused->errors(), JSON_UNESCAPED_SLASHES));
+            }
+        });
+
+        $this->assertSame('fake-lt-host-p', $this->tenantView()['holder']['primary']['password'] ?? null, 'the tier below applies, never the stale tenant secret');
     }
 
     /** r5: the tenant's set AT a list item (the index in its own pointer), then an unset: never the operator's secret. */

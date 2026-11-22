@@ -159,22 +159,22 @@ class SecretInListsAndAuthorizationTest extends TestCase
     }
 
     /**
-     * BEHAVIOUR CHANGE pinned (lead OK-1445): a parent op drops every split child below it by pointer prefix, maps and
-     * objects too. At f7ffaf5 a set of /holder did not drop the secret a deeper set of /holder/primary split out (only
-     * children whose via was exactly /holder went); now it does. Ticket 19 gives such a child back (kept and re-pointed)
-     * when the re-save leaves it out: 20 and 19 should land together. Red at f7ffaf5 by design.
+     * BEHAVIOUR CHANGE pinned (lead OK-1445): a parent op decides every split child below it by pointer prefix, maps and
+     * objects too. Ticket 20 r3 alone DROPPED the secret a deeper set of /holder/primary split out on a set of /holder.
+     * Config-sections 19 gives it back: kept and re-pointed to /holder, because the re-save leaves the leaf out and its
+     * object ancestor is present. (Under 20 alone this pinned the drop; 19 changes it on purpose. 20 and 19 land together.)
      */
-    public function test_a_parent_set_now_drops_a_secret_a_deeper_set_split_out(): void
+    public function test_a_parent_set_keeps_and_re_points_a_secret_a_deeper_set_split_out(): void
     {
         $this->publishSet('/holder/primary', ['host' => 'primary.op.test', 'password' => 'fake-lg-holder']);
         $this->assertSame('/holder/primary', $this->store()->scope('qa.relaygroup')->draft['/holder/primary/password']['via'] ?? null);
 
         $this->publishSet('/holder', ['primary' => ['host' => 'primary.op-2.test']]);
 
-        $this->assertArrayNotHasKey('/holder/primary/password', $this->store()->scope('qa.relaygroup')->draft, 'dropped by the ancestor set (19 keeps it)');
-        // The EFFECT (review r3 MEDIUM 1): the deeper /holder/primary entry stays in force, now WITHOUT its secret.
+        $this->assertSame('/holder', $this->store()->scope('qa.relaygroup')->draft['/holder/primary/password']['via'] ?? null, 'kept, and re-pointed to the ancestor (config-sections 19)');
+        // The EFFECT: the deeper /holder/primary entry stays in force, and with 19 it keeps its secret.
         $this->assertSame('primary.op.test', config('qa.relaygroup.holder.primary.host'), 'the deeper entry still applies over the ancestor');
-        $this->assertNull(config('qa.relaygroup.holder.primary.password'), 'but its secret is gone (until config-sections 19 keeps it)');
+        $this->assertSame('fake-lg-holder', config('qa.relaygroup.holder.primary.password'));
         $this->assertNoOperatorSecretStored();
     }
 

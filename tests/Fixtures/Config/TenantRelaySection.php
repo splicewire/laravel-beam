@@ -15,5 +15,7 @@ class TenantRelaySection extends ConfigSection
     public function __construct(
         #[ConfigKey(ceiling: ConfigTier::Tenant, effect: ConfigEffect::Live)]
         public RelayGroup $group,
+        #[ConfigKey(ceiling: ConfigTier::Tenant, effect: ConfigEffect::Live)]
+        public TenantHolder $holder,
     ) {}
 }

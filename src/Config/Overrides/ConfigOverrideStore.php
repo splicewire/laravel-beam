@@ -204,19 +204,21 @@ class ConfigOverrideStore
             $base = $this->base($root);
             $now = Carbon::now()->toIso8601String();
             $pending = [];
+            $carried = [];
+
+            foreach ($normalized as [$derivedPointer, , , , , $derivedVia]) {
+                if ($derivedVia !== null) {
+                    $carried[$derivedVia][$derivedPointer] = true;
+                }
+            }
 
             foreach ($normalized as $i => [$pointer, $op, $value, $secret, $merge, $via, $inherit]) {
-                // A parent op replaces what its earlier set split out: drop the secret children derived from it, and
-                // (config-sections 20 r3) every split child BELOW it, by pointer prefix. A secret split out of a list
-                // item is addressed by its index, and a list index is not a stable identity: kept past a later set of
-                // the list or of any ancestor, it would re-apply at that position to whatever record now sits there.
+                // config-sections 19 (on 20 r3's prefix drop): a parent op decides EVERY split child below it, by pointer
+                // prefix: kept when the op inherits it, dropped otherwise ({@see splitChildrenUnder()}). A child whose
+                // path passes through a LIST index is never kept: a list index is not a stable identity.
                 if ($via === null) {
-                    $draft = array_filter(
-                        $draft,
-                        fn (array $entry, string|int $at): bool => ($entry['via'] ?? null) === null
-                            || ($entry['via'] !== $pointer && ! str_starts_with((string) $at, $pointer.'/')),
-                        ARRAY_FILTER_USE_BOTH,
-                    );
+                    [$draft, $kept] = $this->splitChildrenUnder($registered, $draft, $pointer, $op, $value, $secret, $inherit, $carried[$pointer] ?? []);
+                    $inherit = $kept === [] ? $inherit : array_values(array_unique([...$inherit, ...$kept]));
                 }
 
                 if ($merge === ConfigMerge::Extend && $op === ConfigOverrideOp::Set) {
@@ -682,9 +684,12 @@ class ConfigOverrideStore
      * - **Secrets at every depth.** A declared secret leaf inside an object `set` is taken out of the object and
      *   written as its own `set` at its own pointer, through the same encrypted path a direct secret write takes, so
      *   it never reaches a plain override value, a scope draft or a version snapshot. The derived op carries `via`
-     *   (the parent pointer), so the parent's next op replaces it; the parent inherits the leaf, so unsetting the
-     *   derived op falls back to the tier below. Except inside a LIST item (any list index in the absolute pointer): such a
-     *   leaf is never inherited, so unsetting it leaves the item without the secret (config-sections 20 r5).
+     *   (the parent pointer); the parent inherits the leaf, so unsetting the derived op falls back to the tier below.
+     *   Except inside a LIST item (a list index in the absolute pointer, by the declaration): such a leaf is never
+     *   inherited, so unsetting it leaves the item without the secret (config-sections 20 r5). A later parent op decides
+     *   the child again ({@see splitChildrenUnder()}): replaced when it carries a new value, kept when it leaves the leaf
+     *   out (or sends the redaction `null`), dropped on `null`/`unset`, and never kept inside a list item
+     *   (config-sections 19).
      *
      * @param  list<array<string, mixed>>  $ops
      * @param  array<array-key, mixed>  $base  the section root without the operator tier
@@ -718,9 +723,10 @@ class ConfigOverrideStore
 
             $declared = $registered->section::keyDeclaration(JsonPointer::segments($pointer));
 
-            // An `unset` of a pointer the operator has since locked is allowed: it only gives the key back to the
-            // tiers below, which is what the lock asks for.
-            if (($refused = $this->refusal($registered, $pointer, [], $locks)) !== null && ! ($kind === ConfigOverrideOp::Unset && $declared->ceiling->admits($this->tier()))) {
+            // An `unset` is always allowed: it only removes this tier's own row and gives the key back to the tiers below,
+            // which is what a lock asks for, and what a NARROWED ceiling needs to clear a stale entry the tier wrote before
+            // (config-sections 19 r4, Claude r3 LOW: the stale secret could not be removed at its own pointer).
+            if (($refused = $this->refusal($registered, $pointer, [], $locks)) !== null && $kind !== ConfigOverrideOp::Unset) {
                 throw ConfigOverrideRefusal::because("ops.{$i}.pointer", $refused);
             }
 
@@ -762,7 +768,7 @@ class ConfigOverrideStore
 
                 [$value, $derived] = $this->splitSecrets($registered, $pointer, $value);
 
-                foreach ($derived as [$child]) {
+                foreach ($derived as $d => [$child, $leaf]) {
                     $relative = substr($child, strlen($pointer));
 
                     // config-sections 20 r4/r5: a split secret through a LIST index (the full pointer, by the declaration)
@@ -772,7 +778,20 @@ class ConfigOverrideStore
                     if (! $this->listPath($registered, $pointer.$relative)) {
                         $inherit[] = $relative;
                     }
+
+                    // config-sections 19: two secret leaves inside a parent set are NOT a new value for the secret, so
+                    // they are not derived (the leaf is already out of the value): a NULL, which is the reader's
+                    // redaction placeholder sent back by a form that cannot read the secret, and a leaf the op's own
+                    // `inherit` names, which was refilled from the tier below only for the checks above. Either way the
+                    // parent inherits the leaf, and saveDraft keeps a stored secret there. NOT through a list index
+                    // (lead T19-R2-1435): a list position is not a record's identity, so a null there stays an explicit
+                    // null and an inherited leaf there is derived, both exactly as before this ticket.
+                    if (! $this->listPath($registered, $pointer.$relative) && ($leaf === null || self::names($named ?? [], $relative))) {
+                        unset($derived[$d]);
+                    }
                 }
+
+                $derived = array_values($derived);
 
                 // config-sections 08 import: a mirror file records the inherit (the leaves the set does NOT own). UNION it
                 // onto what this host derives — a leaf the recording host owned/split but this host would not is still kept
@@ -870,6 +889,88 @@ class ConfigOverrideStore
     protected function hostOwnedOut(RegisteredConfigSection $registered, string $pointer, array $value, array $locks = []): array
     {
         return ConfigTierBoundary::split($registered, $pointer, $value, $this->tier(), $locks);
+    }
+
+    /**
+     * config-sections 19: a parent op at `$pointer` decides every SPLIT secret child stored below it (an entry with `via`,
+     * matched by pointer prefix, so a child a deeper set split out is decided too). A child is KEPT, its `via` moved to
+     * `$pointer` and its relative pointer returned for the parent's `inherit`, when all of these hold:
+     * - the op is a `set` of an object, and `$pointer` itself is not declared secret;
+     * - this save does not carry a new value for it ({@see $carried}: the secrets this op split out);
+     * - it is still declared secret (a key no longer secret, or no longer declared, is dropped: folding it into the parent
+     *   would write a formerly-secret value in plain);
+     * - the op's `inherit` names it or an ancestor of it, OR every ancestor of it below `$pointer` is present in the value
+     *   as an object (an empty object counts): an ancestor the value leaves out was removed by the operator, and a scalar or
+     *   null there replaced the subtree.
+     * Every other split child is dropped (a `null` or `unset` of the parent included). Removing a kept secret is explicit:
+     * `unset` or `null` on its own pointer, or `unset` of the parent. Entries without `via` (secrets set directly) are not
+     * decided here.
+     *
+     * @param  array<string, array<string, mixed>>  $draft
+     * @param  list<string>  $inherit  the op's own inherit (relative pointers)
+     * @param  array<string, true>  $carried  the child pointers this save derives anew below `$pointer`
+     * @return array{0: array<string, array<string, mixed>>, 1: list<string>} the draft, and the kept children's relative pointers
+     */
+    protected function splitChildrenUnder(RegisteredConfigSection $registered, array $draft, string $pointer, ConfigOverrideOp $op, mixed $value, bool $secret, array $inherit, array $carried): array
+    {
+        $kept = [];
+        $locks = null;
+
+        foreach ($draft as $child => $entry) {
+            $child = (string) $child;
+
+            if (($entry['via'] ?? null) === null || ! str_starts_with($child, $pointer.'/')) {
+                continue;
+            }
+
+            $relative = substr($child, strlen($pointer));
+            $locks ??= $this->tier() === ConfigTier::Tenant ? $this->locks($registered->root()) : [];
+
+            if ($op === ConfigOverrideOp::Set && ! $secret && is_array($value) && ! isset($carried[$child])
+                && ! $this->listPath($registered, $child)
+                && $registered->section::keyDeclaration(JsonPointer::segments($child))->secret
+                && $this->refusal($registered, $child, [], $locks) === null
+                && (self::names($inherit, $relative) || self::ancestorsPresent($value, $relative))) {
+                $draft[$child]['via'] = $pointer;
+                $kept[] = $relative;
+            } else {
+                unset($draft[$child]);
+            }
+        }
+
+        return [$draft, $kept];
+    }
+
+    /** Whether one of `$named` (relative pointers) is `$relative` or an ancestor of it. @param list<string> $named */
+    private static function names(array $named, string $relative): bool
+    {
+        foreach ($named as $name) {
+            if ($relative === $name || str_starts_with($relative, $name.'/')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Whether every ancestor of `$relative` (below the value's root) is present in `$value` as an object. @param array<array-key, mixed> $value */
+    private static function ancestorsPresent(array $value, string $relative): bool
+    {
+        $segments = JsonPointer::segments($relative);
+        array_pop($segments);
+        $cursor = $value;
+
+        foreach ($segments as $segment) {
+            // An object ancestor (a list ancestor is ruled out by the DECLARATION before this: listPath()). A map keyed
+            // "0", "1", … decodes to a PHP list, so the value's shape alone cannot tell them apart.
+            if (! is_array($cursor) || ! array_key_exists($segment, $cursor) || ! is_array($cursor[$segment])) {
+                return false;
+            }
+
+            $cursor = $cursor[$segment];
+        }
+
+        return true;
     }
 
     /**

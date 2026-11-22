@@ -342,6 +342,47 @@ known. If a host finds one:
   copies its plaintext into the new version snapshot.
 - Snapshots written before, and backups, keep the plaintext. Rotate a value that may have been exposed.
 
+## Amendment, 2026-11-22 (config-sections 19): a parent set keeps the secret children it inherits
+
+A declared secret inside an object `set` is split into its own encrypted entry (`via` = the parent's pointer) and listed
+in the parent's `inherit`. Until now ANY later op on that parent dropped every such child first. A caller that cannot
+read the secret can only re-save the object without it, so the re-save deleted the stored secret. Two callers hit this:
+the Config area's edit slot, which round-trips an object as the reader serves it, with a secret leaf as `null`, and
+beam-ux's mirror import.
+
+`ConfigOverrideStore` now decides each split child below the op's pointer, matched by pointer prefix (so a child a
+deeper set split out is decided too):
+
+- **Replaced** when the incoming `set` carries a new, non-null value for it (as before).
+- **Kept**, re-pointed to the op and listed in its `inherit`, when the `set` leaves the leaf out or sends `null` there.
+  A `null` at a declared-secret leaf inside a parent `set` is the reader's redaction placeholder, never an explicit-null
+  override. Keeping needs every ancestor of the child below the op present in the value as an object, or the op's own
+  `inherit` naming the child or an ancestor (the form a mirror import sends). A leaf the op's `inherit` names is
+  inherited, never re-derived from the tier below, so an import no longer pins a copy of the host's secret.
+- **Dropped** when the op is `null` or `unset`, when an ancestor of the child is absent from the value or is not an
+  object there, when the op's own pointer is declared secret, or when the child is no longer declared secret, or no
+  longer declared (it is never folded into the parent in plain). Also dropped when the child's CURRENT ceiling, or at
+  the tenant tier an operator lock, no longer admits the saving tier; the tier below then applies. That drop is
+  SILENT: the saver gets no notice, and a tenant secret dropped under a lock does not return when the lock is lifted.
+  And always dropped when its ABSOLUTE pointer (the op's own pointer included) passes through a LIST index, as the
+  declaration says (`ConfigSection::throughListIndex()`, the 20 r5 rule above).
+
+**A list index is not a stable identity.** A record in a list is addressed only by its position, and a delete or a
+reorder changes that position. A secret kept by position would follow the position to another record: deleting relay A
+of `[A, B]` would hand A's credential to B. So a split child below a list index is never kept, whether the
+index sits below the op or in the op's own pointer (a set AT `/relays/0` keeps nothing below it). A `null` at a secret
+inside a list item stays an explicit null and is not read as the redaction placeholder, so nothing is inherited by
+position from the tier below. Both behave exactly as before this ticket. A list of records holding secrets therefore
+loses those secrets on any re-save that does not resend them. Use a map keyed by a stable name for records that hold
+secrets. List-ness comes from the DECLARATION: a `#[MapValues]` map keyed by numeric names (ids such as `"10"`) is a
+map, so its secrets ARE kept; only an undeclared shape falls back to treating an all-digit segment as an index.
+
+**Behaviour change:** leaving a secret out of a re-save no longer removes it. Removing a secret takes an explicit
+`unset` or `null` on its own pointer, or an `unset` of the parent. An `unset` is always allowed, whatever the key's
+current ceiling or lock: it only removes the saving tier's own row, so a tier can still clear a stale secret after the
+key's ceiling narrowed below it. A kept child writes no new revision row, so no secret
+is written again. Secrets set directly at their own pointer (no `via`) are not decided by a parent op, as before.
+
 ## Consequences
 
 - Declaring a section changes no behaviour: every undeclared key is deploy-only and not overridable. On the first day,
