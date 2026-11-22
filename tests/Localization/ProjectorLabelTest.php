@@ -1,6 +1,7 @@
 <?php
 
 use Schemastud\Frame\Contracts\ResourceContextContributor;
+use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Registry\ContextManifest;
 use Schemastud\Frame\Registry\DeferredWidgetLabel;
 use Schemastud\Frame\Registry\WidgetContextProjector;
@@ -11,7 +12,23 @@ use Splicewire\Beam\Particle\Contribution\ResourceContributionRegistry;
 use Splicewire\Beam\Tests\Fixtures\Localization\RouteRowData;
 use Splicewire\Beam\Tests\TestCase;
 
-uses(TestCase::class);
+/**
+ * frame's provider is loaded for THIS file only (the per-class pattern of ModelLessReadGateTest:54 and
+ * HookResponseDeclarationsTest:97): what is pinned here is frame's binding of the projector, and beam's base TestCase
+ * deliberately boots without frame (tests/TestCase.php:53-58, ADR-0082; BeamBootTest asserts it). Without it the
+ * container AUTOWIRES WidgetContextProjector with beam's singleton BeamWidgetLabel, which is not the path a host runs.
+ */
+class ProjectorLabelTestCase extends TestCase
+{
+    protected function getPackageProviders($app): array
+    {
+        return [FrameServiceProvider::class, ...parent::getPackageProviders($app)];
+    }
+}
+
+// declared ABOVE uses(): run alone, the parent TestCase is not loaded yet, so PHP does not hoist a subclass declared below
+// and Pest's uses() would not find it (r7d: TestCaseClassOrTraitNotFound)
+uses(ProjectorLabelTestCase::class);
 
 /*
  * frame-foundation 89 (land step 3: lands with beam's lock bump to frame's 89 commit) — the context projector is handed in.
