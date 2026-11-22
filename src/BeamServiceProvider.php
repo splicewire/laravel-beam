@@ -95,6 +95,7 @@ use Splicewire\Beam\Config\Overrides\ConfigTenantOverlay;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\BeamSeedCommand;
+use Splicewire\Beam\Console\BrowserCoverageCommand;
 use Splicewire\Beam\Console\ConfigSectionSchemasCommand;
 use Splicewire\Beam\Console\ConvergencePreflightCommand;
 use Splicewire\Beam\Console\DocblockCommand;
@@ -127,6 +128,7 @@ use Splicewire\Beam\Discovery\RouteReachability;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BootReadConfigAudit;
+use Splicewire\Beam\Doctor\BrowserSuiteMountAudit;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\ConfigSectionCoverageAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
@@ -1683,6 +1685,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // live catalog this host composed, and in the manifest like beam-core's newer audits.
         $manifest->register('splicewire/laravel-beam', FlowDoctorAudit::class, gate: true);
 
+        // browser-journeys 13: the installed-package browser-suite mount. It GATES because a vendored
+        // `tests/Browser` suite that no phpunit.xml testsuite collects — or a mounted directory with no
+        // test files — reports a green run while proving none of that suite, the exact silent success this
+        // mechanism exists to catch. Everything host-dependent stays a NOTE: a host that cannot run Pest
+        // browser tests at all (no Pest 4 / no plugin), or one where ticket 12's package suites simply are
+        // not installed yet, is inconclusive, never a failure (13 does not block on 12). Static and
+        // never-throws — it reads composer + phpunit + the vendor file tree, booting no Pest class (F12).
+        $manifest->register('splicewire/laravel-beam', BrowserSuiteMountAudit::class, gate: true);
+
         // Surgeon side — the three position-sensitive shapes, which need the AST. A host that composes beam
         // without `rushing/laravel-surgeon` autoloads nothing here and pays nothing; SurgeonWiringAudit
         // already instruments that case, so the silence is reported rather than mysterious.
@@ -2279,6 +2290,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         if ($this->app->runningInConsole()) {
             $this->commands([
                 BeamDoctorCommand::class,
+                // browser-journeys 13 (ticket 03 Q6): the read-only coverage gate. Reads a browser run's
+                // JUnit and exits non-zero when any installed splicewire/* browser suite that ships tests
+                // produced zero testcases — the Sweep's "did the mounted suites actually run?" check.
+                BrowserCoverageCommand::class,
                 BeamInstallCommand::class,
                 // The install's convergence preflight, as a READ-ONLY entry point (beam-facade 146).
                 // Registered beside the installer because it is the same phase asked without the mutation:
