@@ -252,21 +252,46 @@ Raised by the cross-review. Two are decided here because ticket 05 builds on the
 Why seams rather than a subclass: rebinding the overlay singleton from another package would hand every resolver that
 package's subclass, and the result would depend on provider registration order.
 
-## Amendment, 2026-11-22 (config-sections 20): a declaration below a union type
+## Amendment, 2026-11-22 (config-sections 20): a declaration below a nested Data shape
 
-Decision 6 holds only if every declared secret is FOUND. `ConfigSection::keyDeclaration()` descended into nested Data
-only through a single named type, so a union ended the walk: a key below `Nested|Optional` or `Nested|Optional|null`
-read as not secret. The store then kept the operator's value in plain in the override row, the scope draft and the
-version snapshot, and the reader served it unredacted.
+Decision 6 holds only for a secret the declaration walk FINDS. `ConfigSection::keyDeclaration()` descended into nested
+Data only through a single named type. A union, a map or list of records, an intersection and `self`/`parent` all ended
+the walk, so a key declared secret below them read as plain: the store kept the operator's value in plain in the
+override row, the scope draft and the version snapshot, and the reader served it unredacted.
 
-The walk now descends into the Data member of a union (`Optional`, null and scalars hold no keys), as
-`ConfigSectionCoverage` already resolved it. A union of TWO or more Data classes is walked through each member, and the
-result fails towards secret: a key secret in any member is secret. The nullable form `?Nested` was always walked and
-stays so (a regression test pins it).
+`ConfigDataTypes` is now the one reading of a property's type that `keyDeclaration()` and `ConfigSectionCoverage` share.
+The walk:
 
-An audit at the fix (every package and flagship main, every worktree on both fleet hosts) found no Config Section with a
-secret below a union-typed property, so no stored plaintext is known. A host that finds one later re-saves that key once,
-so it splits into its encrypted entry; version snapshots written before keep the plaintext they hold.
+- **descends fully** into the Data class(es) a property holds: a named type (`Nested`), a nullable type (`?Nested`), the
+  Data members of a union (`Nested|Optional`, `Nested|Optional|null`, `A|B`), the Data member of an intersection
+  (`Nested&Iface`), and `self`/`parent`, resolved against the declaring class. `Optional`, null and scalars hold no keys;
+- **descends for secrecy only** into the entry class of a map of records (`#[MapValues(Entry::class)]`) or a list of
+  records (`#[DataCollectionOf(Entry::class)]`). One pointer segment names the entry (a key or an index). A secret declared
+  below it raises `secret` on the map's own declaration, and the map's ceiling, merge and effect stand. Each generated
+  entry property carries a bare `#[ConfigKey]` (ceiling host), and `ConfigTierBoundary` resolves a map's entries to the
+  map's declaration, so a full descent would make every generated map entry non-overridable;
+- **folds Data members that disagree.** `secret` holds if any member is secret. The ceiling is the strictest (the lowest
+  rank). The effect is the heaviest (deploy over reload over live). Merge is `extend` if any member says extend, else
+  `replace` when the members differ. `env` is kept only when every member names the same one. A member that does not
+  declare the segment contributes the declaration above it;
+- **does not walk** interfaces, untyped properties, an array with no item attribute, or properties declared only on a
+  concrete subclass of an abstract Data type. A secret declared there is NOT found and reads as its nearest declared
+  ancestor.
+
+The two walks differ on purpose, and tests state how. Coverage resolves only a single Data member (`ConfigDataTypes::single()`:
+a two-Data union, a Data with a scalar and an intersection stay unresolved, as before), and it walks maps but not lists.
+The declaration walk takes every Data member. Through the shared reading, Coverage now also resolves a `?self`/`?parent`
+property that names one Data class (it left them unresolved before).
+
+An audit at the fix scanned every package and flagship main and every worktree on both fleet hosts. It found no Config
+Section with a secret below any of these shapes, and no real section declares a secret at all, so no stored plaintext is
+known. If a host finds one:
+
+- An override row stored in plain before the fix keeps its stored `secret: false`. It is read as plain, with no decrypt
+  attempt and no crash, and the reader now redacts it on the wire.
+- Until that key itself is re-saved (it then splits into its encrypted entry), every save of ANOTHER key in the section
+  copies its plaintext into the new version snapshot.
+- Snapshots written before, and backups, keep the plaintext. Rotate a value that may have been exposed.
 
 ## Consequences
 

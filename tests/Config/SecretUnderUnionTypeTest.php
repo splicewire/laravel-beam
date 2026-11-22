@@ -104,6 +104,7 @@ class SecretUnderUnionTypeTest extends TestCase
         $this->assertTrue(UnionEitherSection::keyDeclaration(['either', 'apiKey'])->secret, 'secret in ANY member is secret');
         $this->assertFalse(UnionEitherSection::keyDeclaration(['either', 'label'])->secret, 'plain in every member stays plain');
         $this->assertFalse(UnionEitherSection::keyDeclaration(['either', 'plainOnly'])->secret, 'a key only one member declares keeps that declaration');
+        $this->assertSame(\Splicewire\Beam\Enums\ConfigTier::Operator, UnionEitherSection::keyDeclaration(['either', 'apiKey'])->ceiling, 'both members say operator');
     }
 
     public function test_an_operator_secret_below_a_union_property_is_never_stored_in_plain(): void

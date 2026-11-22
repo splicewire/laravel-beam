@@ -4,13 +4,12 @@ namespace Splicewire\Beam\Config;
 
 use LogicException;
 use ReflectionClass;
-use ReflectionNamedType;
 use ReflectionProperty;
-use ReflectionUnionType;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Config\Attributes\ConfigKey;
 use Splicewire\Beam\Config\Attributes\ConfigRoot;
 use Splicewire\Beam\Enums\ConfigEffect;
+use Splicewire\Beam\Enums\ConfigMerge;
 use Splicewire\Beam\Enums\ConfigTier;
 
 /**
@@ -59,11 +58,23 @@ abstract class ConfigSection extends Data
      * any key above it, declares none. The NEAREST declaration on the path wins, so a key nested under a
      * declared map inherits that map's declaration.
      *
-     * The walk descends into the Data class a property holds: its named type (`Nested`, `?Nested`), or the Data
-     * member(s) of a union (`Nested|Optional`, `Nested|Optional|null`; `Optional`, null and scalars hold no keys). When a
-     * union holds TWO or more Data classes, each is walked and the result FAILS TOWARDS SECRET: a key secret in any member
-     * is secret (config-sections 20; before it, a union ended the walk, so a secret below `Nested|Optional` read as plain
-     * and was stored and served unredacted).
+     * The walk (config-sections 20; types read by {@see ConfigDataTypes}, the reading Coverage shares):
+     * - descends FULLY into the Data class(es) a property holds: a named or nullable type, the Data member(s) of a union
+     *   (`Nested|Optional`, `Nested|Optional|null`, `A|B`), the Data member of an intersection (`Nested&Iface`), and
+     *   `self`/`parent`, resolved against the declaring class;
+     * - descends into the entry class of a map of records (`#[MapValues(Entry::class)]`) or a list of records
+     *   (`#[DataCollectionOf(Entry::class)]`) FOR SECRECY ONLY: one segment names the entry (a key or an index), and a
+     *   secret declared below RAISES `secret` on the map's own declaration, whose ceiling, merge and effect stand (every
+     *   generated entry property carries a bare `#[ConfigKey]`, and {@see ConfigTierBoundary} resolves a map's entries to
+     *   the map's declaration);
+     * - when two or more Data members disagree, FOLDS them: secret if any member is secret, the STRICTEST ceiling (the
+     *   one admitting the fewest tiers), the heaviest effect (deploy over reload over live), merge `extend` if any member
+     *   says extend, else `replace` when they differ, and an `env` only when every member names the same one. A member
+     *   that does not declare the segment contributes the declaration above it.
+     * - does NOT walk: interfaces, untyped properties, an array with no item attribute, and properties only a concrete
+     *   subclass of an abstract Data type declares. A secret declared there is not found.
+     * Before ticket 20 a union, an intersection and `self`/`parent` ended the walk and maps and lists were never entered, so
+     * a secret below them read as plain: stored in plain and served unredacted.
      *
      * @param  list<string>  $segments  the pointer's unescaped segments, relative to the root
      */
@@ -108,36 +119,66 @@ abstract class ConfigSection extends Data
 
             $attribute = $property->getAttributes(ConfigKey::class)[0] ?? null;
             $here = $attribute !== null ? $attribute->newInstance() : $declared;
-            $reached[] = self::declarationIn(self::dataClasses($property), $segments, $here);
-        }
+            $nested = ConfigDataTypes::nested($property);
 
-        foreach ($reached as $candidate) {
-            if ($candidate->secret) {
-                return $candidate;
+            if ($nested !== []) {
+                $reached[] = self::declarationIn($nested, $segments, $here);
+
+                continue;
             }
+
+            $entry = ConfigDataTypes::mapEntry($property) ?? ConfigDataTypes::listEntry($property);
+
+            // A map or list of records: the next segment names an entry (a key or an index). What the entry class
+            // declares below it raises SECRECY only; the map's own ceiling, merge and effect stand.
+            if ($entry !== null && count($segments) > 1 && ! $here->secret
+                && self::declarationIn([$entry], array_slice($segments, 1), $here)->secret) {
+                $here = new ConfigKey($here->ceiling, $here->effect, true, $here->merge, $here->env);
+            }
+
+            $reached[] = $here;
         }
 
-        return $reached[0];
+        return self::fold($reached);
     }
 
     /**
-     * The Data classes a property holds: its named type, or every Data member of a union or nullable type.
+     * One declaration from what each Data member of a union reached: the only one, or, when two or more disagree, secret
+     * if any is, the strictest ceiling, the heaviest effect, merge `extend` if any says extend (else `replace` when they
+     * differ), and an `env` only when every member names the same one (two different variables are not one key's binding).
      *
-     * @return list<class-string<Data>>
+     * @param  non-empty-list<ConfigKey>  $reached
      */
-    private static function dataClasses(ReflectionProperty $property): array
+    private static function fold(array $reached): ConfigKey
     {
-        $type = $property->getType();
-        $members = $type instanceof ReflectionUnionType ? $type->getTypes() : [$type];
-        $data = [];
-
-        foreach ($members as $member) {
-            if ($member instanceof ReflectionNamedType && ! $member->isBuiltin() && is_subclass_of($member->getName(), Data::class)) {
-                $data[] = $member->getName();
-            }
+        if (count($reached) === 1) {
+            return $reached[0];
         }
 
-        return $data;
+        $effects = [ConfigEffect::Live, ConfigEffect::Reload, ConfigEffect::Deploy];
+        $ceiling = $reached[0]->ceiling;
+        $effect = $reached[0]->effect;
+        $merges = [];
+        $envs = [];
+        $secret = false;
+
+        foreach ($reached as $candidate) {
+            $secret = $secret || $candidate->secret;
+            $ceiling = $candidate->ceiling->rank() < $ceiling->rank() ? $candidate->ceiling : $ceiling;
+            $effect = array_search($candidate->effect, $effects, true) > array_search($effect, $effects, true) ? $candidate->effect : $effect;
+            $merges[$candidate->merge->value] = $candidate->merge;
+            $envs[(string) $candidate->env] = $candidate->env;
+        }
+
+        $env = count($envs) === 1 ? reset($envs) : null;
+
+        $merge = match (true) {
+            count($merges) === 1 => reset($merges),
+            isset($merges[ConfigMerge::Extend->value]) => ConfigMerge::Extend,
+            default => ConfigMerge::Replace,
+        };
+
+        return new ConfigKey($ceiling, $effect, $secret, $merge, $env);
     }
 
     /**

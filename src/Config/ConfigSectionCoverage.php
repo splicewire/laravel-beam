@@ -3,13 +3,10 @@
 namespace Splicewire\Beam\Config;
 
 use ReflectionClass;
-use ReflectionNamedType;
 use ReflectionProperty;
-use ReflectionUnionType;
 use Schemastud\DataSchemas\Attributes\Description;
 use Schemastud\DataSchemas\Attributes\MapValues;
 use Spatie\LaravelData\Data;
-use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Config\Attributes\ConfigDraft;
 use Splicewire\Beam\Config\Attributes\ConfigKey;
 use Splicewire\Beam\Config\Attributes\ConfigOpaque;
@@ -209,39 +206,19 @@ class ConfigSectionCoverage
     /**
      * The Data class a property holds: its own named type, or the ONE Data member of a union whose other members are only
      * `Optional` and/or null (the generator types a map-entry key some entries lack as `Nested|Optional`; build-qa and
-     * review-r1, 2026-11-16). A union of two Data classes is ambiguous and stays unresolved.
+     * review-r1, 2026-11-16). A union of two Data classes is ambiguous and stays unresolved. The type is read by
+     * {@see ConfigDataTypes}, the one reading `ConfigSection::keyDeclaration()` shares (config-sections 20).
      *
      * @return class-string<Data>|null
      */
     private static function dataClass(ReflectionProperty $property): ?string
     {
-        $type = $property->getType();
-        $members = $type instanceof ReflectionUnionType ? $type->getTypes() : [$type];
-        $data = [];
-
-        foreach ($members as $member) {
-            if (! $member instanceof ReflectionNamedType) {
-                return null;
-            }
-
-            $name = $member->getName();
-
-            if (! $member->isBuiltin() && is_subclass_of($name, Data::class)) {
-                $data[] = $name;
-            } elseif ($name !== Optional::class && $name !== 'null') {
-                return null;
-            }
-        }
-
-        return count($data) === 1 ? $data[0] : null;
+        return ConfigDataTypes::single($property);
     }
 
     /** @return class-string<Data>|null the entry class a `#[MapValues(Entry::class)]` names */
     private static function mapEntry(ReflectionProperty $property): ?string
     {
-        $map = $property->getAttributes(MapValues::class)[0] ?? null;
-        $type = $map?->getArguments()[0] ?? $map?->getArguments()['type'] ?? null;
-
-        return is_string($type) && class_exists($type) && is_subclass_of($type, Data::class) ? $type : null;
+        return ConfigDataTypes::mapEntry($property);
     }
 }
