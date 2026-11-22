@@ -6,6 +6,7 @@ use LogicException;
 use ReflectionClass;
 use ReflectionNamedType;
 use ReflectionProperty;
+use ReflectionUnionType;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Config\Attributes\ConfigKey;
 use Splicewire\Beam\Config\Attributes\ConfigRoot;
@@ -58,11 +59,16 @@ abstract class ConfigSection extends Data
      * any key above it, declares none. The NEAREST declaration on the path wins, so a key nested under a
      * declared map inherits that map's declaration.
      *
+     * The walk descends into the Data class a property holds: its named type (`Nested`, `?Nested`), or the Data
+     * member(s) of a union (`Nested|Optional`, `Nested|Optional|null`; `Optional`, null and scalars hold no keys). When a
+     * union holds TWO or more Data classes, each is walked and the result FAILS TOWARDS SECRET: a key secret in any member
+     * is secret (config-sections 20; before it, a union ended the walk, so a secret below `Nested|Optional` read as plain
+     * and was stored and served unredacted).
+     *
      * @param  list<string>  $segments  the pointer's unescaped segments, relative to the root
      */
     public static function keyDeclaration(array $segments): ConfigKey
     {
-        $declared = new ConfigKey;
         $class = static::class;
         $entries = static::declaration()->entries;
 
@@ -72,30 +78,66 @@ abstract class ConfigSection extends Data
             $class = $entries;
         }
 
-        foreach ($segments as $segment) {
+        return self::declarationIn([$class], $segments, new ConfigKey);
+    }
+
+    /**
+     * The declaration `$segments` reaches from any of `$classes` (the Data classes the walk is in), starting from
+     * `$declared` (the nearest declaration above). A segment a class does not declare ends that branch at `$declared`.
+     *
+     * @param  list<class-string>  $classes
+     * @param  list<string>  $segments
+     */
+    private static function declarationIn(array $classes, array $segments, ConfigKey $declared): ConfigKey
+    {
+        if ($segments === [] || $classes === []) {
+            return $declared;
+        }
+
+        $segment = array_shift($segments);
+        $reached = [];
+
+        foreach ($classes as $class) {
             $property = self::property($class, $segment);
 
             if ($property === null) {
-                break;
+                $reached[] = $declared;
+
+                continue;
             }
 
             $attribute = $property->getAttributes(ConfigKey::class)[0] ?? null;
+            $here = $attribute !== null ? $attribute->newInstance() : $declared;
+            $reached[] = self::declarationIn(self::dataClasses($property), $segments, $here);
+        }
 
-            if ($attribute !== null) {
-                $declared = $attribute->newInstance();
-            }
-
-            $type = $property->getType();
-            $class = $type instanceof ReflectionNamedType && ! $type->isBuiltin() && is_subclass_of($type->getName(), Data::class)
-                ? $type->getName()
-                : null;
-
-            if ($class === null) {
-                break;
+        foreach ($reached as $candidate) {
+            if ($candidate->secret) {
+                return $candidate;
             }
         }
 
-        return $declared;
+        return $reached[0];
+    }
+
+    /**
+     * The Data classes a property holds: its named type, or every Data member of a union or nullable type.
+     *
+     * @return list<class-string<Data>>
+     */
+    private static function dataClasses(ReflectionProperty $property): array
+    {
+        $type = $property->getType();
+        $members = $type instanceof ReflectionUnionType ? $type->getTypes() : [$type];
+        $data = [];
+
+        foreach ($members as $member) {
+            if ($member instanceof ReflectionNamedType && ! $member->isBuiltin() && is_subclass_of($member->getName(), Data::class)) {
+                $data[] = $member->getName();
+            }
+        }
+
+        return $data;
     }
 
     /**

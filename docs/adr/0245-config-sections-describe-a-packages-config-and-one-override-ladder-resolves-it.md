@@ -252,6 +252,22 @@ Raised by the cross-review. Two are decided here because ticket 05 builds on the
 Why seams rather than a subclass: rebinding the overlay singleton from another package would hand every resolver that
 package's subclass, and the result would depend on provider registration order.
 
+## Amendment, 2026-11-22 (config-sections 20): a declaration below a union type
+
+Decision 6 holds only if every declared secret is FOUND. `ConfigSection::keyDeclaration()` descended into nested Data
+only through a single named type, so a union ended the walk: a key below `Nested|Optional` or `Nested|Optional|null`
+read as not secret. The store then kept the operator's value in plain in the override row, the scope draft and the
+version snapshot, and the reader served it unredacted.
+
+The walk now descends into the Data member of a union (`Optional`, null and scalars hold no keys), as
+`ConfigSectionCoverage` already resolved it. A union of TWO or more Data classes is walked through each member, and the
+result fails towards secret: a key secret in any member is secret. The nullable form `?Nested` was always walked and
+stays so (a regression test pins it).
+
+An audit at the fix (every package and flagship main, every worktree on both fleet hosts) found no Config Section with a
+secret below a union-typed property, so no stored plaintext is known. A host that finds one later re-saves that key once,
+so it splits into its encrypted entry; version snapshots written before keep the plaintext they hold.
+
 ## Consequences
 
 - Declaring a section changes no behaviour: every undeclared key is deploy-only and not overridable. On the first day,
