@@ -14,7 +14,7 @@ use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Schemastud\Frame\Registry\FormMode;
 use Schemastud\Frame\Registry\InMemoryResourceRegistry;
-use Schemastud\Frame\Registry\WidgetContextProjector;
+use Schemastud\Frame\Registry\WidgetContextRegistry;
 use Schemastud\Frame\Vocabulary\WidgetVocabulary;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
@@ -53,7 +53,7 @@ class FramedDeclarationAuditTest extends TestCase
     {
         file_put_contents(config('frame.vocabulary'), json_encode(array_replace([
             'version' => WidgetVocabulary::Version,
-            'contexts' => array_reverse(WidgetContextProjector::KnownContexts),
+            'contexts' => array_reverse(app(WidgetContextRegistry::class)->known()),
             'formModes' => array_reverse(array_column(FormMode::cases(), 'value')),
             'widgets' => ['badge' => [['contexts' => ['list-column']]], 'range' => [['stock' => ['number', 'integer']]], 'textarea' => [['stock' => ['string']]]],
         ], $overrides), JSON_THROW_ON_ERROR));

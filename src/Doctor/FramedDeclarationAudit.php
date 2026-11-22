@@ -8,7 +8,7 @@ use Schemastud\Frame\Contracts\ResourceSchemaResolver;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Schemastud\Frame\Registry\FormMode;
 use Schemastud\Frame\Registry\ResourceDefinition;
-use Schemastud\Frame\Registry\WidgetContextProjector;
+use Schemastud\Frame\Registry\WidgetContextRegistry;
 use Schemastud\Frame\Vocabulary\DeclaredWidget;
 use Schemastud\Frame\Vocabulary\DeclaredWidgets;
 use Schemastud\Frame\Vocabulary\WidgetVocabulary;
@@ -144,7 +144,7 @@ class FramedDeclarationAudit implements DoctorAudit
         $findings = [];
         foreach ([
             'version' => [WidgetVocabulary::Version, $vocabulary->version()],
-            'contexts' => [$this->set(WidgetContextProjector::KnownContexts), $this->set($vocabulary->contexts())],
+            'contexts' => [$this->set(app(WidgetContextRegistry::class)->known()), $this->set($vocabulary->contexts())],
             'formModes' => [$this->set(array_column(FormMode::cases(), 'value')), $this->set($vocabulary->formModes())],
         ] as $axis => [$expected, $actual]) {
             if ($expected !== $actual) {
