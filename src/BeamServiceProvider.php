@@ -124,6 +124,7 @@ use Splicewire\Beam\Console\MakeParticleRelativeCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\MakeWorkflowCommand;
 use Splicewire\Beam\Console\ParticleResourcesCommand;
+use Splicewire\Beam\Console\RecordBrowserBaselinesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Console\VerifyDeclaredTypesCommand;
@@ -2416,6 +2417,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 MakeConfigSectionCommand::class,
                 // env-inventory 02: the package's grandfathered env names, which may only shrink; the audit only reads.
                 EnvPrefixBaselineCommand::class,
+                // browser-journeys 17: the `browser:` namespace's first command — promote the suite's fresh
+                // captures into the COMMITTED screenshot baselines. The ONLY writer under
+                // `tests/Browser/screenshots`; gated to the single designated record host (determinism
+                // signature + the operator-set marker) so a stray run on an arch-twin cannot overwrite them.
+                RecordBrowserBaselinesCommand::class,
             ]);
 
             // The estate-POLICY surgeon commands relocated DOWN from surgeon (they hard-code estate
