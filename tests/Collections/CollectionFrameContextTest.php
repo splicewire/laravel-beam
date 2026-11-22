@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
-use Schemastud\Frame\Contracts\ResourceContextContributor;
+use Schemastud\Frame\Registry\ContextContributorRegistry;
 use Schemastud\Frame\Registry\ContextManifest;
 use Splicewire\Beam\Collections\CollectionSchemaResolver;
 use Splicewire\Beam\Data\RecordData;
@@ -76,7 +76,7 @@ class CollectionFrameContextTest extends TestCase
         $collectionSchemas = new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry);
         $this->app->instance(Request::class, $request);
         $this->app->instance(CollectionSchemaResolver::class, $collectionSchemas);
-        $frame = new ContextManifest($this->app->make(ResourceContextContributor::class));
+        $frame = new ContextManifest($this->app->make(ContextContributorRegistry::class));
 
         $emptyCollection = $frame->forResource(RecordData::class, key: 'records');
 
@@ -114,7 +114,7 @@ class CollectionFrameContextTest extends TestCase
 
         $this->app->instance(Request::class, Request::create('/api/v1/stud/frame/manifest'));
         $this->app->forgetScopedInstances();
-        $unaddressed = new ContextManifest($this->app->make(ResourceContextContributor::class));
+        $unaddressed = new ContextManifest($this->app->make(ContextContributorRegistry::class));
         $this->assertArrayNotHasKey(
             'fields.label',
             $unaddressed->forResource(RecordData::class, key: 'records')['byNode'],
@@ -129,7 +129,7 @@ class CollectionFrameContextTest extends TestCase
         $resolver = new CollectionSchemaResolver(new RegistrySchemaTargetResolver($this->registry), $this->registry);
         $this->app->instance(Request::class, $request);
         $this->app->instance(CollectionSchemaResolver::class, $resolver);
-        $manifest = new ContextManifest($this->app->make(ResourceContextContributor::class));
+        $manifest = new ContextManifest($this->app->make(ContextContributorRegistry::class));
 
         $this->expectException(ValidationException::class);
         $manifest->forResource(RecordData::class, key: 'records');
@@ -143,7 +143,7 @@ class CollectionFrameContextTest extends TestCase
         $this->app->instance(Request::class, $request);
         $this->app->instance(CollectionSchemaResolver::class, $resolver);
 
-        $manifest = new ContextManifest($this->app->make(ResourceContextContributor::class));
+        $manifest = new ContextManifest($this->app->make(ContextContributorRegistry::class));
 
         $this->expectException(NotFoundHttpException::class);
         $manifest->forResource(RecordData::class, key: 'records');
@@ -162,7 +162,7 @@ class CollectionFrameContextTest extends TestCase
         $this->app->instance(Request::class, $request);
         $this->app->instance(CollectionSchemaResolver::class, $resolver);
 
-        $manifest = new ContextManifest($this->app->make(ResourceContextContributor::class));
+        $manifest = new ContextManifest($this->app->make(ContextContributorRegistry::class));
 
         $this->expectException(NotFoundHttpException::class);
         $manifest->forResource(RecordData::class, key: 'records');

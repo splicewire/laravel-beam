@@ -65,6 +65,7 @@ use Schemastud\Frame\Contracts\WidgetLabel;
 use Schemastud\Frame\Contracts\WriteSubjectResolver;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
+use Schemastud\Frame\Registry\ContextContributorRegistry;
 use Schemastud\Frame\Registry\WidgetContextProjector;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -845,12 +846,21 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // established is order-safe by construction. Ships EMPTY — inert until a package contributes.
         $this->app->singleton(ResourceContributionRegistry::class);
 
-        // Frame's OPTIONAL plug port, implemented here so a host binds nothing (ticket 19 / 17 §A1).
-        // Compose the existing contributed-slice projection with the selected Collection's schema
-        // fields. Collection selection is request-scoped because one Data class serves many schema
-        // stems; Frame still learns only the final byNode map, not Beam's producer internals.
-        $this->app->scoped(ResourceContextContributor::class, fn ($app) => new CollectionResourceContextNodes(
-            new ContributionContextNodes($app->make(ResourceContributionRegistry::class), $app->make(WidgetContextProjector::class)),
+        // frame-foundation 93: beam's two context contributors are each their OWN scoped() binding, and
+        // packageBooted() registers a factory for each in frame's `frame.context-contributors` registry
+        // (`beam.contributions`, then `beam.collections`). Nothing binds frame's ResourceContextContributor
+        // port. Collection selection is request-scoped because one Data class serves many schema stems;
+        // frame still learns only the folded byNode map, not beam's producer internals.
+        // ONE registry per container even where frame's provider is not loaded (beam boots without frame, ADR-0082;
+        // frame's own `singleton()` binding wins where it is): otherwise each make() would autowire a fresh, empty one
+        // and beam's registrations would never reach the manifest. Nothing is resolved before boot, so the order of
+        // the two providers' register() phases does not matter.
+        $this->app->singletonIf(ContextContributorRegistry::class);
+        $this->app->scoped(ContributionContextNodes::class, fn ($app) => new ContributionContextNodes(
+            $app->make(ResourceContributionRegistry::class),
+            $app->make(WidgetContextProjector::class),
+        ));
+        $this->app->scoped(CollectionResourceContextNodes::class, fn ($app) => new CollectionResourceContextNodes(
             $app->make(Request::class),
             $app->make(CollectionSchemaResolver::class),
         ));
@@ -2202,6 +2212,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
     public function packageBooted(): void
     {
         $this->bootConfigOverrides();
+
+        // frame-foundation 93: beam's context contributors, registered under beam's own keys in frame's
+        // `frame.context-contributors` registry, in this order (a later position wins a context two contributors
+        // name; the resource's own declaration wins over all). Each factory resolves beam's scoped binding through
+        // the CURRENT container when it is called and captures nothing at boot (decision 87, ruling 3).
+        $contributors = $this->app->make(ContextContributorRegistry::class);
+        $contributors->register('beam.contributions', static fn (): ResourceContextContributor => app(ContributionContextNodes::class), by: 'splicewire/laravel-beam');
+        $contributors->register('beam.collections', static fn (): ResourceContextContributor => app(CollectionResourceContextNodes::class), by: 'splicewire/laravel-beam');
 
         // localization 09: a property's title and description resolve through the ladder. Appended at boot, after every
         // provider has merged `data-schemas.strategies`, under the estate's in_array guard (the frame precedent).

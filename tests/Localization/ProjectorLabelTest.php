@@ -1,7 +1,7 @@
 <?php
 
-use Schemastud\Frame\Contracts\ResourceContextContributor;
 use Schemastud\Frame\FrameServiceProvider;
+use Schemastud\Frame\Registry\ContextContributorRegistry;
 use Schemastud\Frame\Registry\ContextManifest;
 use Schemastud\Frame\Registry\DeferredWidgetLabel;
 use Schemastud\Frame\Registry\WidgetContextProjector;
@@ -68,25 +68,14 @@ it('gives beam\'s contribution registry the container\'s projector', function ()
     expect(ff89ProjectorLabelHeld(app(ResourceContributionRegistry::class)))->toBe($bound);
 });
 
-it('hands the container\'s projector to the contribution nodes behind frame\'s context port', function (): void {
+it('hands the container\'s projector to the contribution nodes beam registers as a context contributor', function (): void {
     $bound = new WidgetContextProjector(app(BeamWidgetLabel::class));
     app()->instance(WidgetContextProjector::class, $bound);
 
-    // the port is beam's CollectionResourceContextNodes (possibly decorated); walk to the ContributionContextNodes inside
-    $node = app(ResourceContextContributor::class);
-    $seen = [];
-    while (! ($node instanceof ContributionContextNodes) && is_object($node) && ! isset($seen[spl_object_id($node)])) {
-        $seen[spl_object_id($node)] = true;
-        $next = null;
-        foreach ((new ReflectionObject($node))->getProperties() as $property) {
-            $value = $property->getValue($node);
-            if ($value instanceof ResourceContextContributor) {
-                $next = $value;
-                break;
-            }
-        }
-        $node = $next;
-    }
+    // frame-foundation 93: beam registers `beam.contributions` in frame's `frame.context-contributors` registry; its
+    // factory resolves beam's scoped ContributionContextNodes binding when called (no port to walk any more)
+    $factory = app(ContextContributorRegistry::class)->unfiltered()->resolve(ContextContributorRegistry::ROOT.'.beam.contributions');
+    $node = $factory();
 
     expect($node)->toBeInstanceOf(ContributionContextNodes::class)
         ->and(ff89ProjectorLabelHeld($node))->toBe($bound);
