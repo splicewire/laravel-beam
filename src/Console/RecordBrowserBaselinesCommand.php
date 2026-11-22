@@ -154,14 +154,16 @@ class RecordBrowserBaselinesCommand extends Command
         }
 
         $only = (array) $this->option('flow');
-        $declared = $catalog->keys();
         $found = [];
 
         foreach (glob($captureDir.'/*.png') ?: [] as $path) {
             $name = basename($path, '.png');
             [$key, $role] = $this->partsOf($name);
 
-            if ($key === null || ! in_array($key, $declared, true)) {
+            // Membership via has(), NOT in_array($key, $catalog->keys()): keys() returns Stringable
+            // RegistryKey OBJECTS, so a strict string compare never matched and every capture was
+            // silently rejected (browser-journeys 17). has() door-normalizes the key as register() does.
+            if ($key === null || ! $catalog->has($key)) {
                 continue; // not a flow baseline (results file, stray capture, undeclared key)
             }
 
@@ -356,22 +358,82 @@ class RecordBrowserBaselinesCommand extends Command
     }
 
     /**
-     * (A, Chromium leg) the lock-pinned Chromium is installed.
+     * (A, Chromium leg) the EXACT lock-pinned Chromium revision is installed.
      *
-     * TODO(17, before land): tighten from "a pinned browser is present" to "the EXACT revision the committed
-     * pest-plugin-browser / Playwright lock pins" — resolve the locked revision and assert the resolved
-     * browser path carries it, so an arch-twin (Darwin+arm64) with a DIFFERENT Chromium revision fails (A)
-     * and cannot promote divergent baselines. Fails closed: an unresolvable browser path is NOT a record host.
+     * Resolves the revision the committed Playwright install pins — the `chromium` entry's `revision` in
+     * the installed `playwright-core` browsers registry, itself pinned by the app's committed JS lock — and
+     * asserts the matching `chromium-<revision>` browser directory is present in a Playwright browsers root.
+     * An arch-twin (Darwin+arm64) carrying a DIFFERENT Chromium revision therefore fails (A) and cannot
+     * promote divergent baselines. Fails closed: an unresolvable registry or a missing exact revision dir is
+     * NOT a record host.
      */
     private function hasPinnedChromium(): bool
     {
-        foreach ([getenv('PLAYWRIGHT_BROWSERS_PATH') ?: null, ($_SERVER['HOME'] ?? '').'/.cache/ms-playwright'] as $dir) {
-            if ($dir !== null && is_dir($dir) && (glob($dir.'/chromium-*') ?: []) !== []) {
+        $revision = $this->pinnedChromiumRevision();
+
+        if ($revision === null) {
+            return false;
+        }
+
+        foreach ($this->browserRoots() as $dir) {
+            if (is_dir($dir.'/chromium-'.$revision)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * The exact Chromium revision the committed Playwright install pins, read from the resolved
+     * `playwright-core` browsers registry (the `revision` of its `chromium` browser). The installed
+     * Playwright version is itself pinned by the app's committed JS lock, so this is the lock-pinned
+     * revision. Returns null — fail closed — when the registry cannot be resolved or parsed.
+     */
+    private function pinnedChromiumRevision(): ?string
+    {
+        foreach (['playwright-core', 'playwright'] as $pkg) {
+            $registry = base_path("node_modules/{$pkg}/browsers.json");
+
+            if (! is_file($registry)) {
+                continue;
+            }
+
+            $data = json_decode((string) file_get_contents($registry), true);
+
+            if (! is_array($data) || ! is_array($data['browsers'] ?? null)) {
+                continue;
+            }
+
+            foreach ($data['browsers'] as $browser) {
+                if (is_array($browser) && ($browser['name'] ?? null) === 'chromium') {
+                    $revision = $browser['revision'] ?? null;
+
+                    return (is_string($revision) || is_int($revision)) ? (string) $revision : null;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The Playwright browsers roots to look in: the `PLAYWRIGHT_BROWSERS_PATH` override first, then the
+     * per-OS default cache (macOS `~/Library/Caches/ms-playwright`, Linux `~/.cache/ms-playwright`). Both
+     * default candidates are offered regardless of OS so a misdetected home still resolves; the determinism
+     * signature already constrains the host to Darwin/arm64.
+     *
+     * @return list<string>
+     */
+    private function browserRoots(): array
+    {
+        $home = $_SERVER['HOME'] ?? '';
+
+        return array_values(array_filter([
+            getenv('PLAYWRIGHT_BROWSERS_PATH') ?: null,
+            $home !== '' ? $home.'/Library/Caches/ms-playwright' : null,
+            $home !== '' ? $home.'/.cache/ms-playwright' : null,
+        ]));
     }
 
     /** (B) The operator-set single-host designation marker is present and truthy (set on tots only). */
