@@ -292,14 +292,24 @@ levels.
 value written, and also each record of a list that sits below a non-secret key (a list in a nested Data class, a map
 entry or a union member), by index. A list declared secret itself is still split whole. A list index is not a stable
 identity, so a parent op now drops EVERY split child below its pointer (by pointer prefix, not only those it split
-itself). A secret split out of a list item never outlives a later set of the list or of an ancestor, so it can never
-re-apply to whatever record later sits at that index. The consequence, unchanged in kind from before: a list of records
+itself), and a pointer through a list index never goes into a parent's `inherit` (an unset of such a child would
+otherwise fill the slot from the tier below's list at that index: another record's secret, and at the tenant tier the
+operator's). A SPLIT secret of a list item therefore never outlives a later set of the list or of an ancestor, and
+never re-applies to another record. A null secret in a list item is split too, as an explicit-null encrypted entry.
+
+**Not closed here (ticket 21: a list index is not a stable identity):** a DIRECT entry written inside a list item
+(`/relays/<i>/...`, `via` null) is not dropped by a later set of the list. So, as before this ticket:
+- after `set /relays/0 {host: A, password: pa}` and then `set /relays [{host: B, password: pb}]`, record 0 reads
+  `{host: A, password: pb}`, one record's host paired with another's secret;
+- a secret written at its own pointer `/relays/1/password` applies to whatever record later sits at index 1, or
+  re-creates a removed item. The consequence, unchanged in kind from before: a list of records
 holding secrets loses those secrets on a re-save of the list or an ancestor that does not resend them. Use a map keyed by
 a stable name for records that hold secrets.
 
 **That prefix drop is a behaviour change for maps and objects too.** Before it, a set of `/a` dropped only the secrets
 it had split out itself. A secret a deeper set of `/a/b` had split out survived, by accident of pointer order, and
-missing from `/a`'s `inherit`. Now that set of `/a` drops it. Config-sections 19 (the next amendment) gives such a child
+missing from `/a`'s `inherit`. Now that set of `/a` drops it, while the deeper `/a/b` entry itself stays in force,
+now WITHOUT its secret. Config-sections 19 (the next amendment) gives such a child
 back, kept and re-pointed, when the re-save of `/a` leaves it out. Tickets 20 and 19 should therefore land together.
 
 The two walks differ on purpose, and tests state how. Coverage resolves only a single Data member (`ConfigDataTypes::single()`:

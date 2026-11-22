@@ -155,7 +155,7 @@ class SecretInListsAndAuthorizationTest extends TestCase
         $draft = $this->store()->scope('qa.relaygroup')->draft;
         $this->assertArrayNotHasKey('/group/relays/0/password', $draft, "relay A's split secret did not survive the list's replacement");
         $this->assertSame('relay-b.op.test', config('qa.relaygroup.group.relays.0.host'));
-        $this->assertNotSame('fake-lg-group', config('qa.relaygroup.group.relays.0.password'), "relay A's secret never lands on relay B");
+        $this->assertNull(config('qa.relaygroup.group.relays.0.password'), "relay B has no secret: neither relay A's nor the host's (review r3 LOW)");
     }
 
     /**
@@ -172,6 +172,9 @@ class SecretInListsAndAuthorizationTest extends TestCase
         $this->publishSet('/holder', ['primary' => ['host' => 'primary.op-2.test']]);
 
         $this->assertArrayNotHasKey('/holder/primary/password', $this->store()->scope('qa.relaygroup')->draft, 'dropped by the ancestor set (19 keeps it)');
+        // The EFFECT (review r3 MEDIUM 1): the deeper /holder/primary entry stays in force, now WITHOUT its secret.
+        $this->assertSame('primary.op.test', config('qa.relaygroup.holder.primary.host'), 'the deeper entry still applies over the ancestor');
+        $this->assertNull(config('qa.relaygroup.holder.primary.password'), 'but its secret is gone (until config-sections 19 keeps it)');
         $this->assertNoOperatorSecretStored();
     }
 

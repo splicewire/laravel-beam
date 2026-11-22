@@ -745,7 +745,15 @@ class ConfigOverrideStore
                 [$value, $derived] = $this->splitSecrets($registered, $pointer, $value);
 
                 foreach ($derived as [$child]) {
-                    $inherit[] = substr($child, strlen($pointer));
+                    $relative = substr($child, strlen($pointer));
+
+                    // config-sections 20 r4: a pointer through a LIST index never goes into inherit. A list index is not
+                    // a stable identity across tiers either: unsetting that child would otherwise fill the slot from the
+                    // tier below's list at the same index, another record's secret (the operator's, at the tenant tier).
+                    // Removed, the item simply has no secret.
+                    if (! self::throughList($relative)) {
+                        $inherit[] = $relative;
+                    }
                 }
 
                 // config-sections 08 import: a mirror file records the inherit (the leaves the set does NOT own). UNION it
@@ -755,7 +763,9 @@ class ConfigOverrideStore
                 // explicit `inherit` can only REDUCE ownership — a crafted file cannot use it to sneak a refused owned key
                 // past the checks ({@see guardLeafCeilings}, which ran on the owned value).
                 if (is_array($op['inherit'] ?? null)) {
-                    $inherit = array_values(array_unique(array_merge($inherit, array_map('strval', $op['inherit']))));
+                    // Never a pointer through a list index (config-sections 20 r4), whoever names it.
+                    $named = array_filter(array_map('strval', $op['inherit']), fn (string $rel): bool => ! self::throughList($rel));
+                    $inherit = array_values(array_unique(array_merge($inherit, $named)));
                 }
             }
 
@@ -882,6 +892,22 @@ class ConfigOverrideStore
      * @param  array<array-key, mixed>  $value
      * @return list<string>
      */
+    /**
+     * Whether a relative pointer passes through a LIST index: any all-digit segment. A list index is not a stable
+     * identity, so a pointer through one is never inherited from the tier below (config-sections 20 r4). A map whose
+     * entry names are digits decodes to a PHP list anyway, and is treated the same.
+     */
+    private static function throughList(string $relative): bool
+    {
+        foreach (JsonPointer::segments($relative) as $segment) {
+            if ($segment !== '' && ctype_digit((string) $segment)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function secretCandidates(RegisteredConfigSection $registered, string $pointer, array $value, string $prefix = ''): array
     {
         $candidates = [];
