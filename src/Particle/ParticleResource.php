@@ -3,10 +3,10 @@
 namespace Splicewire\Beam\Particle;
 
 use Closure;
-use InvalidArgumentException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use InvalidArgumentException;
 use RuntimeException;
 use Rushing\Popcorn\Registries\HasRegistryKey;
 use Rushing\Popcorn\Registries\Registrars\AttributeRegistrar;
@@ -335,7 +335,10 @@ class ParticleResource implements HasRegistryKey
          *
          * A resource is two behaviors: {@see readBehavior()} `{key}:read` (list + detail) and {@see writeBehavior()}
          * `{key}:write` (create, update, delete). A Requires' `on:` picks one or `both`. The colon cannot collide
-         * with an operation's `{resource}.{name}`.
+         * with an operation's `{resource}.{name}`. `on: 'create'` (agreements 16) is declared under `{key}:write` too,
+         * and binds only a create: admission skips it for an existing record ({@see Requires::appliesToSubject()}).
+         * One write schema serves create and update, so on an editable resource the member also renders on edit,
+         * where it is not required.
          *
          * Admission runs AFTER the verb's own ability, so a caller who lacks it gets 403 and never learns the
          * Requirements: list after its read guards, detail and delete after their policy check, and create/update in
@@ -450,7 +453,7 @@ class ParticleResource implements HasRegistryKey
                 ? 'it already implements '.GraphsRecords::class.', so the slot would be a second graph'
                 : 'a backing class declares its graph by implementing '.GraphsRecords::class;
 
-            throw new \InvalidArgumentException("Resource [{$this->key}] declares graph: on backing [{$name}], which is not one Eloquent model: {$why}.");
+            throw new InvalidArgumentException("Resource [{$this->key}] declares graph: on backing [{$name}], which is not one Eloquent model: {$why}.");
         }
     }
 

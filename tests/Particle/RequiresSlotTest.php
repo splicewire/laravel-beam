@@ -176,6 +176,62 @@ class RequiresSlotTest extends TestCase
         $this->assertSame(['a'], RequiresRow::query()->pluck('name')->all(), 'nothing persisted or deleted on a refusal');
     }
 
+    public function test_rest_a_create_requirement_refuses_only_store_and_leaves_update_delete_and_reads_open(): void
+    {
+        // agreements 16: `on: 'create'` binds the write that makes a NEW record; an existing one updates and deletes.
+        $this->resource(requires: [new Requires('terms', on: 'create')]);
+        RequiresRow::query()->create(['name' => 'a']);
+        RequiresRow::query()->create(['name' => 'b']);
+        $this->actingAs($this->actor());
+
+        $this->getJson('/requires-rows')->assertOk();
+        $this->getJson('/requires-rows/1')->assertOk();
+        $this->postJson('/requires-rows', ['name' => 'new'])->assertStatus(428)->assertJsonPath('requirements.0.key', 'terms');
+        $this->putJson('/requires-rows/1', ['name' => 'c'])->assertOk();
+        $this->deleteJson('/requires-rows/2')->assertOk();
+
+        $this->assertSame(['c'], RequiresRow::query()->pluck('name')->all(), 'the create refused; the update and delete ran');
+    }
+
+    public function test_a_create_requirement_is_declared_under_the_write_behavior_and_never_under_read(): void
+    {
+        $resource = $this->resource(requires: [new Requires('terms', on: 'create')], mount: false);
+        $declarations = $this->app->make(SlotRequirementDeclarations::class);
+
+        $this->assertSame(['terms'], array_map(fn (Requires $r): string => $r->agreement, $declarations->requirementsFor($resource->writeBehavior())));
+        $this->assertSame([], $declarations->requirementsFor($resource->readBehavior()));
+
+        $create = new Requires('terms', on: 'create');
+        $this->assertSame([false, true, true], [$create->bindsRead(), $create->bindsWrite(), $create->bindsOnlyNewRecords()]);
+        $this->assertTrue($create->appliesToSubject(null), 'a create (no subject yet) is bound');
+        $this->assertFalse($create->appliesToSubject(new RequiresRow), 'an existing record is not');
+
+        // on: write / read / both are unchanged: none binds only new records, each applies whatever the subject.
+        foreach (['write' => [false, true], 'read' => [true, false], 'both' => [true, true]] as $on => [$read, $write]) {
+            $requirement = new Requires('terms', on: $on);
+            $this->assertSame([$read, $write, false, true, true], [
+                $requirement->bindsRead(), $requirement->bindsWrite(), $requirement->bindsOnlyNewRecords(),
+                $requirement->appliesToSubject(null), $requirement->appliesToSubject(new RequiresRow),
+            ], "on: {$on}");
+        }
+    }
+
+    public function test_an_operation_refuses_a_create_only_requirement(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("on: 'create'");
+
+        $this->op(requires: [new Requires('terms', on: 'create')], mount: false);
+    }
+
+    public function test_the_agreement_member_carries_a_title_so_no_host_renders_its_identifier(): void
+    {
+        // agreements 16, 14's finding: a host input carrying a member reached AgreementMemberData without a #[Title].
+        $labels = $this->app->make(\Splicewire\Beam\Schema\IdentifierLabels::class)->findFrom([RequiresRowMemberInput::class]);
+
+        $this->assertArrayNotHasKey(AgreementMemberData::class, $labels);
+    }
+
     public function test_rest_a_read_requirement_refuses_index_and_show_and_leaves_writes_open(): void
     {
         $this->resource(requires: [new Requires('terms', on: 'read')]);
@@ -261,6 +317,20 @@ class RequiresSlotTest extends TestCase
         $this->assertFrame428(fn () => $handler->update($definition, '1', ['name' => 'c']));
         $this->assertFrame428(fn () => $handler->destroy($definition, '1'));
         $this->assertSame(['a'], RequiresRow::query()->pluck('name')->all());
+    }
+
+    public function test_frame_create_requirement_refuses_only_store(): void
+    {
+        $resource = $this->resource(requires: [new Requires('terms', on: 'create')], mount: false);
+        RequiresRow::query()->create(['name' => 'a']);
+        RequiresRow::query()->create(['name' => 'b']);
+        $handler = $this->frame();
+        $definition = $resource->toResourceDefinition();
+
+        $this->assertFrame428(fn () => $handler->store($definition, ['name' => 'new']));
+        $handler->update($definition, '1', ['name' => 'c']);
+        $handler->destroy($definition, '2');
+        $this->assertSame(['c'], RequiresRow::query()->pluck('name')->all());
     }
 
     public function test_frame_read_requirement_refuses_index_and_show_and_leaves_writes_open(): void

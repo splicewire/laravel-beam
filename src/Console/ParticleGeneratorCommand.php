@@ -218,7 +218,7 @@ abstract class ParticleGeneratorCommand extends GeneratorCommand
      * agreements 05: the `requires:` slot line and its import, emitted ONLY when `--requires` names a key — an omitted
      * slot declares none and is never counted, so the generator writes nothing for it (the `graphLine` precedent).
      *
-     * @param  'read'|'write'|'both'|null  $on  a resource's verb split; null or `both` is the default and not spelled
+     * @param  'read'|'write'|'both'|'create'|null  $on  a resource's verb split; null or `both` is the default and not spelled
      * @return array{requiresImport: string, requiresSlot: string}
      */
     protected function requiresTokens(?string $on = null): array
