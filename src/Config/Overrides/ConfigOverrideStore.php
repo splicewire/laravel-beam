@@ -728,8 +728,9 @@ class ConfigOverrideStore
 
             // config-sections 08 import: a mirror file records a parent set's INHERIT (the leaves it does NOT own) with
             // the owned value stripped of them. Refill those leaves from the base BEFORE the ceiling/host checks, so the
-            // set is not seen as REMOVING an inherited host/locked child; hostOwnedOut below takes them back out and
-            // re-derives the inherit, and the union keeps any the importing host would not itself strip.
+            // set is not seen as REMOVING an inherited host/locked child. All of them are taken back out below, before the
+            // secret split (hostOwnedOut for host-owned and locked keys, then every named item: config-sections 20 r6), and
+            // the union keeps the named ones as inherit.
             // config-sections 20 r5: an item of the op's own inherit that passes through a LIST index is IGNORED (filtered
             // once, here, before the refill): a list position is not a stable identity across tiers, so refilling it would
             // copy the tier below's record at that index (its secret then split out and stored as this op's own).
@@ -750,15 +751,24 @@ class ConfigOverrideStore
 
             if ($kind === ConfigOverrideOp::Set && is_array($value) && ! $declared->secret) {
                 [$value, $inherit] = $this->hostOwnedOut($registered, $pointer, $value, $locks);
+
+                // config-sections 20 r6: every item the op's own inherit names is taken back OUT of the value before the
+                // split. Those leaves were refilled from the tier below only for the checks above; owned, a lower tier's
+                // secret (a whole named list's, or an ancestor's) would be split and stored as THIS tier's encrypted entry,
+                // addressed by index, and land on another record once that tier reorders. Named, it is inherited, never owned.
+                foreach ($named ?? [] as $rel) {
+                    $this->forgetAt($value, JsonPointer::segments($rel));
+                }
+
                 [$value, $derived] = $this->splitSecrets($registered, $pointer, $value);
 
                 foreach ($derived as [$child]) {
                     $relative = substr($child, strlen($pointer));
 
-                    // config-sections 20 r4: a pointer through a LIST index never goes into inherit. A list index is not
-                    // a stable identity across tiers either: unsetting that child would otherwise fill the slot from the
-                    // tier below's list at the same index, another record's secret (the operator's, at the tenant tier).
-                    // Removed, the item simply has no secret.
+                    // config-sections 20 r4/r5: a split secret through a LIST index (the full pointer, by the declaration)
+                    // never goes into inherit. A list index is not a stable identity across tiers either: unsetting that
+                    // child would otherwise fill the slot from the tier below's list at the same index, another record's
+                    // secret (the operator's, at the tenant tier). Removed, the item simply has no secret.
                     if (! $this->listPath($registered, $pointer.$relative)) {
                         $inherit[] = $relative;
                     }

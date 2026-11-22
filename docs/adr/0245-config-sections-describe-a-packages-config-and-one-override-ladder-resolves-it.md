@@ -295,10 +295,13 @@ levels.
 value written, and also each record of a list that sits below a non-secret key (a list in a nested Data class, a map
 entry or a union member), by index. A list declared secret itself is still split whole. A list index is not a stable
 identity, so a parent op now drops EVERY split child below its pointer (by pointer prefix, not only those it split
-itself), and a pointer through a list index never goes into a parent's `inherit` (an unset of such a child would
-otherwise fill the slot from the tier below's list at that index: another record's secret, and at the tenant tier the
-operator's). A SPLIT secret of a list item therefore never outlives a later set of the list or of an ancestor, and
-never re-applies to another record. A null secret in a list item is split too, as an explicit-null encrypted entry.
+itself), and a SPLIT secret's pointer through a list index never goes into a parent's `inherit` (an unset of such a
+child would otherwise fill the slot from the tier below's list at that index: another record's secret, and at the tenant
+tier the operator's). Nor can an op store a lower tier's list secrets as its own (config-sections 20 r6): every item the
+op's own `inherit` names (a list, an ancestor of one, or any key) is taken back out of the value before the secret split,
+so it is inherited, never owned, and an index item it names is ignored. A secret split out of a list item by THIS tier's
+own set therefore never outlives a later set of the list or of an ancestor, and never re-applies to another record. A
+null secret in a list item is split too, as an explicit-null encrypted entry.
 
 **What counts as a list index** (config-sections 20 r5) is read from the DECLARATION, through the shared resolver
 (`ConfigSection::throughListIndex()`), on the ABSOLUTE pointer (the op's own pointer included). A segment is a list index
@@ -308,7 +311,9 @@ the shape is not declared (an undeclared segment, or an array with no item attri
 an index: the safe direction.
 
 **Not closed here (ticket 21: a list index is not a stable identity):** a DIRECT entry written inside a list item
-(`/relays/<i>/...`, `via` null) is not dropped by a later set of the list. So, as before this ticket:
+(`/relays/<i>/...`, `via` null) is not dropped by a later set of the list, and a tenant-tier LOCK (or ceiling) cut at a
+list index (`ConfigTierBoundary::split` iterates a list-valued op's indices) still goes into `inherit` by position. So,
+as before this ticket:
 - after `set /relays/0 {host: A, password: pa}` and then `set /relays [{host: B, password: pb}]`, record 0 reads
   `{host: A, password: pb}`, one record's host paired with another's secret;
 - a secret written at its own pointer `/relays/1/password` applies to whatever record later sits at index 1, or

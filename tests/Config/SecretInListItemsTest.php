@@ -190,6 +190,58 @@ class SecretInListItemsTest extends TestCase
         $this->assertSame('fake-li-id2', config('qa.relaygroup.byId.2.password'), 'the other entry keeps its own');
     }
 
+    // ---- r6: an op-named LIST or ancestor is inherited, never owned (Claude r5 HIGH) ----
+
+    /** Lay the published layer over a CHANGED host list, as a later process booting after a host deploy would. */
+    private function hostListBecomes(array $relays): void
+    {
+        config(['qa.relaygroup' => ['group' => ['relays' => $relays]] + self::host()]);
+        $this->app->forgetInstance(ConfigOverlay::class);
+        app(ConfigOverlay::class)->sync();
+    }
+
+    public function test_an_import_naming_the_list_itself_copies_no_lower_tier_secret_up(): void
+    {
+        $this->publish([['pointer' => '/group', 'op' => 'set', 'value' => ['relays' => [['host' => 'relay.import.test']]], 'inherit' => ['/relays']]]);
+
+        $children = array_values(array_filter(array_keys($this->draft()), fn (string $p): bool => str_starts_with($p, '/group/')));
+        $this->assertSame([], $children, "none of the host's list secrets is stored as this tier's own");
+        $this->assertContains('/relays', $this->draft()['/group']['inherit'] ?? [], 'the list is inherited whole');
+
+        $this->hostListBecomes([['host' => 'relay-b.host.test', 'password' => 'fake-li-host-b']]);
+
+        $this->assertSame(['relay-b.host.test', 'fake-li-host-b'], [config('qa.relaygroup.group.relays.0.host'), config('qa.relaygroup.group.relays.0.password')], "after the host replaces its list, B carries B's own secret, never A's");
+    }
+
+    public function test_an_import_naming_an_ancestor_of_a_list_copies_no_lower_tier_secret_up(): void
+    {
+        $this->publish([['pointer' => '/byName', 'op' => 'set', 'value' => ['a' => ['relays' => []]], 'inherit' => ['/a']]]);
+
+        $children = array_values(array_filter(array_keys($this->draft()), fn (string $p): bool => str_starts_with($p, '/byName/')));
+        $this->assertSame([], $children, "the host's /byName/a list secrets are not stored as this tier's own");
+        $this->assertSame('fake-li-host-a', config('qa.relaygroup.byName.a.relays.0.password'), 'inherited from the host, live');
+    }
+
+    /** A MIXED inherit list: the index item is ignored, the ordinary item is inherited. */
+    public function test_a_mixed_named_inherit_ignores_the_index_item_and_inherits_the_ordinary_one(): void
+    {
+        $this->publish([['pointer' => '/group', 'op' => 'set', 'value' => ['relays' => [['host' => 'relay.import.test']], 'tags' => ['op']], 'inherit' => ['/relays/0/password', '/tags']]]);
+
+        $this->assertSame(['/tags'], $this->draft()['/group']['inherit'] ?? [], 'only the ordinary item is inherited');
+        $this->assertArrayNotHasKey('/group/relays/0/password', $this->draft());
+        $this->assertNull(config('qa.relaygroup.group.relays.0.password'));
+    }
+
+    /** The ABSOLUTE form of a list-index pointer in an op's inherit names no real key, and is ignored too. */
+    public function test_an_absolute_list_index_pointer_in_an_ops_inherit_is_ignored(): void
+    {
+        $this->publish([['pointer' => '/group', 'op' => 'set', 'value' => ['relays' => [['host' => 'relay.import.test']]], 'inherit' => ['/group/relays/0/password']]]);
+
+        $this->assertSame([], $this->draft()['/group']['inherit'] ?? []);
+        $this->assertArrayNotHasKey('/group/relays/0/password', $this->draft());
+        $this->assertNull(config('qa.relaygroup.group.relays.0.password'));
+    }
+
     // ---- the dedicated list cases (Codex r3 LOW) ----
 
     public function test_an_empty_list_is_stored_as_is_and_splits_nothing(): void
