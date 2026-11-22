@@ -5,6 +5,7 @@ namespace Splicewire\Beam;
 use Closure;
 use Composer\Autoload\ClassLoader;
 use Illuminate\Auth\Middleware\Authenticate;
+use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -16,6 +17,8 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\LocaleUpdated;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Router;
@@ -70,6 +73,7 @@ use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Agreements\Http\EnforceRouteRequirements;
 use Splicewire\Beam\Agreements\Http\RequireAgreement;
+use Splicewire\Beam\Agreements\RouteRequirementIndex;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\AccessError;
 use Splicewire\Beam\Authorization\ActorPort;
@@ -1378,9 +1382,23 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      *   attaches to `route:{name}` gates that route without editing it. Inert for an undeclared route.
      * - Both sit in the priority list after the session, authentication AND route-model binding, so the route's own
      *   `auth` refuses a guest first and the subject parameter is the bound record.
+     * - The route declarations are memoised per request, job or console command ({@see RouteRequirementIndex};
+     *   credential-scope 18). A scope opens EMPTY at the start (routing, Octane's `RequestReceived`, `JobProcessing`,
+     *   `CommandStarting`) and closes at the end (`RequestHandled`, Octane's `RequestTerminated`, `JobProcessed` or
+     *   `JobFailed`, `CommandFinished`), so successive requests sharing one route collection (an Octane worker) never
+     *   read each other's map. Octane's events are listened to by name, so beam does not depend on Octane.
      */
     protected function bootRouteRequirements(): void
     {
+        foreach ([\Illuminate\Routing\Events\Routing::class, JobProcessing::class, CommandStarting::class] as $start) {
+            Event::listen($start, static fn () => RouteRequirementIndex::open());
+        }
+        foreach ([\Illuminate\Foundation\Http\Events\RequestHandled::class, JobProcessed::class, JobFailed::class, CommandFinished::class] as $end) {
+            Event::listen($end, static fn () => RouteRequirementIndex::close());
+        }
+        Event::listen('Laravel\\Octane\\Events\\RequestReceived', static fn (object $event) => RouteRequirementIndex::open($event->sandbox ?? null));
+        Event::listen('Laravel\\Octane\\Events\\RequestTerminated', static fn (object $event) => RouteRequirementIndex::close($event->sandbox ?? null));
+
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware(RequireAgreement::ALIAS, RequireAgreement::class);
 
