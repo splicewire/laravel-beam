@@ -683,7 +683,8 @@ class ConfigOverrideStore
      *   written as its own `set` at its own pointer, through the same encrypted path a direct secret write takes, so
      *   it never reaches a plain override value, a scope draft or a version snapshot. The derived op carries `via`
      *   (the parent pointer), so the parent's next op replaces it; the parent inherits the leaf, so unsetting the
-     *   derived op falls back to the tier below.
+     *   derived op falls back to the tier below. Except inside a LIST item (any list index in the absolute pointer): such a
+     *   leaf is never inherited, so unsetting it leaves the item without the secret (config-sections 20 r5).
      *
      * @param  list<array<string, mixed>>  $ops
      * @param  array<array-key, mixed>  $base  the section root without the operator tier
@@ -729,8 +730,15 @@ class ConfigOverrideStore
             // the owned value stripped of them. Refill those leaves from the base BEFORE the ceiling/host checks, so the
             // set is not seen as REMOVING an inherited host/locked child; hostOwnedOut below takes them back out and
             // re-derives the inherit, and the union keeps any the importing host would not itself strip.
-            if ($kind === ConfigOverrideOp::Set && is_array($value) && is_array($op['inherit'] ?? null)) {
-                $value = ConfigOverrideEntry::fill($value, $pointer, array_map('strval', $op['inherit']), $base);
+            // config-sections 20 r5: an item of the op's own inherit that passes through a LIST index is IGNORED (filtered
+            // once, here, before the refill): a list position is not a stable identity across tiers, so refilling it would
+            // copy the tier below's record at that index (its secret then split out and stored as this op's own).
+            $named = is_array($op['inherit'] ?? null)
+                ? array_values(array_filter(array_map('strval', $op['inherit']), fn (string $rel): bool => ! $this->listPath($registered, $pointer.$rel)))
+                : null;
+
+            if ($kind === ConfigOverrideOp::Set && is_array($value) && $named !== null) {
+                $value = ConfigOverrideEntry::fill($value, $pointer, $named, $base);
             }
 
             if ($kind !== ConfigOverrideOp::Unset) {
@@ -751,7 +759,7 @@ class ConfigOverrideStore
                     // a stable identity across tiers either: unsetting that child would otherwise fill the slot from the
                     // tier below's list at the same index, another record's secret (the operator's, at the tenant tier).
                     // Removed, the item simply has no secret.
-                    if (! self::throughList($relative)) {
+                    if (! $this->listPath($registered, $pointer.$relative)) {
                         $inherit[] = $relative;
                     }
                 }
@@ -762,9 +770,8 @@ class ConfigOverrideStore
                 // exactly. The owned value above went through the full host-owned/secret/ceiling checks first, so an
                 // explicit `inherit` can only REDUCE ownership — a crafted file cannot use it to sneak a refused owned key
                 // past the checks ({@see guardLeafCeilings}, which ran on the owned value).
-                if (is_array($op['inherit'] ?? null)) {
-                    // Never a pointer through a list index (config-sections 20 r4), whoever names it.
-                    $named = array_filter(array_map('strval', $op['inherit']), fn (string $rel): bool => ! self::throughList($rel));
+                if ($named !== null) {
+                    // Never a pointer through a list index (filtered above, on the full pointer), whoever names it.
                     $inherit = array_values(array_unique(array_merge($inherit, $named)));
                 }
             }
@@ -882,6 +889,18 @@ class ConfigOverrideStore
     }
 
     /**
+     * Whether an ABSOLUTE pointer (from the section root, the op's own pointer included) passes through a LIST index, as
+     * the section's declaration says ({@see ConfigSection::throughListIndex()}; config-sections 20 r5). A list index is
+     * not a stable identity, so a pointer through one is never inherited from the tier below. A `#[MapValues]` key, even
+     * an all-digit one, is a stable name and inherits normally; an undeclared shape falls back to "any all-digit
+     * segment is an index", the safe direction.
+     */
+    private function listPath(RegisteredConfigSection $registered, string $pointer): bool
+    {
+        return $registered->section::throughListIndex(JsonPointer::segments($pointer));
+    }
+
+    /**
      * The relative pointers {@see splitSecrets()} asks about: every leaf of `$value` ({@see JsonPointer::leaves()}), and,
      * where a leaf is a non-empty LIST below a key that is not itself secret, the leaves of each of its records under an
      * index segment, at any depth (config-sections 20 r3). `leaves()` treats a list as one value, which the ceiling and
@@ -892,22 +911,6 @@ class ConfigOverrideStore
      * @param  array<array-key, mixed>  $value
      * @return list<string>
      */
-    /**
-     * Whether a relative pointer passes through a LIST index: any all-digit segment. A list index is not a stable
-     * identity, so a pointer through one is never inherited from the tier below (config-sections 20 r4). A map whose
-     * entry names are digits decodes to a PHP list anyway, and is treated the same.
-     */
-    private static function throughList(string $relative): bool
-    {
-        foreach (JsonPointer::segments($relative) as $segment) {
-            if ($segment !== '' && ctype_digit((string) $segment)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private function secretCandidates(RegisteredConfigSection $registered, string $pointer, array $value, string $prefix = ''): array
     {
         $candidates = [];

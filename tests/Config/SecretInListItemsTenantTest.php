@@ -111,6 +111,27 @@ class SecretInListItemsTenantTest extends TestCase
         }
     }
 
+    /** r5: the tenant's set AT a list item (the index in its own pointer), then an unset: never the operator's secret. */
+    public function test_a_tenants_set_at_a_list_item_then_an_unset_never_inherits_the_operators_secret(): void
+    {
+        $operator = app(ConfigOverrideStore::class)->forTier(ConfigTier::Operator);
+        $operator->saveDraft('qa.trelay', [['pointer' => '/group', 'op' => 'set', 'value' => ['relays' => [['host' => 'relay.op.test', 'password' => 'fake-lt-operator']]]]]);
+        $operator->publish('qa.trelay');
+        app(ConfigOverlay::class)->sync();
+
+        $this->asTenant(function (ConfigOverrideStore $tenant): void {
+            $tenant->saveDraft('qa.trelay', [['pointer' => '/group/relays/0', 'op' => 'set', 'value' => ['host' => 'relay.tenant.test', 'password' => 'fake-lt-tenant']]]);
+            $tenant->publish('qa.trelay');
+            $this->assertNotContains('/password', $tenant->scope('qa.trelay')->draft['/group/relays/0']['inherit'] ?? []);
+            $tenant->saveDraft('qa.trelay', [['pointer' => '/group/relays/0/password', 'op' => 'unset']]);
+            $tenant->publish('qa.trelay');
+        });
+
+        $view = $this->tenantView();
+        $this->assertSame('relay.tenant.test', $view['group']['relays'][0]['host'] ?? null);
+        $this->assertNull($view['group']['relays'][0]['password'] ?? null, "never the operator's secret");
+    }
+
     public function test_unsetting_a_tenants_index_split_secret_never_inherits_the_operators_secret_at_that_index(): void
     {
         // The operator's own list on central: relay.op.test with the OPERATOR's secret at index 0.

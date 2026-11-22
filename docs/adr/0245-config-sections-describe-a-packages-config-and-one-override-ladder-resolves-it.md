@@ -98,7 +98,10 @@ exists (ticket 05), with three ops. **These are config ops, not DataOverlay ops*
   pointer, the effective value is null, and the provenance names the tier. It is never a deletion, so "no value" and
   "inherit" stay different things (PRD story 11).
 - **`unset`** means **inherit**. It removes that tier's override row for the pointer, and the ladder refolds the
-  tiers below, so the key reads the next lower tier's value again (ticket 05: "Unset returns to the host value"). It
+  tiers below, so the key reads the next lower tier's value again (ticket 05: "Unset returns to the host value").
+  The one exception, since config-sections 20: a secret split out of a LIST item (any list index in its absolute
+  pointer) is never inherited, so unsetting it leaves the item without the secret. A list position is not a stable
+  identity across tiers. It
   never deletes the inherited effective value. DataOverlay's own `unset` is a node-delete
   (`splicewire/splicewire-app docs/adr/0089-dataoverlay-context-invoked-overlays-one-format-two-appliers.md`;
   `schemastud/laravel-data-schemas` `src/Overlay/JsonPathMutator.php`), so a config `unset` is never sent to
@@ -296,6 +299,13 @@ itself), and a pointer through a list index never goes into a parent's `inherit`
 otherwise fill the slot from the tier below's list at that index: another record's secret, and at the tenant tier the
 operator's). A SPLIT secret of a list item therefore never outlives a later set of the list or of an ancestor, and
 never re-applies to another record. A null secret in a list item is split too, as an explicit-null encrypted entry.
+
+**What counts as a list index** (config-sections 20 r5) is read from the DECLARATION, through the shared resolver
+(`ConfigSection::throughListIndex()`), on the ABSOLUTE pointer (the op's own pointer included). A segment is a list index
+only right after a declared list of records (`#[DataCollectionOf]`). A `#[MapValues]` map's key, even an all-digit one
+such as an id `"10"`, is a stable entry name and inherits normally, and so is a map section's first segment. Only where
+the shape is not declared (an undeclared segment, or an array with no item attribute) does any all-digit segment count as
+an index: the safe direction.
 
 **Not closed here (ticket 21: a list index is not a stable identity):** a DIRECT entry written inside a list item
 (`/relays/<i>/...`, `via` null) is not dropped by a later set of the list. So, as before this ticket:

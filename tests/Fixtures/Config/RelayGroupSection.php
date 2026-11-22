@@ -17,7 +17,11 @@ use Splicewire\Beam\Enums\ConfigTier;
 #[ConfigRoot(root: 'qa.relaygroup', title: 'Relay groups')]
 class RelayGroupSection extends ConfigSection
 {
-    /** @param  array<string, RelayGroup>  $byName */
+    /**
+     * @param  array<string, RelayGroup>  $byName
+     * @param  array<string, RelayEntry>|Optional  $byId  a MAP keyed by numeric ids (stable names, not list indices)
+     * @param  array<int, mixed>|Optional  $loose  an array with no item attribute (an undeclared shape)
+     */
     public function __construct(
         #[ConfigKey(ceiling: ConfigTier::Operator, effect: ConfigEffect::Live)]
         public RelayGroup $group,
@@ -27,5 +31,9 @@ class RelayGroupSection extends ConfigSection
         public RelayGroup|Optional $maybe,
         #[ConfigKey(ceiling: ConfigTier::Operator, effect: ConfigEffect::Live)]
         public RelayHolder $holder,
+        #[ConfigKey(ceiling: ConfigTier::Operator, effect: ConfigEffect::Live), MapValues(RelayEntry::class)]
+        public array|Optional $byId,
+        #[ConfigKey(ceiling: ConfigTier::Operator, effect: ConfigEffect::Live)]
+        public array|Optional $loose,
     ) {}
 }

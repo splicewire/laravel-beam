@@ -15,7 +15,8 @@ use Splicewire\Beam\Enums\ConfigOverrideOp;
  * host-owned map is inherited whole, so a new host entry still arrives), which the ceiling guard already forces to equal
  * their lower-tier value. They are taken from the document below this entry each time it is applied
  * ({@see valueOver()}), so the object keeps REPLACE semantics for everything it does own (an operator-owned map still
- * drops an entry it leaves out), unsetting a split secret inherits the lower tier, and a host-owned key follows the host
+ * drops an entry it leaves out), unsetting a split secret inherits the lower tier (except inside a LIST item, which is
+ * never inherited: config-sections 20), and a host-owned key follows the host
  * after a deploy (build-qa's probes 2 and 3, 2026-11-16).
  */
 final class ConfigOverrideEntry

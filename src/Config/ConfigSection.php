@@ -93,6 +93,105 @@ abstract class ConfigSection extends Data
     }
 
     /**
+     * Whether a pointer passes through a LIST index, read from the DECLARATION (config-sections 20 r5, lead LIST-1745),
+     * through {@see ConfigDataTypes}, the reading the other walks share. A segment is a list index only right after a
+     * declared list of records (`#[DataCollectionOf]`). A `#[MapValues]` map's key, numeric or not (`/byId/10`), is a
+     * stable entry name, and so is a map section's first segment. Where the walk cannot resolve the shape (an undeclared
+     * segment, or an array with no item attribute), ANY all-digit segment from there on counts as a list index: the safe
+     * direction, since a list index is not a stable identity. With two or more Data members, a list in any of them counts.
+     *
+     * @param  list<string>  $segments  the pointer's unescaped segments, relative to the root
+     */
+    public static function throughListIndex(array $segments): bool
+    {
+        $class = static::class;
+        $entries = static::declaration()->entries;
+
+        if ($entries !== null) {
+            if ($segments === []) {
+                return false;
+            }
+
+            array_shift($segments);
+            $class = $entries;
+        }
+
+        return self::listIndexIn([$class], $segments);
+    }
+
+    /**
+     * @param  list<class-string>  $classes
+     * @param  list<string>  $segments
+     */
+    private static function listIndexIn(array $classes, array $segments): bool
+    {
+        if ($segments === []) {
+            return false;
+        }
+
+        $segment = array_shift($segments);
+
+        foreach ($classes as $class) {
+            $property = self::property($class, $segment);
+
+            if ($property === null) {
+                if (self::anyDigits([$segment, ...$segments])) {
+                    return true;
+                }
+
+                continue;
+            }
+
+            $nested = ConfigDataTypes::nested($property);
+
+            if ($nested !== []) {
+                if (self::listIndexIn($nested, $segments)) {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (ConfigDataTypes::listEntry($property) !== null) {
+                // The next segment is an index into the declared list.
+                if ($segments !== []) {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (($entry = ConfigDataTypes::mapEntry($property)) !== null) {
+                // The next segment is a map key (a stable name); below it, the entry class decides.
+                if (count($segments) > 1 && self::listIndexIn([$entry], array_slice($segments, 1))) {
+                    return true;
+                }
+
+                continue;
+            }
+
+            // An array with no item attribute, or a scalar: the shape is not declared below here.
+            if (self::anyDigits($segments)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param list<string> $segments */
+    private static function anyDigits(array $segments): bool
+    {
+        foreach ($segments as $segment) {
+            if ($segment !== '' && ctype_digit((string) $segment)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The declaration `$segments` reaches from any of `$classes` (the Data classes the walk is in), starting from
      * `$declared` (the nearest declaration above). A segment a class does not declare ends that branch at `$declared`.
      *
