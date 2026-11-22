@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\LocaleUpdated;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
@@ -1383,21 +1384,34 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      * - Both sit in the priority list after the session, authentication AND route-model binding, so the route's own
      *   `auth` refuses a guest first and the subject parameter is the bound record.
      * - The route declarations are memoised per request, job or console command ({@see RouteRequirementIndex};
-     *   credential-scope 18). A scope opens EMPTY at the start (routing, Octane's `RequestReceived`, `JobProcessing`,
-     *   `CommandStarting`) and closes at the end (`RequestHandled`, Octane's `RequestTerminated`, `JobProcessed` or
-     *   `JobFailed`, `CommandFinished`), so successive requests sharing one route collection (an Octane worker) never
-     *   read each other's map. Octane's events are listened to by name, so beam does not depend on Octane.
+     *   credential-scope 18), in a stack of frames, each starting EMPTY. A request (routing, Octane's
+     *   `RequestReceived`; one frame per request object) opens a top-level frame, clearing the stack, so successive
+     *   requests sharing one route collection (an Octane worker) never read each other's map. A `JobProcessing` nests
+     *   on an enclosing request frame (a sync job) and is top-level otherwise; a `CommandStarting` nests. Each close
+     *   (`RequestHandled`, Octane's `RequestTerminated`, `JobProcessed`, `JobFailed`, `JobExceptionOccurred`,
+     *   `CommandFinished`) pops its own unit's frame and restores the enclosing one, so a nested unit keeps its
+     *   parent's memo. Octane's events are listened to by name, so beam does not depend on Octane.
      */
     protected function bootRouteRequirements(): void
     {
-        foreach ([\Illuminate\Routing\Events\Routing::class, JobProcessing::class, CommandStarting::class] as $start) {
-            Event::listen($start, static fn () => RouteRequirementIndex::open());
+        Event::listen(\Illuminate\Routing\Events\Routing::class, static fn (\Illuminate\Routing\Events\Routing $event) => RouteRequirementIndex::openRequest($event->request));
+        Event::listen(\Illuminate\Foundation\Http\Events\RequestHandled::class, static fn (\Illuminate\Foundation\Http\Events\RequestHandled $event) => RouteRequirementIndex::close($event->request));
+        Event::listen('Laravel\\Octane\\Events\\RequestReceived', static function (object $event): void {
+            if (isset($event->request) && is_object($event->request)) {
+                RouteRequirementIndex::openRequest($event->request, $event->sandbox ?? null);
+            }
+        });
+        Event::listen('Laravel\\Octane\\Events\\RequestTerminated', static function (object $event): void {
+            if (isset($event->request) && is_object($event->request)) {
+                RouteRequirementIndex::close($event->request, $event->sandbox ?? null);
+            }
+        });
+        Event::listen(JobProcessing::class, static fn (JobProcessing $event) => RouteRequirementIndex::openJob($event->job));
+        foreach ([JobProcessed::class, JobFailed::class, JobExceptionOccurred::class] as $end) {
+            Event::listen($end, static fn (JobProcessed|JobFailed|JobExceptionOccurred $event) => RouteRequirementIndex::close($event->job));
         }
-        foreach ([\Illuminate\Foundation\Http\Events\RequestHandled::class, JobProcessed::class, JobFailed::class, CommandFinished::class] as $end) {
-            Event::listen($end, static fn () => RouteRequirementIndex::close());
-        }
-        Event::listen('Laravel\\Octane\\Events\\RequestReceived', static fn (object $event) => RouteRequirementIndex::open($event->sandbox ?? null));
-        Event::listen('Laravel\\Octane\\Events\\RequestTerminated', static fn (object $event) => RouteRequirementIndex::close($event->sandbox ?? null));
+        Event::listen(CommandStarting::class, static fn (CommandStarting $event) => RouteRequirementIndex::open($event->input));
+        Event::listen(CommandFinished::class, static fn (CommandFinished $event) => RouteRequirementIndex::close($event->input));
 
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware(RequireAgreement::ALIAS, RequireAgreement::class);

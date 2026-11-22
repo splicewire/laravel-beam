@@ -2,15 +2,30 @@
 
 namespace Splicewire\Beam\Tests\Agreements;
 
+use Closure;
+use Illuminate\Bus\Queueable;
+use Illuminate\Console\Events\CommandFinished;
+use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobExceptionOccurred;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Routing\CompiledRouteCollection;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use LogicException;
 use ReflectionProperty;
+use RuntimeException;
 use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Agreements\Data\OutstandingRequirementData;
 use Splicewire\Beam\Agreements\Http\RequireAgreement;
@@ -26,6 +41,8 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\Fixtures\ReadGuard\Gadget;
 use Splicewire\Beam\Tests\Fixtures\ReadGuard\GadgetData;
 use Splicewire\Beam\Tests\TestCase;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\NullOutput;
 
 /**
  * credential-scope 18: the route half of {@see SlotRequirementDeclarations} (agreements 07) is walked AT MOST ONCE per
@@ -33,6 +50,10 @@ use Splicewire\Beam\Tests\TestCase;
  * manifest asks `requirementsFor()` twice per resource projection; a walk per call made the flagship's Root manifest
  * about 4x slower. The map is unchanged, an edited or replaced route is enforced on the next request, and a route
  * changed mid-request after a read is refused loudly.
+ *
+ * The memo is a stack of frames: a sync job or an `Artisan::call` inside a request walks once for itself and leaves the
+ * request's memo intact; Octane's RequestReceived + Routing pair is one frame; a top-level open starts alone and empty
+ * after a unit whose close never fired; a nested frame left open is popped (and verified) with its parent.
  *
  * The guards count real collection enumerations (`getRoutes()` and `count()`, and each route a cached collection
  * rebuilds), attributed by caller. Frame's actions index ({@see \Splicewire\Beam\Frame\ParticleResourceActions::route()})
@@ -61,6 +82,7 @@ class RouteDeclarationMemoTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        MemoUnitLog::reset();
 
         Schema::create('memo_read_actors', function (Blueprint $table): void {
             $table->id();
@@ -96,6 +118,7 @@ class RouteDeclarationMemoTest extends TestCase
     protected function tearDown(): void
     {
         RouteRequirementIndex::$verifiesInTests = true;
+        MemoUnitLog::reset();
 
         parent::tearDown();
     }
@@ -256,10 +279,190 @@ class RouteDeclarationMemoTest extends TestCase
         $this->getJson('/memo/mutate');
     }
 
+    // ── nesting (review cs18 completion): a nested unit keeps its parent's memo; sequential units start empty ────
+
+    public function test_a_sync_job_and_an_artisan_call_inside_a_request_keep_the_parent_requests_memo(): void
+    {
+        RouteRequirementIndex::$verifiesInTests = false;
+        $this->app['config']->set('queue.default', 'sync');
+        Artisan::command('memo:read', function (): void {
+            MemoUnitLog::measure('command', fn () => [app(RequirementDeclarations::class)->all(), app(RequirementDeclarations::class)->requirementsFor('route:memo.report')]);
+        });
+        $this->routeCommandEvents();
+        Route::middleware('web')->get('/memo/nested', function () {
+            MemoUnitLog::measure('parent', fn () => app(RequirementDeclarations::class)->all());
+            dispatch(new MemoReadingJob);
+            Artisan::call('memo:read');
+            MemoUnitLog::measure('parent', fn () => [app(RequirementDeclarations::class)->all(), app(RequirementDeclarations::class)->requirementsFor('route:memo.report')]);
+
+            return ['ok' => true];
+        })->name('memo.nested');
+        $counting = $this->countingRoutes();
+
+        $this->getJson('/memo/nested')->assertOk();
+
+        // The parent walks once (its route gate and its first read share it), the job and the command once each.
+        $this->assertSame(1, MemoUnitLog::walks('parent'), implode("\n", $counting->callers));
+        $this->assertSame(1, MemoUnitLog::walks('job'));
+        $this->assertSame(1, MemoUnitLog::walks('command'));
+        $this->assertSame(3, self::portEnumerations($counting));
+        $this->assertSame([1, 1], MemoUnitLog::$depths['parent']);
+        $this->assertSame([2], MemoUnitLog::$depths['job'], 'the job nests on the request frame');
+        $this->assertSame([2], MemoUnitLog::$depths['command'], 'the command nests on the request frame');
+        $this->assertFalse(RouteRequirementIndex::isOpen());
+    }
+
+    public function test_octanes_request_received_and_routing_for_one_request_give_one_frame(): void
+    {
+        RouteRequirementIndex::$verifiesInTests = false;
+        Route::get('/memo/octane', function () {
+            MemoUnitLog::measure('request', fn () => app(RequirementDeclarations::class)->all());
+
+            return ['ok' => true];
+        })->name('memo.octane');
+        $counting = $this->countingRoutes();
+        $request = Request::create('/memo/octane');
+
+        event('Laravel\\Octane\\Events\\RequestReceived', [new OctaneRequestEventStub($this->app, $request)]);
+        MemoUnitLog::measure('received', fn () => app(RequirementDeclarations::class)->all());
+        $response = $this->app->make(HttpKernel::class)->handle($request);
+        event('Laravel\\Octane\\Events\\RequestTerminated', [new OctaneRequestEventStub($this->app, $request)]);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(1, MemoUnitLog::walks('received'));
+        $this->assertSame(0, MemoUnitLog::walks('request'), 'Routing for the same request keeps the RequestReceived frame and its map');
+        $this->assertSame([1], MemoUnitLog::$depths['request']);
+        $this->assertSame(1, self::portEnumerations($counting));
+        $this->assertFalse(RouteRequirementIndex::isOpen());
+    }
+
+    public function test_a_top_level_open_starts_alone_and_empty_after_a_unit_whose_close_never_fired(): void
+    {
+        // A request whose close never fired (its exception escaped the kernel), then the next request.
+        RouteRequirementIndex::openRequest(Request::create('/memo/crashed'));
+        $stale = app(RequirementDeclarations::class)->all();
+        Route::get('/memo/next', function () {
+            MemoUnitLog::measure('next', fn () => MemoUnitLog::$seen['next'] = array_key_exists('route:memo.next', app(RequirementDeclarations::class)->all()));
+
+            return ['ok' => true];
+        })->middleware('agreement:terms')->name('memo.next');
+        app('router')->getRoutes()->refreshNameLookups();
+        $this->assertArrayNotHasKey('route:memo.next', $stale);
+
+        $this->getJson('/memo/next')->assertOk();
+
+        $this->assertSame([1], MemoUnitLog::$depths['next'], 'the request frame is the only one');
+        $this->assertTrue(MemoUnitLog::$seen['next'], 'the new request reads its own walk, not the stale frame\'s map');
+        $this->assertFalse(RouteRequirementIndex::isOpen());
+
+        // A worker's job whose close never fired, then the next job: it starts alone and empty, and sees a new route.
+        event(new JobProcessing('redis', $crashed = $this->queueJob()));
+        app(RequirementDeclarations::class)->all();
+        Route::get('/memo/later', fn () => 'later')->middleware('agreement:terms')->name('memo.later');
+        app('router')->getRoutes()->refreshNameLookups();
+        event(new JobProcessing('redis', $next = $this->queueJob()));
+        $this->assertSame(1, RouteRequirementIndex::depth());
+        $this->assertArrayHasKey('route:memo.later', app(RequirementDeclarations::class)->all());
+        event(new JobProcessed('redis', $next));
+        event(new JobProcessed('redis', $crashed));
+        $this->assertFalse(RouteRequirementIndex::isOpen());
+    }
+
+    public function test_a_nested_frame_whose_close_never_fired_is_popped_with_its_parent(): void
+    {
+        Route::get('/memo/orphan', function () {
+            RouteRequirementIndex::open(new MemoUnitLog); // a nested unit whose close never fires
+            app(RequirementDeclarations::class)->all();
+            MemoUnitLog::$depths['orphan'][] = RouteRequirementIndex::depth();
+
+            return ['ok' => true];
+        })->name('memo.orphan');
+        app('router')->getRoutes()->refreshNameLookups();
+
+        $this->getJson('/memo/orphan')->assertOk();
+
+        $this->assertSame([2], MemoUnitLog::$depths['orphan']);
+        $this->assertFalse(RouteRequirementIndex::isOpen(), 'the parent close pops the orphan too');
+    }
+
+    public function test_a_route_changed_after_a_read_in_a_nested_frame_left_open_is_refused_at_the_parents_close(): void
+    {
+        // Outside the web group, so the route gate never reads: only the nested frame holds a map.
+        Route::get('/memo/orphan-mutate', function () {
+            RouteRequirementIndex::open(new MemoUnitLog);
+            app(RequirementDeclarations::class)->all();
+            app('router')->getRoutes()->getByName('memo.plain')->middleware('agreement:terms');
+
+            return ['ok' => true];
+        })->name('memo.orphan-mutate');
+        app('router')->getRoutes()->refreshNameLookups();
+        $this->withoutExceptionHandling();
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('changed after they were read');
+
+        $this->getJson('/memo/orphan-mutate');
+    }
+
+    public function test_a_close_whose_unit_has_no_frame_closes_nothing(): void
+    {
+        $request = Request::create('/memo/open');
+        RouteRequirementIndex::openRequest($request);
+
+        try {
+            // queue:work's own frame was cleared by its first job; a job's JobProcessed after its JobFailed.
+            event(new CommandFinished('queue:work', new ArrayInput([]), new NullOutput, 0));
+            event(new JobProcessed('sync', $this->queueJob()));
+            $this->assertSame(1, RouteRequirementIndex::depth());
+        } finally {
+            RouteRequirementIndex::close($request);
+        }
+
+        $this->assertFalse(RouteRequirementIndex::isOpen());
+    }
+
+    public function test_a_workers_job_that_throws_closes_its_frame_at_job_exception_occurred(): void
+    {
+        $job = $this->queueJob();
+        event(new JobProcessing('redis', $job));
+        $this->assertSame(1, RouteRequirementIndex::depth());
+
+        // A retried job fires neither JobProcessed nor JobFailed.
+        event(new JobExceptionOccurred('redis', $job, new RuntimeException('retry me')));
+
+        $this->assertFalse(RouteRequirementIndex::isOpen());
+    }
+
     /** The enumerations the requirements port made (the frame actions index makes its own; see the test docblock). */
     private static function portEnumerations(object $collection): int
     {
         return count(array_filter($collection->callers, fn (string $caller): bool => $caller === SlotRequirementDeclarations::class.'::routes'));
+    }
+
+    /** Swap the router's collection for one that counts enumerations (after the test's routes are registered). */
+    private function countingRoutes(): CountingRouteCollection
+    {
+        $counting = new CountingRouteCollection;
+        foreach (app('router')->getRoutes()->getRoutes() as $route) {
+            $counting->add($route);
+        }
+        app('router')->setRoutes($counting);
+        $counting->reset();
+
+        return $counting;
+    }
+
+    /** Laravel fires CommandStarting/CommandFinished only outside unit tests; route them here, as a console run does. */
+    private function routeCommandEvents(): void
+    {
+        $kernel = $this->app->make(ConsoleKernel::class);
+        $kernel->rerouteSymfonyCommandEvents();
+        $kernel->setArtisan(null);
+    }
+
+    private function queueJob(): SyncJob
+    {
+        return new SyncJob($this->app, '{"uuid":"memo","job":"memo","data":[]}', 'sync', 'default');
     }
 
     // ── fixtures ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -416,4 +619,60 @@ class MemoReadActor extends User
     protected $guarded = [];
 
     public $timestamps = false;
+}
+
+/** What each unit (parent request, job, command) saw: its own port walks and the frame depth at each measure. */
+class MemoUnitLog
+{
+    /** @var array<string, int> */
+    public static array $walks = [];
+
+    /** @var array<string, list<int>> */
+    public static array $depths = [];
+
+    /** @var array<string, bool> */
+    public static array $seen = [];
+
+    public static function measure(string $unit, Closure $reads): void
+    {
+        $routes = app('router')->getRoutes();
+        $before = self::portWalks($routes);
+        self::$depths[$unit][] = RouteRequirementIndex::depth();
+        $reads();
+        self::$walks[$unit] = (self::$walks[$unit] ?? 0) + self::portWalks($routes) - $before;
+    }
+
+    public static function walks(string $unit): int
+    {
+        return self::$walks[$unit] ?? 0;
+    }
+
+    public static function reset(): void
+    {
+        self::$walks = [];
+        self::$depths = [];
+        self::$seen = [];
+    }
+
+    private static function portWalks(object $routes): int
+    {
+        return count(array_filter($routes->callers ?? [], fn (string $caller): bool => $caller === SlotRequirementDeclarations::class.'::routes'));
+    }
+}
+
+/** A sync job inside a request that reads the requirements twice. */
+class MemoReadingJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable;
+
+    public function handle(): void
+    {
+        MemoUnitLog::measure('job', fn () => [app(RequirementDeclarations::class)->all(), app(RequirementDeclarations::class)->requirementsFor('route:memo.report')]);
+    }
+}
+
+/** The fields beam's listeners read from Octane's RequestReceived / RequestTerminated (beam does not depend on Octane). */
+class OctaneRequestEventStub
+{
+    public function __construct(public object $sandbox, public object $request) {}
 }

@@ -19,10 +19,10 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * It reads the BOOTED registries on every call, unfiltered, so an entry registered after boot is seen and a gated
  * registry cannot hide a Requirement.
  *
- * The ROUTE half (agreements 07: a named route's own `agreement:` middleware) is walked at most once per request or
- * console command, through {@see RouteRequirementIndex} (credential-scope 18), and on every call outside one. Frame's
- * manifest asks {@see requirementsFor()} twice per resource projection, and a walk on each call made the flagship's
- * Root manifest about 4x slower. The registries are still read on every call.
+ * The ROUTE half (agreements 07: a named route's own `agreement:` middleware) is walked at most once per request, queue
+ * job or console command (a nested one keeps its parent's memo), through {@see RouteRequirementIndex} (credential-scope
+ * 18), and on every call outside one. Frame's manifest asks {@see requirementsFor()} twice per resource projection, and
+ * a walk on each call made the flagship's Root manifest about 4x slower. The registries are still read on every call.
  *
  * With no slot anywhere it declares nothing, exactly as {@see NullRequirementDeclarations}. An agreements seam that
  * binds its own declarations resolves this class to read the slots, so it stays public and resolvable on its own.
@@ -82,8 +82,8 @@ class SlotRequirementDeclarations implements RequirementDeclarations
     }
 
     /**
-     * Each named route's `agreement:` declarations, keyed `route:{name}`: memoised for the open request or command
-     * ({@see RouteRequirementIndex}), walked on every call outside one.
+     * Each named route's `agreement:` declarations, keyed `route:{name}`: memoised in the open request's, job's or
+     * command's frame ({@see RouteRequirementIndex}), walked on every call outside one.
      *
      * @return array<string, list<Requires>>
      */
