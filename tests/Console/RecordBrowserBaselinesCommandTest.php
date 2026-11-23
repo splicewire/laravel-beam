@@ -27,12 +27,15 @@ use Splicewire\Beam\Tests\TestCase;
  * so the class skips off a non-Darwin/arm64 host rather than passing vacuously. The two IN-PROCESS gate
  * legs — the operator DESIGNATION marker and the pinned-Chromium fixture — are driven directly.
  *
- * CASE-SENSITIVITY NOTE (documented limitation, not a gap): on the macOS case-insensitive record host,
- * `tests/Browser/Screenshots` (capture) and `tests/Browser/screenshots` (baseline) are the SAME inode,
- * so a capture can never BYTE-DIFFER from its baseline here. The differ-gated branches — staleness
- * layer-3's ABORT (stale AND differs) and `report()`'s changed/new counts — are therefore inert on this
- * host by design (belt-and-suspenders for a case-SENSITIVE CI runner) and are not driveable from here.
- * Every branch reachable on a case-insensitive host is exercised below, including layer-3's stale→skip.
+ * CASE-SENSITIVITY NOTE: on the macOS case-insensitive record host, `tests/Browser/Screenshots` (capture)
+ * and `tests/Browser/screenshots` (baseline) fold to the SAME inode, so a capture can never BYTE-DIFFER
+ * from its baseline there and promote() takes its structural skip-and-count (same device+inode) path — the
+ * fold is detected by physical-file identity, since macOS realpath() keeps the requested case and cannot tell. The promote()-specific case-SENSITIVE branches — the real copy() that MOVES bytes into a distinct
+ * baseline dir, and the fail-closed guard when that copy() returns false — ARE exercised, by mounting a
+ * genuine case-sensitive scratch volume ({@see caseSensitiveBaseOrSkip}); those two tests skip only on a host
+ * where such a volume can't be provisioned. The remaining differ-gated branches — staleness layer-3's ABORT
+ * (stale AND differs) and `report()`'s changed/new counts — stay outside this suite (not in the amend's narrow
+ * scope); every other branch reachable on a case-insensitive host is exercised below, including layer-3's skip.
  */
 class RecordBrowserBaselinesCommandTest extends TestCase
 {
@@ -49,6 +52,10 @@ class RecordBrowserBaselinesCommandTest extends TestCase
     private string $shots;         // tests/Browser/Screenshots === screenshots on this case-insensitive host
 
     private string $browsersRoot;  // PLAYWRIGHT_BROWSERS_PATH fixture root
+
+    private ?string $csImage = null;   // a mounted case-SENSITIVE scratch image (distinct-dir tests), detached in tearDown
+
+    private ?string $csMount = null;
 
     protected function setUp(): void
     {
@@ -82,6 +89,7 @@ class RecordBrowserBaselinesCommandTest extends TestCase
     {
         $this->designate(false);
         putenv('PLAYWRIGHT_BROWSERS_PATH');
+        $this->detachCaseSensitive();
         $this->rrmdir($this->base);
 
         parent::tearDown();
@@ -213,6 +221,50 @@ class RecordBrowserBaselinesCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    /**
+     * DISTINCT-DIR promote (the real copy() path). On a case-SENSITIVE record volume `tests/Browser/Screenshots`
+     * (capture) and `tests/Browser/screenshots` (baseline) are TWO directories, so promote() takes the real
+     * copy()+return-check branch — the branch the fold host can never reach. Here the copy succeeds and the
+     * committed baseline receives the capture bytes. Skips if a case-sensitive volume can't be provisioned.
+     */
+    public function test_promotes_into_a_distinct_baseline_dir_on_a_case_sensitive_volume(): void
+    {
+        $base = $this->caseSensitiveBaseOrSkip();
+        $this->seedRecordHost($base, ['readings.offering'], ['readings.offering@1280']);
+
+        $this->artisan('splicewire:beam:browser:record-baselines')
+            ->expectsOutputToContain('1 baseline(s) promoted')
+            ->assertSuccessful();
+
+        // src and dst are genuinely distinct files here — the baseline must have RECEIVED the capture bytes.
+        $this->assertSame(
+            'PNG-readings.offering@1280',
+            file_get_contents($base.'/tests/Browser/screenshots/readings.offering@1280.png'),
+        );
+    }
+
+    /**
+     * DISTINCT-DIR copy FAILURE fails closed (the core of the amend). On a case-SENSITIVE volume with an
+     * unwritable baseline dir, copy() genuinely returns false; the command must NOT report the capture as
+     * promoted and must exit non-zero. RED before the amend (promote() incremented unconditionally and
+     * exited 0, silently reporting a move that never happened); GREEN after (checked copy() → fail-closed).
+     */
+    public function test_copy_failure_is_not_promoted_and_exits_nonzero_on_a_case_sensitive_volume(): void
+    {
+        $base = $this->caseSensitiveBaseOrSkip();
+        $this->seedRecordHost($base, ['readings.offering'], ['readings.offering@1280']);
+
+        // Pre-create the committed baseline dir and make it unwritable so the real copy() fails.
+        $baselineDir = $base.'/tests/Browser/screenshots';
+        @mkdir($baselineDir, 0775, true);
+        chmod($baselineDir, 0500);
+
+        $this->artisan('splicewire:beam:browser:record-baselines')
+            ->doesntExpectOutputToContain('1 baseline(s) promoted')
+            ->expectsOutputToContain('could not be written')
+            ->assertFailed();
+    }
+
     // ---- fixtures -------------------------------------------------------------------------------
 
     private function designate(bool $on): void
@@ -245,6 +297,92 @@ class RecordBrowserBaselinesCommandTest extends TestCase
     private function writeCapture(string $name): void
     {
         file_put_contents($this->shots.'/'.$name.'.png', 'PNG-'.$name);
+    }
+
+    /**
+     * Build the record-host fixture (capture dir + run manifest + the pinned-Chromium signature) rooted at an
+     * ARBITRARY $base, point the command's base_path() + PLAYWRIGHT_BROWSERS_PATH there, and designate the host.
+     * Used by the distinct-dir tests whose $base lives on a case-sensitive volume.
+     *
+     * @param  list<string>  $entered  flow keys the manifest records as ENTERED
+     * @param  list<string>  $captures  capture basenames to write under Screenshots
+     */
+    private function seedRecordHost(string $base, array $entered, array $captures): void
+    {
+        $shots = $base.'/tests/Browser/Screenshots';
+        $browsers = $base.'/.ms-playwright';
+
+        @mkdir($shots, 0775, true);
+        @mkdir($browsers.'/chromium-'.self::REV, 0775, true);
+        @mkdir($base.'/node_modules/playwright-core', 0775, true);
+        file_put_contents(
+            $base.'/node_modules/playwright-core/browsers.json',
+            json_encode(['browsers' => [['name' => 'chromium', 'revision' => self::REV]]]),
+        );
+        putenv('PLAYWRIGHT_BROWSERS_PATH='.$browsers);
+
+        $lines = array_map(
+            static fn (string $flow): string => (string) json_encode([
+                'flow' => $flow,
+                'role' => null,
+                'outcome' => FlowOutcome::Entered->value,
+            ]),
+            $entered,
+        );
+        file_put_contents($shots.'/flow-results.jsonl', implode("\n", $lines)."\n");
+
+        foreach ($captures as $name) {
+            file_put_contents($shots.'/'.$name.'.png', 'PNG-'.$name);
+        }
+
+        $this->designate(true);
+        $this->app->setBasePath($base);
+    }
+
+    /**
+     * Mount a case-SENSITIVE scratch volume and return an app base on it, so the command's Screenshots (capture)
+     * and screenshots (baseline) dirs are DISTINCT — the case this macOS fold volume cannot otherwise produce.
+     * Skips the test (rather than passing vacuously) when a case-sensitive volume can't be provisioned.
+     */
+    private function caseSensitiveBaseOrSkip(): string
+    {
+        $tmp = sys_get_temp_dir().'/bj17-cs-'.bin2hex(random_bytes(6));
+        $this->csImage = $tmp.'.sparseimage';
+        $this->csMount = $tmp.'-mnt';
+        @mkdir($this->csMount, 0775, true);
+
+        exec('hdiutil create -size 48m -fs '.escapeshellarg('Case-sensitive APFS')
+            .' -volname bj17cs -type SPARSE -quiet '.escapeshellarg($this->csImage).' 2>&1', $o1, $r1);
+        exec('hdiutil attach -quiet -nobrowse -mountpoint '.escapeshellarg($this->csMount).' '
+            .escapeshellarg($this->csImage).' 2>&1', $o2, $r2);
+
+        @mkdir($this->csMount.'/CASEprobe');
+        $folds = is_dir($this->csMount.'/caseprobe');
+        @rmdir($this->csMount.'/CASEprobe');
+
+        if ($r1 !== 0 || $r2 !== 0 || $folds) {
+            $this->detachCaseSensitive();
+            $this->markTestSkipped('could not provision a case-sensitive scratch volume (hdiutil unavailable or folding).');
+        }
+
+        $base = $this->csMount.'/app';
+        @mkdir($base, 0775, true);
+
+        return $base;
+    }
+
+    private function detachCaseSensitive(): void
+    {
+        if ($this->csMount !== null) {
+            exec('hdiutil detach -quiet -force '.escapeshellarg($this->csMount).' 2>/dev/null');
+            @rmdir($this->csMount);
+            $this->csMount = null;
+        }
+
+        if ($this->csImage !== null) {
+            @unlink($this->csImage);
+            $this->csImage = null;
+        }
     }
 
     private function rrmdir(string $dir): void

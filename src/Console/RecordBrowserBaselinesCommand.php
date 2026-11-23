@@ -261,20 +261,70 @@ class RecordBrowserBaselinesCommand extends Command
         }
 
         $promoted = 0;
+        $failed = [];
 
         foreach ($captures as $c) {
             if (! $c['fresh']) {
                 continue; // stale but identical to its baseline — nothing to promote
             }
 
-            copy($captureDir.'/'.$c['name'].'.png', $baselineDir.'/'.$c['name'].'.png');
+            $src = $captureDir.'/'.$c['name'].'.png';
+            $dst = $baselineDir.'/'.$c['name'].'.png';
+
+            // On a case-INSENSITIVE record volume the capture dir and the baseline dir fold to ONE physical file, so
+            // the fresh capture ALREADY IS the committed baseline — count it structurally, without a self-copy that
+            // PHP's same-file guard would reject anyway. The fold is detected by DEVICE+INODE identity, not realpath():
+            // on macOS realpath() preserves the requested case ('…/Screenshots/x' vs '…/screenshots/x') and so does
+            // NOT reveal the fold, but the two paths resolve to one inode. A FIRST-TIME baseline (dst not yet created)
+            // or a case-SENSITIVE volume (src and dst are DISTINCT files) is NOT the same file, so it falls through to
+            // a real copy that is VERIFIED: a failed move must fail closed, never be reported as promoted — that would
+            // be the RegistryKey silent-success class again, on the actual target host.
+            if ($this->isSameFile($src, $dst)) {
+                $promoted++;
+
+                continue;
+            }
+
+            if (! @copy($src, $dst)) {
+                $failed[] = $c['name'];
+
+                continue;
+            }
+
             $promoted++;
+        }
+
+        if ($failed !== []) {
+            $this->components->error(
+                count($failed).' capture(s) could not be written to the committed baseline — NOT promoted. '
+                .'Check the baseline directory is writable, then re-record. Failed: '.implode(', ', $failed)
+            );
+
+            return self::FAILURE;
         }
 
         $this->components->info("{$promoted} baseline(s) promoted on the record host.");
         $this->reportGitDrift($baselineDir);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Whether two paths are the SAME physical file (same device + inode) — the reliable fold test on a
+     * case-insensitive volume, where realpath() keeps the requested case and cannot tell. False if either
+     * path is absent (e.g. a first-time baseline whose $b does not exist yet) or the two are distinct files.
+     */
+    private function isSameFile(string $a, string $b): bool
+    {
+        if (! is_file($a) || ! is_file($b)) {
+            return false;
+        }
+
+        $sa = @stat($a);
+        $sb = @stat($b);
+
+        return $sa !== false && $sb !== false
+            && $sa['dev'] === $sb['dev'] && $sa['ino'] === $sb['ino'];
     }
 
     /**
