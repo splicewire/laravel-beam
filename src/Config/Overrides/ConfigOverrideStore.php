@@ -654,15 +654,59 @@ class ConfigOverrideStore
         // that parent.
         $draft = array_filter(
             $draft,
-            function (mixed $entry, string|int $pointer) use ($registered): bool {
-                $via = is_array($entry) ? ($entry['via'] ?? null) : null;
-
-                return ! $this->listPath($registered, is_string($via) ? $via : (string) $pointer);
-            },
+            fn (mixed $entry, string|int $pointer): bool => ! $this->writtenThroughList($registered, $entry, (string) $pointer),
             ARRAY_FILTER_USE_BOTH,
         );
 
         return $this->applicable($registered, $this->entries($draft, $version?->version));
+    }
+
+    /**
+     * The published rows {@see publishedLayer()} DROPS because they were written through a list index (config-sections 21,
+     * lead LANE-A-0420), per section, at this store's tier. Read-only. {@see \Splicewire\Beam\Doctor\ConfigStoredListRowAudit}
+     * names them so the operator learns an override stopped applying; nothing is repaired or rewritten.
+     *
+     * @return array<string, list<string>> root => the dropped pointers, sorted; a section with none is absent
+     */
+    public function storedListRows(): array
+    {
+        if (! $this->hasStore()) {
+            return [];
+        }
+
+        $rows = [];
+
+        foreach ($this->scopes()->whereNotNull('published_version')->orderBy('section')->get() as $scope) {
+            $registered = $this->sections->get($scope->section);
+
+            if ($registered === null) {
+                continue;
+            }
+
+            $draft = $this->versions->version($scope, $scope->published_version)?->snapshot['draft'] ?? [];
+            $pointers = [];
+
+            foreach (is_array($draft) ? $draft : [] as $pointer => $entry) {
+                if ($this->writtenThroughList($registered, $entry, (string) $pointer)) {
+                    $pointers[] = (string) $pointer;
+                }
+            }
+
+            if ($pointers !== []) {
+                sort($pointers);
+                $rows[$scope->section] = $pointers;
+            }
+        }
+
+        return $rows;
+    }
+
+    /** Whether a stored entry was WRITTEN through a list index: its op's pointer (a split secret's `via`, else its own). */
+    private function writtenThroughList(RegisteredConfigSection $registered, mixed $entry, string $pointer): bool
+    {
+        $via = is_array($entry) ? ($entry['via'] ?? null) : null;
+
+        return $this->listPath($registered, is_string($via) ? $via : $pointer);
     }
 
     /**

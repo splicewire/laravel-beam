@@ -137,6 +137,7 @@ use Splicewire\Beam\Doctor\BootReadConfigAudit;
 use Splicewire\Beam\Doctor\BrowserSuiteMountAudit;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\ConfigSectionCoverageAudit;
+use Splicewire\Beam\Doctor\ConfigStoredListRowAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\EnvPrefixAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
@@ -1640,6 +1641,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // during boot. Advisory until ticket 13 makes them gates.
         $manifest->register('splicewire/laravel-beam', ConfigSectionCoverageAudit::class);
         $manifest->register('splicewire/laravel-beam', BootReadConfigAudit::class);
+        // config-sections 21 (lead LANE-A-0420): a published row written through a list index no longer applies; name it.
+        $manifest->register('splicewire/laravel-beam', ConfigStoredListRowAudit::class);
         // env-inventory 02: a new env key carries its config file's prefix. Advisory, beside the two above.
         $manifest->register('splicewire/laravel-beam', EnvPrefixAudit::class);
         $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
