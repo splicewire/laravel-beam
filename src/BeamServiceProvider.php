@@ -5,6 +5,7 @@ namespace Splicewire\Beam;
 use Closure;
 use Composer\Autoload\ClassLoader;
 use Illuminate\Auth\Middleware\Authenticate;
+use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -16,6 +17,9 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\LocaleUpdated;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobExceptionOccurred;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Router;
@@ -71,6 +75,7 @@ use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Agreements\Http\EnforceRouteRequirements;
 use Splicewire\Beam\Agreements\Http\RequireAgreement;
+use Splicewire\Beam\Agreements\RouteRequirementIndex;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\AccessError;
 use Splicewire\Beam\Authorization\ActorPort;
@@ -1388,9 +1393,37 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      *   attaches to `route:{name}` gates that route without editing it. Inert for an undeclared route.
      * - Both sit in the priority list after the session, authentication AND route-model binding, so the route's own
      *   `auth` refuses a guest first and the subject parameter is the bound record.
+     * - The route declarations are memoised per request, job or console command ({@see RouteRequirementIndex};
+     *   credential-scope 18), in a stack of frames, each starting EMPTY. A request (routing, Octane's
+     *   `RequestReceived`; one frame per request object) opens a top-level frame, clearing the stack, so successive
+     *   requests sharing one route collection (an Octane worker) never read each other's map. A `JobProcessing` nests
+     *   on the `sync` connection (inside its dispatcher: a request, a command, a job) or under a request frame, and is
+     *   top-level otherwise (a worker's job); a `CommandStarting` nests. Each close
+     *   (`RequestHandled`, Octane's `RequestTerminated`, `JobProcessed`, `JobFailed`, `JobExceptionOccurred`,
+     *   `CommandFinished`) pops its own unit's frame and restores the enclosing one, so a nested unit keeps its
+     *   parent's memo. Octane's events are listened to by name, so beam does not depend on Octane.
      */
     protected function bootRouteRequirements(): void
     {
+        Event::listen(\Illuminate\Routing\Events\Routing::class, static fn (\Illuminate\Routing\Events\Routing $event) => RouteRequirementIndex::openRequest($event->request));
+        Event::listen(\Illuminate\Foundation\Http\Events\RequestHandled::class, static fn (\Illuminate\Foundation\Http\Events\RequestHandled $event) => RouteRequirementIndex::close($event->request));
+        Event::listen('Laravel\\Octane\\Events\\RequestReceived', static function (object $event): void {
+            if (isset($event->request) && is_object($event->request)) {
+                RouteRequirementIndex::openRequest($event->request, $event->sandbox ?? null);
+            }
+        });
+        Event::listen('Laravel\\Octane\\Events\\RequestTerminated', static function (object $event): void {
+            if (isset($event->request) && is_object($event->request)) {
+                RouteRequirementIndex::close($event->request, $event->sandbox ?? null);
+            }
+        });
+        Event::listen(JobProcessing::class, static fn (JobProcessing $event) => RouteRequirementIndex::openJob($event->job, connection: $event->connectionName));
+        foreach ([JobProcessed::class, JobFailed::class, JobExceptionOccurred::class] as $end) {
+            Event::listen($end, static fn (JobProcessed|JobFailed|JobExceptionOccurred $event) => RouteRequirementIndex::close($event->job));
+        }
+        Event::listen(CommandStarting::class, static fn (CommandStarting $event) => RouteRequirementIndex::open($event->input));
+        Event::listen(CommandFinished::class, static fn (CommandFinished $event) => RouteRequirementIndex::close($event->input));
+
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware(RequireAgreement::ALIAS, RequireAgreement::class);
 
