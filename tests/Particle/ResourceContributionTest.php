@@ -16,6 +16,7 @@ use Schemastud\Frame\Attributes\Column;
 use Schemastud\Frame\Attributes\RowActions;
 use Schemastud\Frame\Attributes\WidgetIn;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
+use Schemastud\Frame\Registry\ContextContributorRegistry;
 use Schemastud\Frame\Registry\ContextManifest;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Http\Particle\ParticleController;
@@ -233,12 +234,20 @@ class ResourceContributionTest extends TestCase
         ));
     }
 
-    public function test_the_port_is_bound_by_beam_so_a_host_binds_nothing(): void
+    public function test_beam_registers_its_contributors_under_its_own_keys_so_a_host_registers_nothing(): void
     {
-        $this->assertInstanceOf(
-            ResourceContextContributor::class,
-            $this->app->make(ResourceContextContributor::class),
+        // frame-foundation 93: nothing binds frame's port; beam registers two factories in frame's registry, in order
+        $registry = $this->app->make(ContextContributorRegistry::class);
+        $root = ContextContributorRegistry::ROOT;
+
+        $this->assertSame(
+            ["{$root}.beam.contributions", "{$root}.beam.collections"],
+            array_map(strval(...), $registry->keysBy('splicewire/laravel-beam')),
         );
+        $this->assertFalse($this->app->bound(ResourceContextContributor::class));
+        foreach (['beam.contributions', 'beam.collections'] as $key) {
+            $this->assertInstanceOf(ResourceContextContributor::class, ($registry->unfiltered()->resolve("{$root}.{$key}"))(), $key);
+        }
     }
 
     /** The resource's Frame context block, built the way a manifest controller builds it. */

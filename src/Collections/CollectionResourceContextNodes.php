@@ -6,11 +6,17 @@ use Illuminate\Http\Request;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
 use Splicewire\Beam\Particle\Backing\ResourceAddress;
 
-/** Adds the selected Collection schema's field contexts to the records Frame manifest. */
+/**
+ * Adds the selected Collection schema's field contexts to the records Frame manifest.
+ *
+ * frame-foundation 93: a context contributor registered under the key `beam.collections` in frame's
+ * `frame.context-contributors` registry, after `beam.contributions`. It answers only its own `fields.*` nodes; the merge
+ * it once did over the contribution nodes it wrapped is the registry's fold now (a later position wins a shared context).
+ * Request-scoped: beam binds it with `scoped()` and its registered factory resolves that binding per call.
+ */
 final class CollectionResourceContextNodes implements ResourceContextContributor
 {
     public function __construct(
-        private ResourceContextContributor $contributions,
         private Request $request,
         private CollectionSchemaResolver $collections,
     ) {}
@@ -20,7 +26,7 @@ final class CollectionResourceContextNodes implements ResourceContextContributor
      */
     public function nodesFor(string $key): array
     {
-        $nodes = $this->contributions->nodesFor($key);
+        $nodes = [];
         if ($key !== 'records') {
             return $nodes;
         }

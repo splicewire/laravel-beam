@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Agreements;
 
 use Illuminate\Routing\Route;
+use Illuminate\Routing\RouteCollectionInterface;
 use Splicewire\Beam\Agreements\Http\RequireAgreement;
 use Splicewire\Beam\Agreements\Http\RouteRequirementGate;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -17,6 +18,11 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * {@see ParticleResource::readBehavior()} (`on: read`), {@see ParticleResource::writeBehavior()} (`on: write`) or both.
  * It reads the BOOTED registries on every call, unfiltered, so an entry registered after boot is seen and a gated
  * registry cannot hide a Requirement.
+ *
+ * The ROUTE half (agreements 07: a named route's own `agreement:` middleware) is walked at most once per request, queue
+ * job or console command (a nested one keeps its parent's memo), through {@see RouteRequirementIndex} (credential-scope
+ * 18), and on every call outside one. Frame's manifest asks {@see requirementsFor()} twice per resource projection, and
+ * a walk on each call made the flagship's Root manifest about 4x slower. The registries are still read on every call.
  *
  * With no slot anywhere it declares nothing, exactly as {@see NullRequirementDeclarations}. An agreements seam that
  * binds its own declarations resolves this class to read the slots, so it stays public and resolvable on its own.
@@ -66,8 +72,40 @@ class SlotRequirementDeclarations implements RequirementDeclarations
         }
 
         // agreements 07: a named route's own `agreement:` middleware declares for `route:{name}` (ADR-0247 amendment 07).
-        // Read from the router on every call, like the registries above, so a route registered after boot is seen.
-        foreach ($this->routes() as $route) {
+        foreach ($this->routeDeclarations() as $behavior => $requirements) {
+            foreach ($requirements as $requirement) {
+                $declared[$behavior][] = $requirement;
+            }
+        }
+
+        return $declared;
+    }
+
+    /**
+     * Each named route's `agreement:` declarations, keyed `route:{name}`: memoised in the open request's, job's or
+     * command's frame ({@see RouteRequirementIndex}), walked on every call outside one.
+     *
+     * @return array<string, list<Requires>>
+     */
+    protected function routeDeclarations(): array
+    {
+        return RouteRequirementIndex::read(fn (): array => $this->walkRoutes());
+    }
+
+    /**
+     * One walk of the router's routes.
+     *
+     * @return array<string, list<Requires>>
+     */
+    protected function walkRoutes(): array
+    {
+        if (! app()->bound('router')) {
+            return [];
+        }
+
+        $declared = [];
+
+        foreach ($this->routes(app('router')->getRoutes()) as $route) {
             $name = $route->getName();
             if ($name === null || $name === '') {
                 continue;
@@ -80,9 +118,13 @@ class SlotRequirementDeclarations implements RequirementDeclarations
         return $declared;
     }
 
-    /** @return iterable<Route> */
-    private function routes(): iterable
+    /**
+     * The routes {@see walkRoutes()} reads.
+     *
+     * @return iterable<Route>
+     */
+    protected function routes(RouteCollectionInterface $collection): iterable
     {
-        return app()->bound('router') ? app('router')->getRoutes()->getRoutes() : [];
+        return $collection->getRoutes();
     }
 }

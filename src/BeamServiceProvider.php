@@ -5,6 +5,7 @@ namespace Splicewire\Beam;
 use Closure;
 use Composer\Autoload\ClassLoader;
 use Illuminate\Auth\Middleware\Authenticate;
+use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -16,6 +17,9 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\LocaleUpdated;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobExceptionOccurred;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Router;
@@ -65,11 +69,13 @@ use Schemastud\Frame\Contracts\WidgetLabel;
 use Schemastud\Frame\Contracts\WriteSubjectResolver;
 use Schemastud\Frame\Realm\RealmDefinition;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
+use Schemastud\Frame\Registry\ContextContributorRegistry;
 use Schemastud\Frame\Registry\WidgetContextProjector;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Splicewire\Beam\Agreements\Http\EnforceRouteRequirements;
 use Splicewire\Beam\Agreements\Http\RequireAgreement;
+use Splicewire\Beam\Agreements\RouteRequirementIndex;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\AccessError;
 use Splicewire\Beam\Authorization\ActorPort;
@@ -95,6 +101,7 @@ use Splicewire\Beam\Config\Overrides\ConfigTenantOverlay;
 use Splicewire\Beam\Console\BeamDoctorCommand;
 use Splicewire\Beam\Console\BeamInstallCommand;
 use Splicewire\Beam\Console\BeamSeedCommand;
+use Splicewire\Beam\Console\BrowserCoverageCommand;
 use Splicewire\Beam\Console\ConfigSectionSchemasCommand;
 use Splicewire\Beam\Console\ConvergencePreflightCommand;
 use Splicewire\Beam\Console\DocblockCommand;
@@ -127,6 +134,7 @@ use Splicewire\Beam\Discovery\RouteReachability;
 use Splicewire\Beam\Doctor\AgentsMdConventionAudit;
 use Splicewire\Beam\Doctor\BeamDoctorManifest;
 use Splicewire\Beam\Doctor\BootReadConfigAudit;
+use Splicewire\Beam\Doctor\BrowserSuiteMountAudit;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\ConfigSectionCoverageAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
@@ -843,12 +851,21 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // established is order-safe by construction. Ships EMPTY — inert until a package contributes.
         $this->app->singleton(ResourceContributionRegistry::class);
 
-        // Frame's OPTIONAL plug port, implemented here so a host binds nothing (ticket 19 / 17 §A1).
-        // Compose the existing contributed-slice projection with the selected Collection's schema
-        // fields. Collection selection is request-scoped because one Data class serves many schema
-        // stems; Frame still learns only the final byNode map, not Beam's producer internals.
-        $this->app->scoped(ResourceContextContributor::class, fn ($app) => new CollectionResourceContextNodes(
-            new ContributionContextNodes($app->make(ResourceContributionRegistry::class), $app->make(WidgetContextProjector::class)),
+        // frame-foundation 93: beam's two context contributors are each their OWN scoped() binding, and
+        // packageBooted() registers a factory for each in frame's `frame.context-contributors` registry
+        // (`beam.contributions`, then `beam.collections`). Nothing binds frame's ResourceContextContributor
+        // port. Collection selection is request-scoped because one Data class serves many schema stems;
+        // frame still learns only the folded byNode map, not beam's producer internals.
+        // ONE registry per container even where frame's provider is not loaded (beam boots without frame, ADR-0082;
+        // frame's own `singleton()` binding wins where it is): otherwise each make() would autowire a fresh, empty one
+        // and beam's registrations would never reach the manifest. Nothing is resolved before boot, so the order of
+        // the two providers' register() phases does not matter.
+        $this->app->singletonIf(ContextContributorRegistry::class);
+        $this->app->scoped(ContributionContextNodes::class, fn ($app) => new ContributionContextNodes(
+            $app->make(ResourceContributionRegistry::class),
+            $app->make(WidgetContextProjector::class),
+        ));
+        $this->app->scoped(CollectionResourceContextNodes::class, fn ($app) => new CollectionResourceContextNodes(
             $app->make(Request::class),
             $app->make(CollectionSchemaResolver::class),
         ));
@@ -1376,9 +1393,37 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      *   attaches to `route:{name}` gates that route without editing it. Inert for an undeclared route.
      * - Both sit in the priority list after the session, authentication AND route-model binding, so the route's own
      *   `auth` refuses a guest first and the subject parameter is the bound record.
+     * - The route declarations are memoised per request, job or console command ({@see RouteRequirementIndex};
+     *   credential-scope 18), in a stack of frames, each starting EMPTY. A request (routing, Octane's
+     *   `RequestReceived`; one frame per request object) opens a top-level frame, clearing the stack, so successive
+     *   requests sharing one route collection (an Octane worker) never read each other's map. A `JobProcessing` nests
+     *   on the `sync` connection (inside its dispatcher: a request, a command, a job) or under a request frame, and is
+     *   top-level otherwise (a worker's job); a `CommandStarting` nests. Each close
+     *   (`RequestHandled`, Octane's `RequestTerminated`, `JobProcessed`, `JobFailed`, `JobExceptionOccurred`,
+     *   `CommandFinished`) pops its own unit's frame and restores the enclosing one, so a nested unit keeps its
+     *   parent's memo. Octane's events are listened to by name, so beam does not depend on Octane.
      */
     protected function bootRouteRequirements(): void
     {
+        Event::listen(\Illuminate\Routing\Events\Routing::class, static fn (\Illuminate\Routing\Events\Routing $event) => RouteRequirementIndex::openRequest($event->request));
+        Event::listen(\Illuminate\Foundation\Http\Events\RequestHandled::class, static fn (\Illuminate\Foundation\Http\Events\RequestHandled $event) => RouteRequirementIndex::close($event->request));
+        Event::listen('Laravel\\Octane\\Events\\RequestReceived', static function (object $event): void {
+            if (isset($event->request) && is_object($event->request)) {
+                RouteRequirementIndex::openRequest($event->request, $event->sandbox ?? null);
+            }
+        });
+        Event::listen('Laravel\\Octane\\Events\\RequestTerminated', static function (object $event): void {
+            if (isset($event->request) && is_object($event->request)) {
+                RouteRequirementIndex::close($event->request, $event->sandbox ?? null);
+            }
+        });
+        Event::listen(JobProcessing::class, static fn (JobProcessing $event) => RouteRequirementIndex::openJob($event->job, connection: $event->connectionName));
+        foreach ([JobProcessed::class, JobFailed::class, JobExceptionOccurred::class] as $end) {
+            Event::listen($end, static fn (JobProcessed|JobFailed|JobExceptionOccurred $event) => RouteRequirementIndex::close($event->job));
+        }
+        Event::listen(CommandStarting::class, static fn (CommandStarting $event) => RouteRequirementIndex::open($event->input));
+        Event::listen(CommandFinished::class, static fn (CommandFinished $event) => RouteRequirementIndex::close($event->input));
+
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware(RequireAgreement::ALIAS, RequireAgreement::class);
 
@@ -1682,6 +1727,15 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // is a note or a WARN, never fatal — see the audit's docblock. Registry-side, so it reads the
         // live catalog this host composed, and in the manifest like beam-core's newer audits.
         $manifest->register('splicewire/laravel-beam', FlowDoctorAudit::class, gate: true);
+
+        // browser-journeys 13: the installed-package browser-suite mount. It GATES because a vendored
+        // `tests/Browser` suite that no phpunit.xml testsuite collects — or a mounted directory with no
+        // test files — reports a green run while proving none of that suite, the exact silent success this
+        // mechanism exists to catch. Everything host-dependent stays a NOTE: a host that cannot run Pest
+        // browser tests at all (no Pest 4 / no plugin), or one where ticket 12's package suites simply are
+        // not installed yet, is inconclusive, never a failure (13 does not block on 12). Static and
+        // never-throws — it reads composer + phpunit + the vendor file tree, booting no Pest class (F12).
+        $manifest->register('splicewire/laravel-beam', BrowserSuiteMountAudit::class, gate: true);
 
         // Surgeon side — the three position-sensitive shapes, which need the AST. A host that composes beam
         // without `rushing/laravel-surgeon` autoloads nothing here and pays nothing; SurgeonWiringAudit
@@ -2192,6 +2246,14 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
     {
         $this->bootConfigOverrides();
 
+        // frame-foundation 93: beam's context contributors, registered under beam's own keys in frame's
+        // `frame.context-contributors` registry, in this order (a later position wins a context two contributors
+        // name; the resource's own declaration wins over all). Each factory resolves beam's scoped binding through
+        // the CURRENT container when it is called and captures nothing at boot (decision 87, ruling 3).
+        $contributors = $this->app->make(ContextContributorRegistry::class);
+        $contributors->register('beam.contributions', static fn (): ResourceContextContributor => app(ContributionContextNodes::class), by: 'splicewire/laravel-beam');
+        $contributors->register('beam.collections', static fn (): ResourceContextContributor => app(CollectionResourceContextNodes::class), by: 'splicewire/laravel-beam');
+
         // localization 09: a property's title and description resolve through the ladder. Appended at boot, after every
         // provider has merged `data-schemas.strategies`, under the estate's in_array guard (the frame precedent).
         $strategies = (array) config('data-schemas.strategies', []);
@@ -2279,6 +2341,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         if ($this->app->runningInConsole()) {
             $this->commands([
                 BeamDoctorCommand::class,
+                // browser-journeys 13 (ticket 03 Q6): the read-only coverage gate. Reads a browser run's
+                // JUnit and exits non-zero when any installed splicewire/* browser suite that ships tests
+                // produced zero testcases — the Sweep's "did the mounted suites actually run?" check.
+                BrowserCoverageCommand::class,
                 BeamInstallCommand::class,
                 // The install's convergence preflight, as a READ-ONLY entry point (beam-facade 146).
                 // Registered beside the installer because it is the same phase asked without the mutation:
