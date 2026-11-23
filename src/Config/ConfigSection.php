@@ -217,7 +217,7 @@ abstract class ConfigSection extends Data
             }
 
             $attribute = $property->getAttributes(ConfigKey::class)[0] ?? null;
-            $here = $attribute !== null ? $attribute->newInstance() : $declared;
+            $here = $attribute !== null ? self::below($declared, $attribute->newInstance()) : $declared;
             $nested = ConfigDataTypes::nested($property);
 
             if ($nested !== []) {
@@ -226,19 +226,237 @@ abstract class ConfigSection extends Data
                 continue;
             }
 
-            $entry = ConfigDataTypes::mapEntry($property) ?? ConfigDataTypes::listEntry($property);
+            $list = ConfigDataTypes::listEntry($property);
+
+            // A list is one value (config-sections 21: no tier writes into an item), so the list key, and an index into
+            // it, is closed to every tier that any key its item class declares is closed to. Otherwise a write or a
+            // stored row at the list (or above it) would change a closed field inside an item (Codex review, lane A).
+            if ($list !== null && count($segments) <= 1 && ($within = self::closedWithin($list)) !== null && $within !== []) {
+                $closed = self::closedUnion([$here->closed, $within]);
+
+                if ($closed !== $here->closed) {
+                    $here = new ConfigKey($here->ceiling, $here->effect, $here->secret, $here->merge, $here->env, $closed);
+                }
+            }
+
+            $entry = ConfigDataTypes::mapEntry($property) ?? $list;
 
             // A map or list of records: the next segment names an entry (a key or an index). What the entry class
-            // declares below it raises SECRECY only; the map's own ceiling, merge and effect stand.
-            if ($entry !== null && count($segments) > 1 && ! $here->secret
-                && self::declarationIn([$entry], array_slice($segments, 1), $here)->secret) {
-                $here = new ConfigKey($here->ceiling, $here->effect, true, $here->merge, $here->env);
+            // declares below it raises SECRECY and CLOSED tiers only (both only ever tighten); the map's own ceiling,
+            // merge and effect stand.
+            if ($entry !== null && count($segments) > 1) {
+                $inner = self::declarationIn([$entry], array_slice($segments, 1), $here);
+                $closed = self::closedUnion([$here->closed, $inner->closed]);
+
+                if (($inner->secret && ! $here->secret) || $closed !== $here->closed) {
+                    $here = new ConfigKey($here->ceiling, $here->effect, $here->secret || $inner->secret, $here->merge, $here->env, $closed);
+                }
             }
 
             $reached[] = $here;
         }
 
         return self::fold($reached);
+    }
+
+    /**
+     * Every tier some key declared in `$class`, or in any record, map entry or list item below it, is closed to; null
+     * when none declares `closed:` (a self-referential type is read once).
+     *
+     * @param  class-string  $class
+     * @param  array<class-string, true>  $seen
+     * @return list<ConfigTier>|null
+     */
+    private static function closedWithin(string $class, array $seen = []): ?array
+    {
+        if (isset($seen[$class]) || ! class_exists($class)) {
+            return null;
+        }
+
+        $seen[$class] = true;
+        $lists = [];
+
+        foreach ((new ReflectionClass($class))->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
+            if ($property->isStatic()) {
+                continue;
+            }
+
+            $lists[] = ($property->getAttributes(ConfigKey::class)[0] ?? null)?->newInstance()->closed;
+            $inner = [...ConfigDataTypes::nested($property), ...array_filter([ConfigDataTypes::mapEntry($property), ConfigDataTypes::listEntry($property)])];
+
+            foreach ($inner as $data) {
+                $lists[] = self::closedWithin($data, $seen);
+            }
+        }
+
+        return self::closedUnion($lists);
+    }
+
+    /**
+     * The keys below `$segments` that are declared closed to `$tier`, as relative pointers at the HIGHEST such key (closure
+     * is sticky), read from the declaration, not from any value (config-sections 17, Codex review lane A). Records are
+     * walked into. A list is one key (it carries its items' closure). A map whose entry class closes the tier anywhere is
+     * one key too, since its entry names are not declared. The apply side uses it so a stored parent row cannot replace
+     * a key the package closed after the row was written, whether the row leaves the key out, nulls it or replaces it.
+     *
+     * @param  list<string>  $segments  the parent's path below the section root
+     * @return list<string>
+     */
+    public static function closedKeysBelow(array $segments, ConfigTier $tier): array
+    {
+        $walk = $segments;
+        $class = static::class;
+
+        if (static::declaration()->entries !== null) {
+            if ($walk === []) {
+                return [];
+            }
+
+            array_shift($walk);
+            $class = static::declaration()->entries;
+        }
+
+        $found = [];
+
+        foreach (self::classesAt([$class], $walk) as $data) {
+            self::collectClosed($data, $segments, [], $tier, $found, []);
+        }
+
+        return array_values(array_unique($found));
+    }
+
+    /**
+     * @param  class-string  $class
+     * @param  list<string>  $base
+     * @param  list<string>  $path
+     * @param  list<string>  $found
+     * @param  array<class-string, true>  $seen
+     */
+    private static function collectClosed(string $class, array $base, array $path, ConfigTier $tier, array &$found, array $seen): void
+    {
+        if (isset($seen[$class]) || ! class_exists($class)) {
+            return;
+        }
+
+        $seen[$class] = true;
+
+        foreach ((new ReflectionClass($class))->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
+            if ($property->isStatic()) {
+                continue;
+            }
+
+            $here = [...$path, $property->getName()];
+
+            if (static::keyDeclaration([...$base, ...$here])->closedTo($tier)) {
+                $found[] = JsonPointer::from($here);
+
+                continue;
+            }
+
+            foreach (ConfigDataTypes::nested($property) as $data) {
+                self::collectClosed($data, $base, $here, $tier, $found, $seen);
+            }
+
+            $map = ConfigDataTypes::mapEntry($property);
+
+            if ($map !== null && in_array($tier, self::closedWithin($map) ?? [], true)) {
+                $found[] = JsonPointer::from($here);
+            }
+        }
+    }
+
+    /**
+     * The Data classes `$segments` reaches from `$classes` (a map key or list index passes into the entry class).
+     *
+     * @param  list<class-string>  $classes
+     * @param  list<string>  $segments
+     * @return list<class-string>
+     */
+    private static function classesAt(array $classes, array $segments): array
+    {
+        if ($segments === []) {
+            return $classes;
+        }
+
+        $segment = array_shift($segments);
+        $out = [];
+
+        foreach ($classes as $class) {
+            $property = self::property($class, $segment);
+
+            if ($property === null) {
+                continue;
+            }
+
+            $nested = ConfigDataTypes::nested($property);
+
+            if ($nested !== []) {
+                array_push($out, ...self::classesAt($nested, $segments));
+
+                continue;
+            }
+
+            $entry = ConfigDataTypes::mapEntry($property) ?? ConfigDataTypes::listEntry($property);
+
+            if ($entry !== null && $segments !== []) {
+                array_push($out, ...self::classesAt([$entry], array_slice($segments, 1)));
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * A property's own declaration, read below the nearest declaration above it (`$above`). The nearest declaration wins
+     * for every slot but two, which only ever tighten on the way down (config-sections 22, 17):
+     * - `secret`: a key below a secret declaration is secret, whatever its own `#[ConfigKey]` says. A child's own
+     *   attribute (to set its ceiling, say) must not lower the secret an ancestor declared, or a set at the ancestor's
+     *   parent would store and serve that child in plain. An explicit `secret: false` there is flagged by the section
+     *   audit ({@see ConfigSectionDeclarations});
+     * - `closed`: the tiers a key is closed to are the union of its own and every ancestor's, so a child cannot reopen
+     *   a tier its object closed.
+     */
+    private static function below(ConfigKey $above, ConfigKey $own): ConfigKey
+    {
+        $closed = self::closedUnion([$above->closed, $own->closed]);
+
+        if (($own->secret || ! $above->secret) && $closed === $own->closed) {
+            return $own;
+        }
+
+        return new ConfigKey($own->ceiling, $own->effect, $own->secret || $above->secret, $own->merge, $own->env, $closed);
+    }
+
+    /**
+     * The union of closed-tier lists, in tier order; null only when every one is null (nothing declared either way).
+     *
+     * @param  list<list<ConfigTier>|null>  $lists
+     * @return list<ConfigTier>|null
+     */
+    private static function closedUnion(array $lists): ?array
+    {
+        $declared = array_filter($lists, fn (?array $list): bool => $list !== null);
+
+        if ($declared === []) {
+            return null;
+        }
+
+        if (count($declared) === 1) {
+            return reset($declared);
+        }
+
+        $tiers = [];
+
+        foreach ($declared as $list) {
+            foreach ($list as $tier) {
+                $tiers[$tier->value] = $tier;
+            }
+        }
+
+        $tiers = array_values($tiers);
+        usort($tiers, fn (ConfigTier $a, ConfigTier $b): int => $a->rank() <=> $b->rank());
+
+        return $tiers;
     }
 
     /**
@@ -278,7 +496,8 @@ abstract class ConfigSection extends Data
             default => ConfigMerge::Replace,
         };
 
-        return new ConfigKey($ceiling, $effect, $secret, $merge, $env);
+        // Closed tiers fold like secrecy: a tier any member closes is closed (config-sections 17).
+        return new ConfigKey($ceiling, $effect, $secret, $merge, $env, self::closedUnion(array_map(fn (ConfigKey $key): ?array => $key->closed, $reached)));
     }
 
     /**

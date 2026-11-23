@@ -228,14 +228,28 @@ class ParentSetKeepsSecretChildrenListsTest extends TestCase
         $this->assertSame(['fake-lg-a', 'fake-lg-tok'], [config('qa.relaygroup.byId.10.password'), config('qa.relaygroup.byId.10.creds.7.token')]);
     }
 
-    /** An op AT a list item that sends the reader's null: an explicit null, never the tier below's entry-N secret. */
-    public function test_an_op_at_a_list_item_sending_null_keeps_nothing_and_inherits_nothing(): void
+    /**
+     * An op AT a list item is refused (config-sections 21, option b), so the reader's null sent back there can neither
+     * keep a stored secret nor inherit the tier below's entry-N secret. The whole-list form of the same re-save is below.
+     */
+    public function test_an_op_at_a_list_item_sending_null_is_refused(): void
     {
-        $this->publish('qa.relaygroup', [['pointer' => '/group/relays/0', 'op' => 'set', 'value' => ['host' => 'a.op.test', 'password' => 'fake-lg-a']]]);
+        try {
+            $this->store()->saveDraft('qa.relaygroup', [['pointer' => '/group/relays/0', 'op' => 'set', 'value' => ['host' => 'a.op.test', 'password' => null]]]);
+            $this->fail('a set at a list item was accepted');
+        } catch (ValidationException $refused) {
+            $this->assertStringContainsString('/group/relays/0 is inside a list item', json_encode($refused->errors(), JSON_UNESCAPED_SLASHES));
+        }
+    }
 
-        $this->publish('qa.relaygroup', [['pointer' => '/group/relays/0', 'op' => 'set', 'value' => ['host' => 'a.op.test', 'password' => null]]]);
+    /** The whole list re-saved with the reader's null in an item: an explicit null there, never kept, never inherited. */
+    public function test_a_list_re_saved_with_null_in_an_item_keeps_nothing_and_inherits_nothing(): void
+    {
+        $this->publish('qa.relaygroup', [['pointer' => '/group', 'op' => 'set', 'value' => ['relays' => [['host' => 'a.op.test', 'password' => 'fake-lg-a']]]]]);
 
-        $this->assertNotSame('fake-lg-a', $this->relay(0, 'password'), 'not kept: the index is in the op pointer');
+        $this->publish('qa.relaygroup', [['pointer' => '/group', 'op' => 'set', 'value' => ['relays' => [['host' => 'a.op.test', 'password' => null]]]]]);
+
+        $this->assertNotSame('fake-lg-a', $this->relay(0, 'password'), 'not kept: a list position is not an identity');
         $this->assertNull($this->relay(0, 'password'), "and not the host's index-0 secret");
     }
 

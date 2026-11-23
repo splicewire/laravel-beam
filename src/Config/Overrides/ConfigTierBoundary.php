@@ -12,8 +12,9 @@ use Splicewire\Beam\Enums\ConfigTier;
  * use, so the leaves a write inherits and the leaves a hop cuts agree by construction (review-r1, 07: a nearest-declaration
  * ownership boundary).
  *
- * A key is the tier's when its NEAREST declaration's ceiling admits the tier and no operator lock covers it (the tenant
- * tier's locks; the operator tier passes none).
+ * A key is the tier's when its NEAREST declaration's ceiling admits the tier, the key is not declared closed to it
+ * (`#[ConfigKey(closed: [...])]`, config-sections 17), and no operator lock covers it (the tenant tier's locks; the
+ * operator tier passes none).
  */
 final class ConfigTierBoundary
 {
@@ -23,7 +24,8 @@ final class ConfigTierBoundary
      */
     public static function admits(RegisteredConfigSection $registered, array $segments, ConfigTier $tier, array $locks = []): bool
     {
-        if (! $registered->section::keyDeclaration($segments)->ceiling->admits($tier)) {
+        // The ceiling admits the tier and the key is not closed to it (config-sections 17).
+        if (! $registered->section::keyDeclaration($segments)->opensTo($tier)) {
             return false;
         }
 
@@ -54,6 +56,40 @@ final class ConfigTierBoundary
         }
 
         return false;
+    }
+
+    /**
+     * Take every key declared CLOSED to the tier (config-sections 17) out of an object value, at the HIGHEST such pointer
+     * (closure is sticky, so everything below it is closed too). Unlike {@see split()} it leaves a key above its ceiling
+     * alone: this is the apply-side filter for rows stored before a package closed a key, not the write boundary. Records
+     * are walked into; a list is one value.
+     *
+     * @param  array<array-key, mixed>  $value
+     * @param  list<string>  $path  the walk's position below `$pointer`
+     * @return array{0: array<array-key, mixed>, 1: list<string>} the value without them, and their pointers relative to `$pointer`
+     */
+    public static function closedOut(RegisteredConfigSection $registered, string $pointer, array $value, ConfigTier $tier, array $path = []): array
+    {
+        $base = JsonPointer::segments($pointer);
+        $cut = [];
+
+        foreach (array_keys($value) as $key) {
+            $here = [...$path, (string) $key];
+
+            if ($registered->section::keyDeclaration([...$base, ...$here])->closedTo($tier)) {
+                $cut[] = JsonPointer::from($here);
+                unset($value[$key]);
+
+                continue;
+            }
+
+            if (is_array($value[$key]) && $value[$key] !== [] && ! array_is_list($value[$key])) {
+                [$value[$key], $below] = self::closedOut($registered, $pointer, $value[$key], $tier, $here);
+                array_push($cut, ...$below);
+            }
+        }
+
+        return [$value, $cut];
     }
 
     /**

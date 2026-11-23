@@ -111,9 +111,10 @@ class ConfigSectionReader
         foreach ($resolution->keys as $pointer => $resolved) {
             $key = $this->key($section, $resolved, $packageScan, $hostScan, $locks, $rowTier);
 
-            // A key whose declared ceiling excludes the tenant tier is not offered in the tenant realm (ticket 07); a
-            // LOCKED key is, marked locked with the operator's reason.
-            if ($tenantRealm && ! $key->ceiling->admits(ConfigTier::Tenant)) {
+            // A key whose declared ceiling excludes the tenant tier, or that its package closed to the tenant tier
+            // (config-sections 17), is not offered in the tenant realm (ticket 07); a LOCKED key is, marked locked with
+            // the operator's reason.
+            if ($tenantRealm && (! $key->ceiling->admits(ConfigTier::Tenant) || in_array(ConfigTier::Tenant, $key->closed, true))) {
                 continue;
             }
 
@@ -294,11 +295,13 @@ class ConfigSectionReader
             }
         }
 
-        // The operator realm keeps 05's answer (any runtime tier may override it); the tenant realm answers for the tenant
-        // tier, and a lock takes the key away from it.
+        // The operator realm keeps 05's answer (any runtime tier may override it), less a key closed to the operator tier
+        // its row writes (config-sections 17); the tenant realm answers for the tenant tier, and a lock takes the key away
+        // from it. No row sits inside a list item (config-sections 21): a list is a leaf ({@see JsonPointer::leaves()}), so
+        // the Config area offers the list as one key, written whole.
         $overridable = $rowTier === ConfigTier::Tenant
-            ? $declared->ceiling->admits(ConfigTier::Tenant) && $lock === null
-            : $declared->ceiling->isOverridable();
+            ? $declared->opensTo(ConfigTier::Tenant) && $lock === null
+            : $declared->ceiling->isOverridable() && ! $declared->closedTo(ConfigTier::Operator);
 
         $binding = match ($resolved->tier) {
             ConfigTier::Host => $hostScan?->bindings[$resolved->pointer] ?? null,
@@ -337,6 +340,7 @@ class ConfigSectionReader
             set: $resolved->value !== null && $resolved->value !== '',
             merge: $declared->merge,
             lock: $lock,
+            closed: $declared->closed ?? [],
         );
     }
 
@@ -479,6 +483,7 @@ class ConfigSectionReader
             set: $key->set,
             merge: $key->merge,
             lock: $key->lock,
+            closed: $key->closed,
         );
     }
 
