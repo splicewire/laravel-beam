@@ -356,7 +356,7 @@ class ParticleController extends Controller
         // A model-less detail read follows Frame's resolved-record path. Keep the established
         // QueriesRecords flow below unchanged: its model policy and scoped lookup still apply.
         if ($backing instanceof ResolvesRecord && ! ($backing instanceof QueriesRecords)) {
-            ResourceReadGuard::forApp()->inspectReadFor($resource, $request, $request->user())->authorize();
+            ResourceReadGuard::forApp()->bindReadContext($resource, $request);
 
             $filters = (array) $request->input('filter', []);
             $filters['source'] = (string) $request->query('source', '');

@@ -97,13 +97,56 @@ final class ResolvedPublicReadProjectionTest extends TestCase
         ], $record);
     }
 
-    private function resource(): ParticleResource
+    public function test_a_denied_signed_in_reader_gets_the_public_projection_on_both_resolved_show_paths(): void
+    {
+        Gate::define('resolved-public-read', static fn () => false);
+        $resource = $this->resource();
+        app(ParticleResourceRegistry::class)->register($resource);
+        Route::get('/resolved-public-read/{id}', [ParticleController::class, 'show'])
+            ->defaults(ParticleController::RESOURCE, $resource->key);
+        $reader = new GenericUser(['id' => 'reader']);
+
+        $this->actingAs($reader)
+            ->getJson('/resolved-public-read/present')
+            ->assertOk()
+            ->assertJsonPath('data.id', 'present')
+            ->assertJsonPath('data.label', 'Public label')
+            ->assertJsonPath('data.schemaRef', 'https://schemas.test/resolved.json')
+            ->assertJsonMissingPath('data.privateNote');
+
+        $record = app(ParticleFrameResourceHandler::class)->forActor($reader)
+            ->show($resource->toResourceDefinition(), 'present');
+
+        $this->assertSame([
+            'id' => 'present',
+            'label' => 'Public label',
+            'schemaRef' => 'https://schemas.test/resolved.json',
+        ], $record);
+    }
+
+    public function test_a_denied_signed_in_reader_without_public_read_is_still_refused_on_both_resolved_show_paths(): void
+    {
+        Gate::define('resolved-public-read', static fn () => false);
+        $resource = $this->resource(declaresPublicRead: false);
+        app(ParticleResourceRegistry::class)->register($resource);
+        Route::get('/resolved-private-read/{id}', [ParticleController::class, 'show'])
+            ->defaults(ParticleController::RESOURCE, $resource->key);
+        $reader = new GenericUser(['id' => 'reader']);
+
+        $this->actingAs($reader)->getJson('/resolved-private-read/present')->assertForbidden();
+
+        $this->expectException(\Illuminate\Auth\Access\AuthorizationException::class);
+        app(ParticleFrameResourceHandler::class)->forActor($reader)
+            ->show($resource->toResourceDefinition(), 'present');
+    }
+
+    private function resource(bool $declaresPublicRead = true): ParticleResource
     {
         return new ParticleResource(
             key: 'resolved-public-read',
             backing: ResolvedPublicReadBacking::class,
             data: ResolvedPublicReadFullData::class,
-            publicRead: ResolvedPublicReadNarrowData::class,
+            publicRead: $declaresPublicRead ? ResolvedPublicReadNarrowData::class : null,
             policy: 'resolved-public-read',
             input: false,
             readOnly: true,
