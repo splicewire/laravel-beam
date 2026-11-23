@@ -56,6 +56,9 @@ trait RecordsRevisions
 
     /**
      * Restore a prior state (append-only: the reversal is itself recorded).
+     *
+     * @throws RevertRefused when a halting `saving`/`updating` listener vetoes the restoring write:
+     *                       nothing is persisted and no `revert` entry is recorded.
      */
     public function revertTo(RevisionEntry $entry): Model
     {

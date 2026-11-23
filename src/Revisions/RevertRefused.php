@@ -18,7 +18,8 @@ use RuntimeException;
  * The refusal is loud but its message carries NO subject identity: the subject's morph type and key
  * ride on {@see $subjectType}/{@see $subjectKey} so a host (such as a composition-writes layer that
  * maps the refusal to its own `*_write_refused` outcome) can read them and key its own user-facing
- * message, rather than forwarding this internal `[type:id]` string to the caller.
+ * message, rather than parsing the identity back out of the message — which the message deliberately
+ * never interpolates, so none of the morph type or key leaks to a caller that only logs it.
  */
 class RevertRefused extends RuntimeException
 {

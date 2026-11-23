@@ -152,9 +152,32 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
     /**
      * Apply a frozen snapshot back onto the live record through the normal write path.
      *
+     * The {@see Versionable} contract types this `: void`, and the versioning store (which is the
+     * other caller) refuses a vetoed restore through its OWN transactional save — so this method keeps
+     * the contract shape and delegates to {@see restoreVersionSnapshotStored()}, discarding the
+     * boolean. The revert path needs that boolean (a no-op revert leaves the model clean, so
+     * `isDirty()` cannot tell a stored write from a refused one), so it calls the worker directly.
+     *
      * @param  array<string, mixed>  $snapshot
      */
     public function restoreVersionSnapshot(array $snapshot): void
+    {
+        $this->restoreVersionSnapshotStored($snapshot);
+    }
+
+    /**
+     * Apply a frozen snapshot back onto the live record through the normal write path, returning
+     * whether that write STORED. A halting `saving`/`updating` listener (a guard, a policy, a tenancy
+     * veto) makes `save()` return false WITHOUT persisting; surfacing the boolean lets the revert path
+     * fail loudly even for a no-op revert, where the restored values already equal the live ones so
+     * `forceFill()` leaves the model clean and `isDirty()` stays false whether the write stored or was
+     * vetoed. Not on the {@see Versionable} contract (widening it to `: bool` would break every other
+     * `: void` implementer): BeamParticle's own method, reached through the `instanceof` gate in the
+     * revert path.
+     *
+     * @param  array<string, mixed>  $snapshot
+     */
+    public function restoreVersionSnapshotStored(array $snapshot): bool
     {
         $currentMeta = $this->getAttribute('meta') ?? [];
         if (isset($currentMeta['owner'])) {
@@ -176,7 +199,7 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
             $snapshot['meta'] = $meta;
         }
 
-        $this->forceFill([
+        return (bool) $this->forceFill([
             'schema_ref' => $snapshot['schema_ref'] ?? null,
             'schema_id' => $snapshot['schema_id'] ?? null,
             'migration_status' => $snapshot['migration_status'] ?? null,

@@ -95,21 +95,23 @@ class RevisionRecorder extends ActivityRecorder
 
         $restored = $entry->old;
         if ($subject instanceof BeamParticle && (isset($subject->meta['owner']) || isset($subject->meta['workflow']))) {
-            $subject->restoreVersionSnapshot(array_replace($subject->toVersionSnapshot(), $entry->old));
+            $saved = $subject->restoreVersionSnapshotStored(array_replace($subject->toVersionSnapshot(), $entry->old));
             $restored = $subject->only(array_keys($entry->old));
         } else {
-            $subject->forceFill($entry->old)->save();
+            $saved = $subject->forceFill($entry->old)->save();
         }
 
         // The write can be refused: a halting `saving`/`updating` listener (a guard, a policy, a
         // tenancy veto) makes `save()` return false without persisting. Because the revert is
         // append-only, recording the reversal when the restored state never landed would log a
-        // `revert` for a write that did not store — a history that lies. Eloquent syncs a model's
-        // original attributes only on a STORED save, so a refused write leaves the restored
-        // attributes dirty; a stored one (including a no-op revert whose target already equals the
-        // current state) leaves the subject clean. This one predicate covers BOTH write paths above
-        // without reaching into the Versionable contract. Fail loudly before recording.
-        if ($subject->isDirty()) {
+        // `revert` for a write that did not store — a history that lies. The `save()` boolean is the
+        // only signal that survives a NO-OP revert: when the pre-image already equals the live values,
+        // `forceFill()`/`restoreVersionSnapshot()` mutate nothing, so `isDirty()` stays false whether
+        // the write stored or a listener vetoed it — the old `isDirty()` predicate silently recorded a
+        // `revert` for the refused one. Both branches now carry the explicit outcome (the owner branch
+        // through BeamParticle's `restoreVersionSnapshotStored()`, which surfaces its own `save()`
+        // boolean without widening the `: void` Versionable contract). Fail loudly before recording.
+        if (! $saved) {
             throw RevertRefused::for($subject);
         }
 
