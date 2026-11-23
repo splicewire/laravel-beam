@@ -134,7 +134,7 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
             return self::FAILURE;
         }
         if (! in_array($this->option('requires-on'), Requires::ON, true)) {
-            $this->components->error('--requires-on must be read, write or both.');
+            $this->components->error('--requires-on must be read, write, both or create.');
 
             return self::FAILURE;
         }
@@ -662,7 +662,7 @@ PHP;
             ['graph-label', null, InputOption::VALUE_REQUIRED, 'The column a graph node\'s label is read from (with --graph); the id when omitted'],
             ['public', null, InputOption::VALUE_NONE, 'Declare the read class as the Public Read (publicRead: <Name>Data::class): a guest may read every field it projects'],
             ['requires', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Declare a requires: slot naming this Agreement key (repeatable, or a comma list); omitted ⇒ no slot is written'],
-            ['requires-on', null, InputOption::VALUE_REQUIRED, 'With --requires: which verbs it binds — read (list + detail), write (create, update, delete) or both', 'both'],
+            ['requires-on', null, InputOption::VALUE_REQUIRED, 'With --requires: which verbs it binds — read (list + detail), write (create, update, delete), both, or create (only a write that makes a new record)', 'both'],
         ];
     }
 }

@@ -12,8 +12,10 @@ use Schemastud\Frame\Attributes\Widget;
 use Schemastud\Frame\Attributes\WidgetIn;
 use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
+use Schemastud\Frame\Registry\ContextGrain;
 use Schemastud\Frame\Registry\FormMode;
 use Schemastud\Frame\Registry\InMemoryResourceRegistry;
+use Schemastud\Frame\Registry\WidgetContext;
 use Schemastud\Frame\Registry\WidgetContextRegistry;
 use Schemastud\Frame\Vocabulary\WidgetVocabulary;
 use Spatie\LaravelData\Data;
@@ -55,6 +57,7 @@ class FramedDeclarationAuditTest extends TestCase
             'version' => WidgetVocabulary::Version,
             'contexts' => array_reverse(app(WidgetContextRegistry::class)->known()),
             'formModes' => array_reverse(array_column(FormMode::cases(), 'value')),
+            'reserved' => ['row-actions'],
             'widgets' => ['badge' => [['contexts' => ['list-column']]], 'range' => [['stock' => ['number', 'integer']]], 'textarea' => [['stock' => ['string']]]],
         ], $overrides), JSON_THROW_ON_ERROR));
     }
@@ -127,7 +130,7 @@ class FramedDeclarationAuditTest extends TestCase
 
     public function test_incompatible_headers_fail_and_conflicts_warn_without_a_node_type_finding(): void
     {
-        foreach (['version' => 999, 'contexts' => [], 'formModes' => []] as $axis => $value) {
+        foreach (['version' => 999, 'formModes' => []] as $axis => $value) {
             $this->vocabulary([$axis => $value]);
             $this->assertCount(1, $this->failures(FramedDeclarationAudit::CHECK_VOCABULARY));
         }
@@ -179,6 +182,81 @@ class FramedDeclarationAuditTest extends TestCase
         $this->assertNotEmpty($findings);
         $this->assertStringContainsString('reserved widget [range]', $findings[0]->detail);
         $this->assertFalse(defined(FramedDeclarationAudit::class.'::CHECK_WIRE_KEYS'));
+    }
+
+    /** @return list<string> the frame.vocabulary warnings' details */
+    private function vocabularyWarnings(): array
+    {
+        return array_values(array_map(fn (Finding $f) => $f->detail, array_filter(app(FramedDeclarationAudit::class)->run(), fn (Finding $f) => $f->check === FramedDeclarationAudit::CHECK_VOCABULARY && $f->status === DoctorStatus::Warn)));
+    }
+
+    public function test_frame_vocabulary_is_clean_on_a_default_host_with_a_file_that_omits_inherits(): void
+    {
+        $this->vocabulary();
+        $findings = array_values(array_filter(app(FramedDeclarationAudit::class)->run(), fn (Finding $f) => $f->check === FramedDeclarationAudit::CHECK_VOCABULARY));
+        $this->assertCount(1, $findings);
+        $this->assertSame(DoctorStatus::Pass, $findings[0]->status);
+        $this->assertStringContainsString('frame.contexts registry', $findings[0]->detail);
+    }
+
+    public function test_a_context_on_one_side_only_warns_and_widget_names_are_still_checked(): void
+    {
+        $this->vocabulary(['contexts' => [...app(WidgetContextRegistry::class)->known(), 'ghost']]);
+        app(WidgetContextRegistry::class)->register(new WidgetContext('card', ContextGrain::Record), by: 'acme/host');
+        $this->resource('hidden', AuditBadData::class);
+
+        $warnings = $this->vocabularyWarnings();
+        $this->assertCount(2, $warnings);
+        $this->assertStringContainsString('Render context [card] is registered in PHP (by acme/host) but not in the kit', $warnings[0]);
+        $this->assertStringContainsString('Render context [ghost] is in the kit\'s vocabulary', $warnings[1]);
+        $this->assertSame([], $this->failures(FramedDeclarationAudit::CHECK_VOCABULARY));
+        $this->assertCount(1, $this->failures(FramedDeclarationAudit::CHECK_WIDGET_NAME, 'hidden'));
+    }
+
+    public function test_an_empty_kit_context_list_warns_per_context_and_does_not_fail(): void
+    {
+        $this->vocabulary(['contexts' => []]);
+        $this->assertSame([], $this->failures(FramedDeclarationAudit::CHECK_VOCABULARY));
+        $this->assertCount(count(app(WidgetContextRegistry::class)->known()), $this->vocabularyWarnings());
+    }
+
+    public function test_a_differing_fallback_edge_and_reserved_set_warn(): void
+    {
+        // A file that writes `inherits` without overview's edge, and lists no reserved names.
+        $this->vocabulary(['inherits' => ['row-cell' => ['edit']], 'reserved' => []]);
+        $warnings = $this->vocabularyWarnings();
+        $this->assertCount(2, $warnings);
+        $this->assertStringContainsString('Render context [overview] falls back to ["summary"] in PHP but to [] in the kit', $warnings[0]);
+        $this->assertStringContainsString('Reserved widget names differ: PHP reserves ["row-actions"]', $warnings[1]);
+    }
+
+    public function test_a_host_context_with_a_fallback_is_clean_when_the_kit_writes_the_same_edge(): void
+    {
+        $registry = app(WidgetContextRegistry::class);
+        $registry->register(new WidgetContext('card', ContextGrain::Record, fallback: ['list-item']), by: 'acme/host');
+        $this->vocabulary(['inherits' => [...$registry->inherits()]]);
+        $this->assertSame([], $this->vocabularyWarnings());
+        $this->vocabulary();
+        $this->assertSame(['Render context [card] falls back to ["list-item"] in PHP but to [] in the kit\'s vocabulary ['.config('frame.vocabulary').']; an unbound widget there draws differently on each side. Align the fallback and run pnpm frame:vocabulary --write.'], $this->vocabularyWarnings());
+    }
+
+    public function test_a_superseded_frame_context_warns_naming_both_registrants(): void
+    {
+        app(WidgetContextRegistry::class)->register(new WidgetContext('list-item', ContextGrain::Record), by: 'acme/host');
+        $this->vocabulary();
+        $this->assertSame(['Render context [list-item] registered by schemastud/laravel-frame is superseded by acme/host.'], $this->vocabularyWarnings());
+    }
+
+    public function test_a_reserved_name_is_legal_only_at_the_root_of_a_context_whose_php_entry_reserves_it(): void
+    {
+        app(WidgetContextRegistry::class)->register(new WidgetContext('board', ContextGrain::Property, reserved: ['pin']), by: 'acme/host');
+        $this->vocabulary(['contexts' => app(WidgetContextRegistry::class)->known(), 'reserved' => ['row-actions', 'pin']]);
+        $this->resource('pinned', AuditPinnedData::class);
+        $this->resource('stray', AuditStrayPinData::class);
+        $this->assertSame([], $this->failures(FramedDeclarationAudit::CHECK_WIDGET_NAME, 'pinned'));
+        $stray = $this->failures(FramedDeclarationAudit::CHECK_WIDGET_NAME, 'stray');
+        $this->assertCount(1, $stray);
+        $this->assertStringContainsString('in [board] declares reserved widget [pin] outside the root of a context that reserves it', $stray[0]->detail);
     }
 
     public function test_a_bound_request_schema_resolver_is_named_without_calling_it(): void
@@ -268,4 +346,13 @@ class AuditHostSchemaResolver implements \Schemastud\Frame\Contracts\ResourceSch
     {
         throw new \LogicException('The declaration audit must not call a per-request resolver.');
     }
+}
+#[WidgetIn('board', 'pin')]
+class AuditPinnedData extends Data
+{
+    public function __construct(public string $note) {}
+}
+class AuditStrayPinData extends Data
+{
+    public function __construct(#[WidgetIn('board', 'pin')] public string $note) {}
 }

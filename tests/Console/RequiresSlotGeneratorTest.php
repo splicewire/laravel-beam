@@ -98,9 +98,16 @@ class RequiresSlotGeneratorTest extends TestCase
         $this->assertStringContainsString("    requires: [new Requires('terms', on: 'write')],\n)]", $gated);
         $this->assertStringContainsString("use Splicewire\\Beam\\Agreements\\Requires;\n", $gated);
 
+        // agreements 16: a create-only binding is emitted as written.
+        $this->artisan('splicewire:beam:make:particle-resource', [
+            'name' => 'NewOrchard', '--model' => 'Orchard', '--key' => 'new-orchards', '--read-only' => true,
+            '--requires' => ['terms'], '--requires-on' => 'create',
+        ])->assertSuccessful();
+        $this->assertStringContainsString("    requires: [new Requires('terms', on: 'create')],\n)]", File::get($this->host.'/app/Data/NewOrchardData.php'));
+
         $this->artisan('splicewire:beam:make:particle-resource', [
             'name' => 'BadOrchard', '--model' => 'Orchard', '--key' => 'bad-orchards', '--requires' => ['terms'], '--requires-on' => 'list',
-        ])->expectsOutputToContain('--requires-on must be read, write or both.')->assertFailed();
+        ])->expectsOutputToContain('--requires-on must be read, write, both or create.')->assertFailed();
         $this->assertFileDoesNotExist($this->host.'/app/Data/BadOrchardData.php');
     }
 }

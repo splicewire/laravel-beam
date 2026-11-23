@@ -4,10 +4,15 @@ namespace Splicewire\Beam\Doctor;
 
 use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
+use Rushing\Popcorn\Registries\Key;
+use Rushing\Popcorn\Registries\RecordsRegistrants;
+use Rushing\Popcorn\Registries\RecordsSupersession;
+use Rushing\Popcorn\Registries\Registry;
 use Schemastud\Frame\Contracts\ResourceSchemaResolver;
 use Schemastud\Frame\Registry\CompositeResourceRegistry;
 use Schemastud\Frame\Registry\FormMode;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Schemastud\Frame\Registry\WidgetContext;
 use Schemastud\Frame\Registry\WidgetContextRegistry;
 use Schemastud\Frame\Vocabulary\DeclaredWidget;
 use Schemastud\Frame\Vocabulary\DeclaredWidgets;
@@ -34,6 +39,9 @@ class FramedDeclarationAudit implements DoctorAudit
 
     public const CHECK_PROJECTION = 'frame.projection';
 
+    /** The `frame.contexts` registry root (frame-foundation 90). */
+    private const CONTEXTS = 'frame.contexts';
+
     public function __construct(
         protected ParticleResourceRegistry $resources,
         protected DeclaredWidgets $widgets,
@@ -55,6 +63,8 @@ class FramedDeclarationAudit implements DoctorAudit
         }
         $definitions = $this->definitions($findings);
         $resolver = app()->bound(ResourceSchemaResolver::class) ? app(ResourceSchemaResolver::class) : null;
+        // A reserved name is the file's or any PHP context's: either way it is never looked up as a binding.
+        $reserved = $usable ? array_values(array_unique([...$vocabulary->reserved(), ...array_merge(...array_map(fn (WidgetContext $context): array => $context->reserved, app(WidgetContextRegistry::class)->all()))])) : [];
         $names = $types = $walked = 0;
         $notWalked = [];
         $seen = [];
@@ -87,9 +97,9 @@ class FramedDeclarationAudit implements DoctorAudit
                 $names += $newName ? 1 : 0;
                 $where = "Resource [{$widget->resource}] at [{$pointer}] in [{$widget->context}]";
                 $origin = $widget->source.', '.$widget->class.($widget->action === null ? '' : ', action '.$widget->action);
-                if (in_array($widget->name, $vocabulary->reserved(), true)) {
-                    if ($newName && ($widget->source !== DeclaredWidget::SourceContextBlock || $widget->pointer !== '' || $widget->context !== 'list-column')) {
-                        $findings[] = Finding::fail(self::CHECK_WIDGET_NAME, "{$where} declares reserved widget [{$widget->name}] outside the root list-column context ({$origin}).");
+                if (in_array($widget->name, $reserved, true)) {
+                    if ($newName && ! $this->reservedHere($widget)) {
+                        $findings[] = Finding::fail(self::CHECK_WIDGET_NAME, "{$where} declares reserved widget [{$widget->name}] outside the root of a context that reserves it ({$origin}).");
                     }
 
                     continue;
@@ -138,26 +148,95 @@ class FramedDeclarationAudit implements DoctorAudit
         return $findings;
     }
 
-    /** @return list<Finding> */
+    /**
+     * The file's header against laravel-frame, and its contexts against the `frame.contexts` registry (frame-foundation
+     * 92). `version` and `formModes` are frame's own and stay `fail`. The registry is an open set a package or host
+     * extends on both sides, so each difference there is a `warn` that leaves widget-name checks running: a context on
+     * one side only, a fallback edge or a `reserved` set that differs, and each of frame's contexts a registrant has
+     * superseded. Grain is not in the file and is not compared (86 Q1).
+     *
+     * @return list<Finding>
+     */
     private function vocabularyFindings(WidgetVocabulary $vocabulary): array
     {
         $findings = [];
         foreach ([
             'version' => [WidgetVocabulary::Version, $vocabulary->version()],
-            'contexts' => [$this->set(app(WidgetContextRegistry::class)->known()), $this->set($vocabulary->contexts())],
             'formModes' => [$this->set(array_column(FormMode::cases(), 'value')), $this->set($vocabulary->formModes())],
         ] as $axis => [$expected, $actual]) {
             if ($expected !== $actual) {
                 $findings[] = Finding::fail(self::CHECK_VOCABULARY, "Widget vocabulary [{$vocabulary->path}] has incompatible {$axis}; expected ".json_encode($expected).', got '.json_encode($actual).'. Regenerate with pnpm frame:vocabulary --write.');
             }
         }
+        array_push($findings, ...$this->contextFindings($vocabulary));
         foreach ($vocabulary->names() as $name) {
             foreach (array_unique($vocabulary->conflicts($name)) as $context) {
                 $findings[] = Finding::warn(self::CHECK_VOCABULARY, "Widget [{$name}] has conflicting registrations in [{$context}]; node-type checking is skipped for that binding. Regenerate each kit with pnpm frame:vocabulary --write.");
             }
         }
 
-        return $findings ?: [Finding::pass(self::CHECK_VOCABULARY, "Widget vocabulary [{$vocabulary->path}] matches laravel-frame. Freshness against the running JS build is not checked.")];
+        return $findings ?: [Finding::pass(self::CHECK_VOCABULARY, "Widget vocabulary [{$vocabulary->path}] matches laravel-frame and the frame.contexts registry. Freshness against the running JS build is not checked.")];
+    }
+
+    /** @return list<Finding> */
+    private function contextFindings(WidgetVocabulary $vocabulary): array
+    {
+        $registry = app(WidgetContextRegistry::class);
+        $store = $registry->unfiltered();
+        $file = $vocabulary->path;
+        $findings = [];
+
+        $php = $registry->known();
+        $kit = $vocabulary->contexts();
+        foreach (array_diff($php, $kit) as $name) {
+            $findings[] = Finding::warn(self::CHECK_VOCABULARY, "Render context [{$name}] is registered in PHP (by {$this->registrant($store, $name)}) but not in the kit's vocabulary [{$file}]; a widget declared in it has no binding in the browser. Register it in the host kit and run pnpm frame:vocabulary --write.");
+        }
+        foreach (array_diff($kit, $php) as $name) {
+            $findings[] = Finding::warn(self::CHECK_VOCABULARY, "Render context [{$name}] is in the kit's vocabulary [{$file}] but not registered in PHP; no declaration can name it. Register it from a provider's boot() with app(WidgetContextRegistry::class)->register(new WidgetContext(...)), or remove it from the kit.");
+        }
+
+        $expected = $registry->inherits();
+        $actual = $vocabulary->inherits();
+        foreach (array_unique([...array_keys($expected), ...array_keys($actual)]) as $name) {
+            $want = $expected[$name] ?? [];
+            $got = $actual[$name] ?? [];
+            if ($want !== $got) {
+                $findings[] = Finding::warn(self::CHECK_VOCABULARY, "Render context [{$name}] falls back to ".json_encode($want).' in PHP but to '.json_encode($got)." in the kit's vocabulary [{$file}]; an unbound widget there draws differently on each side. Align the fallback and run pnpm frame:vocabulary --write.");
+            }
+        }
+
+        $reserved = $this->set(array_merge(...array_map(fn (WidgetContext $context): array => $context->reserved, $registry->all())));
+        $listed = $this->set($vocabulary->reserved());
+        if ($reserved !== $listed) {
+            $findings[] = Finding::warn(self::CHECK_VOCABULARY, 'Reserved widget names differ: PHP reserves '.json_encode($reserved).", the kit's vocabulary [{$file}] lists ".json_encode($listed).'. Align them and run pnpm frame:vocabulary --write.');
+        }
+
+        if ($store instanceof RecordsSupersession) {
+            foreach ($php as $name) {
+                $displaced = $store->superseded(Key::parse(self::CONTEXTS.'.'.$name));
+                if (($displaced[0] ?? null)?->by === WidgetContextRegistry::FRAME) {
+                    $findings[] = Finding::warn(self::CHECK_VOCABULARY, "Render context [{$name}] registered by ".WidgetContextRegistry::FRAME." is superseded by {$this->registrant($store, $name)}.");
+                }
+            }
+        }
+
+        return $findings;
+    }
+
+    /** @param  Registry<WidgetContext>  $store */
+    private function registrant(Registry $store, string $name): string
+    {
+        $by = $store instanceof RecordsRegistrants ? $store->registrantOf(Key::parse(self::CONTEXTS.'.'.$name)) : null;
+
+        return $by ?? 'an unnamed registrant';
+    }
+
+    /** May `$name` stand here as a reserved name: at the root of a context block whose PHP entry reserves it. */
+    private function reservedHere(DeclaredWidget $widget): bool
+    {
+        return $widget->source === DeclaredWidget::SourceContextBlock
+            && $widget->pointer === ''
+            && in_array($widget->name, app(WidgetContextRegistry::class)->context($widget->context)->reserved ?? [], true);
     }
 
     /**

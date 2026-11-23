@@ -37,7 +37,11 @@ class SlotRequirementResolver implements RequirementResolver
                 acceptOperation: null,
                 member: null,
             ),
-            $this->slots->requirementsFor($behavior),
+            // agreements 16: a create-only Requirement is not outstanding for an existing record (update, delete).
+            array_values(array_filter(
+                $this->slots->requirementsFor($behavior),
+                fn (Requires $requirement): bool => $requirement->appliesToSubject($subject),
+            )),
         );
     }
 }
