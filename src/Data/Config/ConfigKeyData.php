@@ -20,12 +20,15 @@ use Splicewire\Beam\Enums\ConfigTier;
  * - `effect`, `ceiling`, `overridable`, `secret`, `merge`: the key's declaration, defaulted conservatively when
  *   the section declares none. `overridable` is for the row's own tier: in the tenant realm, false for a locked key.
  * - `lock`: the operator lock covering the key, with its reason (ticket 07), or null.
+ * - `closed`: the runtime tiers the package closed the key to (`#[ConfigKey(closed: ...)]`, config-sections 17). The
+ *   Config area shows such a tier's layer as closed, not as "not set"; a stored row for it never applies.
  */
 #[TypeScript]
 class ConfigKeyData extends BeamData
 {
     /**
      * @param  list<ConfigLayerData>  $layers
+     * @param  list<ConfigTier>  $closed  serialized as the tiers' values (`["operator"]`)
      */
     public function __construct(
         public string $pointer,
@@ -42,5 +45,6 @@ class ConfigKeyData extends BeamData
         public bool $set,
         public ConfigMerge $merge,
         public ?ConfigLockData $lock = null,
+        public array $closed = [],
     ) {}
 }

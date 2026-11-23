@@ -6,6 +6,7 @@ use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
 use Splicewire\Beam\Config\ConfigSectionCoverage;
+use Splicewire\Beam\Config\ConfigSectionDeclarations;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\ConfigSectionSchema;
 use Splicewire\Beam\Config\Overrides\ConfigOverlay;
@@ -20,7 +21,10 @@ use Throwable;
  *   show, type or validate, and an operator write to it is refused for want of a declaration;
  * - the package defaults (the registered package file) validate against the section's schema, so the section and the
  *   file it describes agree;
- * - every key has a description that is not the generator's harvested draft (`#[ConfigDraft]`).
+ * - every key has a description that is not the generator's harvested draft (`#[ConfigDraft]`);
+ * - the section declares nothing the ladder cannot honour ({@see ConfigSectionDeclarations}): no explicit
+ *   `secret: false` below a secret, no secret inside a list of records (a failure), no secret open to the operator tier
+ *   without a `closed:` either way, and no secret the declaration walk cannot reach.
  *
  * The values read are the package and host tiers, without the operator's published layer
  * ({@see ConfigOverlay::base()}). Report-only (advisory); ticket 13 turns it into a gate.
@@ -87,6 +91,15 @@ class ConfigSectionCoverageAudit implements DoctorAudit
                     count($drafts),
                     $this->listed($drafts),
                 ));
+            }
+
+            // config-sections 22, 21, 17: what the section DECLARES that the ladder cannot honour, or honours silently. A
+            // secret inside a list of records fails (no tier can address one record's secret, and a re-save that does not
+            // resend it loses it); the rest warn.
+            foreach (ConfigSectionDeclarations::findings($registered->section) as $finding) {
+                $findings[] = $finding['kind'] === ConfigSectionDeclarations::KIND_SECRET_IN_LIST
+                    ? Finding::fail(self::CHECK, "{$root}: {$finding['message']}")
+                    : Finding::warn(self::CHECK, "{$root}: {$finding['message']}");
             }
         } catch (Throwable $e) {
             $findings[] = Finding::warn(self::CHECK, sprintf('%s: the section could not be checked: %s', $root, $e->getMessage()));

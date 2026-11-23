@@ -638,8 +638,136 @@ class ConfigOverrideStore
         // Version query would read the DEFAULT connection, which is the tenant's during a tenant request.
         $version = $this->versions->version($scope, $scope->published_version);
         $draft = $version?->snapshot['draft'] ?? [];
+        $draft = is_array($draft) ? $draft : [];
+        $registered = $this->sections->get($scope->section);
 
-        return $this->entries(is_array($draft) ? $draft : [], $version?->version);
+        if ($registered === null) {
+            return $this->entries($draft, $version?->version);
+        }
+
+        // config-sections 21: an entry WRITTEN through a LIST index is dropped, decided on the pointer of the op that wrote
+        // it (a split secret's `via`, else its own). Writes there are refused now ({@see listItemReason()}); a row stored
+        // before would otherwise land on whatever record sits at that index after the list changes, or re-create a
+        // removed item (the overlay creates missing paths). A secret split out of a parent set ABOVE the list stays: that
+        // parent wrote the whole list in the same op, and every other parent op drops it ({@see splitChildrenUnder()}),
+        // so it always sits on the record it was split from. A secret split from a parent set AT a list item goes with
+        // that parent.
+        $draft = array_filter(
+            $draft,
+            fn (mixed $entry, string|int $pointer): bool => ! $this->writtenThroughList($registered, $entry, (string) $pointer),
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        return $this->applicable($registered, $this->entries($draft, $version?->version));
+    }
+
+    /**
+     * The published rows {@see publishedLayer()} DROPS because they were written through a list index (config-sections 21,
+     * lead LANE-A-0420), per section, at this store's tier. Read-only. {@see \Splicewire\Beam\Doctor\ConfigStoredListRowAudit}
+     * names them so the operator learns an override stopped applying; nothing is repaired or rewritten.
+     *
+     * @return array<string, list<string>> root => the dropped pointers, sorted; a section with none is absent
+     */
+    public function storedListRows(): array
+    {
+        if (! $this->hasStore()) {
+            return [];
+        }
+
+        $rows = [];
+
+        foreach ($this->scopes()->whereNotNull('published_version')->orderBy('section')->get() as $scope) {
+            $registered = $this->sections->get($scope->section);
+
+            if ($registered === null) {
+                continue;
+            }
+
+            $draft = $this->versions->version($scope, $scope->published_version)?->snapshot['draft'] ?? [];
+            $pointers = [];
+
+            foreach (is_array($draft) ? $draft : [] as $pointer => $entry) {
+                if ($this->writtenThroughList($registered, $entry, (string) $pointer)) {
+                    $pointers[] = (string) $pointer;
+                }
+            }
+
+            if ($pointers !== []) {
+                sort($pointers);
+                $rows[$scope->section] = $pointers;
+            }
+        }
+
+        return $rows;
+    }
+
+    /** Whether a stored entry was WRITTEN through a list index: its op's pointer (a split secret's `via`, else its own). */
+    private function writtenThroughList(RegisteredConfigSection $registered, mixed $entry, string $pointer): bool
+    {
+        $via = is_array($entry) ? ($entry['via'] ?? null) : null;
+
+        return $this->listPath($registered, is_string($via) ? $via : $pointer);
+    }
+
+    /**
+     * The published entries that still APPLY for this tier, by the section's declaration today (config-sections 17): the
+     * one filter the operator overlay, the tenant hop and the Config area's layers share (they all read
+     * {@see publishedLayer()}). An entry for a key declared CLOSED to the tier is dropped, and a key closed to it inside
+     * an object entry is cut out and inherited from the tier below, so a row stored before the package closed the key
+     * never applies.
+     *
+     * @param  array<string, ConfigOverrideEntry>  $entries
+     * @return array<string, ConfigOverrideEntry>
+     */
+    protected function applicable(RegisteredConfigSection $registered, array $entries): array
+    {
+        $tier = $this->tier();
+        $kept = [];
+
+        foreach ($entries as $pointer => $entry) {
+            $pointer = (string) $pointer;
+
+            if ($registered->section::keyDeclaration(JsonPointer::segments($pointer))->closedTo($tier)) {
+                continue;
+            }
+
+            if ($entry->op === ConfigOverrideOp::Unset) {
+                $kept[$pointer] = $entry;
+
+                continue;
+            }
+
+            // The keys below this entry the package declares closed to the tier today (Codex review, lane A): a stored
+            // parent row must not erase or replace them, whether it nulls the parent, replaces it with a non-object, or
+            // sends an object that leaves them out.
+            $closedBelow = $registered->section::closedKeysBelow(JsonPointer::segments($pointer), $tier);
+            $object = is_array($entry->value) && ($entry->value === [] || ! array_is_list($entry->value));
+
+            if ($closedBelow !== [] && ($entry->op === ConfigOverrideOp::Null || ! $object)) {
+                continue;
+            }
+
+            if ($entry->op === ConfigOverrideOp::Set && $object) {
+                [$value, $cut] = $entry->value === [] ? [[], []] : ConfigTierBoundary::closedOut($registered, $pointer, $entry->value, $tier);
+
+                foreach ($closedBelow as $closed) {
+                    if (! JsonPointer::get($value, $closed)[0]) {
+                        $cut[] = $closed;
+                    }
+                }
+
+                if ($cut !== []) {
+                    $entry = new ConfigOverrideEntry(
+                        $entry->pointer, $entry->op, $value, $entry->secret, $entry->revision, $entry->version, $entry->setAt,
+                        array_values(array_unique([...$entry->inherit, ...$cut])),
+                    );
+                }
+            }
+
+            $kept[$pointer] = $entry;
+        }
+
+        return $kept;
     }
 
     /**
@@ -730,6 +858,14 @@ class ConfigOverrideStore
                 throw ConfigOverrideRefusal::because("ops.{$i}.pointer", $refused);
             }
 
+            // config-sections 21 (option b): a list position is not a record's identity, so no tier writes INTO a list
+            // item. A `set` or `null` there would outlive the next set of the list and land on whatever record then sits
+            // at that index (or re-create a removed one). The whole list is written instead. `unset` stays allowed, so a
+            // legacy entry can still be cleared.
+            if ($kind !== ConfigOverrideOp::Unset && $this->listPath($registered, $pointer)) {
+                throw ConfigOverrideRefusal::because("ops.{$i}.pointer", self::listItemReason($pointer));
+            }
+
             $value = $kind === ConfigOverrideOp::Set ? ($op['value'] ?? null) : null;
 
             // config-sections 08 import: a mirror file records a parent set's INHERIT (the leaves it does NOT own) with
@@ -774,7 +910,9 @@ class ConfigOverrideStore
                     // config-sections 20 r4/r5: a split secret through a LIST index (the full pointer, by the declaration)
                     // never goes into inherit. A list index is not a stable identity across tiers either: unsetting that
                     // child would otherwise fill the slot from the tier below's list at the same index, another record's
-                    // secret (the operator's, at the tenant tier). Removed, the item simply has no secret.
+                    // secret (the operator's, at the tenant tier). Removed, the item simply has no secret. Such a child is
+                    // derived anew by every set of its parent and dropped by every other parent op ({@see
+                    // splitChildrenUnder()}), so it never outlives the list it was split from (config-sections 21).
                     if (! $this->listPath($registered, $pointer.$relative)) {
                         $inherit[] = $relative;
                     }
@@ -832,6 +970,10 @@ class ConfigOverrideStore
             return "{$full} has the ceiling {$declared->ceiling->value}; the {$tier->value} tier may not override it.";
         }
 
+        if ($declared->closedTo($tier)) {
+            return self::closedReason($full, $tier);
+        }
+
         foreach ($locks as $lock) {
             if ($lock->covers($full)) {
                 return "{$full} is locked by the operator: {$lock->reason}";
@@ -839,6 +981,18 @@ class ConfigOverrideStore
         }
 
         return null;
+    }
+
+    /** Why a write into a list item is refused (config-sections 21). */
+    public static function listItemReason(string $pointer): string
+    {
+        return "{$pointer} is inside a list item, and a list position is not a stable identity: write the whole list, or declare it as a map keyed by a stable name (#[MapValues(Entry::class)]) to address one entry.";
+    }
+
+    /** The readable reason a key declared closed to a tier gives (config-sections 17). */
+    public static function closedReason(string $pointer, ConfigTier $tier): string
+    {
+        return "{$pointer} is closed to the {$tier->value} tier by its package (#[ConfigKey(closed: ...)]); the {$tier->value} tier may not override it.";
     }
 
     /**
@@ -1165,8 +1319,10 @@ class ConfigOverrideStore
 
         $declared = $registered->section::keyDeclaration(JsonPointer::segments($pointer));
 
-        if (! $declared->ceiling->admits(ConfigTier::Tenant) && ! $this->tenantWritableBelow($registered, $pointer)) {
-            throw ConfigOverrideRefusal::because('pointer', "{$pointer} has the ceiling {$declared->ceiling->value}; a tenant cannot override it, so there is nothing to lock.");
+        if (! $declared->opensTo(ConfigTier::Tenant) && ! $this->tenantWritableBelow($registered, $pointer)) {
+            throw ConfigOverrideRefusal::because('pointer', $declared->ceiling->admits(ConfigTier::Tenant)
+                ? "{$pointer} is closed to the tenant tier by its package; a tenant cannot override it, so there is nothing to lock."
+                : "{$pointer} has the ceiling {$declared->ceiling->value}; a tenant cannot override it, so there is nothing to lock.");
         }
 
         return ConfigOverrideLock::query()->updateOrCreate(

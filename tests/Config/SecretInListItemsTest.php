@@ -3,11 +3,13 @@
 namespace Splicewire\Beam\Tests\Config;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Splicewire\Beam\Config\ConfigSectionReader;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\Overrides\ConfigOverlay;
 use Splicewire\Beam\Config\Overrides\ConfigOverrideStore;
 use Splicewire\Beam\Facades\Beam;
+use Splicewire\Beam\Tests\Fixtures\Config\LegacyRelayGroupSection;
 use Splicewire\Beam\Tests\Fixtures\Config\RelayGroupSection;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -126,27 +128,117 @@ class SecretInListItemsTest extends TestCase
 
     // ---- r5: the rule decides on the FULL pointer (lead T20-R5-1725) ----
 
-    /** A set made AT a list item (its own pointer holds the index): its secret is not inherited either. */
-    public function test_a_set_at_a_list_item_then_an_unset_of_its_secret_inherits_nothing(): void
+    // ---- config-sections 21 (option b): no tier writes INTO a list item ----
+
+    /** The refusal's errors, as JSON; fails the test when `$ops` is accepted. */
+    private function refused(array $ops): string
     {
-        $this->publish([['pointer' => '/group/relays/0', 'op' => 'set', 'value' => ['host' => 'relay.at.test', 'password' => 'fake-li-at']]]);
-        $this->assertNotContains('/password', $this->draft()['/group/relays/0']['inherit'] ?? [], 'the op pointer holds an index: nothing is inherited');
+        try {
+            $this->store()->saveDraft('qa.relaygroup', $ops);
+        } catch (ValidationException $refused) {
+            return (string) json_encode($refused->errors(), JSON_UNESCAPED_SLASHES);
+        }
 
-        $this->publish([['pointer' => '/group/relays/0/password', 'op' => 'unset']]);
-
-        $this->assertSame('relay.at.test', config('qa.relaygroup.group.relays.0.host'));
-        $this->assertNull(config('qa.relaygroup.group.relays.0.password'), "never the host's index-0 secret");
+        $this->fail('the write was not refused');
     }
 
-    /** A map nested INSIDE a list item (`/relays/0/creds`): the index is in the op's pointer, not in the relative part. */
-    public function test_a_set_at_a_map_inside_a_list_item_then_an_unset_inherits_nothing(): void
+    /**
+     * A set AT a list item (its own pointer holds the index) is refused, naming the map form. Before 21 it was stored,
+     * and applied to whatever record sat at that index once the list changed (r5 kept only its secret off another record).
+     */
+    public function test_a_set_at_a_list_item_is_refused_naming_the_map_form(): void
     {
-        $this->publish([['pointer' => '/group/relays/0/creds', 'op' => 'set', 'value' => ['a' => ['label' => 'op cred', 'token' => 'fake-li-cred']]]]);
-        $this->assertNotContains('/a/token', $this->draft()['/group/relays/0/creds']['inherit'] ?? []);
+        $message = $this->refused([['pointer' => '/group/relays/0', 'op' => 'set', 'value' => ['host' => 'relay.at.test', 'password' => 'fake-li-at']]]);
 
-        $this->publish([['pointer' => '/group/relays/0/creds/a/token', 'op' => 'unset']]);
+        $this->assertStringContainsString('/group/relays/0 is inside a list item', $message);
+        $this->assertStringContainsString('#[MapValues(Entry::class)]', $message);
+        $this->assertStringNotContainsString('fake-li-at', $message, 'the refusal does not echo the value');
+        $this->assertSame([], $this->draft(), 'nothing was stored');
+    }
 
-        $this->assertNull(config('qa.relaygroup.group.relays.0.creds.a.token'), "never the host's index-0 credential");
+    /** A map nested INSIDE a list item (`/relays/0/creds`) is still inside the item: refused too. */
+    public function test_a_set_at_a_map_inside_a_list_item_is_refused(): void
+    {
+        $message = $this->refused([['pointer' => '/group/relays/0/creds', 'op' => 'set', 'value' => ['a' => ['label' => 'op cred', 'token' => 'fake-li-cred']]]]);
+
+        $this->assertStringContainsString('/group/relays/0/creds is inside a list item', $message);
+    }
+
+    public function test_a_null_at_a_list_item_leaf_is_refused(): void
+    {
+        $message = $this->refused([['pointer' => '/group/relays/0/host', 'op' => 'null']]);
+
+        $this->assertStringContainsString('/group/relays/0/host is inside a list item', $message);
+    }
+
+    /** An UNSET there removes this tier's row, so it stays allowed: it is how a stored list-item row is cleared. */
+    public function test_an_unset_at_a_list_item_is_allowed(): void
+    {
+        $this->publish([['pointer' => '/group/relays/0/host', 'op' => 'unset']]);
+
+        $this->assertSame('relay.host.test', config('qa.relaygroup.group.relays.0.host'));
+    }
+
+    /** Control: the whole list, written at its parent, is still a write the tier may make, its secrets split as before. */
+    public function test_control_writing_the_whole_list_is_accepted(): void
+    {
+        $this->publish([['pointer' => '/group', 'op' => 'set', 'value' => ['relays' => [['host' => 'relay.op.test', 'password' => 'fake-li-op']]]]]);
+
+        $this->assertSame(['relay.op.test', 'fake-li-op'], [config('qa.relaygroup.group.relays.0.host'), config('qa.relaygroup.group.relays.0.password')]);
+    }
+
+    /** Re-register the root under `$section`, as a host booting a new package version would. */
+    private function declare(string $section): void
+    {
+        config(['qa.relaygroup' => self::host()]);
+        $this->app->instance(ConfigSectionRegistry::class, new ConfigSectionRegistry);
+        $this->app->forgetInstance(ConfigOverrideStore::class);
+        $this->app->forgetInstance(ConfigOverlay::class);
+        app(ConfigSectionRegistry::class)->section($section, owner: 'qa/fixture');
+        app(ConfigOverlay::class)->sync();
+    }
+
+    /**
+     * A row stored BEFORE 21 that addresses one list item (written while the key was a map, or by an older beam) never
+     * applies: not the item's own row, and not a secret split out of a set at that item. It would otherwise land on
+     * whatever record sits at that index, or re-create a removed one.
+     */
+    public function test_a_list_item_row_stored_before_the_ticket_never_applies(): void
+    {
+        $this->declare(LegacyRelayGroupSection::class);
+        $this->store()->saveDraft('qa.relaygroup', [
+            ['pointer' => '/group/relays/0', 'op' => 'set', 'value' => ['host' => 'relay.legacy.test', 'password' => 'fake-li-legacy']],
+            ['pointer' => '/group/relays/7/host', 'op' => 'set', 'value' => 'relay.seven.test'],
+        ]);
+        $this->store()->publish('qa.relaygroup');
+        $this->declare(LegacyRelayGroupSection::class);
+        $this->assertSame('fake-li-legacy', config('qa.relaygroup.group.relays.0.password'), 'precondition: the rows apply while relays is a map');
+
+        $this->declare(RelayGroupSection::class);
+
+        $this->assertSame(self::host()['group']['relays'], config('qa.relaygroup.group.relays'), "the host's list, with its own record's secret; no item re-created at 7");
+    }
+
+    /**
+     * The Config area offers a list as ONE key, written whole: no row sits inside a list item, even after a legacy
+     * item-addressed row was stored (it is dropped from the published layer, so the ladder never makes a pointer for it).
+     */
+    public function test_the_reader_offers_a_list_as_one_key_and_no_key_inside_an_item(): void
+    {
+        $this->declare(LegacyRelayGroupSection::class);
+        $this->store()->saveDraft('qa.relaygroup', [['pointer' => '/group/relays/7/host', 'op' => 'set', 'value' => 'relay.seven.test']]);
+        $this->store()->publish('qa.relaygroup');
+        $this->declare(RelayGroupSection::class);
+
+        $keys = [];
+
+        foreach (app(ConfigSectionReader::class)->read(app(ConfigSectionRegistry::class)->get('qa.relaygroup'))->keys as $key) {
+            $keys[$key->pointer] = $key;
+        }
+
+        $this->assertArrayHasKey('/group/relays', $keys, 'the list is one key');
+        $this->assertTrue($keys['/group/relays']->overridable, 'and it is written whole');
+        $this->assertSame([], array_values(array_filter(array_keys($keys), fn (string $pointer): bool => str_starts_with($pointer, '/group/relays/'))), 'no key inside an item');
     }
 
     /**
