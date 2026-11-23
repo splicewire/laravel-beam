@@ -47,13 +47,29 @@ final class BrowserCoverageReader
 
     /**
      * Read one JUnit file and render the coverage verdict for every installed browser suite that ships tests.
+     *
+     * When `$only` is non-empty, the EXPECTED set is scoped to just those package names — the opt-in a
+     * per-package reference run passes (browser-journeys 12) so a commerce ref gates on the commerce suite
+     * alone, and a sibling the starter merely vendors (accounts, validated by its OWN ref run against a host
+     * that mounts its routes) is not demanded here. The DEFAULT (empty `$only`) is unchanged: every installed
+     * `splicewire/*` browser suite is expected, so a standalone host sweep still cannot let an unmounted or
+     * filtered-out suite read as clean. Scoping narrows WHICH suites are expected; it never excuses a named
+     * target's own zero-testcases absence (that stays `not-collected`).
+     *
+     * @param  list<string>  $only  Package names (e.g. `splicewire/laravel-beam-commerce`) to scope the gate to; `[]` = every installed suite.
      */
-    public function read(string $junitPath): BrowserCoverageReport
+    public function read(string $junitPath, array $only = []): BrowserCoverageReport
     {
         $testcases = $this->testcases($junitPath);
 
         $items = [];
         foreach ($this->inventory->packages() as $package) {
+            // Opt-in target scope (browser-journeys 12): when a caller named the package(s) it is verifying,
+            // only those are "expected"; the full-inventory default (empty `$only`) is left untouched.
+            if ($only !== [] && ! in_array($package['package'], $only, true)) {
+                continue;
+            }
+
             // A package with no test files ships no browser suite to prove — the mount audit answers for an
             // empty directory. Only packages that actually carry tests are "expected" here.
             if ($package['testFileCount'] === 0) {

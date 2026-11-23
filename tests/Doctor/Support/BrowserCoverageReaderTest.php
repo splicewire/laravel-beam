@@ -82,6 +82,12 @@ class BrowserCoverageReaderTest extends TestCase
         return (new BrowserCoverageReader(null, $this->base))->read($junitPath);
     }
 
+    /** @param  list<string>  $only */
+    private function readOnly(string $junitPath, array $only): BrowserCoverageReport
+    {
+        return (new BrowserCoverageReader(null, $this->base))->read($junitPath, $only);
+    }
+
     public function test_a_collected_passing_suite_is_proved(): void
     {
         $dir = $this->vendorSuite('splicewire/laravel-beam-accounts');
@@ -195,6 +201,42 @@ class BrowserCoverageReaderTest extends TestCase
         $this->assertSame(BrowserCoverageReport::PROVED, $byPackage['splicewire/laravel-beam-accounts']);
         $this->assertSame(BrowserCoverageReport::NOT_COLLECTED, $byPackage['splicewire/laravel-beam-teams']);
         $this->assertFalse($report->ok());
+    }
+
+    public function test_only_scopes_the_expected_set_to_the_named_target(): void
+    {
+        // browser-journeys 12: a per-package ref run passes --only <target>. A sibling the starter merely
+        // vendors (teams) must NOT be demanded here — it is validated by its own ref run. With the target
+        // proved and the sibling excluded from the expected set, the report is ok.
+        $accounts = $this->vendorSuite('splicewire/laravel-beam-accounts');
+        $this->vendorSuite('splicewire/laravel-beam-teams'); // a vendored sibling, collected by no run here
+        $this->phpunit(mount: true);
+        $junit = $this->junit([[$accounts.'/Thing1Test.php', 'passed']]);
+
+        $report = $this->readOnly($junit, ['splicewire/laravel-beam-accounts']);
+
+        $this->assertTrue($report->ok());
+        $this->assertCount(1, $report->items);
+        $this->assertSame('splicewire/laravel-beam-accounts', $report->items[0]['package']);
+        $this->assertSame(BrowserCoverageReport::PROVED, $report->items[0]['status']);
+    }
+
+    public function test_only_does_not_excuse_the_targets_own_absence(): void
+    {
+        // Scoping narrows WHICH suites are expected; it never turns the named target's OWN zero-testcases
+        // into a pass. The target is mounted and ships tests but the run collected none of it → still
+        // not-collected, report NOT ok — the core invariant holds inside the scoped set too.
+        $this->vendorSuite('splicewire/laravel-beam-accounts');
+        $this->vendorSuite('splicewire/laravel-beam-teams');
+        $this->phpunit(mount: true);
+        $junit = $this->junit([]); // a green run that collected nothing
+
+        $report = $this->readOnly($junit, ['splicewire/laravel-beam-accounts']);
+
+        $this->assertFalse($report->ok());
+        $this->assertCount(1, $report->items);
+        $this->assertSame('splicewire/laravel-beam-accounts', $report->items[0]['package']);
+        $this->assertSame(BrowserCoverageReport::NOT_COLLECTED, $report->items[0]['status']);
     }
 
     private function rmrf(string $path): void

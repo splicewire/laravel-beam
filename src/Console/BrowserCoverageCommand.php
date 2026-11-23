@@ -19,7 +19,8 @@ use Splicewire\Beam\Doctor\Support\BrowserSuiteInventory;
 class BrowserCoverageCommand extends Command
 {
     protected $signature = 'splicewire:beam:browser-coverage
-        {junit : Path to the JUnit XML a browser run wrote (pest --log-junit)}';
+        {junit : Path to the JUnit XML a browser run wrote (pest --log-junit)}
+        {--only=* : Scope the gate to only this installed splicewire/* package (repeatable; e.g. splicewire/laravel-beam-commerce). Default verifies every installed browser suite.}';
 
     protected $description = 'Verify every installed splicewire/* browser suite was collected in a JUnit run; non-zero on any not-collected suite.';
 
@@ -27,11 +28,28 @@ class BrowserCoverageCommand extends Command
     {
         $junit = (string) $this->argument('junit');
 
+        $only = array_values(array_filter(
+            (array) $this->option('only'),
+            static fn ($v): bool => is_string($v) && $v !== '',
+        ));
+
         $report = (new BrowserCoverageReader(
             new BrowserSuiteInventory($this->laravel->basePath()),
-        ))->read($junit);
+        ))->read($junit, $only);
 
         if ($report->items === []) {
+            // With --only, an empty expected set means the named target is not an installed browser suite —
+            // an honest failure, not a clean "nothing to verify": a per-package ref run asked to prove a
+            // specific package and that package was not there to prove.
+            if ($only !== []) {
+                $this->components->error(sprintf(
+                    'None of the --only package(s) [%s] is an installed splicewire/* browser suite that ships tests — nothing was verified.',
+                    implode(', ', $only),
+                ));
+
+                return self::FAILURE;
+            }
+
             $this->components->info('No installed splicewire/* package ships a tests/Browser suite — nothing to verify.');
 
             return self::SUCCESS;
