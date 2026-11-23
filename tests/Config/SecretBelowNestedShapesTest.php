@@ -157,9 +157,22 @@ class SecretBelowNestedShapesTest extends TestCase
         $this->assertTrue($this->store()->scope(self::ROOT)->draft['/mailers/smtp/password']['secret'] ?? false, 'a direct write is encrypted');
     }
 
+    /**
+     * A write AT a secret in a list entry is refused (config-sections 21, option b); written with its whole list, the
+     * secret is split out encrypted, never stored in plain.
+     */
     public function test_an_operator_secret_in_a_list_entry_is_never_stored_in_plain(): void
     {
-        $this->store()->saveDraft(self::ROOT, [['pointer' => '/relays/0/password', 'op' => 'set', 'value' => 'fake-list-op-pw']]);
+        try {
+            $this->store()->saveDraft(self::ROOT, [['pointer' => '/relays/0/password', 'op' => 'set', 'value' => 'fake-list-op-pw']]);
+            $this->fail('a set at a list item was accepted');
+        } catch (ValidationException $refused) {
+            $this->assertStringContainsString('/relays/0/password is inside a list item', json_encode($refused->errors(), JSON_UNESCAPED_SLASHES));
+        }
+
+        $relays = config(self::ROOT.'.relays');
+        $relays[0]['password'] = 'fake-list-op-pw';
+        $this->store()->saveDraft(self::ROOT, [['pointer' => '/relays', 'op' => 'set', 'value' => $relays]]);
         $this->store()->publish(self::ROOT);
         app(ConfigOverlay::class)->sync();
 

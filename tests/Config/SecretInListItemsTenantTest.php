@@ -147,8 +147,11 @@ class SecretInListItemsTenantTest extends TestCase
         $this->assertSame('fake-lt-host-p', $this->tenantView()['holder']['primary']['password'] ?? null, 'the tier below applies, never the stale tenant secret');
     }
 
-    /** r5: the tenant's set AT a list item (the index in its own pointer), then an unset: never the operator's secret. */
-    public function test_a_tenants_set_at_a_list_item_then_an_unset_never_inherits_the_operators_secret(): void
+    /**
+     * config-sections 21 (option b): the tenant's set AT a list item is refused, as the operator's is, so it can never
+     * stand over the operator's record at that index. (r5 kept only that record's secret off it.)
+     */
+    public function test_a_tenants_set_at_a_list_item_is_refused(): void
     {
         $operator = app(ConfigOverrideStore::class)->forTier(ConfigTier::Operator);
         $operator->saveDraft('qa.trelay', [['pointer' => '/group', 'op' => 'set', 'value' => ['relays' => [['host' => 'relay.op.test', 'password' => 'fake-lt-operator']]]]]);
@@ -156,16 +159,17 @@ class SecretInListItemsTenantTest extends TestCase
         app(ConfigOverlay::class)->sync();
 
         $this->asTenant(function (ConfigOverrideStore $tenant): void {
-            $tenant->saveDraft('qa.trelay', [['pointer' => '/group/relays/0', 'op' => 'set', 'value' => ['host' => 'relay.tenant.test', 'password' => 'fake-lt-tenant']]]);
-            $tenant->publish('qa.trelay');
-            $this->assertNotContains('/password', $tenant->scope('qa.trelay')->draft['/group/relays/0']['inherit'] ?? []);
-            $tenant->saveDraft('qa.trelay', [['pointer' => '/group/relays/0/password', 'op' => 'unset']]);
-            $tenant->publish('qa.trelay');
+            try {
+                $tenant->saveDraft('qa.trelay', [['pointer' => '/group/relays/0', 'op' => 'set', 'value' => ['host' => 'relay.tenant.test', 'password' => 'fake-lt-tenant']]]);
+                $this->fail('a tenant set at a list item was accepted');
+            } catch (ValidationException $refused) {
+                $this->assertStringContainsString('/group/relays/0 is inside a list item', json_encode($refused->errors(), JSON_UNESCAPED_SLASHES));
+            }
         });
 
         $view = $this->tenantView();
-        $this->assertSame('relay.tenant.test', $view['group']['relays'][0]['host'] ?? null);
-        $this->assertNull($view['group']['relays'][0]['password'] ?? null, "never the operator's secret");
+        $this->assertSame('relay.op.test', $view['group']['relays'][0]['host'] ?? null, "the operator's record stands");
+        $this->assertSame('fake-lt-operator', $view['group']['relays'][0]['password'] ?? null, 'with its own secret');
     }
 
     public function test_unsetting_a_tenants_index_split_secret_never_inherits_the_operators_secret_at_that_index(): void

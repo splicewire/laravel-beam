@@ -383,6 +383,82 @@ current ceiling or lock: it only removes the saving tier's own row, so a tier ca
 key's ceiling narrowed below it. A kept child writes no new revision row, so no secret
 is written again. Secrets set directly at their own pointer (no `via`) are not decided by a parent op, as before.
 
+## Amendment, 2026-11-22 (config-sections 22): secrecy is sticky
+
+The declaration walk's nearest-declaration-wins rule let a child's own `#[ConfigKey]` REPLACE a secret ancestor's
+declaration. A key below a secret object that declared only its ceiling was read as plain: a set at the object's parent
+left it in the owned value, so it was stored in plain in the draft and the revision and shown unredacted by the reader.
+
+`ConfigSection::keyDeclaration()` now lays each declaration BELOW the one above it. The nearest declaration still gives
+the ceiling, effect, merge and env, but `secret` is the OR of the key and every ancestor, and `closed` (17, below) is the
+union. A map entry or list record's own declaration raises its container's secret and closure in the same way. A key
+below a secret is secret whatever it declares, so an explicit `secret: false` there cannot lower it.
+
+The section audit (`config.section-coverage`, through `ConfigSectionDeclarations`) reports what the walk cannot honour:
+
+- an explicit `secret: false` below a secret ancestor (a warning: harmless, but it misleads the reader);
+- a property the walk does not descend, an interface, a non-Data class or an abstract Data type, where a LOADED class it
+  could hold declares a secret the declared type does not (a warning: that secret would be stored in plain). The audit
+  sees only classes loaded when it runs. An untyped property, or an array with no item attribute, names no class and is
+  not reported.
+
+## Amendment, 2026-11-22 (config-sections 21): no tier writes into a list item
+
+Ticket 21 asked which of three rules governs a list of records: (a) give list records a stable identity, (b) refuse
+item-level writes, or (c) refuse secrets inside lists. **(b) and (c), (c) in the audit.** (a) would need an identity
+field per list and a migration of stored rows, and a map keyed by a stable name (`#[MapValues(Entry::class)]`) is
+already that.
+
+- **(b)** A `set` or `null` whose pointer passes through a LIST index, as the declaration says
+  (`ConfigSection::throughListIndex()`), is refused at every tier with the reason, which names the map form. A list
+  is written whole, at its own pointer or an ancestor's. An `unset` there stays allowed: it only removes the saving
+  tier's own row.
+- **Rows stored before** are never applied. `publishedLayer()` drops every entry the declaration places through a list
+  index, judged by the pointer of the op that wrote it. That pointer is a split secret's `via`, so a secret split out of
+  a set AT a list item goes with that set. A secret split out of a set ABOVE the list stays: its parent wrote the whole
+  list in the same op, and every later parent op drops it (19's list rule), so it always sits on the record it was split
+  from. The operator overlay, the tenant hop and the Config area's layers all read `publishedLayer()`, so none of them
+  applies an old item row after the list changes.
+- **(c)** A secret inside a list of records FAILS the section audit, naming the map form. Such a secret is written only
+  with its whole list, and a re-save that does not resend it loses it (19), so a list cannot hold a secret safely.
+- The Config area already offers a list as one key: the reader's rows are the ladder's leaves, and a list is a leaf,
+  so no row sits inside an item and an item-addressed stored row (dropped above) makes none.
+
+**Cost to existing sections:** a section that declares a secret in a `#[DataCollectionOf]` list now fails the audit
+until it is redeclared as a map. A host that wrote one list item at a time must write the whole list. An undeclared
+shape whose segment is all digits is still read as a list index, so a set there is refused: declare the map with
+`#[MapValues]`.
+
+## Amendment, 2026-11-22 (config-sections 17): a key may be closed to a tier below its ceiling
+
+`#[ConfigKey(closed: [ConfigTier::Operator])]` keeps a tier out of a key its ceiling admits. With
+`ceiling: Tenant, closed: [Operator]`, each workspace sets the key for itself and the operator cannot. Only `Operator`
+and `Tenant` can be closed, the tiers that write overrides. Closure is sticky, like secrecy: a key below a closed key is
+closed to the same tiers. `ConfigKey::opensTo($tier)` is "the ceiling admits the tier and the key is not closed to it".
+Every tier check reads it: the write refusal, the tier boundary's split and the tenant restrict, the lock, and the
+reader's `overridable`.
+
+- A draft from a closed tier is refused, giving the reason. A write to a parent that CHANGES a closed child is refused.
+  A resend of the closed child's current value is cut out and inherited.
+- A row stored before the package closed the key never applies. `publishedLayer()` drops an entry for a closed key and
+  cuts a closed key out of an object entry, inheriting it from the tier below. The tenant hop then starts from the host
+  value, not from the operator's dropped row.
+- A lock on a key closed to the tenant is refused: there is nothing to lock.
+- The reader reports `closed` (tier values) on every key. In the operator realm a key closed to the operator is not
+  overridable, and the tenant realm does not offer a key closed to the tenant.
+- The section audit warns on a secret whose ceiling admits the operator and whose declaration says nothing either way
+  (`closed` absent). Declare `closed: [ConfigTier::Operator]` to keep the operator out, or `closed: []` to allow it.
+
+**When to close a key.** Close the operator tier on a key one workspace owns and the platform operator should never
+set for it. Close the tenant tier on a key the operator owns that sits under a tenant-writable parent. In practice:
+
+- **Money paths**: payout accounts, price or fee overrides, a merchant id.
+- **Credentials**: a workspace's own API keys and OAuth secrets.
+- **Storage roots**: buckets, disks and paths that decide where one tenant's data lives.
+
+A closed key is still a key the package declares. Closing never hides it from the host file or env, which sit below
+every override tier.
+
 ## Consequences
 
 - Declaring a section changes no behaviour: every undeclared key is deploy-only and not overridable. On the first day,

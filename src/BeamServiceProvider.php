@@ -124,6 +124,7 @@ use Splicewire\Beam\Console\MakeParticleRelativeCommand;
 use Splicewire\Beam\Console\MakeParticleResourceCommand;
 use Splicewire\Beam\Console\MakeWorkflowCommand;
 use Splicewire\Beam\Console\ParticleResourcesCommand;
+use Splicewire\Beam\Console\RecordBrowserBaselinesCommand;
 use Splicewire\Beam\Console\RegistryConformanceCommand;
 use Splicewire\Beam\Console\UndeclaredSurfaceCommand;
 use Splicewire\Beam\Console\VerifyDeclaredTypesCommand;
@@ -137,6 +138,7 @@ use Splicewire\Beam\Doctor\BootReadConfigAudit;
 use Splicewire\Beam\Doctor\BrowserSuiteMountAudit;
 use Splicewire\Beam\Doctor\ConfigFacadeReferenceAudit;
 use Splicewire\Beam\Doctor\ConfigSectionCoverageAudit;
+use Splicewire\Beam\Doctor\ConfigStoredListRowAudit;
 use Splicewire\Beam\Doctor\DeadConfigKeyAudit;
 use Splicewire\Beam\Doctor\EnvPrefixAudit;
 use Splicewire\Beam\Doctor\FamilySourceCoverageAudit;
@@ -1640,6 +1642,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // during boot. Advisory until ticket 13 makes them gates.
         $manifest->register('splicewire/laravel-beam', ConfigSectionCoverageAudit::class);
         $manifest->register('splicewire/laravel-beam', BootReadConfigAudit::class);
+        // config-sections 21 (lead LANE-A-0420): a published row written through a list index no longer applies; name it.
+        $manifest->register('splicewire/laravel-beam', ConfigStoredListRowAudit::class);
         // env-inventory 02: a new env key carries its config file's prefix. Advisory, beside the two above.
         $manifest->register('splicewire/laravel-beam', EnvPrefixAudit::class);
         $manifest->register('splicewire/laravel-beam', StubStaticReferenceAudit::class);
@@ -2413,6 +2417,11 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 MakeConfigSectionCommand::class,
                 // env-inventory 02: the package's grandfathered env names, which may only shrink; the audit only reads.
                 EnvPrefixBaselineCommand::class,
+                // browser-journeys 17: the `browser:` namespace's first command — promote the suite's fresh
+                // captures into the COMMITTED screenshot baselines. The ONLY writer under
+                // `tests/Browser/screenshots`; gated to the single designated record host (determinism
+                // signature + the operator-set marker) so a stray run on an arch-twin cannot overwrite them.
+                RecordBrowserBaselinesCommand::class,
             ]);
 
             // The estate-POLICY surgeon commands relocated DOWN from surgeon (they hard-code estate
