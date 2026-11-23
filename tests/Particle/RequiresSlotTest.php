@@ -311,7 +311,7 @@ class RequiresSlotTest extends TestCase
         $handler = $this->frame();
         $definition = $resource->toResourceDefinition();
 
-        $this->assertCount(1, $handler->index($definition, []));
+        $this->assertCount(1, $handler->index($definition, [])['data']);
         $this->assertSame('a', $handler->show($definition, '1')['name']);
         $this->assertFrame428(fn () => $handler->store($definition, ['name' => 'b']));
         $this->assertFrame428(fn () => $handler->update($definition, '1', ['name' => 'c']));
@@ -341,6 +341,7 @@ class RequiresSlotTest extends TestCase
         $definition = $resource->toResourceDefinition();
 
         $this->assertFrame428(fn () => $handler->index($definition, []));
+        $this->assertFrame428(fn () => $handler->rows($definition));
         $this->assertFrame428(fn () => $handler->indexWindow($definition, 10));
         $this->assertFrame428(fn () => $handler->show($definition, '1'));
         $this->assertSame('b', $handler->store($definition, ['name' => 'b'])['name']);

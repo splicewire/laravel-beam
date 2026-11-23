@@ -285,8 +285,9 @@ class PublicReadGuestReadTest extends TestCase
         $a = $handler->forRequest($visitor, 'tenant-a');
         $b = $handler->forRequest($visitor, 'tenant-b');
 
-        $this->assertSame([['id' => '1']], $a->index($resource->toResourceDefinition(), []));
-        $this->assertSame([['id' => '2']], $b->index($resource->toResourceDefinition(), []));
+        $this->assertSame([['id' => '1']], $a->index($resource->toResourceDefinition(), [])['data']);
+        $this->assertSame([['id' => '2']], $b->index($resource->toResourceDefinition(), [])['data']);
+        $this->assertSame([['id' => '1']], $a->rows($resource->toResourceDefinition()));
         $this->assertSame($author, $ambient->user());
         $this->assertNull($visitor->route());
         $this->assertNotSame($handler, $a);

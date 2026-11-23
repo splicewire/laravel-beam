@@ -127,7 +127,7 @@ class ResourceContributionTest extends TestCase
         return $this->app->make(ParticleFrameResourceHandler::class)->index(
             $this->app->make(ParticleResourceRegistry::class)->definition('contrib-crate'),
             [],
-        )[0];
+        )['data'][0];
     }
 
     /**

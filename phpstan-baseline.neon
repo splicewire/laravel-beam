@@ -2635,18 +2635,6 @@ parameters:
 			path: src/Particle/ParticleFrameResourceHandler.php
 
 		-
-			message: '#^Call to an undefined method object\:\:get\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: src/Particle/ParticleFrameResourceHandler.php
-
-		-
-			message: '#^Call to an undefined method object\:\:offset\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: src/Particle/ParticleFrameResourceHandler.php
-
-		-
 			message: '#^Cannot call static method validateAndCreate\(\) on class\-string\|false\.$#'
 			identifier: staticMethod.nonObject
 			count: 1

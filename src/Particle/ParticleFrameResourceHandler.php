@@ -72,6 +72,16 @@ use Splicewire\Beam\Write\WriteRequirement;
  */
 class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, FrameResourceHandler
 {
+    /**
+     * Frame's offset-page size, declared ONCE for the queried and the streamed list. laravel-frame names these
+     * numbers in no constant: they are inline in `FrameResourceController::paginate()`
+     * (`max(1, min(100, (int) $request->query('per_page', 25)))`) and in `ResourceQueryData`'s `per_page`
+     * `#[Min(1), Max(100)]`, which refuses out-of-range input before a handler runs.
+     */
+    private const FRAME_DEFAULT_PER_PAGE = 25;
+
+    private const FRAME_MAX_PER_PAGE = 100;
+
     private bool $actorBound = false;
 
     private ?Authenticatable $boundActor = null;
@@ -138,13 +148,41 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
             return $this->streamedIndex($definition);
         }
 
-        $query = $this->indexQuery($definition);
-        // agreements 05: after the read guard the scoped query just ran.
-        $this->admitRequirements($definition, 'read', null);
+        // attention-surfaces 29: a queryable list is paged IN the query, and only that page is projected and
+        // enriched. Frame passes an offset envelope through unchanged
+        // (laravel-frame FrameResourceController::index(), the `total` branch), so the wire shape is the one
+        // Frame's own in-memory slice produced, and an out-of-range page answers no rows with the true total.
+        $page = max(1, (int) ($params['page'] ?? 1));
+        $perPage = self::framePerPage($params['per_page'] ?? null);
+        $total = 0;
+        $rows = $this->readRows($definition, function (Builder $query) use ($page, $perPage, &$total): iterable {
+            // Laravel's pagination count drops the ORDER BY, which Postgres refuses beside an aggregate.
+            $total = $query->toBase()->getCountForPagination();
 
-        $rows = $query->get()->map(fn (Model $model) => $this->projectRead($definition, $model))->all();
+            return $total === 0 ? [] : $query->forPage($page, $perPage)->get();
+        });
 
-        return $this->enrichProjected($definition, $rows);
+        // ResourcePageData::offset($rows, …)->toArray(), key for key (QueriedFrameIndexPagingTest pins it); built
+        // by hand because an enriched row is typed only as `array` (EnrichesProjectedRecords::enrich()).
+        return ['data' => $rows, 'perPage' => $perPage, 'total' => $total, 'page' => $page];
+    }
+
+    /**
+     * The WHOLE scoped list, for a server-side consumer that needs every row (beam-ux's analytics site area
+     * counts pages, redirects and health entries from it). Frame never calls this: its port is the paged
+     * {@see index()}. Same guard, scoped query, projection and batch enrichment; unbounded by design, so
+     * prefer {@see indexWindow()} wherever a window will do.
+     *
+     * @return list<mixed>
+     */
+    public function rows(ResourceDefinition $definition): array
+    {
+        $this->contextRequest($this->resource($definition));
+        if ($this->streamsOnly($definition)) {
+            throw new LogicException('The whole-list read requires a queryable resource; a streamed backing owns its own pages.');
+        }
+
+        return $this->readRows($definition, fn (Builder $query): iterable => $query->get());
     }
 
     /** Bounded server-side window through the same guard, query, projection and batch enrichment. */
@@ -153,12 +191,37 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         if ($limit < 1 || $limit > 101 || $offset < 0 || $this->streamsOnly($definition)) {
             throw new LogicException('A binding window requires a queryable resource and a bounded positive limit.');
         }
-        $query = $this->indexQuery($definition);
-        $this->admitRequirements($definition, 'read', null);
-        $rows = $query->offset($offset)->limit($limit)->get()
-            ->map(fn (Model $model) => $this->projectRead($definition, $model))->all();
 
-        return $this->enrichProjected($definition, $rows);
+        return $this->readRows($definition, fn (Builder $query): iterable => $query->offset($offset)->limit($limit)->get());
+    }
+
+    /** Frame's page size, floored and capped exactly as Frame's own slice does (see the constants). */
+    private static function framePerPage(mixed $requested): int
+    {
+        return max(1, min(self::FRAME_MAX_PER_PAGE, (int) ($requested ?? self::FRAME_DEFAULT_PER_PAGE)));
+    }
+
+    /**
+     * The one queried-list read behind {@see index()}, {@see rows()} and {@see indexWindow()}: the guarded,
+     * scoped query; then requirement admission (agreements 05: after the read guard the scoped query just
+     * ran); then `$fetch` chooses which models to load; then each is projected and the batch enriched.
+     *
+     * @param  Closure(Builder<Model>): iterable<Model>  $fetch
+     * @return list<mixed> each row as {@see EnrichesProjectedRecords::enrich()} returns it
+     */
+    private function readRows(ResourceDefinition $definition, Closure $fetch): array
+    {
+        $query = $this->indexQuery($definition);
+        if (! $query instanceof Builder) {
+            throw new LogicException('A queried list read needs the scoped Eloquent list query.');
+        }
+        $this->admitRequirements($definition, 'read', null);
+        $rows = [];
+        foreach ($fetch($query) as $model) {
+            $rows[] = $this->projectRead($definition, $model);
+        }
+
+        return array_values($this->enrichProjected($definition, $rows));
     }
 
     /**
@@ -196,7 +259,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         // forwarding the full bag is additive. perPage floored at 1 to guard a paginator underflow.
         $filters = (array) $request->input('filter', []);
         $cursor = $request->query('cursor');
-        $perPage = max(1, min(100, $request->integer('per_page', 25)));
+        $perPage = self::framePerPage($request->query('per_page'));
 
         $backing = $this->backing($definition, StreamsRecords::class);
 

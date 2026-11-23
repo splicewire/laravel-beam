@@ -183,7 +183,7 @@ class ParticleListQueryTest extends TestCase
         $rows = $this->app->make(ParticleFrameResourceHandler::class)->index(
             $this->app->make(ParticleResourceRegistry::class)->definition('list-crate'),
             [],
-        );
+        )['data'];
 
         // Previously `orderByDesc('created_at')` — which would have returned light, middling, heavy.
         $this->assertSame(['heavy', 'middling', 'light'], array_column($rows, 'name'));
