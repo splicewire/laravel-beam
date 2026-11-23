@@ -6,6 +6,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Revisions\RevertRefused;
 
 class RecordsRevisionsTest extends TestCase
 {
@@ -62,6 +63,46 @@ class RecordsRevisionsTest extends TestCase
 
         $causes = collect($record->fresh()->revisions())->pluck('cause')->all();
         $this->assertContains('revert', $causes);
+    }
+
+    public function test_a_vetoed_revert_records_no_activity_and_leaves_the_subject_unchanged(): void
+    {
+        $record = BeamParticle::create([
+            'schema_ref' => 'x/1',
+            'payload' => ['body' => 'original'],
+        ]);
+
+        $old = ['payload' => $record->payload];
+        $record->payload = ['body' => 'edited'];
+        $record->save();
+
+        $entry = $record->recordRevision($old, ['payload' => $record->payload], 'edit');
+        $revisionsBefore = count($record->fresh()->revisions());
+
+        // A halting `saving` listener refuses the write the revert attempts, so `save()` returns
+        // false and the pre-image never lands — the real-world guard/policy/tenancy veto path.
+        BeamParticle::saving(fn () => false);
+
+        try {
+            $record->revertTo($entry);
+            $this->fail('revertTo should throw RevertRefused when the restoring write is refused.');
+        } catch (RevertRefused $e) {
+            // expected — the refusal is loud and mappable, not a swallowed boolean.
+            // The subject rides on properties so a host can key its own user-facing message...
+            $this->assertSame($record->getMorphClass(), $e->subjectType);
+            $this->assertSame($record->getKey(), $e->subjectKey);
+            // ...and the message stays generic: no internal `[type:id]` identity leaks through it.
+            $this->assertStringNotContainsString($record->getMorphClass(), $e->getMessage());
+            $this->assertStringNotContainsString((string) $record->getKey(), $e->getMessage());
+        }
+
+        // The subject is untouched: the edited value still stands, the pre-image was not applied.
+        $this->assertSame(['body' => 'edited'], $record->fresh()->payload);
+
+        // The append-only log did NOT gain a `revert` entry for a write that never stored.
+        $this->assertSame($revisionsBefore, count($record->fresh()->revisions()));
+        $causes = collect($record->fresh()->revisions())->pluck('cause')->all();
+        $this->assertNotContains('revert', $causes);
     }
 
     public function test_revisions_are_grouped_by_correlation_for_batch_undo(): void
