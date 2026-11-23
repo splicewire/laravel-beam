@@ -294,7 +294,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
         $resource = $this->resource($definition);
         $request = $this->contextRequest($resource);
         if ($resource !== null) {
-            ResourceReadGuard::forApp()->inspectReadFor($resource, $request, $request->user())->authorize();
+            ResourceReadGuard::forApp()->bindReadContext($resource, $request);
         }
 
         // The union-arm discriminator now rides the same opaque bag every other capability takes,
