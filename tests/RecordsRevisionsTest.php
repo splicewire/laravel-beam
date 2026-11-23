@@ -105,6 +105,75 @@ class RecordsRevisionsTest extends TestCase
         $this->assertNotContains('revert', $causes);
     }
 
+    public function test_a_noop_vetoed_revert_through_the_plain_branch_is_refused_not_recorded(): void
+    {
+        $record = BeamParticle::create([
+            'schema_ref' => 'x/1',
+            'payload' => ['body' => 'original'],
+        ]);
+
+        // A pre-image that already equals the live state: the revert's forceFill() changes nothing,
+        // so the model never goes dirty. isDirty() then cannot tell a STORED write from a vetoed one —
+        // the regression this guards. (No owner/workflow meta, so the plain `forceFill()` branch runs.)
+        $entry = $record->recordRevision(
+            ['payload' => ['body' => 'original']],
+            ['payload' => ['body' => 'original']],
+            'edit',
+        );
+        $revisionsBefore = count($record->fresh()->revisions());
+
+        // A halting `saving` listener refuses the write: save() returns false WITHOUT persisting.
+        BeamParticle::saving(fn () => false);
+
+        try {
+            $record->revertTo($entry);
+            $this->fail('a no-op revert whose write is vetoed must still throw RevertRefused.');
+        } catch (RevertRefused $e) {
+            $this->assertSame($record->getMorphClass(), $e->subjectType);
+            $this->assertSame($record->getKey(), $e->subjectKey);
+        }
+
+        // The append-only log did NOT gain a `revert` entry for a write that never stored — the whole
+        // point of the fix: under isDirty() this clean-but-vetoed revert was recorded as if it landed.
+        $this->assertSame($revisionsBefore, count($record->fresh()->revisions()));
+        $this->assertNotContains('revert', collect($record->fresh()->revisions())->pluck('cause')->all());
+    }
+
+    public function test_a_noop_vetoed_revert_through_the_owner_branch_is_refused_not_recorded(): void
+    {
+        $record = BeamParticle::create([
+            'schema_ref' => 'thing/1',
+            'payload' => ['body' => 'original'],
+            'meta' => ['owner' => ['id' => 'u1']],
+        ]);
+
+        // Owner meta routes the revert through the BeamParticle::restoreVersionSnapshotStored() branch;
+        // the pre-image equals the live payload, so that restore is a no-op and the model stays clean
+        // whether the write stores or a veto refuses it — isDirty() is blind here too.
+        $entry = $record->recordRevision(
+            ['payload' => ['body' => 'original']],
+            ['payload' => ['body' => 'original']],
+            'edit',
+        );
+        $revisionsBefore = count($record->fresh()->revisions());
+
+        BeamParticle::saving(fn () => false);
+
+        try {
+            $record->revertTo($entry);
+            $this->fail('a no-op revert through the owner branch whose write is vetoed must throw RevertRefused.');
+        } catch (RevertRefused $e) {
+            $this->assertSame($record->getMorphClass(), $e->subjectType);
+            $this->assertSame($record->getKey(), $e->subjectKey);
+        }
+
+        // Still no `revert` recorded, and the owned record keeps its original payload and owner meta.
+        $this->assertSame($revisionsBefore, count($record->fresh()->revisions()));
+        $this->assertNotContains('revert', collect($record->fresh()->revisions())->pluck('cause')->all());
+        $this->assertSame(['body' => 'original'], $record->fresh()->payload);
+        $this->assertSame(['id' => 'u1'], $record->fresh()->meta['owner']);
+    }
+
     public function test_revisions_are_grouped_by_correlation_for_batch_undo(): void
     {
         $record = BeamParticle::create(['schema_ref' => 'x/1', 'payload' => ['n' => 0]]);
