@@ -12,6 +12,7 @@ use Splicewire\Beam\Flows\ListsFlows;
 use Splicewire\Beam\Testing\Flow;
 use Splicewire\Beam\Testing\FlowOutcome;
 use Splicewire\Beam\Testing\FlowRun;
+use Splicewire\Beam\Testing\FlowScreenshot;
 use Splicewire\Beam\Tests\TestCase;
 
 use function Splicewire\Beam\Testing\flow;
@@ -51,6 +52,20 @@ it('names a screenshot by the flow key, keeping dots, with role and width', func
         ->not->toBe(Flow::screenshotName('account.security-passkeys', null, 1280));
 });
 
+it('suffixes the capture filename with .png even when the flow key carries a dot', function (string $raw, string $expected) {
+    // pest-plugin-browser's screenshot(filename:) only auto-appends .png when the filename has no
+    // extension; a dotted flow key (e.g. readings.offering@1280) reads as already-extensioned, so the
+    // capture lands WITHOUT .png and record-baselines (which globs *.png) promotes nothing on every
+    // host. FlowScreenshot::name() must carry the .png so a dotted key resolves to a real .png file.
+    expect((new FlowScreenshot($raw))->name())->toBe($expected);
+})->with([
+    ['readings.offering@1280', 'readings.offering@1280.png'],
+    ['subscribe.door@1280', 'subscribe.door@1280.png'],
+    ['account.security.passkeys--owner@1280', 'account.security.passkeys--owner@1280.png'],
+    // idempotent: an already-suffixed name is not doubled
+    ['auth.login@1280.png', 'auth.login@1280.png'],
+]);
+
 it('refuses a key with a double dash, a dot-folded segment or upper-case', function (string $key) {
     Flow::assertValidKey($key);
 })->throws(InvalidArgumentException::class)->with(['account.sec--x', 'Account.security', 'account.2fa']);
@@ -62,7 +77,7 @@ it('enters a non-deviated flow, writes an entered FlowResultData row, and return
 
     $shot = flow('account.security', role: 'owner');
 
-    expect($shot->name())->toBe('account.security--owner@1280');
+    expect($shot->name())->toBe('account.security--owner@1280.png');
 
     $rows = array_map(
         fn (string $l) => json_decode($l, true),

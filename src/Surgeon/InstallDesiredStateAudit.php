@@ -754,10 +754,40 @@ class InstallDesiredStateAudit implements DoctorAudit
         return $figures;
     }
 
-    /** HEAD as a sha, read from `.git` without shelling out. Null when this tree is not a git checkout. */
+    /**
+     * HEAD as a sha, read from `.git` without shelling out. Null when this tree is not a git checkout.
+     *
+     * A LINKED WORKTREE's `.git` is a FILE holding `gitdir: <the worktree's own git dir>`, not a
+     * directory, and the branch ref the worktree's symbolic HEAD names lives in the COMMON git dir
+     * (`<gitDir>/commondir`), not under the worktree git dir. Reading `.git/HEAD` as a literal path
+     * returns null in a worktree, which made R3 read every worktree install as unattributable; this
+     * resolves the gitdir pointer and the commondir so a worktree reads the same sha a plain checkout
+     * does. Loose refs only — a freshly-branched space ref is always loose, and a packed-refs fallback
+     * is exactly the "cleverer" divergence the ci-check byte-mirror's docblock warns against.
+     */
     protected static function headCommit(): ?string
     {
-        $head = base_path('.git/HEAD');
+        $dotGit = base_path('.git');
+
+        if (is_file($dotGit)) {
+            $pointer = trim((string) file_get_contents($dotGit));
+
+            if (! str_starts_with($pointer, 'gitdir: ')) {
+                return null;
+            }
+
+            $gitDir = trim(substr($pointer, 8));
+
+            if (! str_starts_with($gitDir, '/')) {
+                $gitDir = dirname($dotGit).'/'.$gitDir;
+            }
+        } elseif (is_dir($dotGit)) {
+            $gitDir = $dotGit;
+        } else {
+            return null;
+        }
+
+        $head = $gitDir.'/HEAD';
 
         if (! is_readable($head)) {
             return null;
@@ -769,7 +799,17 @@ class InstallDesiredStateAudit implements DoctorAudit
             return preg_match('/^[0-9a-f]{40}$/', $contents) === 1 ? $contents : null;
         }
 
-        $ref = base_path('.git/'.trim(substr($contents, 5)));
+        $commonDir = $gitDir;
+
+        if (is_readable($gitDir.'/commondir')) {
+            $commonDir = trim((string) file_get_contents($gitDir.'/commondir'));
+
+            if (! str_starts_with($commonDir, '/')) {
+                $commonDir = $gitDir.'/'.$commonDir;
+            }
+        }
+
+        $ref = $commonDir.'/'.trim(substr($contents, 5));
 
         return is_readable($ref) ? trim((string) file_get_contents($ref)) : null;
     }
