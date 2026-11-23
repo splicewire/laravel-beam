@@ -13,6 +13,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobExceptionOccurred;
+use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Queue\InteractsWithQueue;
@@ -430,6 +431,63 @@ class RouteDeclarationMemoTest extends TestCase
         // A retried job fires neither JobProcessed nor JobFailed.
         event(new JobExceptionOccurred('redis', $job, new RuntimeException('retry me')));
 
+        $this->assertFalse(RouteRequirementIndex::isOpen());
+    }
+
+    public function test_a_sync_job_inside_a_plain_console_command_keeps_the_commands_memo(): void
+    {
+        // `php artisan <cmd>` with no request: the job runs on the sync connection, inside the command, so it nests.
+        RouteRequirementIndex::$verifiesInTests = false;
+        $this->app['config']->set('queue.default', 'sync');
+        Artisan::command('memo:dispatch', function (): void {
+            MemoUnitLog::measure('command', fn () => app(RequirementDeclarations::class)->all());
+            MemoReadingJob::dispatchSync();
+            MemoUnitLog::measure('command', fn () => [app(RequirementDeclarations::class)->all(), app(RequirementDeclarations::class)->requirementsFor('route:memo.report')]);
+        });
+        $this->routeCommandEvents();
+        $counting = $this->countingRoutes();
+
+        Artisan::call('memo:dispatch');
+
+        $this->assertSame(1, MemoUnitLog::walks('command'), 'the command walks once for itself; its sync job never clears its frame');
+        $this->assertSame(1, MemoUnitLog::walks('job'));
+        $this->assertSame(2, self::portEnumerations($counting), implode("\n", $counting->callers));
+        $this->assertSame([1, 1], MemoUnitLog::$depths['command']);
+        $this->assertSame([2], MemoUnitLog::$depths['job'], 'the sync job nests on the command frame');
+        $this->assertFalse(RouteRequirementIndex::isOpen());
+    }
+
+    public function test_a_job_closed_by_job_exception_occurred_then_job_failed_closes_once_and_keeps_its_parent(): void
+    {
+        $request = Request::create('/memo/double-close');
+        RouteRequirementIndex::openRequest($request);
+
+        try {
+            $job = $this->queueJob();
+            event(new JobProcessing('sync', $job));
+            $this->assertSame(2, RouteRequirementIndex::depth());
+
+            event(new JobExceptionOccurred('sync', $job, new RuntimeException('fails')));
+            $this->assertSame(1, RouteRequirementIndex::depth());
+
+            // the second close for the same job finds no frame of its own: it must not pop the request frame
+            event(new JobFailed('sync', $job, new RuntimeException('fails')));
+            $this->assertSame(1, RouteRequirementIndex::depth());
+        } finally {
+            RouteRequirementIndex::close($request);
+        }
+
+        $this->assertFalse(RouteRequirementIndex::isOpen());
+    }
+
+    public function test_a_workers_job_on_a_queue_connection_stays_top_level(): void
+    {
+        // queue:work's own command frame, then a worker job: top-level, so it clears the stack and starts alone.
+        RouteRequirementIndex::open($input = new MemoUnitLog);
+        event(new JobProcessing('redis', $job = $this->queueJob()));
+        $this->assertSame(1, RouteRequirementIndex::depth());
+        event(new JobProcessed('redis', $job));
+        RouteRequirementIndex::close($input);
         $this->assertFalse(RouteRequirementIndex::isOpen());
     }
 

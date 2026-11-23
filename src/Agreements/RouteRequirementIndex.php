@@ -27,10 +27,11 @@ use WeakReference;
  *  - opening is IDEMPOTENT PER REQUEST OBJECT: when the top frame was opened for the same request, a second open keeps
  *    it. Octane fires `RequestReceived` and then `Routing` for one request, and that pair gives ONE frame (a read made
  *    between them stays memoised), and `RequestTerminated` after `RequestHandled` closes nothing more;
- *  - a queue JOB opens at `JobProcessing`: NESTED (pushed on top) when a request frame encloses it, as a sync job
- *    dispatched inside a request does; TOP-LEVEL otherwise (a worker's job, or a sync job outside any request), so a
- *    worker never carries one job's map into the next. It closes at `JobProcessed`, `JobFailed` or
- *    `JobExceptionOccurred` (a worker's retried job fires only the last);
+ *  - a queue JOB opens at `JobProcessing`: NESTED (pushed on top) when it runs on the `sync` connection (it runs
+ *    inside whatever unit dispatched it: a request, a console command, another job) or when a request frame encloses
+ *    it; TOP-LEVEL otherwise (a worker's job), so a worker never carries one job's map into the next. It closes at
+ *    `JobProcessed`, `JobFailed` or `JobExceptionOccurred` (a worker's retried job fires only the last; a job that
+ *    fires two of them closes once, the second finding no frame of its own);
  *  - a console COMMAND opens a NESTED frame at `CommandStarting` (on an empty stack that is the only frame) and closes
  *    it at `CommandFinished`, which Symfony fires even when the command throws. Laravel fires those two only outside
  *    `runningUnitTests()`;
@@ -79,10 +80,19 @@ final class RouteRequirementIndex
         self::restart($container, self::frame($request, request: true));
     }
 
-    /** A queue job starts: nested when a request frame encloses it (a sync job inside a request), top-level otherwise. */
-    public static function openJob(object $job, ?Container $container = null): void
+    /**
+     * A queue job starts: nested when it runs on the `sync` connection (inside the unit that dispatched it: a request, a
+     * console command, another job) or when a request frame encloses it; top-level otherwise (a worker's job).
+     */
+    public static function openJob(object $job, ?Container $container = null, ?string $connection = null): void
     {
         $container ??= Container::getInstance();
+
+        if ($connection === 'sync') {
+            self::open($job, $container);
+
+            return;
+        }
 
         foreach (self::stack($container) as $frame) {
             if ($frame['request']) {

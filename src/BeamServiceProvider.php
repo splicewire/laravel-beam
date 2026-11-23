@@ -1387,7 +1387,8 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
      *   credential-scope 18), in a stack of frames, each starting EMPTY. A request (routing, Octane's
      *   `RequestReceived`; one frame per request object) opens a top-level frame, clearing the stack, so successive
      *   requests sharing one route collection (an Octane worker) never read each other's map. A `JobProcessing` nests
-     *   on an enclosing request frame (a sync job) and is top-level otherwise; a `CommandStarting` nests. Each close
+     *   on the `sync` connection (inside its dispatcher: a request, a command, a job) or under a request frame, and is
+     *   top-level otherwise (a worker's job); a `CommandStarting` nests. Each close
      *   (`RequestHandled`, Octane's `RequestTerminated`, `JobProcessed`, `JobFailed`, `JobExceptionOccurred`,
      *   `CommandFinished`) pops its own unit's frame and restores the enclosing one, so a nested unit keeps its
      *   parent's memo. Octane's events are listened to by name, so beam does not depend on Octane.
@@ -1406,7 +1407,7 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
                 RouteRequirementIndex::close($event->request, $event->sandbox ?? null);
             }
         });
-        Event::listen(JobProcessing::class, static fn (JobProcessing $event) => RouteRequirementIndex::openJob($event->job));
+        Event::listen(JobProcessing::class, static fn (JobProcessing $event) => RouteRequirementIndex::openJob($event->job, connection: $event->connectionName));
         foreach ([JobProcessed::class, JobFailed::class, JobExceptionOccurred::class] as $end) {
             Event::listen($end, static fn (JobProcessed|JobFailed|JobExceptionOccurred $event) => RouteRequirementIndex::close($event->job));
         }
