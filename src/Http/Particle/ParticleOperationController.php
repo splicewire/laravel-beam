@@ -8,6 +8,7 @@ use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Gate;
 use LogicException;
 use RuntimeException;
 use Spatie\LaravelData\Data;
@@ -166,7 +167,25 @@ class ParticleOperationController extends Controller
                 ->effectiveAbility($operation, $routeRealm, $routeOverrides);
 
             // A mount override's target is asked as the permission it names when there is no subject (launch 72).
-            if ($this->abilities->denies($this->actor->actor(), $ability, $subject, $ability !== $operation->ability)) {
+            $actor = $this->actor->actor();
+            $overridden = $ability !== $operation->ability;
+
+            if ($this->abilities->denies($actor, $ability, $subject, $overridden)) {
+                // AbilityResolver owns the shared HTTP/MCP decision. Once it refuses, HTTP may ask
+                // Laravel's Gate for the policy's denial sentence; a refusal from another resolver
+                // layer (for example credential scope) keeps the generic HTTP shape.
+                $gateAbility = $subject === null && ! $overridden
+                    ? $this->abilities->entitlementAbility($ability)
+                    : $ability;
+                $gate = Gate::forUser($actor);
+                $response = $subject === null
+                    ? $gate->inspect($gateAbility)
+                    : $gate->inspect($gateAbility, $subject);
+
+                if ($response->denied() && $response->message() !== '') {
+                    throw new AuthorizationException($response->message());
+                }
+
                 throw new AuthorizationException;
             }
         }

@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
 use Splicewire\Beam\Particle\ParticleOperation;
@@ -74,6 +75,45 @@ class OperationSubjectResolutionTest extends TestCase
         // admits it, and refuses row 1 because that same operation gate denies it.
         $this->postJson('/subject-widgets/2/ping')->assertOk()->assertJson(['id' => 2]);
         $this->postJson('/subject-widgets/1/ping')->assertForbidden();
+    }
+
+    public function test_a_gate_response_denial_message_reaches_http_without_changing_the_shared_decision(): void
+    {
+        $subject = SubjectWidget::create(['slug' => 'denied', 'visible' => true]);
+        $this->resource();
+        $handled = false;
+        $this->mount($this->op(
+            handle: function () use (&$handled): array {
+                $handled = true;
+
+                return [];
+            },
+            ability: 'ping',
+        ));
+
+        Gate::define('ping', static fn (SubjectUser $actor, SubjectWidget $subject) => \Illuminate\Auth\Access\Response::deny('This operation needs approval.'));
+        $actor = new SubjectUser;
+
+        $this->actingAs($actor)
+            ->postJson('/subject-widgets/'.$subject->getKey().'/ping')
+            ->assertForbidden()
+            ->assertJsonPath('message', 'This operation needs approval.');
+
+        $this->assertFalse($handled);
+        $this->assertTrue(app(AbilityResolver::class)->denies($actor, 'ping', $subject));
+    }
+
+    public function test_a_boolean_gate_denial_keeps_the_generic_http_message(): void
+    {
+        $subject = SubjectWidget::create(['slug' => 'denied', 'visible' => true]);
+        $this->resource();
+        $this->mount($this->op(ability: 'ping'));
+        Gate::define('ping', static fn () => false);
+
+        $this->actingAs(new SubjectUser)
+            ->postJson('/subject-widgets/'.$subject->getKey().'/ping')
+            ->assertForbidden()
+            ->assertJsonPath('message', 'This action is unauthorized.');
     }
 
     public function test_an_operation_keeps_the_full_resource_scope_when_no_operation_boundary_is_declared(): void
