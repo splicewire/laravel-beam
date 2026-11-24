@@ -365,10 +365,10 @@ class ParticleRouteManifestSource implements RouteManifestSource
             return [];
         }
 
-        return array_values(array_unique(array_map(
-            fn (Requires $requirement): string => $requirement->agreement,
+        return array_values(array_unique(array_filter(array_map(
+            fn (Requires $requirement): ?string => $requirement->agreement,
             app(RequirementDeclarations::class)->requirementsFor($behavior),
-        )));
+        ))));
     }
 
     private function behaviorOf(Route $route): ?string

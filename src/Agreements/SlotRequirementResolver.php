@@ -26,11 +26,11 @@ class SlotRequirementResolver implements RequirementResolver
     {
         return array_map(
             fn (Requires $requirement): OutstandingRequirementData => new OutstandingRequirementData(
-                key: $requirement->agreement,
+                key: $requirement->agreementFor($subject),
                 version: 0,
                 digest: '',
                 kind: self::UNREGISTERED,
-                title: $requirement->agreement,
+                title: $requirement->agreementFor($subject),
                 scope: $requirement->scope,
                 subject: $requirement->scope === 'subject' && $subject instanceof Model ? $subject->getKey() : null,
                 readUrl: '',

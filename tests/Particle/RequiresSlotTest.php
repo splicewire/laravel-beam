@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use Spatie\LaravelData\Data;
+use Splicewire\Beam\Agreements\AgreementKeyResolver;
 use Splicewire\Beam\Agreements\Data\AgreementMemberData;
 use Splicewire\Beam\Agreements\Data\OutstandingRequirementData;
 use Splicewire\Beam\Agreements\Data\RequirementRefusalData;
@@ -84,6 +85,20 @@ class RequiresSlotTest extends TestCase
         $this->assertStringContainsString('requires-rows.act', $finding->detail);
         $this->assertStringContainsString('terms', $finding->detail);
         $this->assertStringContainsString('unknown Agreement', $finding->detail);
+    }
+
+    public function test_a_subject_aware_requirement_names_the_key_resolved_for_its_subject(): void
+    {
+        $this->resource();
+        $this->op(
+            requires: [new Requires(resolver: RequiresRowAgreementKeyResolver::class, scope: 'occurrence')],
+            input: RequiresRowMemberInput::class,
+        );
+        RequiresRow::query()->create(['name' => 'plan']);
+        $this->actingAs($this->actor());
+
+        $this->postJson('/requires-rows/1/act', [])->assertStatus(428)
+            ->assertJsonPath('requirements.0.key', 'plans.1.terms');
     }
 
     public function test_an_op_without_a_slot_is_unchanged_and_the_audit_passes(): void
@@ -636,6 +651,14 @@ class RequiresRowInput extends Data
 class RequiresRowMemberInput extends Data
 {
     public function __construct(public ?AgreementMemberData $agreementMember = null) {}
+}
+
+class RequiresRowAgreementKeyResolver implements AgreementKeyResolver
+{
+    public function resolve(mixed $subject): string
+    {
+        return 'plans.'.$subject->getKey().'.terms';
+    }
 }
 
 class RequiresRowPolicy

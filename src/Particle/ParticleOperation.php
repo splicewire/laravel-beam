@@ -542,7 +542,7 @@ class ParticleOperation implements HasRegistryKey
             // agreements 16: `on` splits a RESOURCE's verbs; an operation is one behavior, so a create-only binding means
             // nothing here and is refused rather than read as a subject test.
             if ($requirement->bindsOnlyNewRecords()) {
-                throw new InvalidArgumentException("Particle operation [{$resource}.{$name}] declares Requires [{$requirement->agreement}] on [create]; `on: 'create'` binds a resource's create and is meaningless on an operation.");
+                throw new InvalidArgumentException("Particle operation [{$resource}.{$name}] declares Requires [{$requirement->label()}] on [create]; `on: 'create'` binds a resource's create and is meaningless on an operation.");
             }
         }
         Requires::assertMemberInput($requires, $input, "Particle operation [{$resource}.{$name}]");

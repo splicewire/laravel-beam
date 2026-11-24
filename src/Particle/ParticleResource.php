@@ -573,7 +573,7 @@ class ParticleResource implements HasRegistryKey
         $map = [];
 
         foreach ([$this->readBehavior(), $this->writeBehavior()] as $behavior) {
-            $map[$behavior] = array_values(array_unique(array_map(fn (Requires $requires): string => $requires->agreement, $declarations->requirementsFor($behavior))));
+            $map[$behavior] = array_values(array_unique(array_filter(array_map(fn (Requires $requires): ?string => $requires->agreement, $declarations->requirementsFor($behavior)))));
         }
 
         return $map;

@@ -13,7 +13,7 @@ use Spatie\LaravelData\Support\DataContainer;
  *
  * It is the value of the `requires:` slot on `#[ParticleOp]` / {@see \Splicewire\Beam\Particle\ParticleOperation}
  * and `#[ParticleResource]` / {@see \Splicewire\Beam\Particle\ParticleResource}, so it must be spellable as an
- * attribute argument: `requires: [new Requires('terms', scope: 'party', on: 'both')]`.
+ * attribute argument: `requires: [new Requires('terms', scope: 'party', on: 'both')]`, or a subject-aware resolver.
  *
  * It names a key, never an Agreement class: beam does not know agreements. A host without an agreements seam
  * refuses every caller of a slot-declared behavior as an unknown (`unregistered`) Agreement — see
@@ -28,7 +28,7 @@ final class Requires
     public const ON = ['read', 'write', 'both', 'create'];
 
     /**
-     * @param  string  $agreement  the Agreement key, e.g. `terms`
+     * @param  string|null  $agreement  the fixed Agreement key, e.g. `terms`; null when resolver is used
      * @param  'party'|'organisation'|'subject'|'occurrence'  $scope  who must have assented: the acting party, its organisation,
      *                                                                the party for this one subject, or a member on this request
      * @param  'read'|'write'|'both'|'create'  $on  which resource verbs it binds — `read` (list + detail), `write`
@@ -45,25 +45,60 @@ final class Requires
      * form too, where it is not required.
      */
     public function __construct(
-        public readonly string $agreement,
+        public readonly ?string $agreement = null,
         public readonly string $scope = 'party',
         public readonly string $on = 'both',
+        public readonly ?string $resolver = null,
     ) {
-        if (trim($agreement) === '') {
+        if (($agreement === null) === ($resolver === null)) {
+            throw new InvalidArgumentException('A Requires must name exactly one fixed Agreement key or subject-aware resolver.');
+        }
+
+        if ($agreement !== null && trim($agreement) === '') {
             throw new InvalidArgumentException('A Requires names a non-empty Agreement key.');
+        }
+
+        if ($resolver !== null && (! class_exists($resolver) || ! is_subclass_of($resolver, AgreementKeyResolver::class))) {
+            throw new InvalidArgumentException(sprintf('Requires resolver [%s] must implement %s.', $resolver, AgreementKeyResolver::class));
         }
 
         if (! in_array($scope, self::SCOPES, true)) {
             throw new InvalidArgumentException(sprintf(
-                'Requires [%s] declares scope [%s]; it must be one of %s.', $agreement, $scope, implode(', ', self::SCOPES),
+                'Requires [%s] declares scope [%s]; it must be one of %s.', $this->label(), $scope, implode(', ', self::SCOPES),
             ));
         }
 
         if (! in_array($on, self::ON, true)) {
             throw new InvalidArgumentException(sprintf(
-                'Requires [%s] declares on [%s]; it must be one of %s.', $agreement, $on, implode(', ', self::ON),
+                'Requires [%s] declares on [%s]; it must be one of %s.', $this->label(), $on, implode(', ', self::ON),
             ));
         }
+    }
+
+    /** Resolve the concrete key for this attempted behavior. */
+    public function agreementFor(mixed $subject): string
+    {
+        if ($this->agreement !== null) {
+            return $this->agreement;
+        }
+
+        $resolver = app($this->resolver);
+        if (! $resolver instanceof AgreementKeyResolver) {
+            throw new InvalidArgumentException(sprintf('Requires resolver [%s] did not resolve to %s.', $this->resolver, AgreementKeyResolver::class));
+        }
+
+        $key = $resolver->resolve($subject);
+        if (trim($key) === '') {
+            throw new InvalidArgumentException(sprintf('Requires resolver [%s] returned an empty Agreement key.', $this->resolver));
+        }
+
+        return $key;
+    }
+
+    /** A subject-free diagnostic label; a concrete key is available only during admission. */
+    public function label(): string
+    {
+        return $this->agreement ?? 'resolver ['.$this->resolver.']';
     }
 
     public function bindsRead(): bool
@@ -148,7 +183,7 @@ final class Requires
             if (! self::inputDeclaresMember($input)) {
                 throw new InvalidArgumentException(sprintf(
                     '%s requires [%s] at scope [%s], but its input declares no AgreementMemberData field.',
-                    $owner, $requirement->agreement, $requirement->scope,
+                    $owner, $requirement->label(), $requirement->scope,
                 ));
             }
         }

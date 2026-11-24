@@ -114,10 +114,10 @@ class ParticleResourceActions
     /** @return list<string>|Optional */
     private function requires(ParticleOperation $operation): array|Optional
     {
-        $keys = array_values(array_unique(array_map(
-            fn (Requires $requires): string => $requires->agreement,
+        $keys = array_values(array_unique(array_filter(array_map(
+            fn (Requires $requires): ?string => $requires->agreement,
             app(RequirementDeclarations::class)->requirementsFor($operation->key()),
-        )));
+        ))));
 
         return $keys === [] ? new Optional : $keys;
     }

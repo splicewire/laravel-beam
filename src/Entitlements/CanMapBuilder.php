@@ -130,7 +130,10 @@ class CanMapBuilder
         foreach (app(RequirementDeclarations::class)->all() as $requirements) {
             foreach ($requirements as $requirement) {
                 if ($requirement instanceof Requires && in_array($requirement->scope, ['party', 'organisation'], true)) {
-                    $keys[$requirement->agreement] = true;
+                    // A subject-aware key has no concrete value in this subject-free projection.
+                    if ($requirement->agreement !== null) {
+                        $keys[$requirement->agreement] = true;
+                    }
                 }
             }
         }

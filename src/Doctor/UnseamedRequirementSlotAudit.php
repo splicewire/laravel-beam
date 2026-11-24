@@ -61,7 +61,7 @@ class UnseamedRequirementSlotAudit implements DoctorAudit
         $lines = [];
         foreach ($declared as $behavior => $requirements) {
             $lines[] = sprintf('  %-44s requires %s', $behavior, implode(', ', array_map(
-                fn (Requires $requirement): string => $requirement->agreement,
+                fn (Requires $requirement): string => $requirement->label(),
                 $requirements,
             )));
         }

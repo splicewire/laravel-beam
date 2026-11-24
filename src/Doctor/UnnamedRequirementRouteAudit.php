@@ -109,7 +109,7 @@ class UnnamedRequirementRouteAudit implements DoctorAudit
             }
             foreach ($this->declarations->requirementsFor(RouteRequirementGate::BEHAVIOR_PREFIX.$name) as $requirement) {
                 if ($requirement->scope === 'subject') {
-                    $missing[] = sprintf('  %s %s (route:%s requires %s)', implode('|', $route->methods()), $route->uri(), $name, $requirement->agreement);
+                    $missing[] = sprintf('  %s %s (route:%s requires %s)', implode('|', $route->methods()), $route->uri(), $name, $requirement->label());
                     break;
                 }
             }
