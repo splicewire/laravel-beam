@@ -3,6 +3,7 @@
 namespace Splicewire\Beam\Config\Overrides;
 
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -50,6 +51,9 @@ use Throwable;
  */
 class ConfigOverrideStore
 {
+    /** {@see publishedToken()} when nothing is published (or there is no store): the published layers are empty. */
+    public const NO_PUBLISHED_STATE = 'none';
+
     /** The tier this store writes; null is the current context's ({@see tier()}). */
     protected ?ConfigTier $tier = null;
 
@@ -75,6 +79,105 @@ class ConfigOverrideStore
         protected ConfigOverrideCounter $counter,
     ) {
         $this->tenantTargets = new \WeakMap;
+        $this->storeTables = new \WeakMap;
+    }
+
+    /**
+     * The tables {@see whenStored()} has FOUND, keyed by the live PDO object (a WeakMap, as {@see $tenantTargets}), then
+     * by table name. Positive answers only: a table not found is asked again on the next read, so a host that runs the
+     * shared migration in a long-lived process is seen at once. An object, so every {@see forTier()} clone shares it.
+     *
+     * @var \WeakMap<object, array<string, true>>
+     */
+    protected \WeakMap $storeTables;
+
+    /** Forget every table {@see whenStored()} has found (a seam for a caller that drops the store's tables in-process). */
+    public function forgetStoreTables(): void
+    {
+        $pdos = [];
+
+        foreach ($this->storeTables as $pdo => $tables) {
+            $pdos[] = $pdo;
+        }
+
+        foreach ($pdos as $pdo) {
+            unset($this->storeTables[$pdo]);
+        }
+    }
+
+    /**
+     * `$read()` when `$table` exists on `$connection`, else `$none`, probing the schema once per PDO while it answers yes.
+     * A read admitted by a REMEMBERED yes that fails with a query error forgets that answer and probes once more: a
+     * table now gone gives `$none`, as a store that was never migrated does; a table still there rethrows the read's
+     * error (as does a probe that itself fails, for example inside an aborted Postgres transaction). A read admitted by
+     * a fresh probe is not caught.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $read
+     * @param  T  $none
+     * @return T
+     */
+    protected function whenStored(string $connection, string $table, callable $read, mixed $none): mixed
+    {
+        $pdo = DB::connection($connection)->getPdo();
+
+        if (! isset($this->storeTables[$pdo][$table])) {
+            if (! Schema::connection($connection)->hasTable($table)) {
+                return $none;
+            }
+
+            $this->storeTables[$pdo] = [$table => true] + $this->foundTables($pdo);
+
+            return $read();
+        }
+
+        try {
+            return $read();
+        } catch (QueryException $e) {
+            $tables = $this->foundTables($pdo);
+            unset($tables[$table]);
+            $this->storeTables[$pdo] = $tables;
+
+            try {
+                $present = Schema::connection($connection)->hasTable($table);
+            } catch (Throwable) {
+                throw $e;
+            }
+
+            if (! $present) {
+                return $none;
+            }
+
+            $this->storeTables[$pdo] = [$table => true] + $tables;
+
+            throw $e;
+        }
+    }
+
+    /** @return array<string, true> the tables {@see whenStored()} has found through `$pdo` */
+    private function foundTables(object $pdo): array
+    {
+        return isset($this->storeTables[$pdo]) ? $this->storeTables[$pdo] : [];
+    }
+
+    /**
+     * {@see whenStored()} on this tier's own store (config_scopes on its connection). The tenant tier keeps its own
+     * uncached check ({@see hasStore()}): its answer is per tenant frame and already cached by {@see tenantTargetProblem()}.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $read
+     * @param  T  $none
+     * @return T
+     */
+    protected function whenOwnStore(callable $read, mixed $none): mixed
+    {
+        if ($this->tier() === ConfigTier::Tenant) {
+            return $this->hasStore() ? $read() : $none;
+        }
+
+        return $this->whenStored($this->connectionName(), Beam::table('config_scopes'), $read, $none);
     }
 
     /**
@@ -357,14 +460,12 @@ class ConfigOverrideStore
      */
     public function publishedToken(): string
     {
-        if (! $this->hasStore()) {
-            return 'none';
-        }
+        return $this->whenOwnStore(function (): string {
+            $pins = $this->scopes()->whereNotNull('published_version')->orderBy('section')
+                ->pluck('published_version', 'section')->all();
 
-        $pins = $this->scopes()->whereNotNull('published_version')->orderBy('section')
-            ->pluck('published_version', 'section')->all();
-
-        return $pins === [] ? 'none' : sha1(json_encode($pins, JSON_THROW_ON_ERROR));
+            return $pins === [] ? self::NO_PUBLISHED_STATE : sha1(json_encode($pins, JSON_THROW_ON_ERROR));
+        }, self::NO_PUBLISHED_STATE);
     }
 
     /**
@@ -614,17 +715,15 @@ class ConfigOverrideStore
     {
         // Before the host has run the shared migration there is nothing published, and that is not a failure: boot,
         // `migrate` and a fresh install read the package and host tiers without a warning.
-        if (! $this->hasStore()) {
-            return [];
-        }
+        return $this->whenOwnStore(function (): array {
+            $layers = [];
 
-        $layers = [];
+            foreach ($this->scopes()->whereNotNull('published_version')->get() as $scope) {
+                $layers[$scope->section] = $this->publishedLayer($scope);
+            }
 
-        foreach ($this->scopes()->whereNotNull('published_version')->get() as $scope) {
-            $layers[$scope->section] = $this->publishedLayer($scope);
-        }
-
-        return $layers;
+            return $layers;
+        }, []);
     }
 
     /** @return array<string, ConfigOverrideEntry> pointer => entry */
@@ -670,35 +769,33 @@ class ConfigOverrideStore
      */
     public function storedListRows(): array
     {
-        if (! $this->hasStore()) {
-            return [];
-        }
+        return $this->whenOwnStore(function (): array {
+            $rows = [];
 
-        $rows = [];
+            foreach ($this->scopes()->whereNotNull('published_version')->orderBy('section')->get() as $scope) {
+                $registered = $this->sections->get($scope->section);
 
-        foreach ($this->scopes()->whereNotNull('published_version')->orderBy('section')->get() as $scope) {
-            $registered = $this->sections->get($scope->section);
+                if ($registered === null) {
+                    continue;
+                }
 
-            if ($registered === null) {
-                continue;
-            }
+                $draft = $this->versions->version($scope, $scope->published_version)?->snapshot['draft'] ?? [];
+                $pointers = [];
 
-            $draft = $this->versions->version($scope, $scope->published_version)?->snapshot['draft'] ?? [];
-            $pointers = [];
+                foreach (is_array($draft) ? $draft : [] as $pointer => $entry) {
+                    if ($this->writtenThroughList($registered, $entry, (string) $pointer)) {
+                        $pointers[] = (string) $pointer;
+                    }
+                }
 
-            foreach (is_array($draft) ? $draft : [] as $pointer => $entry) {
-                if ($this->writtenThroughList($registered, $entry, (string) $pointer)) {
-                    $pointers[] = (string) $pointer;
+                if ($pointers !== []) {
+                    sort($pointers);
+                    $rows[$scope->section] = $pointers;
                 }
             }
 
-            if ($pointers !== []) {
-                sort($pointers);
-                $rows[$scope->section] = $pointers;
-            }
-        }
-
-        return $rows;
+            return $rows;
+        }, []);
     }
 
     /** Whether a stored entry was WRITTEN through a list index: its op's pointer (a split secret's `via`, else its own). */
@@ -1295,11 +1392,12 @@ class ConfigOverrideStore
      */
     public function locks(string $root): array
     {
-        if (! Schema::connection('central')->hasTable(Beam::table('config_locks'))) {
-            return [];
-        }
-
-        return ConfigOverrideLock::query()->where('section', $root)->orderBy('pointer')->get()->keyBy('pointer')->all();
+        return $this->whenStored(
+            'central',
+            Beam::table('config_locks'),
+            fn (): array => ConfigOverrideLock::query()->where('section', $root)->orderBy('pointer')->get()->keyBy('pointer')->all(),
+            [],
+        );
     }
 
     /**

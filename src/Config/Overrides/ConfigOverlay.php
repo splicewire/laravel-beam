@@ -111,7 +111,8 @@ class ConfigOverlay
 
         if ($this->layersToken !== $token) {
             try {
-                $this->layers = $this->store()->publishedLayers();
+                // The token says nothing is published (or there is no store): the layers are empty without a read.
+                $this->layers = $token === ConfigOverrideStore::NO_PUBLISHED_STATE ? [] : $this->store()->publishedLayers();
                 $this->layersToken = $token;
             } catch (Throwable $e) {
                 $this->fallBack('the override store could not be read', $e);
