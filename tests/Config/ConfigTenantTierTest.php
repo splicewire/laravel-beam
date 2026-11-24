@@ -286,6 +286,12 @@ class ConfigTenantTierTest extends TestCase
         $this->op('lock', ['root' => 'tpanels', 'pointer' => '/review', 'reason' => 'Fixed by the operator.'])->assertOk();
         $this->assertFalse($this->probe('a')['review'], 'the locked key falls back to the central value at once');
 
+        $this->hop('a', function (): void {
+            $overlay = app(ConfigTenantOverlay::class);
+            $this->assertSame([], $overlay->laid('tpanels'));
+            $this->assertFalse($overlay->lays('tpanels', '/review'));
+        });
+
         $this->op('lock', ['root' => 'tpanels', 'pointer' => '/review', 'locked' => false])->assertOk();
         $this->assertTrue($this->probe('a')['review'], 'unlocking gives the tenant its published override back');
     }
@@ -405,6 +411,12 @@ class ConfigTenantTierTest extends TestCase
         $this->assertTrue($clone->get('tpanels.review'));
         $this->assertFalse($worker->get('tpanels.review'), "the worker's base config is never written");
 
+        $overlay = app(ConfigTenantOverlay::class);
+        $this->assertSame(['/review'], $overlay->laid('tpanels'));
+        $this->app->instance('config', $worker);
+        $this->assertSame([], $overlay->laid('tpanels'));
+        $this->app->instance('config', $clone);
+
         app(ConfigTenantOverlay::class)->revert();
         $this->assertFalse($clone->get('tpanels.review'));
         $this->app->instance('config', $worker);
@@ -491,6 +503,16 @@ class ConfigTenantTierTest extends TestCase
         $group = $this->probe('a')['group'];
         $this->assertFalse($group['review'], 'the locked child takes the central value at the next hop');
         $this->assertSame('Tenant label', $group['label'], 'the unlocked sibling stays the tenant\'s');
+
+        $this->hop('a', function (): void {
+            $overlay = app(ConfigTenantOverlay::class);
+            $this->assertSame(['/group'], $overlay->laid('tpanels'));
+            $this->assertTrue($overlay->lays('tpanels', '/group'));
+            $this->assertTrue($overlay->lays('tpanels', '/group/label'));
+            $this->assertFalse($overlay->lays('tpanels', '/group/review'), 'the locked child is inherited');
+            $this->assertFalse($overlay->lays('tpanels', '/group/deploy'), 'the above-ceiling child is inherited');
+            $this->assertFalse($overlay->lays('tpanels', '/group-other/label'), 'only complete pointer segments count');
+        });
 
         $row = $this->set('/theme', 'pink', 'a')->assertOk()->json('data');
         $review = $this->key($row, '/group/review');
@@ -1519,7 +1541,25 @@ class ConfigTenantTierTest extends TestCase
             return $layers;
         });
 
-        $this->assertSame(['pink', true], $this->hop('a', fn () => [config('tpanels.theme'), config('tpanels.review')]));
+        $overlay = app(ConfigTenantOverlay::class);
+        $this->assertSame([], $overlay->laid('tpanels'));
+
+        $this->hop('a', function () use ($overlay): void {
+            $queries = 0;
+            DB::listen(function () use (&$queries): void {
+                $queries++;
+            });
+
+            $this->assertSame(['pink', true], [config('tpanels.theme'), config('tpanels.review')]);
+            $this->assertSame(['/theme', '/review'], $overlay->laid('tpanels'));
+            $this->assertSame([], $overlay->laid('unrelated'));
+            $this->assertTrue($overlay->lays('tpanels', '/theme'));
+            $this->assertTrue($overlay->lays('tpanels', '/review'));
+            $this->assertSame(0, $queries, 'reading laid pointers needs no store access');
+        });
+
+        $this->assertSame([], $overlay->laid('tpanels'), 'no pointers survive revert');
+        $this->assertFalse($overlay->lays('tpanels', '/theme'));
         $this->assertSame([['/theme'], 'light'], $seen, 'it receives the restricted published layers, with central in the repository');
         $this->assertSame(['light', false], [config('tpanels.theme'), config('tpanels.review')], 'both revert together');
     }
@@ -1605,6 +1645,8 @@ class ConfigTenantTierTest extends TestCase
 
         $this->assertCount(2, $events, 'the operator re-sync re-laid the tenant layer and said so');
         $this->assertSame(['tpanels' => ['/theme']], $events[1]);
+        $this->assertSame($events[1]['tpanels'], app(ConfigTenantOverlay::class)->laid('tpanels'));
+
         $this->assertStringNotContainsString('pink', json_encode($events), 'no value in the payload');
 
         app(ConfigTenantOverlay::class)->revert();

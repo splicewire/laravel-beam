@@ -191,6 +191,42 @@ class ConfigTenantOverlay
         return isset($this->applied[app('config')]);
     }
 
+    /**
+     * The JSON pointers laid for this root in the current config repository.
+     *
+     * @return list<string>
+     */
+    public function laid(string $root): array
+    {
+        return array_map('strval', array_keys($this->laidEntries($root)));
+    }
+
+    /** Whether the tenant layer lays this pointer or an enclosing object, excluding inherited children. */
+    public function lays(string $root, string $pointer): bool
+    {
+        foreach ($this->laidEntries($root) as $parent => $entry) {
+            if (! str_starts_with($pointer.'/', $parent.'/')) {
+                continue;
+            }
+
+            foreach ($entry->inherit as $relative) {
+                if (str_starts_with($pointer.'/', $parent.$relative.'/')) {
+                    continue 2;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /** @return array<string, ConfigOverrideEntry> */
+    private function laidEntries(string $root): array
+    {
+        return $this->applied[app('config')]['layers'][$root] ?? [];
+    }
+
     /** A root's CENTRAL effective value (operator tier included, tenant tier excluded) in the current repository. */
     public function central(string $root): mixed
     {
