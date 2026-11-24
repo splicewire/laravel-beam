@@ -211,8 +211,9 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
         }
 
         // Report the raw save() result (no (bool) cast) through the one slot-writing seam: the recorder
-        // keys refusal off a strict `false`, so a save()-override returning null must stay null (treated
-        // as stored), not false.
+        // keys refusal off a strict `false`, so a save()-override returning null — or any non-`false`
+        // value — normalises to `true` (stored) at the seam; only a strict `false` is the veto. The raw
+        // (uncast) value matters so a falsey non-bool like `0` is not turned into `false`.
         $this->recordRestoreOutcome($this->forceFill([
             'schema_ref' => $snapshot['schema_ref'] ?? null,
             'schema_id' => $snapshot['schema_id'] ?? null,
@@ -252,10 +253,11 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
 
     /**
      * The store outcome of the last {@see restoreVersionSnapshot()} since {@see clearRestoreOutcome()}:
-     * `true` stored, `false` refused (a vetoed save), `null` unknown — the base impl was bypassed by an
-     * override that never called parent, OR a save()-override returned null. A caller treats null as
-     * stored (only a strict `false` is a refusal), so a missing report never newly throws on a write
-     * that may have landed.
+     * `true` stored, `false` refused (a vetoed save), `null` unknown — reached ONLY when there was NO
+     * report at all: an override bypassed the base impl and never called the seam. A REPORTED value,
+     * including an explicit null, normalises to `true`/`false` at the seam and never leaves the slot null.
+     * A caller treats null as stored (only a strict `false` is a refusal), so a missing report never newly
+     * throws on a write that may have landed.
      */
     public function restoreOutcome(): ?bool
     {
