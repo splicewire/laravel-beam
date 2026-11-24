@@ -264,14 +264,19 @@ class RecordsRevisionsTest extends TestCase
 
     public function test_a_revert_whose_save_override_returns_zero_is_treated_as_stored_not_refused(): void
     {
-        // Plain branch (no owner/workflow meta). This subclass' save() PERSISTS but reports the integer
-        // `0` — a falsey NON-BOOL. With no strict_types, a `?bool` outcome seam would coerce `0` to false
-        // and refuse a stored write; the mixed seam keys refusal on a strict `=== false`, so `0` reads as
-        // stored and the revert is recorded, not refused. A `(bool) $stored` normalisation would re-break
-        // this (that is the M1 mutant).
+        // Owner branch (owner meta). The owner branch clears the outcome slot, dispatches the inherited
+        // restoreVersionSnapshot(), then READS the reported outcome — so the seam is actually exercised
+        // (the plain branch would compare save()'s return directly and never touch the seam). This
+        // subclass' save() PERSISTS but reports the integer `0` — a falsey NON-BOOL — which the inherited
+        // restoreVersionSnapshot() hands to recordRestoreOutcome(). With no strict_types a `?bool` seam
+        // would coerce `0` to false and refuse a stored write; the mixed seam keys refusal on a strict
+        // `=== false`, so `0` reads as stored and the revert is recorded, not refused. The `?bool`
+        // signature at 652e5b2, and a `(bool) $stored` normalisation (the M1 mutant), both re-break this
+        // and turn the revert into a RevertRefused — red here, green at tip.
         $record = ZeroSaveReturningParticle::create([
             'schema_ref' => 'x/1',
             'payload' => ['body' => 'original'],
+            'meta' => ['owner' => ['id' => 'u1']],
         ]);
 
         $old = ['payload' => ['body' => 'original']];
