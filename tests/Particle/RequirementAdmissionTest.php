@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use LogicException;
 use Spatie\LaravelData\Attributes\MapInputName;
+use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Agreements\Data\AgreementMemberData;
 use Splicewire\Beam\Agreements\Data\OutstandingRequirementData;
@@ -78,8 +79,46 @@ class RequirementAdmissionTest extends TestCase
 
         $this->assertNotNull($direct);
         $this->assertSame($http->json('requirements'), $direct->toArray()['requirements']);
-        $this->assertEquals(new AgreementMemberData('voice-release', 2, 'sha256:abc'), $resolver->submittedMembers['agreement_member']);
+        $this->assertEquals(new AgreementMemberData('voice-release', 2, 'sha256:abc'), $resolver->submittedMembers['voice-release']);
         $this->assertSame('requirement-probe-rows.act', $resolver->behavior);
+    }
+
+    public function test_member_collection_admits_two_requirements_and_names_only_the_missing_one(): void
+    {
+        $resolver = new TwoAgreementAdmissionResolver;
+        $this->app->instance(RequirementResolver::class, $resolver);
+        $admission = $this->app->make(RequirementAdmission::class);
+        $payload = [
+            'agreement_members' => [
+                ['key' => 'terms', 'version' => 2, 'digest' => 'terms-digest'],
+                ['key' => 'privacy', 'version' => 4, 'digest' => 'privacy-digest'],
+            ],
+        ];
+        $members = $admission->submittedMembers(RequirementCollectionInput::class, $payload);
+
+        $this->assertSame(['terms', 'privacy'], array_keys($members));
+        $this->assertNull($admission->inspect(null, 'auth.register', null, $members));
+
+        $missingPrivacy = $admission->submittedMembers(RequirementCollectionInput::class, [
+            'agreement_members' => [$payload['agreement_members'][0]],
+        ]);
+        $refusal = $admission->inspect(null, 'auth.register', null, $missingPrivacy);
+
+        $this->assertSame(['privacy'], array_map(fn ($item) => $item->key, $refusal->requirements));
+        $this->assertSame(['terms'], array_keys($resolver->lastMembers));
+    }
+
+    public function test_duplicate_member_keys_use_the_last_submitted_member(): void
+    {
+        $members = $this->app->make(RequirementAdmission::class)->submittedMembers(RequirementCollectionInput::class, [
+            'agreement_members' => [
+                ['key' => 'terms', 'version' => 1, 'digest' => 'old'],
+                ['key' => 'terms', 'version' => 2, 'digest' => 'current'],
+            ],
+        ]);
+
+        $this->assertSame(['terms'], array_keys($members));
+        $this->assertEquals(new AgreementMemberData('terms', 2, 'current'), $members['terms']);
     }
 
     public function test_ability_refusal_precedes_admission_and_does_not_disclose_requirements(): void
@@ -242,6 +281,37 @@ class RequirementProbeInput extends Data
     public static function rules(): array
     {
         return ['value' => ['required', 'string']];
+    }
+}
+
+class RequirementCollectionInput extends Data
+{
+    /** @param list<AgreementMemberData> $agreementMembers */
+    public function __construct(#[MapInputName('agreement_members'), DataCollectionOf(AgreementMemberData::class)] public array $agreementMembers) {}
+}
+
+class TwoAgreementAdmissionResolver implements RequirementResolver
+{
+    public array $lastMembers = [];
+
+    public function outstanding(mixed $party, string $behavior, mixed $subject, array $submittedMembers): array
+    {
+        $this->lastMembers = $submittedMembers;
+        $required = ['terms', 'privacy'];
+        $missing = array_diff($required, array_keys($submittedMembers));
+
+        return array_values(array_map(fn (string $key) => new OutstandingRequirementData(
+            key: $key,
+            version: 1,
+            digest: "{$key}-digest",
+            kind: 'contract',
+            title: ucfirst($key),
+            scope: 'party',
+            subject: null,
+            readUrl: "/agreements/{$key}",
+            acceptOperation: null,
+            member: 'agreement_members',
+        ), $missing));
     }
 }
 

@@ -9,7 +9,7 @@ use Splicewire\Beam\Agreements\Data\OutstandingRequirementData;
 interface RequirementResolver
 {
     /**
-     * @param  array<string, AgreementMemberData>  $submittedMembers  keyed by the input member name
+     * @param  array<string, AgreementMemberData>  $submittedMembers  keyed by Agreement key
      * @return list<OutstandingRequirementData>
      */
     public function outstanding(mixed $party, string $behavior, mixed $subject, array $submittedMembers): array;

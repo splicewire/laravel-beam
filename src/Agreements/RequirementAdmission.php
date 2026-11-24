@@ -18,7 +18,7 @@ class RequirementAdmission
      * Return the declared refusal payload when outstanding requirements remain, or null when admitted.
      * The caller owns the transport status and presentation.
      *
-     * @param  array<string, AgreementMemberData>  $submittedMembers  keyed by input member name
+     * @param  array<string, AgreementMemberData>  $submittedMembers  keyed by Agreement key
      */
     public function inspect(mixed $party, string $behavior, mixed $subject, array $submittedMembers): ?RequirementRefusalData
     {
@@ -33,7 +33,7 @@ class RequirementAdmission
      * actionable 428; when no requirement is outstanding, the operation's normal input validation
      * remains responsible for reporting malformed input.
      *
-     * @return array<string, AgreementMemberData>
+     * @return array<string, AgreementMemberData> keyed by Agreement key; duplicate keys use the last list entry
      */
     public function submittedMembers(?string $input, array $payload): array
     {
@@ -54,16 +54,34 @@ class RequirementAdmission
             $name = $property->inputMappedName ?? $property->name;
             $value = Arr::get($payload, $name);
 
-            if (! is_array($value)
-                || ! is_string($value['key'] ?? null)
-                || ! is_int($value['version'] ?? null)
-                || ! is_string($value['digest'] ?? null)) {
+            if (! is_array($value)) {
                 continue;
             }
 
-            $members[$name] = new AgreementMemberData($value['key'], $value['version'], $value['digest']);
+            // A single AgreementMemberData remains supported. DataCollectionOf<AgreementMemberData> lets one form
+            // carry a member for each Agreement; normalizing by key lets every resolver consume both shapes alike.
+            $values = self::isMember($value) ? [$value] : $value;
+            foreach ($values as $candidate) {
+                if (self::isMember($candidate)) {
+                    // A duplicate Agreement key is deterministic: the last submitted member wins. Admission still
+                    // compares its version and digest to the in-force version before admitting the operation.
+                    $members[$candidate['key']] = new AgreementMemberData(
+                        $candidate['key'],
+                        $candidate['version'],
+                        $candidate['digest'],
+                    );
+                }
+            }
         }
 
         return $members;
+    }
+
+    private static function isMember(mixed $value): bool
+    {
+        return is_array($value)
+            && is_string($value['key'] ?? null)
+            && is_int($value['version'] ?? null)
+            && is_string($value['digest'] ?? null);
     }
 }
