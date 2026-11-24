@@ -105,8 +105,8 @@ class ParticleResourceActions
             input: is_string($operation->input) ? $operation->input : null,
             result: $affordance->result,
             destructive: $affordance->destructive,
-            // frame-foundation 83: the agreement keys this action's op requires (its dotted behaviour key), keys only;
-            // Optional (no `requires` key) when it requires none.
+            // frame-foundation 83: fixed Agreement keys this action's op requires (its dotted behavior key), keys only.
+            // Subject-aware keys cannot be projected without a concrete row; the attempted 428 carries the resolved key.
             requires: $this->requires($operation),
         );
     }

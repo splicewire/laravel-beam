@@ -2,8 +2,10 @@
 
 namespace Splicewire\Beam\Agreements;
 
-/** Resolve a Requirement's concrete Agreement key from the behavior's subject. */
+use Illuminate\Database\Eloquent\Model;
+
+/** Resolve a Requirement's concrete Agreement key from the behavior's model subject. */
 interface AgreementKeyResolver
 {
-    public function resolve(mixed $subject): string;
+    public function resolve(Model $subject): string;
 }

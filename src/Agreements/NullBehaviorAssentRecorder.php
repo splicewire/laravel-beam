@@ -9,7 +9,7 @@ use Splicewire\Beam\Agreements\Data\AgreementMemberData;
 final class NullBehaviorAssentRecorder implements BehaviorAssentRecorder
 {
     /** @param list<AgreementMemberData> $members */
-    public function record(string $behavior, array $members, Model $party): array
+    public function record(string $behavior, array $members, Model $party, Model $subject): array
     {
         return [];
     }

@@ -12,6 +12,7 @@ use Spatie\LaravelData\Data;
 use Splicewire\Beam\Agreements\Data\RequirementRefusalData;
 use Splicewire\Beam\Agreements\RequirementDeclarations;
 use Splicewire\Beam\Agreements\Requires;
+use Splicewire\Beam\Particle\Subject\NoSubject;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Doctor\RequirementRefusalDeclaredAudit;
 use Splicewire\Beam\Doctor\UndeclaredAffordanceAudit;
@@ -539,6 +540,15 @@ class ParticleOperation implements HasRegistryKey
         }
         Requires::assertList($requires, "Particle operation [{$resource}.{$name}]");
         foreach ($requires ?? [] as $requirement) {
+            if ($requirement->resolver !== null && self::subjectIsAbsent($subject)) {
+                throw new InvalidArgumentException(sprintf(
+                    'Particle operation [%s.%s] declares subject-aware Requires [%s] but its subject resolver yields no model.',
+                    $resource,
+                    $name,
+                    $requirement->label(),
+                ));
+            }
+
             // agreements 16: `on` splits a RESOURCE's verbs; an operation is one behavior, so a create-only binding means
             // nothing here and is refused rather than read as a subject test.
             if ($requirement->bindsOnlyNewRecords()) {
@@ -549,6 +559,15 @@ class ParticleOperation implements HasRegistryKey
         $this->assertOutputMatchesKind();
         $this->assertAffordanceSpelling();
         $this->assertErrorsDeclareRefusals();
+    }
+
+    private static function subjectIsAbsent(ResolvesOperationSubject|string|null $subject): bool
+    {
+        if ($subject instanceof ResolvesOperationSubject) {
+            return ! $subject->yieldsSubject();
+        }
+
+        return is_string($subject) && is_a($subject, NoSubject::class, true);
     }
 
     /**

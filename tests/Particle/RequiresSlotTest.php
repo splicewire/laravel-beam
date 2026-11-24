@@ -33,6 +33,8 @@ use Splicewire\Beam\Particle\ParticleOperation;
 use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
+use Splicewire\Beam\Particle\Subject\NoSubject;
+use Splicewire\Beam\Particle\Subject\ResolvesOperationSubject;
 use Splicewire\Beam\Source\ParticleRouteManifestSource;
 use Splicewire\Beam\Tests\TestCase;
 
@@ -89,16 +91,61 @@ class RequiresSlotTest extends TestCase
 
     public function test_a_subject_aware_requirement_names_the_key_resolved_for_its_subject(): void
     {
+        RequiresRowAgreementKeyResolver::$resolvedSubjects = [];
         $this->resource();
         $this->op(
             requires: [new Requires(resolver: RequiresRowAgreementKeyResolver::class, scope: 'occurrence')],
             input: RequiresRowMemberInput::class,
         );
         RequiresRow::query()->create(['name' => 'plan']);
+        RequiresRow::query()->create(['name' => 'second plan']);
         $this->actingAs($this->actor());
 
         $this->postJson('/requires-rows/1/act', [])->assertStatus(428)
             ->assertJsonPath('requirements.0.key', 'plans.1.terms');
+        $this->postJson('/requires-rows/2/act', [])->assertStatus(428)
+            ->assertJsonPath('requirements.0.key', 'plans.2.terms')
+            ->assertJsonPath('requirements.0.kind', 'unregistered');
+
+        $this->assertSame([
+            [RequiresRow::class, 1],
+            [RequiresRow::class, 2],
+        ], RequiresRowAgreementKeyResolver::$resolvedSubjects);
+    }
+
+    public function test_a_subject_aware_requirement_refuses_a_subject_free_operation_at_declaration(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('subject resolver yields no model');
+
+        $this->op(
+            requires: [new Requires(resolver: RequiresRowAgreementKeyResolver::class, scope: 'occurrence')],
+            input: RequiresRowMemberInput::class,
+            subject: NoSubject::class,
+        );
+    }
+
+    public function test_a_subject_aware_requirement_does_not_call_its_resolver_without_a_model(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('needs a model subject');
+
+        (new Requires(resolver: RequiresRowAgreementKeyResolver::class))->agreementFor(null);
+    }
+
+    public function test_requires_demands_exactly_one_of_fixed_key_or_resolver(): void
+    {
+        foreach ([
+            fn () => new Requires,
+            fn () => new Requires('terms', resolver: RequiresRowAgreementKeyResolver::class),
+        ] as $invalid) {
+            try {
+                $invalid();
+                $this->fail('a Requires without exactly one key source was accepted');
+            } catch (InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
     }
 
     public function test_an_op_without_a_slot_is_unchanged_and_the_audit_passes(): void
@@ -546,7 +593,13 @@ class RequiresSlotTest extends TestCase
     }
 
     /** @param  list<Requires>|null  $requires */
-    private function op(?array $requires = null, string $name = 'act', bool $mount = true, string|false|null $input = false): ParticleOperation
+    private function op(
+        ?array $requires = null,
+        string $name = 'act',
+        bool $mount = true,
+        string|false|null $input = false,
+        ResolvesOperationSubject|string|null $subject = null,
+    ): ParticleOperation
     {
         $operation = new ParticleOperation(
             resource: 'requires-rows',
@@ -555,6 +608,7 @@ class RequiresSlotTest extends TestCase
             handle: fn () => ['ok' => true],
             ability: false,
             input: $input,
+            subject: $subject,
             output: RequiresRowData::class,
             requires: $requires,
         );
@@ -655,8 +709,13 @@ class RequiresRowMemberInput extends Data
 
 class RequiresRowAgreementKeyResolver implements AgreementKeyResolver
 {
-    public function resolve(mixed $subject): string
+    /** @var list<array{class-string, int|string}> */
+    public static array $resolvedSubjects = [];
+
+    public function resolve(Model $subject): string
     {
+        self::$resolvedSubjects[] = [$subject::class, $subject->getKey()];
+
         return 'plans.'.$subject->getKey().'.terms';
     }
 }

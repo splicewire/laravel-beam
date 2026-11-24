@@ -15,9 +15,9 @@ use Spatie\LaravelData\Support\DataContainer;
  * and `#[ParticleResource]` / {@see \Splicewire\Beam\Particle\ParticleResource}, so it must be spellable as an
  * attribute argument: `requires: [new Requires('terms', scope: 'party', on: 'both')]`, or a subject-aware resolver.
  *
- * It names a key, never an Agreement class: beam does not know agreements. A host without an agreements seam
- * refuses every caller of a slot-declared behavior as an unknown (`unregistered`) Agreement — see
- * {@see SlotRequirementResolver}.
+ * Its fixed form names a key, never an Agreement class: beam does not know agreements. Its resolver form computes
+ * the key from the behavior's model subject. A host without an agreements seam refuses every caller of a slot-declared
+ * behavior as an unknown (`unregistered`) Agreement — see {@see SlotRequirementResolver}.
  *
  * @api
  */
@@ -80,6 +80,14 @@ final class Requires
     {
         if ($this->agreement !== null) {
             return $this->agreement;
+        }
+
+        if (! $subject instanceof \Illuminate\Database\Eloquent\Model) {
+            throw new InvalidArgumentException(sprintf(
+                'Requires resolver [%s] needs a model subject; this behavior resolved [%s].',
+                $this->resolver,
+                get_debug_type($subject),
+            ));
         }
 
         $resolver = app($this->resolver);

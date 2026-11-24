@@ -25,18 +25,22 @@ class SlotRequirementResolver implements RequirementResolver
     public function outstanding(mixed $party, string $behavior, mixed $subject, array $submittedMembers): array
     {
         return array_map(
-            fn (Requires $requirement): OutstandingRequirementData => new OutstandingRequirementData(
-                key: $requirement->agreementFor($subject),
-                version: 0,
-                digest: '',
-                kind: self::UNREGISTERED,
-                title: $requirement->agreementFor($subject),
-                scope: $requirement->scope,
-                subject: $requirement->scope === 'subject' && $subject instanceof Model ? $subject->getKey() : null,
-                readUrl: '',
-                acceptOperation: null,
-                member: null,
-            ),
+            function (Requires $requirement) use ($subject): OutstandingRequirementData {
+                $key = $requirement->agreementFor($subject);
+
+                return new OutstandingRequirementData(
+                    key: $key,
+                    version: 0,
+                    digest: '',
+                    kind: self::UNREGISTERED,
+                    title: $key,
+                    scope: $requirement->scope,
+                    subject: $requirement->scope === 'subject' && $subject instanceof Model ? $subject->getKey() : null,
+                    readUrl: '',
+                    acceptOperation: null,
+                    member: null,
+                );
+            },
             // agreements 16: a create-only Requirement is not outstanding for an existing record (update, delete).
             array_values(array_filter(
                 $this->slots->requirementsFor($behavior),

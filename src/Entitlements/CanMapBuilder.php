@@ -105,8 +105,9 @@ class CanMapBuilder
         }
 
         // AGREEMENT plane (agreements 05) — `agreement:{key}` for every distinct Agreement a party- or organisation-scoped
-        // Requirement names, asked of the Gate (an agreements seam defines the ability). Subject-scoped Requirements are
-        // per record and stay out of a flat map. No Requirement anywhere ⇒ nothing added.
+        // fixed-key Requirement names, asked of the Gate (an agreements seam defines the ability). Subject-scoped Requirements
+        // are per record and stay out of a flat map; a resolver key also stays out because there is no subject here.
+        // No Requirement anywhere ⇒ nothing added.
         foreach ($this->agreementKeys() as $key) {
             $can['agreement:'.$key] = $this->gate->forUser($principal)->allows('agreement:'.$key);
         }

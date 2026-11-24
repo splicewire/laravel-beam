@@ -19,6 +19,7 @@ class BehaviorAssentRecorderTest extends TestCase
             'plans.checkout',
             [new AgreementMemberData('plan-studio', 3, 'frozen-digest')],
             new class extends Model {},
+            new class extends Model {},
         ));
     }
 }
