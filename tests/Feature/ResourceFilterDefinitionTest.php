@@ -12,6 +12,7 @@ use Rushing\DataFilters\Operators\Exact;
 use Rushing\DataFilters\Registry\ResourceDefinition;
 use Schemastud\Frame\Contracts\ResourceRegistry;
 use Schemastud\Frame\Registry\InMemoryResourceRegistry;
+use Schemastud\Frame\Registry\FormMode;
 use Schemastud\Frame\Registry\NavMetadata;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Filters\DeclaredResourceQuery;
@@ -71,7 +72,7 @@ class ResourceFilterDefinitionTest extends TestCase
         $frames = new InMemoryResourceRegistry;
         $frames->register(new \Schemastud\Frame\Registry\ResourceDefinition(
             key: 'frame-model', model: DefinitionModelA::class, data: DefinitionFilterData::class,
-            creatable: false, query: null, editData: null, policy: null, form: 'bare',
+            creatable: false, query: null, editData: null, policy: null, form: FormMode::Bare,
             nav: new NavMetadata('Frame model'),
         ));
         $this->app->instance(ResourceRegistry::class, $frames);

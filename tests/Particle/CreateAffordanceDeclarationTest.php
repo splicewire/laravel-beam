@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Particle;
 
+use Schemastud\Frame\Registry\ResourceCreateAffordance;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
@@ -50,23 +51,23 @@ class CreateAffordanceDeclarationTest extends TestCase
 
     public function test_the_slot_defaults_to_frame_so_every_existing_declaration_is_unchanged(): void
     {
-        $this->assertSame('frame', $this->resource()->createAffordance);
-        $this->assertSame('frame', $this->resource()->toResourceDefinition()->createAffordance);
+        $this->assertSame(ResourceCreateAffordance::Frame, $this->resource()->createAffordance);
+        $this->assertSame(ResourceCreateAffordance::Frame, $this->resource()->toResourceDefinition()->createAffordance);
     }
 
     public function test_a_declared_host_affordance_reaches_frames_resource_definition(): void
     {
-        $definition = $this->resource(['createAffordance' => 'host'])->toResourceDefinition();
+        $definition = $this->resource(['createAffordance' => ResourceCreateAffordance::Host])->toResourceDefinition();
 
         $this->assertInstanceOf(ResourceDefinition::class, $definition);
-        $this->assertSame('host', $definition->createAffordance);
+        $this->assertSame(ResourceCreateAffordance::Host, $definition->createAffordance);
         $this->assertSame('host', $definition->resolvedCreateAffordance());
     }
 
     public function test_the_attribute_twin_carries_the_slot_and_defaults_to_frame(): void
     {
-        $this->assertSame('frame', (new ParticleResourceAttribute(key: 'w', backing: 'App\\Models\\Widget'))->createAffordance);
-        $this->assertSame('host', (new ParticleResourceAttribute(key: 'w', backing: 'App\\Models\\Widget', createAffordance: 'host'))->createAffordance);
+        $this->assertSame(ResourceCreateAffordance::Frame, (new ParticleResourceAttribute(key: 'w', backing: 'App\\Models\\Widget'))->createAffordance);
+        $this->assertSame(ResourceCreateAffordance::Host, (new ParticleResourceAttribute(key: 'w', backing: 'App\\Models\\Widget', createAffordance: ResourceCreateAffordance::Host))->createAffordance);
     }
 
     public function test_discovery_carries_the_attributes_declared_affordance_onto_the_runtime_resource(): void
@@ -80,8 +81,8 @@ class CreateAffordanceDeclarationTest extends TestCase
 
         $resource = $this->app->make(ParticleResourceRegistry::class)->get('fixture-host-affordance');
 
-        $this->assertSame('host', $resource->createAffordance);
-        $this->assertSame('host', $resource->toResourceDefinition()->createAffordance);
+        $this->assertSame(ResourceCreateAffordance::Host, $resource->createAffordance);
+        $this->assertSame(ResourceCreateAffordance::Host, $resource->toResourceDefinition()->createAffordance);
     }
 
     /**
@@ -94,7 +95,7 @@ class CreateAffordanceDeclarationTest extends TestCase
         $resource = AttributedParticleDiscovery::resourceFromAttribute(HookData::class);
 
         $this->assertSame('hooks', $resource->key);
-        $this->assertSame('host', $resource->createAffordance);
+        $this->assertSame(ResourceCreateAffordance::Host, $resource->createAffordance);
         $this->assertFalse($resource->readOnly);
         $this->assertTrue($resource->toResourceDefinition()->creatable);
     }
@@ -103,7 +104,7 @@ class CreateAffordanceDeclarationTest extends TestCase
 
     public function test_declaring_host_does_not_close_the_write_path(): void
     {
-        $definition = $this->resource(['createAffordance' => 'host'])->toResourceDefinition();
+        $definition = $this->resource(['createAffordance' => ResourceCreateAffordance::Host])->toResourceDefinition();
 
         // `creatable` still answers "may this be created at all", and nothing about WHERE the button
         // lives may change it. Same for the sibling gates it is derived alongside.
@@ -119,10 +120,10 @@ class CreateAffordanceDeclarationTest extends TestCase
         $definition = $this->resource([
             'readOnly' => true,
             'editData' => 'App\\Data\\CreateWidgetData',
-            'createAffordance' => 'frame',
+            'createAffordance' => ResourceCreateAffordance::Frame,
         ])->toResourceDefinition();
 
-        $this->assertSame('frame', $definition->createAffordance);
+        $this->assertSame(ResourceCreateAffordance::Frame, $definition->createAffordance);
         $this->assertFalse($definition->creatable);
         // ...and frame's resolution folds `creatable` in with `creatable` WINNING, so the value the
         // shell reads is 'host'. A layout slot must never manufacture a write gate.
@@ -136,7 +137,7 @@ class CreateAffordanceDeclarationTest extends TestCase
     key: 'fixture-host-affordance',
     backing: CreateAffordanceFixtureModel::class,
     label: 'Fixture host affordance',
-    createAffordance: 'host',
+    createAffordance: ResourceCreateAffordance::Host,
 )]
 class FixtureHostAffordanceResource {}
 

@@ -6,6 +6,9 @@ use Attribute;
 use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\ResourceFilterProvider;
 use Schemastud\Frame\Contracts\ResourceSummaryProvider;
+use Schemastud\Frame\Registry\FormMode;
+use Schemastud\Frame\Registry\ResourceCreateAffordance;
+use Schemastud\Frame\Registry\ResourceLayout;
 use Splicewire\Beam\Agreements\Requires;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Graph\Edges\GraphEdges;
@@ -79,7 +82,7 @@ class ParticleResource
      * resolved from `public static` convention methods (attributes can't carry closures); these scalar
      * manifest fields are carried directly.
      * @param  string  $label  nav label; a non-empty label marks the resource framed (navigable)
-     * @param  'enriched'|'bare'  $form  per-resource default form mode; defaults to `enriched`, and any value outside FormMode is refused at registration
+     * @param  FormMode  $form  per-resource default form mode
      * @param  class-string|null  $editData  rare escape-hatch edit DTO (input-shape divergence)
      * @param  string|null  $policy  ability/policy key the injected can() resolves against
      * @param  class-string|null  $query  data-filters query class the ListShell facets bar rides (manifest)
@@ -88,7 +91,7 @@ class ParticleResource
      * @param  string|null  $section  host sitemap section this resource auto-attaches into; null = not in primary nav
      * @param  int|null  $navOrder  placement within the section
      * @param  string|null  $routeName  stable route identity a host binds the generated leaf under
-     * @param  'single'|'subnav'|'master-detail'|null  $layout  inner-layout grammar emitted on the ContextManifest
+     * @param  ResourceLayout|null  $layout  inner-layout grammar emitted on the ContextManifest
      * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83)
      * @param  bool|null  $deletable  Frame destroy gate, INDEPENDENT of $readOnly (ADR-0156 §83 delete-independent widening); null follows the create gate
      * @param  bool|null  $editable  Frame update gate, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening); null follows the create gate
@@ -97,7 +100,7 @@ class ParticleResource
      * @param  string  $singularLabel  display SINGULAR for docs/titles when the inflector mangles the noun (`media` → "Medium"); empty ⇒ inflect from the label/key. Display-only — no framing/nav semantics
      * @param  string|null  $routeKey  the column `{id}` resolves against for show/update/destroy (e.g. `'slug'`); null ⇒ the primary key, today's path. A declared route key is the resource saying how it is NAMED — never where it is hung. Resolution still runs through the relative base query and the `scope` gate, so the column need only be unique per PARENT under a relative mount. See {@see \Splicewire\Beam\Particle\ParticleResource::$routeKey}
      * @param  class-string<FrameResourceHandler>|null  $handler  the Frame CRUD handler this resource is served by; null ⇒ {@see ParticleFrameResourceHandler}, the generic one. See {@see \Splicewire\Beam\Particle\ParticleResource::$handler} for why this is a declaration slot rather than a host-side lookup table
-     * @param  'frame'|'host'  $createAffordance  WHERE this resource's create affordance lives — carried verbatim onto {@see \Splicewire\Beam\Particle\ParticleResource::$createAffordance} and from there onto frame's `ResourceDefinition`. `'frame'` (the default, and today's behaviour for every resource) means frame's own list Toolbar emits the "New …" button; `'host'` means the host's page chrome owns it — a title-row button, a chooser dialog — so frame emits none. PRESENTATION only: see the runtime twin's docblock for why it is never ANDed with a capability gate
+     * @param  ResourceCreateAffordance  $createAffordance  WHERE this resource's create affordance lives — carried onto {@see \Splicewire\Beam\Particle\ParticleResource::$createAffordance} and from there onto frame's `ResourceDefinition`
      * @param  class-string<ResourceSummaryProvider>|null  $summaryProvider  the frame summary provider this resource answers `resources/{key}/summary` through — carried verbatim onto {@see \Splicewire\Beam\Particle\ParticleResource::$summaryProvider}; null ⇒ beam's default, which counts through the same scoped builder the index reads. `splicewire:beam:make:particle-resource --summary` emits a provider class to name here
      */
     public function __construct(
@@ -108,7 +111,7 @@ class ParticleResource
         public array $includes = [],
         public int $perPage = 20,
         public string $label = '',
-        public string $form = 'enriched',
+        public FormMode $form = FormMode::Enriched,
         public ?string $editData = null,
         public ?string $policy = null,
         /** @var class-string<ResourceReadPolicy>|null */
@@ -129,7 +132,7 @@ class ParticleResource
         public ?string $section = null,
         public ?int $navOrder = null,
         public ?string $routeName = null,
-        public ?string $layout = null,
+        public ?ResourceLayout $layout = null,
         public bool $readOnly = false,
         public ?bool $deletable = null,
         public ?bool $editable = null,
@@ -138,7 +141,7 @@ class ParticleResource
         public string $singularLabel = '',
         public ?string $routeKey = null,
         public ?string $handler = null,
-        public string $createAffordance = 'frame',
+        public ResourceCreateAffordance $createAffordance = ResourceCreateAffordance::Frame,
         /** @var class-string<ResourceFilterProvider>|null */
         public ?string $filterProvider = null,
         /** @var class-string<ResourceSummaryProvider>|null */

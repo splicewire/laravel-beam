@@ -2,7 +2,10 @@
 
 namespace Splicewire\Beam\Realm;
 
+use InvalidArgumentException;
+use Schemastud\Frame\Registry\FormMode;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Schemastud\Frame\Registry\ResourceLayout;
 
 /**
  * A partial, per-realm PRESENTATION overlay for one resource (RDU-03).
@@ -32,8 +35,8 @@ class RealmResourceOverride
      * @param  string|null  $section  nav section (host-nav join key)
      * @param  int|null  $navOrder  nav order within the section
      * @param  string|null  $routeName  generated-leaf route name
-     * @param  'enriched'|'bare'|null  $form  per-resource default form mode
-     * @param  'single'|'subnav'|'master-detail'|null  $layout  inner-layout grammar
+     * @param  FormMode|null  $form  per-resource default form mode
+     * @param  ResourceLayout|null  $layout  inner-layout grammar
      * @param  class-string|null  $editData  rare escape-hatch edit DTO
      * @param  string|null  $policy  ability/policy key
      * @param  class-string|null  $query  data-filters query class
@@ -49,8 +52,8 @@ class RealmResourceOverride
         public ?string $section = null,
         public ?int $navOrder = null,
         public ?string $routeName = null,
-        public ?string $form = null,
-        public ?string $layout = null,
+        public ?FormMode $form = null,
+        public ?ResourceLayout $layout = null,
         public ?string $editData = null,
         public ?string $policy = null,
         public ?string $query = null,
@@ -67,8 +70,11 @@ class RealmResourceOverride
      *
      * @param  array<string, mixed>  $fields
      */
-    public static function fromArray(array $fields): self
+    public static function fromArray(array $fields, string $resourceKey): self
     {
+        $form = $fields['form'] ?? null;
+        $layout = $fields['layout'] ?? null;
+
         return new self(
             label: $fields['label'] ?? null,
             group: $fields['group'] ?? null,
@@ -76,8 +82,8 @@ class RealmResourceOverride
             section: $fields['section'] ?? null,
             navOrder: $fields['navOrder'] ?? null,
             routeName: $fields['routeName'] ?? null,
-            form: $fields['form'] ?? null,
-            layout: $fields['layout'] ?? null,
+            form: $form === null ? null : FormMode::fromDeclaration($form, $resourceKey),
+            layout: self::layoutFromDeclaration($layout, $resourceKey),
             editData: $fields['editData'] ?? null,
             policy: $fields['policy'] ?? null,
             query: $fields['query'] ?? null,
@@ -86,6 +92,24 @@ class RealmResourceOverride
             editable: $fields['editable'] ?? null,
             showable: $fields['showable'] ?? null,
         );
+    }
+
+    private static function layoutFromDeclaration(mixed $value, string $resourceKey): ?ResourceLayout
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (! is_string($value) || ($layout = ResourceLayout::tryFrom($value)) === null) {
+            throw new InvalidArgumentException(sprintf(
+                'Resource [%s] declares layout [%s]; a layout is one of: %s.',
+                $resourceKey,
+                is_scalar($value) ? (string) $value : get_debug_type($value),
+                implode(', ', array_map(static fn (ResourceLayout $layout): string => $layout->value, ResourceLayout::cases())),
+            ));
+        }
+
+        return $layout;
     }
 
     /**

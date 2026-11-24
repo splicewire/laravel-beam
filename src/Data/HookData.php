@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Data;
 
 use Illuminate\Database\Eloquent\Builder;
 use Schemastud\Frame\Attributes\Column;
+use Schemastud\Frame\Registry\ResourceCreateAffordance;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Splicewire\Beam\Authorization\ModelOrOperatorReadPolicy;
@@ -65,7 +66,7 @@ use Splicewire\Beam\Webhooks\HookSubscriptionReach;
     //
     // ⚠️ Presentation only — `hooks` stays fully creatable (`readOnly` is false and untouched). This slot
     // moves who draws the button, never whether the write is open.
-    createAffordance: 'host',
+    createAffordance: ResourceCreateAffordance::Host,
 )]
 #[TypeScript]
 class HookData extends BeamData

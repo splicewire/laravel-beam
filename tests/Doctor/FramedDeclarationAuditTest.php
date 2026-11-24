@@ -157,7 +157,7 @@ class FramedDeclarationAuditTest extends TestCase
         $this->vocabulary();
         $this->resource('owner', AuditNumericData::class);
         $definition = app(ParticleResourceRegistry::class)->definition('owner')->withOverrides(key: 'with-action', actions: [
-            new \Schemastud\Frame\Registry\ResourceActionDefinition(key: 'run', label: 'Run', scope: 'resource', method: 'POST', url: '/run', input: AuditBadData::class),
+            new \Schemastud\Frame\Registry\ResourceActionDefinition(key: 'run', label: 'Run', scope: \Schemastud\Frame\Registry\ResourceActionScope::Resource, method: 'POST', url: '/run', input: AuditBadData::class),
         ]);
         app(CompositeResourceRegistry::class)->attach('other', (new InMemoryResourceRegistry('other'))->register($definition));
         $failures = $this->failures(FramedDeclarationAudit::CHECK_WIDGET_NODE_TYPE, 'with-action');

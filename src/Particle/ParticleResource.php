@@ -15,6 +15,9 @@ use Schemastud\Frame\Contracts\FrameResourceHandler;
 use Schemastud\Frame\Contracts\ResourceFilterProvider;
 use Schemastud\Frame\Contracts\ResourceSummaryProvider;
 use Schemastud\Frame\Registry\NavMetadata;
+use Schemastud\Frame\Registry\FormMode;
+use Schemastud\Frame\Registry\ResourceCreateAffordance;
+use Schemastud\Frame\Registry\ResourceLayout;
 use Schemastud\Frame\Registry\ResourceActionDefinition;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Spatie\LaravelData\Data;
@@ -149,7 +152,7 @@ class ParticleResource implements HasRegistryKey
      * non-empty {@see $label} is {@see isFramed() framed} and projects into Frame via
      * {@see toResourceDefinition()}. A REST-only resource leaves them at their defaults.
      * @param  string  $label  nav label; a non-empty label marks the resource {@see isFramed() framed} (navigable)
-     * @param  string  $form  per-resource default form mode: 'enriched' (the default) | 'bare'; any other value is refused at registration (Schemastud\Frame\Registry\FormMode)
+     * @param  FormMode  $form  per-resource default form mode
      * @param  class-string|null  $editData  rare escape-hatch edit DTO (input-shape divergence)
      * @param  string|null  $policy  ability/policy key the injected can() resolves against
      * @param  class-string|null  $query  data-filters query class the ListShell facets bar rides (manifest)
@@ -177,7 +180,7 @@ class ParticleResource implements HasRegistryKey
      *                                read by the host's `FrameResourcesInvocable` and nothing else.
      * @param  int|null  $navOrder  placement within the section
      * @param  string|null  $routeName  stable route identity a host binds the generated leaf under
-     * @param  string|null  $layout  inner-layout grammar ('single'|'subnav'|'master-detail'); emitted on the ContextManifest
+     * @param  ResourceLayout|null  $layout  inner-layout grammar emitted on the ContextManifest
      * @param  bool  $readOnly  a machine-authored / view-only resource — no create/edit/delete through Frame (ADR-0156 §83). Projects `creatable: !$readOnly`; the generic {@see ParticleFrameResourceHandler} refuses store/update/destroy with a 405 when `! creatable`. Default false — writable.
      * @param  bool|null  $deletable  whether Frame destroy is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 delete-independent widening) — for a prune-but-not-create/edit list. null (default) follows the create gate (`!$readOnly`); an explicit true opens destroy on an otherwise not-creatable resource.
      * @param  bool|null  $editable  whether Frame update (in-place edit) is allowed, INDEPENDENT of $readOnly (ADR-0156 §83 edit-independent widening) — for a create-and-delete-but-not-edit resource (e.g. invitations). null (default) follows the create gate (`!$readOnly`); an explicit false closes in-place edit on an otherwise creatable resource.
@@ -230,7 +233,7 @@ class ParticleResource implements HasRegistryKey
      *                                 `\App\Frame\Handlers\ConduitResourceHandler` in prose. Declared here, the
      *                                 handler travels with the resource and a host that installs the package gets
      *                                 the right one without wiring.
-     * @param  'frame'|'host'  $createAffordance  WHERE this resource's create affordance lives — a PRESENTATION
+     * @param  ResourceCreateAffordance  $createAffordance  WHERE this resource's create affordance lives — a PRESENTATION
      *                                            slot, projected verbatim onto frame's
      *                                            {@see ResourceDefinition::$createAffordance}. `'frame'` (the
      *                                            default, and today's behaviour for every existing declaration)
@@ -278,7 +281,7 @@ class ParticleResource implements HasRegistryKey
         public ?Closure $scope = null,
         public ?Closure $operationScope = null,
         public string $label = '',
-        public string $form = 'enriched',
+        public FormMode $form = FormMode::Enriched,
         public ?string $editData = null,
         public ?string $policy = null,
         /** @var class-string<ResourceReadPolicy>|null */
@@ -303,7 +306,7 @@ class ParticleResource implements HasRegistryKey
         public ?string $section = null,
         public ?int $navOrder = null,
         public ?string $routeName = null,
-        public ?string $layout = null,
+        public ?ResourceLayout $layout = null,
         public bool $readOnly = false,
         public ?bool $deletable = null,
         public ?bool $editable = null,
@@ -312,7 +315,7 @@ class ParticleResource implements HasRegistryKey
         public string $singularLabel = '',
         public ?string $routeKey = null,
         public ?string $handler = null,
-        public string $createAffordance = 'frame',
+        public ResourceCreateAffordance $createAffordance = ResourceCreateAffordance::Frame,
         /** @var class-string<ResourceFilterProvider>|null */
         public ?string $filterProvider = null,
         /** @var class-string<ResourceSummaryProvider>|null */

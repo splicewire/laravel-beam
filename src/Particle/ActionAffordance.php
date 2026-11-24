@@ -2,8 +2,7 @@
 
 namespace Splicewire\Beam\Particle;
 
-use InvalidArgumentException;
-use Schemastud\Frame\Registry\ResourceActionDefinition;
+use Schemastud\Frame\Registry\ResourceActionResult;
 
 /**
  * How a `#[ParticleOp]` presents itself as a FRAME ACTION — the value of its `affordance:` slot
@@ -31,22 +30,12 @@ class ActionAffordance
 
     /**
      * @param  string|null  $label  the button's words; null ⇒ the op's name, headlined (`reload` ⇒ "Reload")
-     * @param  'toast'|'navigate'  $result  `toast` shows the response's message and refreshes the resource
-     *                                      (the default); `navigate` opens the resulting record
+     * @param  ResourceActionResult  $result  how the response is presented
      * @param  bool  $destructive  the button reads as dangerous and a confirm-only press asks first
      */
     public function __construct(
         public ?string $label = null,
-        public string $result = ResourceActionDefinition::ResultToast,
+        public ResourceActionResult $result = ResourceActionResult::Toast,
         public bool $destructive = false,
-    ) {
-        if (! in_array($this->result, [ResourceActionDefinition::ResultToast, ResourceActionDefinition::ResultNavigate], true)) {
-            throw new InvalidArgumentException(sprintf(
-                'An action affordance presents its result as `%s` or `%s`, not [%s].',
-                ResourceActionDefinition::ResultToast,
-                ResourceActionDefinition::ResultNavigate,
-                $this->result,
-            ));
-        }
-    }
+    ) {}
 }

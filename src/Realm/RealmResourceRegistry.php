@@ -83,7 +83,7 @@ class RealmResourceRegistry implements Gated, RecordsRegistrants, Registry
                     continue;
                 }
 
-                $this->override((string) $key, (string) $realm, RealmResourceOverride::fromArray($fields), $by);
+                $this->override((string) $key, (string) $realm, RealmResourceOverride::fromArray($fields, (string) $key), $by);
             }
         }
 

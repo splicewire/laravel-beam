@@ -3,7 +3,9 @@
 namespace Splicewire\Beam\Tests\Particle;
 
 use RuntimeException;
+use Schemastud\Frame\Registry\FormMode;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Schemastud\Frame\Registry\ResourceLayout;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Tests\Fixtures\WidgetGateData;
 use Splicewire\Beam\Tests\TestCase;
@@ -23,7 +25,7 @@ class ParticleResourceManifestTest extends TestCase
             backing: 'App\\Models\\Widget',
             data: WidgetGateData::class,
             label: 'Widgets',
-            form: 'enriched',
+            form: FormMode::Enriched,
             editData: 'App\\Data\\WidgetEditData',
             policy: 'widget',
             query: 'App\\Queries\\WidgetQuery',
@@ -32,11 +34,11 @@ class ParticleResourceManifestTest extends TestCase
             section: 'operator',
             navOrder: 7,
             routeName: 'widgets.index',
-            layout: 'master-detail',
+            layout: ResourceLayout::MasterDetail,
         );
 
         $this->assertSame('Widgets', $resource->label);
-        $this->assertSame('enriched', $resource->form);
+        $this->assertSame(FormMode::Enriched, $resource->form);
         $this->assertSame('App\\Data\\WidgetEditData', $resource->editData);
         $this->assertSame('widget', $resource->policy);
         $this->assertSame('App\\Queries\\WidgetQuery', $resource->query);
@@ -45,7 +47,7 @@ class ParticleResourceManifestTest extends TestCase
         $this->assertSame('operator', $resource->section);
         $this->assertSame(7, $resource->navOrder);
         $this->assertSame('widgets.index', $resource->routeName);
-        $this->assertSame('master-detail', $resource->layout);
+        $this->assertSame(ResourceLayout::MasterDetail, $resource->layout);
     }
 
     public function test_a_labelled_resource_is_framed_and_a_bare_one_is_not(): void

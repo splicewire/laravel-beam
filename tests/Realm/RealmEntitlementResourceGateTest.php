@@ -6,6 +6,7 @@ use Illuminate\Auth\GenericUser;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Registry\NavMetadata;
+use Schemastud\Frame\Registry\FormMode;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\ModelOrOperatorReadPolicy;
 use Splicewire\Beam\Models\BeamSchema;
@@ -90,7 +91,7 @@ class RealmEntitlementResourceGateTest extends TestCase
             query: null,
             editData: null,
             policy: null,
-            form: 'bare',
+            form: FormMode::Bare,
             nav: new NavMetadata(label: ucfirst($key)),
         );
     }

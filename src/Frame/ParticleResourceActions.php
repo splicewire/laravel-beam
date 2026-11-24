@@ -6,6 +6,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Str;
 use Schemastud\Frame\Registry\ResourceActionDefinition;
+use Schemastud\Frame\Registry\ResourceActionScope;
 use Spatie\LaravelData\Optional;
 use Splicewire\Beam\Agreements\RequirementDeclarations;
 use Splicewire\Beam\Agreements\Requires;
@@ -163,9 +164,9 @@ class ParticleResourceActions
     /**
      * Where the op renders, from its subject's coordinates; null when frame has no placement for it.
      *
-     * @return 'resource'|'record'|null
+     * @return ResourceActionScope|null
      */
-    public function scope(ParticleOperation $operation): ?string
+    public function scope(ParticleOperation $operation): ?ResourceActionScope
     {
         $subject = $operation->subject;
 
@@ -174,8 +175,8 @@ class ParticleResourceActions
         }
 
         return match (SubjectResolvers::coordinates($operation)) {
-            [] => ResourceActionDefinition::ScopeResource,
-            ['id'] => ResourceActionDefinition::ScopeRecord,
+            [] => ResourceActionScope::Resource,
+            ['id'] => ResourceActionScope::Record,
             default => null,
         };
     }
@@ -186,11 +187,11 @@ class ParticleResourceActions
      *
      * @param  array<string, string>  $bound
      */
-    protected function fillable(Route $route, string $scope, array $bound = []): bool
+    protected function fillable(Route $route, ResourceActionScope $scope, array $bound = []): bool
     {
         $parameters = array_values(array_diff($route->parameterNames(), array_keys($bound)));
 
-        return $scope === ResourceActionDefinition::ScopeRecord
+        return $scope === ResourceActionScope::Record
             ? $parameters === ['id']
             : $parameters === [];
     }

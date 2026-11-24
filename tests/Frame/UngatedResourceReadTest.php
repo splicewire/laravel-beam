@@ -15,6 +15,7 @@ use Rushing\DataFilters\Registry\ResourceDefinition as FilterDefinition;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\FrameServiceProvider;
 use Schemastud\Frame\Registry\NavMetadata;
+use Schemastud\Frame\Registry\FormMode;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\AuthenticatedReadPolicy;
 use Splicewire\Beam\Authorization\ResourceReadGuard;
@@ -291,7 +292,7 @@ class UngatedResourceReadTest extends TestCase
     {
         $definition = new ResourceDefinition(
             key: 'pure-frame-gadgets', model: Gadget::class, data: GadgetData::class,
-            creatable: false, query: null, editData: null, policy: null, form: 'bare',
+            creatable: false, query: null, editData: null, policy: null, form: FormMode::Bare,
             nav: new NavMetadata('Gadgets'), deletable: false, editable: false,
         );
         $this->assertFalse(app(ParticleResourceRegistry::class)->has($definition->key));

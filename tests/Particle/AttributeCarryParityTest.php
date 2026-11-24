@@ -3,6 +3,9 @@
 namespace Splicewire\Beam\Tests\Particle;
 
 use ReflectionClass;
+use Schemastud\Frame\Registry\FormMode;
+use Schemastud\Frame\Registry\ResourceCreateAffordance;
+use Schemastud\Frame\Registry\ResourceLayout;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
@@ -216,7 +219,7 @@ class CarryFixtureOp
     perPage: 50,
     label: 'Carry fixtures',
     // Deliberately plain-data: exercise the nondefault legal form mode in this carry fixture.
-    form: 'bare',
+    form: FormMode::Bare,
     editData: CarryFixtureInput::class,
     policy: CarryFixturePolicy::class,
     readPolicy: CarryFixturePolicy::class,
@@ -227,7 +230,7 @@ class CarryFixtureOp
     section: 'ops',
     navOrder: 7,
     routeName: 'carry-fixture-rows.index',
-    layout: 'wide',
+    layout: ResourceLayout::MasterDetail,
     readOnly: true,
     deletable: false,
     editable: false,
@@ -236,7 +239,7 @@ class CarryFixtureOp
     singularLabel: 'Carry fixture',
     routeKey: 'slug',
     handler: CarryFixtureHandler::class,
-    createAffordance: 'none',
+    createAffordance: ResourceCreateAffordance::Host,
     filterProvider: CarryFixtureProvider::class,
     summaryProvider: CarryFixtureProvider::class,
     schemaRef: 'carry/fixture',

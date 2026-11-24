@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Tests\Particle;
 use Illuminate\Pagination\CursorPaginator;
 use InvalidArgumentException;
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Schemastud\Frame\Registry\FormMode;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Particle\Attributes\ParticleResource;
 use Splicewire\Beam\Particle\Backing\StreamsRecords;
@@ -114,11 +115,10 @@ class ParticleResourceRegistryTest extends TestCase
     {
         $registry = new ParticleResourceRegistry;
         $registry->register(new ParticleResourceRuntime(key: 'widgets', backing: 'App\\Models\\Widget'));
-        $this->assertSame('enriched', $registry->get('widgets')->form);
+        $this->assertSame(FormMode::Enriched, $registry->get('widgets')->form);
 
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Resource [gadgets] declares form mode [raw]; a form mode is one of: enriched, bare.');
-        $registry->register(new ParticleResourceRuntime(key: 'gadgets', backing: 'App\\Models\\Gadget', form: 'raw'));
+        $this->expectException(\TypeError::class);
+        new ParticleResourceRuntime(key: 'gadgets', backing: 'App\\Models\\Gadget', form: 'raw');
     }
 
     public function test_it_stores_a_declaration_and_projects_at_build_time(): void

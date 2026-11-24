@@ -6,6 +6,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use ReflectionClass;
+use Schemastud\Frame\Registry\ResourceActionScope;
 use Schemastud\Frame\FrameServiceProvider;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ResourceVisibility;
@@ -100,7 +101,7 @@ class ConfigOperateAbilityTest extends TestCase
 
         foreach (['save-draft', 'publish', 'discard-draft', 'restore', 'versions'] as $key) {
             $this->assertTrue($actions->has($key), "{$key} is a frame action on beam-config");
-            $this->assertSame('resource', $actions[$key]->scope, $key);
+            $this->assertSame(ResourceActionScope::Resource, $actions[$key]->scope, $key);
         }
         $this->assertSame('Config versions', $actions['versions']->label);
         $this->assertSame('/beam-config/versions', $actions['versions']->url);

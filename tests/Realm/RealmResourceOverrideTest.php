@@ -3,6 +3,8 @@
 namespace Splicewire\Beam\Tests\Realm;
 
 use Schemastud\Frame\Registry\ResourceDefinition;
+use Schemastud\Frame\Registry\FormMode;
+use Schemastud\Frame\Registry\ResourceLayout;
 use Splicewire\Beam\Particle\ParticleResource as ParticleResourceRuntime;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Realm\RealmRegistry;
@@ -136,7 +138,7 @@ class RealmResourceOverrideTest extends TestCase
         $overrides = (new RealmResourceRegistry(new RealmRegistry))->override(
             'widgets',
             'operator',
-            new RealmResourceOverride(label: 'X', group: 'Y', form: 'bare', layout: 'subnav', readOnly: true),
+            new RealmResourceOverride(label: 'X', group: 'Y', form: FormMode::Bare, layout: ResourceLayout::Subnav, readOnly: true),
         );
 
         $registry = $this->registry($overrides);
@@ -165,5 +167,31 @@ class RealmResourceOverrideTest extends TestCase
         // apply() with a null realm is always identity (the realm-agnostic manifest path).
         $base = $this->registry()->definition('widgets');
         $this->assertSame($base, $overrides->apply($base, null));
+    }
+
+    public function test_config_overrides_decode_form_and_layout_to_frame_vocabulary(): void
+    {
+        $override = RealmResourceOverride::fromArray(['form' => 'bare', 'layout' => 'subnav'], 'widgets');
+
+        $this->assertSame(FormMode::Bare, $override->form);
+        $this->assertSame(ResourceLayout::Subnav, $override->layout);
+    }
+
+    public function test_config_override_rejects_unknown_form_with_the_resource_context(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Resource [widgets] declares form mode [raw]; a form mode is one of: enriched, bare.');
+
+        (new RealmResourceRegistry(new RealmRegistry))->loadConfig([
+            'operator' => ['widgets' => ['form' => 'raw']],
+        ]);
+    }
+
+    public function test_config_override_rejects_unknown_layout_instead_of_defaulting(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Resource [widgets] declares layout [wide]; a layout is one of: single, subnav, master-detail.');
+
+        RealmResourceOverride::fromArray(['layout' => 'wide'], 'widgets');
     }
 }

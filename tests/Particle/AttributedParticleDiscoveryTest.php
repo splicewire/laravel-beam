@@ -5,6 +5,8 @@ namespace Splicewire\Beam\Tests\Particle;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
+use Schemastud\Frame\Registry\FormMode;
+use Schemastud\Frame\Registry\ResourceLayout;
 use Splicewire\Beam\Authorization\ResourceReadPolicy;
 use Splicewire\Beam\Particle\Attributes\AttributedParticleDiscovery;
 use Splicewire\Beam\Particle\Attributes\ParticleOp;
@@ -77,7 +79,7 @@ class AttributedParticleDiscoveryTest extends TestCase
         $resource = AttributedParticleDiscovery::resourceFromAttribute(FixtureFramedResource::class);
 
         $this->assertSame('Widgets', $resource->label);
-        $this->assertSame('enriched', $resource->form);
+        $this->assertSame(FormMode::Enriched, $resource->form);
         $this->assertSame('App\\Data\\WidgetEditData', $resource->editData);
         $this->assertSame('widget', $resource->policy);
         $this->assertSame(FixtureAttributedReadPolicy::class, $resource->readPolicy);
@@ -88,7 +90,7 @@ class AttributedParticleDiscoveryTest extends TestCase
         $this->assertSame('operator', $resource->section);
         $this->assertSame(7, $resource->navOrder);
         $this->assertSame('widgets.index', $resource->routeName);
-        $this->assertSame('master-detail', $resource->layout);
+        $this->assertSame(ResourceLayout::MasterDetail, $resource->layout);
         $this->assertTrue($resource->readOnly);
         $this->assertTrue($resource->isFramed(), 'a labelled resource is framed');
     }
@@ -286,7 +288,7 @@ class FixtureLegacyFilterableResource {}
     backing: FixtureModel::class,
     data: WidgetGateData::class,
     label: 'Widgets',
-    form: 'enriched',
+    form: FormMode::Enriched,
     editData: 'App\\Data\\WidgetEditData',
     policy: 'widget',
     readPolicy: FixtureAttributedReadPolicy::class,
@@ -297,7 +299,7 @@ class FixtureLegacyFilterableResource {}
     section: 'operator',
     navOrder: 7,
     routeName: 'widgets.index',
-    layout: 'master-detail',
+    layout: ResourceLayout::MasterDetail,
     readOnly: true,
 )]
 class FixtureFramedResource {}

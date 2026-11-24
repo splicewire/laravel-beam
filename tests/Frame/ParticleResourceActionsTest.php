@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
+use Schemastud\Frame\Registry\ResourceActionResult;
+use Schemastud\Frame\Registry\ResourceActionScope;
 use Schemastud\Frame\Authorization\OpenResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceAccessGate;
 use Schemastud\Frame\Contracts\ResourceActionAuthorizer;
@@ -195,7 +197,7 @@ class ParticleResourceActionsTest extends TestCase
     public function test_opted_in_ops_project_with_their_placement_url_input_and_presentation(): void
     {
         $this->op('reload', NoSubject::class, new ActionAffordance(label: 'Reload vault'), input: ActionReloadInputData::class);
-        $this->op('seal', null, new ActionAffordance(result: 'navigate', destructive: true), ability: 'update', abilityModel: null, input: false);
+        $this->op('seal', null, new ActionAffordance(result: ResourceActionResult::Navigate, destructive: true), ability: 'update', abilityModel: null, input: false);
         $this->op('mine', ActorSubject::class, 'action', ability: false, abilityModel: null, input: false);
 
         Particle::ops('api/vaults', 'vaults', ['reload', 'seal', 'mine']);
@@ -207,24 +209,24 @@ class ParticleResourceActionsTest extends TestCase
         $this->assertSame([
             'key' => 'reload',
             'label' => 'Reload vault',
-            'scope' => 'resource',
+            'scope' => ResourceActionScope::Resource,
             'method' => 'POST',
             'url' => '/api/vaults/reload',
             'input' => ActionReloadInputData::class,
-            'result' => 'toast',
+            'result' => ResourceActionResult::Toast,
             'destructive' => false,
         ], $actions['reload']->all());
 
         // A record op: a row and detail action whose URL keeps the `{id}` the client fills. Confirm-only.
-        $this->assertSame('record', $actions['seal']->scope);
+        $this->assertSame(ResourceActionScope::Record, $actions['seal']->scope);
         $this->assertSame('/api/vaults/{id}/seal', $actions['seal']->url);
         $this->assertNull($actions['seal']->input);
-        $this->assertSame('navigate', $actions['seal']->result);
+        $this->assertSame(ResourceActionResult::Navigate, $actions['seal']->result);
         $this->assertTrue($actions['seal']->destructive);
 
         // The shorthand takes every default; the label is the op's name, headlined.
         $this->assertSame('Mine', $actions['mine']->label);
-        $this->assertSame('resource', $actions['mine']->scope);
+        $this->assertSame(ResourceActionScope::Resource, $actions['mine']->scope);
 
         // On the wire, the input is the generated type's dot-form name: no class-string (ADR-0004).
         $wire = $this->app->make(ParticleResourceRegistry::class)->definition('vaults')->toArray();
@@ -420,7 +422,7 @@ class ParticleResourceActionsTest extends TestCase
 
     public function test_an_affordance_result_outside_the_two_presentations_is_refused(): void
     {
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(\TypeError::class);
 
         new ActionAffordance(result: 'modal');
     }

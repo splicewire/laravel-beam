@@ -5,6 +5,7 @@ namespace Splicewire\Beam\Frame;
 use Illuminate\Database\Eloquent\Model;
 use Schemastud\Frame\Contracts\ResourceActionAuthorizer;
 use Schemastud\Frame\Registry\ResourceActionDefinition;
+use Schemastud\Frame\Registry\ResourceActionScope;
 use Schemastud\Frame\Registry\ResourceDefinition;
 use Splicewire\Beam\Authorization\AbilityResolver;
 use Splicewire\Beam\Authorization\ActorPort;
@@ -66,7 +67,7 @@ class ParticleActionAuthorizer implements ResourceActionAuthorizer
             $subject = null;
         } elseif (is_string($operation->abilityModel)) {
             $subject = $operation->abilityModel;
-        } elseif ($action->scope === ResourceActionDefinition::ScopeRecord) {
+        } elseif ($action->scope === ResourceActionScope::Record) {
             $subject = $record ?? $this->freshSubject($operation);
 
             if ($subject === null) {
