@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
 use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Revisions\RevertRefused;
+use Splicewire\Beam\Tests\Fixtures\Revisions\NullSaveReturningParticle;
+use Splicewire\Beam\Tests\Fixtures\Revisions\OwnerOverrideRestoreParticle;
 
 class RecordsRevisionsTest extends TestCase
 {
@@ -147,9 +149,9 @@ class RecordsRevisionsTest extends TestCase
             'meta' => ['owner' => ['id' => 'u1']],
         ]);
 
-        // Owner meta routes the revert through the BeamParticle::restoreVersionSnapshotStored() branch;
-        // the pre-image equals the live payload, so that restore is a no-op and the model stays clean
-        // whether the write stores or a veto refuses it — isDirty() is blind here too.
+        // Owner meta routes the revert through BeamParticle::restoreVersionSnapshot() + its outcome
+        // slot; the pre-image equals the live payload, so that restore is a no-op and the model stays
+        // clean whether the write stores or a veto refuses it — isDirty() is blind here too.
         $entry = $record->recordRevision(
             ['payload' => ['body' => 'original']],
             ['payload' => ['body' => 'original']],
@@ -172,6 +174,61 @@ class RecordsRevisionsTest extends TestCase
         $this->assertNotContains('revert', collect($record->fresh()->revisions())->pluck('cause')->all());
         $this->assertSame(['body' => 'original'], $record->fresh()->payload);
         $this->assertSame(['id' => 'u1'], $record->fresh()->meta['owner']);
+    }
+
+    public function test_a_subclass_restore_override_runs_on_revert_through_the_owner_branch(): void
+    {
+        OwnerOverrideRestoreParticle::$overrideCalls = 0;
+
+        // Owner meta routes revert through the owner branch. A BeamParticle subclass that overrides
+        // restoreVersionSnapshot() must have THAT override honoured on revert — the recorder dispatches
+        // through the overridable method, not a private worker that would silently skip it.
+        $record = OwnerOverrideRestoreParticle::create([
+            'schema_ref' => 'thing/1',
+            'payload' => ['body' => 'original'],
+            'meta' => ['owner' => ['id' => 'u1']],
+        ]);
+
+        $old = ['payload' => ['body' => 'original']];
+        $record->payload = ['body' => 'edited'];
+        $record->save();
+
+        $entry = $record->recordRevision($old, ['payload' => $record->payload], 'edit');
+
+        $record->revertTo($entry);
+
+        // The subclass's override RAN on revert (pre-fix: the owner branch called a private worker
+        // directly, so a subclass override of restoreVersionSnapshot() was never reached).
+        $this->assertSame(1, OwnerOverrideRestoreParticle::$overrideCalls);
+
+        // ...and the revert still landed and was recorded (dispatching through the override did not
+        // lose the store outcome the recorder keys on).
+        $this->assertSame(['body' => 'original'], $record->fresh()->payload);
+        $this->assertContains('revert', collect($record->fresh()->revisions())->pluck('cause')->all());
+    }
+
+    public function test_a_revert_whose_save_override_returns_null_is_treated_as_stored_not_refused(): void
+    {
+        // No owner/workflow meta, so the plain `forceFill()->save()` branch runs. This subclass'
+        // save() PERSISTS but reports null (a host-override shape; Eloquent's save() is untyped). A
+        // null result is not a veto — the write stored — so the revert must be recorded, not refused.
+        $record = NullSaveReturningParticle::create([
+            'schema_ref' => 'x/1',
+            'payload' => ['body' => 'original'],
+        ]);
+
+        $old = ['payload' => ['body' => 'original']];
+        $record->payload = ['body' => 'edited'];
+        $record->save();
+
+        $entry = $record->recordRevision($old, ['payload' => $record->payload], 'edit');
+
+        // Pre-fix the `! $saved` predicate treated null as refused and threw RevertRefused on a write
+        // that had in fact landed; the fix keys refusal on a strict `=== false`, so this does not throw.
+        $record->revertTo($entry);
+
+        $this->assertSame(['body' => 'original'], $record->fresh()->payload);
+        $this->assertContains('revert', collect($record->fresh()->revisions())->pluck('cause')->all());
     }
 
     public function test_revisions_are_grouped_by_correlation_for_batch_undo(): void
