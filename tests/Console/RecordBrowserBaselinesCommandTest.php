@@ -265,6 +265,165 @@ class RecordBrowserBaselinesCommandTest extends TestCase
             ->assertFailed();
     }
 
+    // ---- browser-journeys 25: registrant filter (--for) + target repo (--into) ------------------
+
+    /**
+     * `--for=<package>` keeps ONLY flows that package declared; a declared flow owned by ANOTHER package
+     * is listed as skipped and never written. `--into=<repo>` writes the committed baseline into that
+     * repo's tree, not the running app base path. Together: a package reference run commits only its own
+     * flows, into its own repo. (A distinct --into dir forces the real copy() even on this fold host.)
+     */
+    public function test_for_filters_to_the_named_registrants_flows_and_into_writes_that_repo(): void
+    {
+        $this->designate(true);
+        $this->app->make(FlowCatalog::class)->declare(Bj25AccountsFlows::class, by: 'splicewire/beam-accounts');
+
+        $into = $this->base.'/accounts-repo';   // distinct path (not the base_path fold) → real copy()
+        @mkdir($into, 0775, true);
+
+        $this->writeManifest(['readings.offering', 'account.security']);
+        $this->writeCapture('readings.offering@1280');   // splicewire/laravel-beam → skipped by --for
+        $this->writeCapture('account.security@1280');    // splicewire/beam-accounts → promoted into $into
+
+        $this->artisan('splicewire:beam:browser:record-baselines', [
+            '--for' => 'splicewire/beam-accounts',
+            '--into' => $into,
+        ])
+            ->expectsOutputToContain('skipped (not declared by splicewire/beam-accounts')
+            ->expectsOutputToContain('1 baseline(s) promoted')
+            ->assertSuccessful();
+
+        // Written into the TARGET repo (distinct from base_path), and the other package's flow was not.
+        $this->assertSame(
+            'PNG-account.security@1280',
+            file_get_contents($into.'/tests/Browser/screenshots/account.security@1280.png'),
+        );
+        $this->assertFileDoesNotExist($into.'/tests/Browser/screenshots/readings.offering@1280.png');
+    }
+
+    /**
+     * THE two-package test (the land row's load-bearing interpretation of the owner ruling): a flow key
+     * DECLARED BY BOTH packages is committed into BOTH package repos — once per `--for=A --into=repoA`,
+     * once per `--for=B --into=repoB` — duplicated, NEVER tie-broken to one. `keysBy()` answers the key
+     * for each declarer, so the same `shared.widget` is kept under both filters; each repo also receives
+     * its OWN exclusive flow and NOT the other's.
+     */
+    public function test_a_co_declared_flow_is_committed_into_both_package_repos(): void
+    {
+        $this->designate(true);
+        $catalog = $this->app->make(FlowCatalog::class);
+        $catalog->declare(Bj25AccountsFlows::class, by: 'splicewire/beam-accounts');   // account.security + shared.widget
+        $catalog->declare(Bj25CommerceFlows::class, by: 'splicewire/beam-commerce');   // commerce.cart   + shared.widget
+
+        $accountsRepo = $this->base.'/accounts-repo';
+        $commerceRepo = $this->base.'/commerce-repo';
+        @mkdir($accountsRepo, 0775, true);
+        @mkdir($commerceRepo, 0775, true);
+
+        $this->writeManifest(['account.security', 'commerce.cart', 'shared.widget']);
+        $this->writeCapture('account.security@1280');
+        $this->writeCapture('commerce.cart@1280');
+        $this->writeCapture('shared.widget@1280');       // declared by BOTH packages
+
+        // Accounts reference run → accounts repo (account.security + shared.widget).
+        $this->artisan('splicewire:beam:browser:record-baselines', [
+            '--for' => 'splicewire/beam-accounts',
+            '--into' => $accountsRepo,
+        ])
+            ->expectsOutputToContain('2 baseline(s) promoted')
+            ->assertSuccessful();
+
+        // Commerce reference run → commerce repo (commerce.cart + shared.widget).
+        $this->artisan('splicewire:beam:browser:record-baselines', [
+            '--for' => 'splicewire/beam-commerce',
+            '--into' => $commerceRepo,
+        ])
+            ->expectsOutputToContain('2 baseline(s) promoted')
+            ->assertSuccessful();
+
+        // The co-declared flow is in BOTH repos — duplicated, not tie-broken.
+        $this->assertFileExists($accountsRepo.'/tests/Browser/screenshots/shared.widget@1280.png');
+        $this->assertFileExists($commerceRepo.'/tests/Browser/screenshots/shared.widget@1280.png');
+
+        // Each repo got its OWN exclusive flow...
+        $this->assertFileExists($accountsRepo.'/tests/Browser/screenshots/account.security@1280.png');
+        $this->assertFileExists($commerceRepo.'/tests/Browser/screenshots/commerce.cart@1280.png');
+
+        // ...and NOT the other package's exclusive flow.
+        $this->assertFileDoesNotExist($accountsRepo.'/tests/Browser/screenshots/commerce.cart@1280.png');
+        $this->assertFileDoesNotExist($commerceRepo.'/tests/Browser/screenshots/account.security@1280.png');
+    }
+
+    /** `--into` without `--for` fails closed — a target repo must name whose flows it receives. */
+    public function test_into_without_for_fails_closed(): void
+    {
+        $this->designate(true);
+        $into = $this->base.'/some-repo';
+        @mkdir($into, 0775, true);
+        $this->writeManifest(['readings.offering']);
+        $this->writeCapture('readings.offering@1280');
+
+        $this->artisan('splicewire:beam:browser:record-baselines', ['--into' => $into])
+            ->expectsOutputToContain('--into names a target repo but --for')
+            ->assertFailed();
+
+        $this->assertFileDoesNotExist($into.'/tests/Browser/screenshots/readings.offering@1280.png');
+    }
+
+    /** `--into` naming a path that is not an existing directory fails closed — a typo creates no stray tree. */
+    public function test_into_missing_directory_fails_closed(): void
+    {
+        $this->designate(true);
+        $this->writeManifest(['readings.offering']);
+        $this->writeCapture('readings.offering@1280');
+
+        $this->artisan('splicewire:beam:browser:record-baselines', [
+            '--for' => 'splicewire/laravel-beam',
+            '--into' => $this->base.'/no-such-repo',
+        ])
+            ->expectsOutputToContain('is not an existing directory')
+            ->assertFailed();
+
+        $this->assertDirectoryDoesNotExist($this->base.'/no-such-repo');
+    }
+
+    /** `--for` naming a package that declares no flow in this catalog fails closed — never a silent empty success. */
+    public function test_for_unknown_package_fails_closed(): void
+    {
+        $this->designate(true);
+        $this->writeManifest(['readings.offering']);
+        $this->writeCapture('readings.offering@1280');
+
+        $this->artisan('splicewire:beam:browser:record-baselines', ['--for' => 'splicewire/not-installed'])
+            ->expectsOutputToContain('declares no flow')
+            ->assertFailed();
+    }
+
+    /**
+     * Off the record host (determinism/designation gate fails), a `--for`/`--into` package run still writes
+     * NOTHING — it reports drift only and exits 0, exactly like the host default (done-when 2: a stray run on
+     * another Mac cannot overwrite baselines, target repo or not).
+     */
+    public function test_for_into_off_record_host_writes_nothing(): void
+    {
+        $this->designate(false);                         // determinism leg A still satisfied by the fixture
+        $this->app->make(FlowCatalog::class)->declare(Bj25AccountsFlows::class, by: 'splicewire/beam-accounts');
+
+        $into = $this->base.'/accounts-repo';
+        @mkdir($into, 0775, true);
+        $this->writeManifest(['account.security']);
+        $this->writeCapture('account.security@1280');
+
+        $this->artisan('splicewire:beam:browser:record-baselines', [
+            '--for' => 'splicewire/beam-accounts',
+            '--into' => $into,
+        ])
+            ->expectsOutputToContain('Not the designated record host')
+            ->assertSuccessful();
+
+        $this->assertFileDoesNotExist($into.'/tests/Browser/screenshots/account.security@1280.png');
+    }
+
     // ---- fixtures -------------------------------------------------------------------------------
 
     private function designate(bool $on): void
@@ -420,6 +579,66 @@ final class Bj17TestFlows implements DeclaresFlows
             new FlowDeclaration(
                 key: 'subscribe.door',
                 label: 'Subscribe door',
+                routes: [],
+                gate: AlwaysOn::class,
+                checkpoint: null,
+                roles: [],
+            ),
+        ];
+    }
+}
+
+/**
+ * browser-journeys 25: a SECOND package's flows. One exclusive to it (`account.security`) and one
+ * (`shared.widget`) also declared by {@see Bj25CommerceFlows} — the co-declared key that must land in
+ * BOTH package repos. Declared in the test under `by: 'splicewire/beam-accounts'`.
+ */
+final class Bj25AccountsFlows implements DeclaresFlows
+{
+    public static function flows(): array
+    {
+        return [
+            new FlowDeclaration(
+                key: 'account.security',
+                label: 'Account security',
+                routes: [],
+                gate: AlwaysOn::class,
+                checkpoint: null,
+                roles: [],
+            ),
+            new FlowDeclaration(
+                key: 'shared.widget',
+                label: 'Shared widget',
+                routes: [],
+                gate: AlwaysOn::class,
+                checkpoint: null,
+                roles: [],
+            ),
+        ];
+    }
+}
+
+/**
+ * browser-journeys 25: a THIRD package's flows. One exclusive (`commerce.cart`) and the same
+ * `shared.widget` {@see Bj25AccountsFlows} declares — proving the co-declared key is duplicated into
+ * both repos, never tie-broken. Declared in the test under `by: 'splicewire/beam-commerce'`.
+ */
+final class Bj25CommerceFlows implements DeclaresFlows
+{
+    public static function flows(): array
+    {
+        return [
+            new FlowDeclaration(
+                key: 'commerce.cart',
+                label: 'Commerce cart',
+                routes: [],
+                gate: AlwaysOn::class,
+                checkpoint: null,
+                roles: [],
+            ),
+            new FlowDeclaration(
+                key: 'shared.widget',
+                label: 'Shared widget',
                 routes: [],
                 gate: AlwaysOn::class,
                 checkpoint: null,

@@ -73,3 +73,24 @@ A `FlowGate` is resolved from the container and answers one `FlowState` — `On`
 for the host, with no actor and no role. `Absent` is the structural third answer: a host that has
 declared a whole capability estate absent, or has not wired the feature, has no flow to switch. A gate
 must not throw; the doctor reports a throw as a finding. A flow with no switch names `AlwaysOn`.
+
+## Recording baselines: the host pass and the package pass
+
+`splicewire:beam:browser:record-baselines` promotes a fresh Browser-suite capture into the committed
+screenshot baseline for each declared flow (record host only — see the command's own docblock for the
+determinism gate). It runs in two shapes, and the difference is which flows it commits and *where*
+(browser-journeys PRD, tickets 25 and 26):
+
+- **The host pass** — no `--for`/`--into`. Every declared flow with a fresh capture is committed under
+  the **running app's** `tests/Browser/screenshots`, git drift reported in the app repo. This is the
+  historic behaviour and is byte-for-byte unchanged; the host reference pass relies on it.
+- **A package pass** — `--for=<vendor/name> --into=<repo>`. Only flows whose **catalog registrant** is
+  that package are committed (every other declared flow is listed as skipped and never written), into
+  **that package's own** checkout, git drift reported there. Fresh captures are still read from the
+  running app — a package proves its own flows against the host that ran them.
+
+A flow key two packages both declare (`beam.flows` admits duplicates) is returned by the catalog's
+`keysBy()` for **each** declarer, so `--for=A` keeps it for A and `--for=B` keeps it for B: the same
+flow is committed into **both** package repos, never tie-broken to one and never guessed. The three
+fail-closed guards (`--into` without `--for`, a `--into` path that is not an existing directory, a
+`--for` package that declares no flow) refuse rather than write the wrong — or no — baselines.

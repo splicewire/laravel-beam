@@ -4,6 +4,7 @@ namespace Splicewire\Beam\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
+use Rushing\Popcorn\Registries\IsRegistry;
 use Splicewire\Beam\Flows\FlowCatalog;
 use Splicewire\Beam\Testing\Flow;
 use Splicewire\Beam\Testing\FlowOutcome;
@@ -64,14 +65,29 @@ class RecordBrowserBaselinesCommand extends Command
 
     protected $signature = 'splicewire:beam:browser:record-baselines
         {--flow=* : Limit to these flow keys (default: every declared flow with a fresh capture).}
+        {--for= : Keep only flows whose catalog registrant is this package (a composer name, e.g. splicewire/beam-accounts). A PACKAGE reference run; default (unset) commits every declared flow — the host pass. A key two packages both declare is kept for EACH, so it is committed into both their repos, never guessed.}
+        {--into= : Write the committed baselines into THIS repo root (its tests/Browser/screenshots) instead of the running app base path; fresh captures are still read from the app base path. Requires --for. Default (unset) writes under the running app — the host pass.}
         {--check : Never write; report what WOULD change and exit 0. This is also forced off the record host.}';
 
     protected $description = 'Promote the browser suite\'s fresh captures into the committed screenshot baselines (record host only).';
 
     public function handle(FlowCatalog $catalog): int
     {
+        // The fresh captures are ALWAYS read from the running app's base path — the Browser suite ran
+        // here and wrote them. Only the committed-baseline DESTINATION (and the git repo its drift is
+        // reported in) moves with --into; a package reference run reads the host's captures and writes
+        // the package's own repo.
         $captureDir = base_path('tests/Browser/Screenshots');   // gitignored, the test writes here (capital S)
-        $baselineDir = base_path('tests/Browser/screenshots');  // committed, this command writes here (lower-case)
+
+        // Resolve the target repo + registrant filter from --into/--for. Fail-closed: a mistyped package
+        // or a missing target repo refuses rather than silently writing the wrong (or no) baselines.
+        $target = $this->resolveTarget($catalog);
+
+        if (is_int($target)) {
+            return $target; // a guard already reported why and chose the exit code
+        }
+
+        [$baselineDir, $gitRoot, $allowedKeys] = $target;
 
         $manifest = $this->readManifest($captureDir);
         $writing = ! $this->option('check') && $this->isRecordHost();
@@ -85,9 +101,25 @@ class RecordBrowserBaselinesCommand extends Command
             return self::FAILURE;
         }
 
-        $captures = $this->gatherCaptures($captureDir, $catalog, $manifest);
+        $registrantSkipped = [];
+        $captures = $this->gatherCaptures($captureDir, $catalog, $manifest, $allowedKeys, $registrantSkipped);
+
+        if ($registrantSkipped !== []) {
+            $this->components->info(
+                count($registrantSkipped).' capture(s) skipped (not declared by '.$this->option('for').', not written): '
+                .implode(', ', $registrantSkipped)
+            );
+        }
 
         if ($captures === []) {
+            if ($allowedKeys !== null && $registrantSkipped !== []) {
+                $this->components->warn(
+                    'No promotable captures declared by '.$this->option('for').' in this run — nothing to record for that package.'
+                );
+
+                return self::SUCCESS;
+            }
+
             $this->components->warn(
                 "No promotable captures under {$captureDir}. Run the Browser suite first — it writes each flow's "
                 .'capture + the run manifest there; this command only promotes them.'
@@ -100,7 +132,99 @@ class RecordBrowserBaselinesCommand extends Command
             return $this->report($captures, $captureDir, $baselineDir, $manifest);
         }
 
-        return $this->promote($captures, $captureDir, $baselineDir);
+        return $this->promote($captures, $captureDir, $baselineDir, $gitRoot);
+    }
+
+    /**
+     * Resolve the committed-baseline destination, the git repo its drift is reported in, and the
+     * registrant filter, from `--into`/`--for`.
+     *
+     * The HOST default (neither option) is byte-for-byte the historic behaviour: baselines under the
+     * running app's base path, git drift in the app repo, every declared flow eligible. This default is
+     * load-bearing — the host reference pass (ticket 26) relies on it being unchanged.
+     *
+     * A PACKAGE reference run names BOTH `--for=<vendor/name>` (whose flows) and `--into=<repo>` (that
+     * package's own checkout). Three fail-closed guards, each a likely operator slip that must never
+     * write the wrong baselines:
+     *   - `--into` without `--for` refuses: dumping EVERY host flow into one package's repo is never
+     *     intended, so the destination always names whose flows it receives.
+     *   - a `--into` path that is not an existing directory refuses: a typo must not create a stray tree.
+     *   - a `--for` package that declares no flow in this host's catalog refuses: a mistyped or
+     *     not-installed package would otherwise silently promote nothing and look like success.
+     *
+     * @return array{0: string, 1: string, 2: ?list<string>}|int  [baselineDir, gitRoot, allowedKeys] or an exit code
+     */
+    private function resolveTarget(FlowCatalog $catalog): array|int
+    {
+        $for = $this->option('for');
+        $for = is_string($for) && $for !== '' ? $for : null;
+
+        $into = $this->option('into');
+        $into = is_string($into) && $into !== '' ? rtrim($into, '/') : null;
+
+        if ($into !== null && $for === null) {
+            $this->components->error(
+                '--into names a target repo but --for does not say whose flows it receives. A target repo '
+                .'always commits exactly one package\'s declared flows; pass --for=<vendor/name>.'
+            );
+
+            return self::FAILURE;
+        }
+
+        if ($into !== null && ! is_dir($into)) {
+            $this->components->error("--into target repo {$into} is not an existing directory — refusing to record.");
+
+            return self::FAILURE;
+        }
+
+        $allowedKeys = null;
+
+        if ($for !== null) {
+            // keysBy() answers ABSOLUTE keys (root-prefixed, e.g. `beam.flows.readings.offering`); the
+            // capture filename and the rest of this command speak the RELATIVE key (`readings.offering`),
+            // so strip the catalog's own root. A key two packages both declare is returned by keysBy()
+            // for EACH of them, so under --for=A it is kept for A and under --for=B kept for B — the same
+            // flow is committed into BOTH package repos, never tie-broken, never guessed. (strval first:
+            // keysBy returns Stringable RegistryKey OBJECTS, and a strict compare against a string never
+            // matches — the silent-no-op that once rejected every capture, browser-journeys 17.)
+            $root = $this->catalogRoot($catalog);
+
+            // Fail CLOSED where the read-only audit merely degrades: without the catalog root we cannot
+            // strip it, so every absolute keysBy() key would miss every relative capture key and the run
+            // would skip everything and exit SUCCESS ("nothing to record") — a silent green that could mask
+            // a real package's flows. A write must refuse instead. Unreachable while FlowCatalog hardcodes
+            // its #[IsRegistry(root: 'beam.flows')]; this guards a future catalog that does not.
+            if ($root === '') {
+                $this->components->error(
+                    "Cannot resolve the flow catalog's root key, so --for={$for} cannot be matched against the "
+                    .'captured flows — refusing to record rather than silently committing nothing.'
+                );
+
+                return self::FAILURE;
+            }
+
+            $allowedKeys = array_values(array_unique(array_map(
+                fn ($abs): string => $this->relativize((string) $abs, $root),
+                $catalog->keysBy($for),
+            )));
+
+            if ($allowedKeys === []) {
+                $this->components->error(
+                    "--for={$for} declares no flow in this host's catalog — refusing to record. Check the "
+                    .'package name and that the package is installed in this host.'
+                );
+
+                return self::FAILURE;
+            }
+        }
+
+        $baselineDir = $into !== null
+            ? $into.'/tests/Browser/screenshots'
+            : base_path('tests/Browser/screenshots');
+
+        $gitRoot = $into ?? base_path();
+
+        return [$baselineDir, $gitRoot, $allowedKeys];
     }
 
     /**
@@ -145,10 +269,17 @@ class RecordBrowserBaselinesCommand extends Command
      * by `--flow`. Each is tagged `fresh` — false when it predates the latest run (see the staleness guard).
      *
      * @param  array{entered: array<string, true>, mtime: int}|null  $manifest
+     * @param  list<string>|null  $allowedKeys  the registrant filter (relative keys), or null for no filter (host default)
+     * @param  list<string>  $registrantSkipped  OUT: captures of a DECLARED flow dropped because another package declared it
      * @return list<array{name: string, fresh: bool}>
      */
-    private function gatherCaptures(string $captureDir, FlowCatalog $catalog, ?array $manifest): array
-    {
+    private function gatherCaptures(
+        string $captureDir,
+        FlowCatalog $catalog,
+        ?array $manifest,
+        ?array $allowedKeys = null,
+        array &$registrantSkipped = [],
+    ): array {
         if (! is_dir($captureDir)) {
             return [];
         }
@@ -165,6 +296,16 @@ class RecordBrowserBaselinesCommand extends Command
             // silently rejected (browser-journeys 17). has() door-normalizes the key as register() does.
             if ($key === null || ! $catalog->has($key)) {
                 continue; // not a flow baseline (results file, stray capture, undeclared key)
+            }
+
+            // Registrant filter (--for): a DECLARED flow whose registrant is some OTHER package is listed
+            // as skipped (never written), so a package reference run touches only its own baselines. The
+            // allowed set is relative keys; a co-declared key is in the set for each declarer, so it is
+            // NOT skipped here under either package's --for.
+            if ($allowedKeys !== null && ! in_array($key, $allowedKeys, true)) {
+                $registrantSkipped[] = $name;
+
+                continue;
             }
 
             if ($only !== [] && ! in_array($key, $only, true)) {
@@ -228,7 +369,7 @@ class RecordBrowserBaselinesCommand extends Command
      *
      * @param  list<array{name: string, fresh: bool}>  $captures
      */
-    private function promote(array $captures, string $captureDir, string $baselineDir): int
+    private function promote(array $captures, string $captureDir, string $baselineDir, string $gitRoot): int
     {
         if (! is_dir($baselineDir) && ! @mkdir($baselineDir, 0775, true) && ! is_dir($baselineDir)) {
             $this->components->error("Could not create baseline directory {$baselineDir}.");
@@ -304,7 +445,7 @@ class RecordBrowserBaselinesCommand extends Command
         }
 
         $this->components->info("{$promoted} baseline(s) promoted on the record host.");
-        $this->reportGitDrift($baselineDir);
+        $this->reportGitDrift($baselineDir, $gitRoot);
 
         return self::SUCCESS;
     }
@@ -380,10 +521,14 @@ class RecordBrowserBaselinesCommand extends Command
         return self::SUCCESS;
     }
 
-    /** Print `git status`/`git diff --stat` scoped to the committed baseline directory (done-when: drift on the record host). */
-    private function reportGitDrift(string $baselineDir): void
+    /**
+     * Print `git status`/`git diff --stat` scoped to the committed baseline directory (done-when: drift on
+     * the record host). Git runs in `$gitRoot` — the running app by default, or the `--into` target repo on
+     * a package reference run, so the drift is reported in the repo that actually receives the commit.
+     */
+    private function reportGitDrift(string $baselineDir, string $gitRoot): void
     {
-        $status = Process::path(base_path())->run(['git', 'status', '--porcelain', '--', $baselineDir]);
+        $status = Process::path($gitRoot)->run(['git', 'status', '--porcelain', '--', $baselineDir]);
 
         if (trim($status->output()) === '') {
             $this->components->info('No baseline drift — committed screenshots already match the fresh captures.');
@@ -392,7 +537,7 @@ class RecordBrowserBaselinesCommand extends Command
         }
 
         $this->line($status->output());
-        $this->line(Process::path(base_path())->run(['git', 'diff', '--stat', '--', $baselineDir])->output());
+        $this->line(Process::path($gitRoot)->run(['git', 'diff', '--stat', '--', $baselineDir])->output());
     }
 
     /** WRITE gate: the determinism signature (A) AND the single-host designation (B). Both required. */
@@ -508,5 +653,42 @@ class RecordBrowserBaselinesCommand extends Command
         }
 
         return implode('; ', $missing);
+    }
+
+    /* ---------------- registrant filter key-space (mirrors FlowDoctorAudit) ---------------- */
+
+    /**
+     * The catalog's own declared root (`beam.flows`), read off its {@see IsRegistry} attribute rather than
+     * hardcoded, so a capture's RELATIVE key can be compared against the ABSOLUTE keys {@see FlowCatalog::keysBy()}
+     * answers. `''` when the attribute cannot be read — a miss degrades to treating keys as already relative,
+     * exactly as {@see \Splicewire\Beam\Doctor\FlowDoctorAudit} does.
+     */
+    private function catalogRoot(FlowCatalog $catalog): string
+    {
+        try {
+            $attributes = (new \ReflectionClass($catalog))->getAttributes(IsRegistry::class);
+
+            if ($attributes === []) {
+                return '';
+            }
+
+            $root = $attributes[0]->newInstance()->root;
+
+            return is_string($root) ? $root : '';
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    /** Strip the catalog root prefix from an absolute key, yielding the relative key a capture is named by. */
+    private function relativize(string $absolute, string $root): string
+    {
+        if ($root === '') {
+            return $absolute;
+        }
+
+        $prefix = $root.'.';
+
+        return str_starts_with($absolute, $prefix) ? substr($absolute, strlen($prefix)) : $absolute;
     }
 }
