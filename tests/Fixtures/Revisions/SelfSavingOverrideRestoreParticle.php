@@ -15,6 +15,9 @@ use Splicewire\Beam\Models\BeamParticle;
  */
 class SelfSavingOverrideRestoreParticle extends BeamParticle
 {
+    /** How many times this subclass's restore override has been entered (so a test can prove it RAN). */
+    public static int $overrideCalls = 0;
+
     public function getMorphClass(): string
     {
         return 'self_saving_override_particle';
@@ -25,6 +28,8 @@ class SelfSavingOverrideRestoreParticle extends BeamParticle
      */
     public function restoreVersionSnapshot(array $snapshot): void
     {
+        self::$overrideCalls++;
+
         // Own the write (no parent call), then REPORT its result through the single slot seam.
         $this->recordRestoreOutcome(
             $this->forceFill(['payload' => $snapshot['payload'] ?? null])->save()

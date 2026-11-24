@@ -11,12 +11,20 @@ use Splicewire\Beam\Revisions\RevertRefused;
 use Splicewire\Beam\Tests\Fixtures\Revisions\NullSaveReturningParticle;
 use Splicewire\Beam\Tests\Fixtures\Revisions\OwnerOverrideRestoreParticle;
 use Splicewire\Beam\Tests\Fixtures\Revisions\SelfSavingOverrideRestoreParticle;
+use Splicewire\Beam\Tests\Fixtures\Revisions\ZeroSaveReturningParticle;
 
 class RecordsRevisionsTest extends TestCase
 {
+    /** @var array<string, class-string> the morph map as it was BEFORE this test registered its aliases */
+    protected array $priorMorphMap = [];
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        // morphMap() is PROCESS-STATIC — it outlives the test. Capture the prior map so tearDown() can put
+        // it back verbatim, or these fixture aliases would leak into every later test in the process.
+        $this->priorMorphMap = Relation::morphMap();
 
         // Each revision-fixture subclass gets its OWN durable morph alias, registered to its class, so
         // RevisionRecorder::resolveSubject() rebuilds the SUBCLASS on revert (via getMorphedModel) — not
@@ -26,6 +34,7 @@ class RecordsRevisionsTest extends TestCase
             'owner_override_particle' => OwnerOverrideRestoreParticle::class,
             'null_save_particle' => NullSaveReturningParticle::class,
             'self_saving_override_particle' => SelfSavingOverrideRestoreParticle::class,
+            'zero_save_particle' => ZeroSaveReturningParticle::class,
         ]);
 
         Schema::create(Beam::table('particles'), function (Blueprint $table) {
@@ -51,6 +60,16 @@ class RecordsRevisionsTest extends TestCase
             $table->json('properties')->nullable();
             $table->timestamps();
         });
+    }
+
+    protected function tearDown(): void
+    {
+        // Put the process-static morph map back exactly as it was, replacing (not merging) so this test's
+        // fixture aliases cannot leak forward. Beam's own `beam_particle` alias rides getMorphClass(), not
+        // the map, so restoring the prior map leaves it untouched.
+        Relation::morphMap($this->priorMorphMap, false);
+
+        parent::tearDown();
     }
 
     public function test_a_schema_record_records_and_reverts_a_revision(): void
@@ -243,6 +262,30 @@ class RecordsRevisionsTest extends TestCase
         $this->assertContains('revert', collect($record->fresh()->revisions())->pluck('cause')->all());
     }
 
+    public function test_a_revert_whose_save_override_returns_zero_is_treated_as_stored_not_refused(): void
+    {
+        // Plain branch (no owner/workflow meta). This subclass' save() PERSISTS but reports the integer
+        // `0` — a falsey NON-BOOL. With no strict_types, a `?bool` outcome seam would coerce `0` to false
+        // and refuse a stored write; the mixed seam keys refusal on a strict `=== false`, so `0` reads as
+        // stored and the revert is recorded, not refused. A `(bool) $stored` normalisation would re-break
+        // this (that is the M1 mutant).
+        $record = ZeroSaveReturningParticle::create([
+            'schema_ref' => 'x/1',
+            'payload' => ['body' => 'original'],
+        ]);
+
+        $old = ['payload' => ['body' => 'original']];
+        $record->payload = ['body' => 'edited'];
+        $record->save();
+
+        $entry = $record->recordRevision($old, ['payload' => $record->payload], 'edit');
+
+        $record->revertTo($entry);
+
+        $this->assertSame(['body' => 'original'], $record->fresh()->payload);
+        $this->assertContains('revert', collect($record->fresh()->revisions())->pluck('cause')->all());
+    }
+
     public function test_a_self_persisting_override_that_reports_a_vetoed_save_is_refused_not_recorded(): void
     {
         // An override that owns its OWN write (never calls parent) must report its save() result through
@@ -250,6 +293,8 @@ class RecordsRevisionsTest extends TestCase
         // the owner branch, which clears the slot, dispatches through the override, then reads it. The
         // pre-image equals the live payload, so the restore is a no-op and the model stays clean —
         // isDirty() is blind here, and ONLY the reported false tells the vetoed write from a stored one.
+        SelfSavingOverrideRestoreParticle::$overrideCalls = 0;
+
         $record = SelfSavingOverrideRestoreParticle::create([
             'schema_ref' => 'thing/1',
             'payload' => ['body' => 'original'],
@@ -276,6 +321,10 @@ class RecordsRevisionsTest extends TestCase
             $this->assertSame($record->getMorphClass(), $e->subjectType);
             $this->assertSame($record->getKey(), $e->subjectKey);
         }
+
+        // The refusal came through THIS subclass's own override, not a bypassed base worker: prove the
+        // override actually ran (exactly once) on the revert dispatch.
+        $this->assertSame(1, SelfSavingOverrideRestoreParticle::$overrideCalls);
 
         // No `revert` recorded for a write the override reported refused, and no new revision at all.
         $this->assertSame($revisionsBefore, count($record->fresh()->revisions()));

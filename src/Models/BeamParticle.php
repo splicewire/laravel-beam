@@ -226,12 +226,18 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
      * Report the store result of a restore onto the outcome slot {@see restoreOutcome()} reads — the
      * SINGLE seam that writes it. The base {@see restoreVersionSnapshot()} reports its own save() here;
      * an override that persists the record itself calls this with its save() result so the recorder can
-     * tell a stored write from a vetoed one. `null` is a non-report (treated as stored); only a strict
-     * `false` is a refusal.
+     * tell a stored write from a vetoed one. Only a strict boolean `false` is a refusal.
+     *
+     * Takes `mixed`, not `?bool`, and normalises here: this file has no `declare(strict_types=1)`, so a
+     * `?bool` parameter would COERCE a falsey non-bool — a host `save()` override returning `0` (Eloquent's
+     * save() is untyped) — to `false` and refuse a write that actually stored. A strict `=== false` keeps
+     * only a real boolean false as the veto; every other reported value (`0`, `''`, a truthy, an explicit
+     * null) means the write landed and normalises to `true` (stored). A TOTAL non-report never reaches
+     * here, so the slot stays at the cleared `null` (unknown), which the recorder also reads as stored.
      */
-    protected function recordRestoreOutcome(?bool $stored): void
+    protected function recordRestoreOutcome(mixed $stored): void
     {
-        $this->restoreStoredOutcome = $stored;
+        $this->restoreStoredOutcome = $stored === false ? false : true;
     }
 
     /**
