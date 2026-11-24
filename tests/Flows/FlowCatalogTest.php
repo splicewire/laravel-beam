@@ -96,17 +96,29 @@ it('reads exactly the keyed declaration, never a surface with children as ambigu
         ->and($catalog->declarations('account.security')[0]->label)->toBe('Security');
 });
 
-it('admits a duplicate key from two registrants, retaining both and naming each (never thrown, never superseded)', function () {
+it('supersedes a re-declared key: the later registrant wins, the earlier is displaced (never thrown)', function () {
     $catalog = new FlowCatalog;
 
+    // Registration order is pinned HERE: pkg/a declares first, pkg/b declares the SAME key LAST, so
+    // pkg/b is the later registrant and the sole live winner. (A real host's order is provider
+    // registration order — installed.json then app providers — which is measured, not asserted; see
+    // the land row. The test controls order directly, so the outcome is deterministic.)
     $catalog->register('account', new FlowDeclaration('account', 'A', [], AlwaysOn::class, null, []), 'pkg/a');
     $catalog->register('account', new FlowDeclaration('account', 'A-too', [], AlwaysOn::class, null, []), 'pkg/b');
 
-    // admitted: both retained, boot never throws.
-    expect($catalog->declarations('account'))->toHaveCount(2)
-        // both registrants named — neither supersedes the other.
-        ->and(array_map('strval', $catalog->keysBy('pkg/a')))->toContain('beam.flows.account')
-        ->and(array_map('strval', $catalog->keysBy('pkg/b')))->toContain('beam.flows.account');
+    // Supersede: exactly one live entry, the later registrant's; boot never throws.
+    expect($catalog->declarations('account'))->toHaveCount(1)
+        ->and($catalog->declarations('account')[0]->label)->toBe('A-too')
+        // the winner (later registrant) resolves; the displaced one does not.
+        ->and($catalog->registrantOf('account'))->toBe('pkg/b')
+        ->and(array_map('strval', $catalog->keysBy('pkg/b')))->toContain('beam.flows.account')
+        ->and(array_map('strval', $catalog->keysBy('pkg/a')))->not->toContain('beam.flows.account');
+
+    // The displaced entry is recorded as supersession history (never fed to a read), naming the
+    // registrant that LOST — pkg/a.
+    $displaced = $catalog->superseded('account');
+    expect($displaced)->toHaveCount(1)
+        ->and($displaced[0]->by)->toBe('pkg/a');
 });
 
 // ── Static, boot-free accessor; gate and state primitives ───────────────────────────────────────

@@ -302,18 +302,24 @@ class RecordBrowserBaselinesCommandTest extends TestCase
     }
 
     /**
-     * THE two-package test (the land row's load-bearing interpretation of the owner ruling): a flow key
-     * DECLARED BY BOTH packages is committed into BOTH package repos — once per `--for=A --into=repoA`,
-     * once per `--for=B --into=repoB` — duplicated, NEVER tie-broken to one. `keysBy()` answers the key
-     * for each declarer, so the same `shared.widget` is kept under both filters; each repo also receives
-     * its OWN exclusive flow and NOT the other's.
+     * THE two-package test (the land row's load-bearing read of the owner ruling): a flow key DECLARED
+     * BY BOTH packages SUPERSEDES — the LATER registrant wins, so the baseline is committed ONLY into
+     * the winning package's repo, never duplicated into the superseded one. `keysBy()` answers the key
+     * for the winner alone (the displaced entry is supersession history, never read), so under
+     * `--for=<winner>` the shared key is kept and under `--for=<superseded>` it is not. Each repo still
+     * receives its OWN exclusive flow and NOT the other's.
+     *
+     * Registration order is pinned HERE by declare() call sequence: accounts declares first, commerce
+     * declares `shared.widget` LAST, so commerce is the later registrant and the winner. (A real host's
+     * order is provider registration order — installed.json then app providers — which is measured,
+     * not asserted; see the land row.)
      */
-    public function test_a_co_declared_flow_is_committed_into_both_package_repos(): void
+    public function test_a_superseded_flow_is_committed_only_into_the_winning_package_repo(): void
     {
         $this->designate(true);
         $catalog = $this->app->make(FlowCatalog::class);
-        $catalog->declare(Bj25AccountsFlows::class, by: 'splicewire/beam-accounts');   // account.security + shared.widget
-        $catalog->declare(Bj25CommerceFlows::class, by: 'splicewire/beam-commerce');   // commerce.cart   + shared.widget
+        $catalog->declare(Bj25AccountsFlows::class, by: 'splicewire/beam-accounts');   // account.security + shared.widget (FIRST → superseded)
+        $catalog->declare(Bj25CommerceFlows::class, by: 'splicewire/beam-commerce');   // commerce.cart   + shared.widget (LAST  → winner)
 
         $accountsRepo = $this->base.'/accounts-repo';
         $commerceRepo = $this->base.'/commerce-repo';
@@ -323,17 +329,19 @@ class RecordBrowserBaselinesCommandTest extends TestCase
         $this->writeManifest(['account.security', 'commerce.cart', 'shared.widget']);
         $this->writeCapture('account.security@1280');
         $this->writeCapture('commerce.cart@1280');
-        $this->writeCapture('shared.widget@1280');       // declared by BOTH packages
+        $this->writeCapture('shared.widget@1280');       // declared by BOTH; commerce wins it
 
-        // Accounts reference run → accounts repo (account.security + shared.widget).
+        // Accounts (the SUPERSEDED declarer) → accounts repo gets its exclusive flow ONLY; the shared
+        // key is no longer declared by accounts, so it is skipped, not committed.
         $this->artisan('splicewire:beam:browser:record-baselines', [
             '--for' => 'splicewire/beam-accounts',
             '--into' => $accountsRepo,
         ])
-            ->expectsOutputToContain('2 baseline(s) promoted')
+            ->expectsOutputToContain('skipped (not declared by splicewire/beam-accounts')
+            ->expectsOutputToContain('1 baseline(s) promoted')
             ->assertSuccessful();
 
-        // Commerce reference run → commerce repo (commerce.cart + shared.widget).
+        // Commerce (the WINNER) → commerce repo gets its exclusive flow AND the superseded shared key.
         $this->artisan('splicewire:beam:browser:record-baselines', [
             '--for' => 'splicewire/beam-commerce',
             '--into' => $commerceRepo,
@@ -341,9 +349,9 @@ class RecordBrowserBaselinesCommandTest extends TestCase
             ->expectsOutputToContain('2 baseline(s) promoted')
             ->assertSuccessful();
 
-        // The co-declared flow is in BOTH repos — duplicated, not tie-broken.
-        $this->assertFileExists($accountsRepo.'/tests/Browser/screenshots/shared.widget@1280.png');
+        // The superseded flow is ONLY in the winner's repo — never duplicated into the displaced one.
         $this->assertFileExists($commerceRepo.'/tests/Browser/screenshots/shared.widget@1280.png');
+        $this->assertFileDoesNotExist($accountsRepo.'/tests/Browser/screenshots/shared.widget@1280.png');
 
         // Each repo got its OWN exclusive flow...
         $this->assertFileExists($accountsRepo.'/tests/Browser/screenshots/account.security@1280.png');

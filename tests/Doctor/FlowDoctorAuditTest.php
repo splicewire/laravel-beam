@@ -226,21 +226,23 @@ it('does NOT fail a missing-route flow when it is off and a matching Deviation c
         ->and(flowDoctorFinding($findings, FlowDoctorAudit::TAG_DEVIATED))->not->toBeNull();
 });
 
-it('reports a duplicate key naming both registrants', function () {
+it('reports a superseded key naming the winner and the displaced registrant', function () {
     $catalog = new FlowCatalog;
-    // Two packages both declare `billing`; each also declares a distinct sub-flow so both are in the
-    // registrant universe the audit walks keysBy() over.
+    // pkg/a declares `billing` first; pkg/b re-declares the SAME key LAST, so pkg/b wins and pkg/a is
+    // superseded. Each also declares a distinct sub-flow so both are in the registrant universe the
+    // audit walks keysBy() over.
     $catalog->register('billing', new FlowDeclaration('billing', 'Billing', [], AlwaysOn::class, null, []), 'pkg/a');
     $catalog->register('billing.subscribe', new FlowDeclaration('billing.subscribe', 'Subscribe', [], AlwaysOn::class, null, []), 'pkg/a');
     $catalog->register('billing', new FlowDeclaration('billing', 'Billing too', [], AlwaysOn::class, null, []), 'pkg/b');
     $catalog->register('billing.gifting', new FlowDeclaration('billing.gifting', 'Gifting', [], AlwaysOn::class, null, []), 'pkg/b');
 
-    $finding = flowDoctorFinding(flowDoctorProbe($catalog)->run(), FlowDoctorAudit::TAG_DUPLICATE);
+    $finding = flowDoctorFinding(flowDoctorProbe($catalog)->run(), FlowDoctorAudit::TAG_SUPERSEDED);
 
     expect($finding)->not->toBeNull()
         ->and($finding->status)->toBe(DoctorStatus::Warn)
-        ->and($finding->detail)->toContain('pkg/a')
-        ->and($finding->detail)->toContain('pkg/b');
+        // the winner (later registrant) and the displaced registrant are both named.
+        ->and($finding->detail)->toContain('pkg/b')
+        ->and($finding->detail)->toContain('pkg/a');
 });
 
 // ── (2) BEAM.md key against the catalog (02 R3-Q3's four outcomes) ──────────────────────────────────

@@ -96,6 +96,33 @@ it('enters a non-deviated flow, writes an entered FlowResultData row, and return
         ->and($rows[0]['test'])->toContain('__pest_evaluable_it_enters_a_non_deviated_flow');
 });
 
+it('resolves the winner of a superseded key — records the later registrant, never the displaced one', function () {
+    helperSetup(); // fixture/pkg declares account.security FIRST
+
+    // A second package re-declares the SAME key LAST → it supersedes fixture/pkg and becomes the sole
+    // live winner. The helper must record the WINNER, not refuse the key as ambiguous and not fall back
+    // to the first registrant. Order is pinned by this register() call coming after helperSetup().
+    $catalog = app(FlowCatalog::class);
+    $catalog->register(
+        'account.security',
+        new FlowDeclaration('account.security', 'Security (later)', ['security.edit'], AlwaysOn::class, null, ['owner', 'solo']),
+        'later/pkg',
+    );
+
+    $shot = flow('account.security', role: 'owner');
+    expect($shot->name())->toBe('account.security--owner@1280.png');
+
+    $rows = array_map(
+        fn (string $l) => json_decode($l, true),
+        array_filter(explode("\n", (string) @file_get_contents(FlowRun::resultsPath())))
+    );
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0]['flow'])->toBe('account.security')
+        // the WINNER (later registrant) is recorded, not the displaced fixture/pkg.
+        ->and($rows[0]['package'])->toBe('later/pkg')
+        ->and($rows[0]['outcome'])->toBe(FlowOutcome::Entered->value);
+});
+
 // ── the helper on a deviated flow: skips with the Deviation reason, records skipped-deviation ─────
 
 it('skips a deviated flow with the covering Deviation reason and records it', function () {
