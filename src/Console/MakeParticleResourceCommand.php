@@ -283,6 +283,7 @@ class MakeParticleResourceCommand extends ParticleGeneratorCommand
      */
     protected function declarationFindings(): array
     {
+        /** @var class-string $read */
         $read = $this->loadEmitted()[array_key_first($this->emitted)];
         $this->laravel->make(AttributedParticleDiscovery::class)->discover(classes: [$read]);
 

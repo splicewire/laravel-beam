@@ -877,12 +877,6 @@ parameters:
 			path: src/Console/MakeParticleResourceCommand.php
 
 		-
-			message: '#^Parameter \$classes of method Splicewire\\Beam\\Particle\\Attributes\\AttributedParticleDiscovery\:\:discover\(\) expects array\<int, class\-string\>, array\<int, string\> given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Console/MakeParticleResourceCommand.php
-
-		-
 			message: '#^Return type \(int\) of method Splicewire\\Beam\\Console\\MakeParticleResourceCommand\:\:handle\(\) should be compatible with return type \(bool\|null\) of method Illuminate\\Console\\GeneratorCommand\:\:handle\(\)$#'
 			identifier: method.childReturnType
 			count: 1
