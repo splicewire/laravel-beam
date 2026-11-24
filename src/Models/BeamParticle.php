@@ -150,11 +150,19 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
     }
 
     /**
-     * The store outcome of the LAST {@see restoreVersionSnapshot()} call that reached THIS base
-     * implementation, or null if none has since {@see clearRestoreOutcome()} last reset it. The revert
-     * recorder reads it (after clearing and dispatching through the overridable restoreVersionSnapshot())
-     * to tell a STORED write from a vetoed one on a no-op revert — where the restored values already
-     * equal the live ones, so the model never goes dirty and isDirty() cannot tell them apart.
+     * The store outcome of the LAST restore reported via {@see recordRestoreOutcome()} (the base impl
+     * reports its own save(); an override may report its own), or null if none has since
+     * {@see clearRestoreOutcome()} last reset it. The revert recorder reads it (after clearing and
+     * dispatching through the overridable restoreVersionSnapshot()) to tell a STORED write from a vetoed
+     * one on a no-op revert — where the restored values already equal the live ones, so the model never
+     * goes dirty and isDirty() cannot tell them apart.
+     *
+     * LAST-CALL state, single instance: the slot holds only the most recent report since the clear, so a
+     * re-entrant restore on the SAME instance (a nested restoreVersionSnapshot() inside an override)
+     * overwrites it — the recorder reads the last restore's outcome. Nested/re-entrant restores on one
+     * instance are therefore unsupported; each revert is clear → one restore → read. The value is
+     * transient per-instance bookkeeping, not persisted state; clone and serialization carry the plain
+     * nullable bool harmlessly (a fresh instance simply reads null until its next reported restore).
      */
     protected ?bool $restoreStoredOutcome = null;
 
@@ -169,8 +177,11 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
      * read. Only a strict `false` means refused — a save()-override returning null is NOT a veto.
      *
      * The revert recorder dispatches HERE (not at a private worker), so a BeamParticle subclass that
-     * OVERRIDES this method customises revert too; an override that never calls parent leaves the slot
-     * null, which the recorder reads as "unknown" and treats as stored (the pre-amend behaviour). The
+     * OVERRIDES this method customises revert too. An override that calls parent inherits the reporting
+     * for free. An override that persists the record ITSELF (and does NOT call parent) MUST report its
+     * own save() result through {@see recordRestoreOutcome()} — that is the single seam that reaches the
+     * slot; an override that reports nothing leaves the slot null, which the recorder reads as "unknown"
+     * and treats as stored (the pre-amend behaviour for an override the recorder cannot see into). The
      * versioning store is the other caller: it wraps this in its OWN transaction and keys refusal off
      * its own save(), so once beam's lock takes the amended versioning tip a vetoed restore through the
      * store rolls back atomically — this method need not police that path.
@@ -199,15 +210,28 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
             $snapshot['meta'] = $meta;
         }
 
-        // Record the raw save() result (no (bool) cast): the recorder keys refusal off a strict
-        // `false`, so a save()-override returning null must stay null (treated as stored), not false.
-        $this->restoreStoredOutcome = $this->forceFill([
+        // Report the raw save() result (no (bool) cast) through the one slot-writing seam: the recorder
+        // keys refusal off a strict `false`, so a save()-override returning null must stay null (treated
+        // as stored), not false.
+        $this->recordRestoreOutcome($this->forceFill([
             'schema_ref' => $snapshot['schema_ref'] ?? null,
             'schema_id' => $snapshot['schema_id'] ?? null,
             'migration_status' => $snapshot['migration_status'] ?? null,
             'payload' => $snapshot['payload'] ?? null,
             'meta' => $snapshot['meta'] ?? null,
-        ])->save();
+        ])->save());
+    }
+
+    /**
+     * Report the store result of a restore onto the outcome slot {@see restoreOutcome()} reads — the
+     * SINGLE seam that writes it. The base {@see restoreVersionSnapshot()} reports its own save() here;
+     * an override that persists the record itself calls this with its save() result so the recorder can
+     * tell a stored write from a vetoed one. `null` is a non-report (treated as stored); only a strict
+     * `false` is a refusal.
+     */
+    protected function recordRestoreOutcome(?bool $stored): void
+    {
+        $this->restoreStoredOutcome = $stored;
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests;
 
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Splicewire\Beam\Facades\Beam;
@@ -9,12 +10,23 @@ use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Revisions\RevertRefused;
 use Splicewire\Beam\Tests\Fixtures\Revisions\NullSaveReturningParticle;
 use Splicewire\Beam\Tests\Fixtures\Revisions\OwnerOverrideRestoreParticle;
+use Splicewire\Beam\Tests\Fixtures\Revisions\SelfSavingOverrideRestoreParticle;
 
 class RecordsRevisionsTest extends TestCase
 {
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Each revision-fixture subclass gets its OWN durable morph alias, registered to its class, so
+        // RevisionRecorder::resolveSubject() rebuilds the SUBCLASS on revert (via getMorphedModel) — not
+        // the base BeamParticle the inherited `beam_particle` alias would otherwise resolve, which would
+        // bypass each subclass's override and make the override/null-save laws prove nothing.
+        Relation::morphMap([
+            'owner_override_particle' => OwnerOverrideRestoreParticle::class,
+            'null_save_particle' => NullSaveReturningParticle::class,
+            'self_saving_override_particle' => SelfSavingOverrideRestoreParticle::class,
+        ]);
 
         Schema::create(Beam::table('particles'), function (Blueprint $table) {
             $table->uuid('id')->primary();
@@ -229,6 +241,45 @@ class RecordsRevisionsTest extends TestCase
 
         $this->assertSame(['body' => 'original'], $record->fresh()->payload);
         $this->assertContains('revert', collect($record->fresh()->revisions())->pluck('cause')->all());
+    }
+
+    public function test_a_self_persisting_override_that_reports_a_vetoed_save_is_refused_not_recorded(): void
+    {
+        // An override that owns its OWN write (never calls parent) must report its save() result through
+        // recordRestoreOutcome(); a reported `false` is a refusal. Owner meta routes the revert through
+        // the owner branch, which clears the slot, dispatches through the override, then reads it. The
+        // pre-image equals the live payload, so the restore is a no-op and the model stays clean —
+        // isDirty() is blind here, and ONLY the reported false tells the vetoed write from a stored one.
+        $record = SelfSavingOverrideRestoreParticle::create([
+            'schema_ref' => 'thing/1',
+            'payload' => ['body' => 'original'],
+            'meta' => ['owner' => ['id' => 'u1']],
+        ]);
+
+        $entry = $record->recordRevision(
+            ['payload' => ['body' => 'original']],
+            ['payload' => ['body' => 'original']],
+            'edit',
+        );
+        $revisionsBefore = count($record->fresh()->revisions());
+
+        // The override's own save() is vetoed; keyed on the CONCRETE class, since Eloquent model events
+        // fire per concrete class — a listener on the base would not reach this subclass's save().
+        SelfSavingOverrideRestoreParticle::saving(fn () => false);
+
+        try {
+            $record->revertTo($entry);
+            $this->fail('a self-saving override that reports a vetoed save must throw RevertRefused.');
+        } catch (RevertRefused $e) {
+            // The reported `false` surfaced as a loud refusal, carried through recordRestoreOutcome()
+            // from an override that never touched parent.
+            $this->assertSame($record->getMorphClass(), $e->subjectType);
+            $this->assertSame($record->getKey(), $e->subjectKey);
+        }
+
+        // No `revert` recorded for a write the override reported refused, and no new revision at all.
+        $this->assertSame($revisionsBefore, count($record->fresh()->revisions()));
+        $this->assertNotContains('revert', collect($record->fresh()->revisions())->pluck('cause')->all());
     }
 
     public function test_revisions_are_grouped_by_correlation_for_batch_undo(): void

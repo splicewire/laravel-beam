@@ -13,6 +13,16 @@ use Splicewire\Beam\Models\BeamParticle;
 class NullSaveReturningParticle extends BeamParticle
 {
     /**
+     * Its OWN durable morph alias (registered to this class in the test's morph map), so a revision
+     * entry recorded for this subclass resolves BACK to this subclass on revert — reaching this null-
+     * reporting save(), not the base BeamParticle the inherited `beam_particle` alias would rebuild.
+     */
+    public function getMorphClass(): string
+    {
+        return 'null_save_particle';
+    }
+
+    /**
      * @param  array<string, mixed>  $options
      */
     public function save(array $options = [])

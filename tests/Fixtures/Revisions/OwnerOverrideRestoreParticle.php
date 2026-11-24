@@ -17,6 +17,16 @@ class OwnerOverrideRestoreParticle extends BeamParticle
     public static int $overrideCalls = 0;
 
     /**
+     * Its OWN durable morph alias (registered to this class in the test's morph map), so a revision
+     * entry recorded for this subclass resolves BACK to this subclass on revert — not to the base
+     * BeamParticle the inherited `beam_particle` alias would rebuild, which would skip the override.
+     */
+    public function getMorphClass(): string
+    {
+        return 'owner_override_particle';
+    }
+
+    /**
      * @param  array<string, mixed>  $snapshot
      */
     public function restoreVersionSnapshot(array $snapshot): void
