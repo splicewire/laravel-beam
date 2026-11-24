@@ -182,11 +182,14 @@ class RecordBrowserBaselinesCommand extends Command
         if ($for !== null) {
             // keysBy() answers ABSOLUTE keys (root-prefixed, e.g. `beam.flows.readings.offering`); the
             // capture filename and the rest of this command speak the RELATIVE key (`readings.offering`),
-            // so strip the catalog's own root. A key two packages both declare is returned by keysBy()
-            // for EACH of them, so under --for=A it is kept for A and under --for=B kept for B — the same
-            // flow is committed into BOTH package repos, never tie-broken, never guessed. (strval first:
-            // keysBy returns Stringable RegistryKey OBJECTS, and a strict compare against a string never
-            // matches — the silent-no-op that once rejected every capture, browser-journeys 17.)
+            // so strip the catalog's own root. A key two packages both declare SUPERSEDES — the later
+            // registrant wins and the earlier is displaced into supersession history, which keysBy()
+            // never reads — so keysBy() answers the shared key for the WINNER only. Under --for=<winner>
+            // it is kept and committed into the winner's repo; under --for=<superseded> it is absent and
+            // skipped, so the baseline lands in exactly one repo, never duplicated, never tie-broken by
+            // this command (the catalog already resolved the winner). (strval first: keysBy returns
+            // Stringable RegistryKey OBJECTS, and a strict compare against a string never matches — the
+            // silent-no-op that once rejected every capture, browser-journeys 17.)
             $root = $this->catalogRoot($catalog);
 
             // Fail CLOSED where the read-only audit merely degrades: without the catalog root we cannot
@@ -300,8 +303,9 @@ class RecordBrowserBaselinesCommand extends Command
 
             // Registrant filter (--for): a DECLARED flow whose registrant is some OTHER package is listed
             // as skipped (never written), so a package reference run touches only its own baselines. The
-            // allowed set is relative keys; a co-declared key is in the set for each declarer, so it is
-            // NOT skipped here under either package's --for.
+            // allowed set is relative keys; a re-declared key supersedes, so it is in the set for the
+            // WINNER only — under the winner's --for it is written, under the superseded declarer's --for
+            // it is absent and skipped here, landing in exactly one repo.
             if ($allowedKeys !== null && ! in_array($key, $allowedKeys, true)) {
                 $registrantSkipped[] = $name;
 

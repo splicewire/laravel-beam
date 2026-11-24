@@ -11,10 +11,12 @@ use Rushing\Popcorn\Registries\Key;
 use Rushing\Popcorn\Registries\OnKeyDuplicate;
 use Rushing\Popcorn\Registries\PopulationRequirement;
 use Rushing\Popcorn\Registries\RecordsRegistrants;
+use Rushing\Popcorn\Registries\RecordsSupersession;
 use Rushing\Popcorn\Registries\Registrant;
 use Rushing\Popcorn\Registries\Registry;
 use Rushing\Popcorn\Registries\RegistryKey;
 use Rushing\Popcorn\Registries\ScopesRegistrant;
+use Rushing\Popcorn\Registries\Superseded;
 use Splicewire\Beam\BeamServiceProvider;
 use Splicewire\Beam\Realm\RealmOverlayRegistry;
 
@@ -30,23 +32,28 @@ use Splicewire\Beam\Realm\RealmOverlayRegistry;
  * (`PopulationRequirement::Optional`).
  *
  * Modeled on {@see RealmOverlayRegistry}: it holds a {@see BasicRegistry} and
- * delegates the {@see Registry} contract to it. `OnKeyDuplicate::Admit` means two installed packages
- * may declare the same key; both are retained (never thrown at boot, never superseded), and a read of
- * that exact key is honestly ambiguous — the doctor names both registrants, the browser-test helper
- * refuses the ambiguous key inside the test.
+ * delegates the {@see Registry} contract to it. `OnKeyDuplicate::Supersede` means the registry is a
+ * SUPERSEDE-KEY registry: when two installed packages declare the same key, the later registrant wins
+ * (last write wins, override in place), and the earlier declaration is displaced into supersession
+ * history — recorded, never fed to a read. So an exact-key read answers the single winner: the doctor
+ * reports the supersession naming the winner and the displaced registrant, the browser-test helper
+ * resolves the winner, and record-baselines commits the key into the winner's repo only. A package
+ * that genuinely EXTENDS another's surface should register a sibling/child key at the correct seam
+ * (as commerce's `account.billing` sits under accounts' `account`), not re-declare the same key
+ * (owner ruling 2026-11-24).
  */
 #[IsRegistry(
     root: 'beam.flows',
     entryType: FlowDeclaration::class,
-    onKeyDuplicate: OnKeyDuplicate::Admit,
+    onKeyDuplicate: OnKeyDuplicate::Supersede,
     populationRequirement: PopulationRequirement::Optional,
-    description: 'Flow declarations keyed by flow key (surface[.flow[.subflow]]). Each package ships one static DeclaresFlows class, declared by its provider under its registrant. Admit: two packages may declare one key; both are retained and the doctor names both registrants. A host with no flow-shipping package is a legal, empty catalog.',
+    description: 'Flow declarations keyed by flow key (surface[.flow[.subflow]]). Each package ships one static DeclaresFlows class, declared by its provider under its registrant. Supersede: a package re-declaring a key overrides it — the later registrant wins and the earlier is displaced into supersession history, so the doctor names the winner and the superseded registrant. An extension should register a sibling/child key, not re-declare. A host with no flow-shipping package is a legal, empty catalog.',
     order: 20,
 )]
 /**
  * @implements Registry<FlowDeclaration>
  */
-final class FlowCatalog implements Gated, RecordsRegistrants, Registry
+final class FlowCatalog implements Gated, RecordsRegistrants, RecordsSupersession, Registry
 {
     /** @var BasicRegistry<FlowDeclaration> flow key => its declaration(s). */
     private BasicRegistry $store;
@@ -89,7 +96,10 @@ final class FlowCatalog implements Gated, RecordsRegistrants, Registry
     /**
      * The declaration(s) at EXACTLY `$key`. Reads the subtree via `matches()` and keeps only the exact
      * key, so a surface that also has children (`account` with `account.security` under it) is never
-     * reported as ambiguous. Under `Admit`, more than one is a genuine duplicate the doctor reports.
+     * reported as ambiguous. Under `Supersede` a read of an exact key is the single live winner (a
+     * displaced declaration is supersession history, never read), so this returns one declaration for a
+     * declared key — the later registrant's. The displaced declaration, and who declared it, is read via
+     * {@see superseded()}.
      *
      * @return list<FlowDeclaration>
      */
@@ -156,6 +166,20 @@ final class FlowCatalog implements Gated, RecordsRegistrants, Registry
     public function keysBy(string $registrant): array
     {
         return $this->store->keysBy($registrant);
+    }
+
+    /**
+     * What a re-declaration displaced at `$key`, oldest first — the {@see RecordsSupersession} contract.
+     * Always-on under `OnKeyDuplicate::Supersede`: each record names the registrant that LOST, which is
+     * how the doctor reports a supersession without keeping a parallel list (mirroring how frame reads
+     * its own displaced declarations). The store speaks absolute keys; pass the relative key and the
+     * store roots it, exactly as {@see declarations()} and {@see has()} do.
+     *
+     * @return list<Superseded>
+     */
+    public function superseded(RegistryKey|string $key): array
+    {
+        return $this->store->superseded($key);
     }
 
     public function unfiltered(): Registry

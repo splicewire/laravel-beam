@@ -8,6 +8,7 @@ use Rushing\Doctor\DoctorAudit;
 use Rushing\Doctor\Finding;
 use Rushing\Popcorn\Laravel\PopcornManager;
 use Rushing\Popcorn\Registries\IsRegistry;
+use Rushing\Popcorn\Registries\Superseded;
 use Splicewire\Beam\Conformance\BeamManifest;
 use Splicewire\Beam\Flows\FlowCatalog;
 use Splicewire\Beam\Flows\FlowDeclaration;
@@ -75,7 +76,7 @@ class FlowDoctorAudit implements DoctorAudit
 
     public const TAG_GATE_THREW = 'gate-threw';
 
-    public const TAG_DUPLICATE = 'duplicate';
+    public const TAG_SUPERSEDED = 'superseded';
 
     public const TAG_DECLARED = 'declared';
 
@@ -165,17 +166,27 @@ class FlowDoctorAudit implements DoctorAudit
         $key = $flow['rel'];
         $declarations = $flow['declarations'];
 
-        // A duplicate is reported before anything else: under OnKeyDuplicate::Admit two packages may
-        // declare one key and resolve() is honestly ambiguous, so there is no single declaration to
-        // classify. Name both registrants (02) and stop.
-        if (count($declarations) > 1) {
+        // A supersession is reported before anything else: under OnKeyDuplicate::Supersede a package
+        // that re-declares a key OVERRIDES it (later registrant wins), and the displaced declaration is
+        // recorded as supersession history — never read. declarations() therefore holds the one live
+        // winner; the displaced registrant(s) are read from superseded(), the way frame reads its own
+        // displaced declarations rather than keeping a parallel list (owner ruling 2026-11-24). Name the
+        // winner and every displaced registrant, and stop — the superseded entry is not a second flow to
+        // classify.
+        $displaced = array_values(array_unique(array_filter(array_map(
+            static fn (Superseded $s): ?string => $s->by,
+            $this->catalog->superseded($key),
+        ))));
+        if ($displaced !== []) {
             return [Finding::warn(self::CHECK, sprintf(
-                '[%s] `%s` is declared by more than one installed package (%s). Under Admit both are '.
-                'retained and a read of the exact key is ambiguous — one package should drop its '.
-                'declaration, or the two should declare distinct keys.',
-                self::TAG_DUPLICATE,
+                '[%s] `%s` is declared by more than one installed package; the later registrant (%s) '.
+                'supersedes %s. Supersede keeps exactly one live declaration — the winner — and records '.
+                'the rest. A package that extends another should register a sibling/child key, not '.
+                're-declare this one.',
+                self::TAG_SUPERSEDED,
                 $key,
                 $this->registrantsAt($flow['abs'], $registrants),
+                implode(', ', $displaced),
             ))];
         }
 
@@ -444,11 +455,13 @@ class FlowDoctorAudit implements DoctorAudit
     /* ---------------- registrants ---------------- */
 
     /**
-     * The candidate registrant set: the first registrant of every declared key. Under Admit a key may
-     * have several registrants and {@see FlowCatalog::registrantOf()} returns only the first; the
-     * documented way to recover the rest is to walk {@see FlowCatalog::keysBy()} from the other
-     * direction (BasicRegistry::registrantOf's own note), and this is the universe to walk it over —
-     * every package that declared any key appears here.
+     * The candidate registrant set: the registrant of every declared key. Under Supersede a declared
+     * key resolves to its one live winner, so {@see FlowCatalog::registrantOf()} answers that winner,
+     * and a displaced registrant is recovered from {@see FlowCatalog::superseded()} where the
+     * supersession is reported. This universe is still built over every declared key so that a package
+     * whose only visible keys are its OWN (its re-declared key having lost) still appears — it declared
+     * at least one exclusive key — which is what lets {@see registrantsAt()} name the winner at a shared
+     * key by walking {@see FlowCatalog::keysBy()} from the other direction.
      *
      * @param  list<string>  $absoluteKeys
      * @return list<string>

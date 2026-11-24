@@ -18,7 +18,7 @@ itself a declared flow with no entry routes.
 
 - **Root:** `beam.flows`
 - **Entries:** `Splicewire\Beam\Flows\FlowDeclaration`
-- **Duplicate keys:** Admit — every registration is kept; a single-entry read of a shared key refuses as ambiguous
+- **Duplicate keys:** Supersede — a later registration under a taken key replaces the earlier entry, in its place
 - **Population:** Optional — an empty registry is normal
 - **Order:** `20` (display order, ascending)
 - **Declared by:** `Splicewire\Beam\Flows\FlowCatalog`
@@ -89,8 +89,13 @@ determinism gate). It runs in two shapes, and the difference is which flows it c
   **that package's own** checkout, git drift reported there. Fresh captures are still read from the
   running app — a package proves its own flows against the host that ran them.
 
-A flow key two packages both declare (`beam.flows` admits duplicates) is returned by the catalog's
-`keysBy()` for **each** declarer, so `--for=A` keeps it for A and `--for=B` keeps it for B: the same
-flow is committed into **both** package repos, never tie-broken to one and never guessed. The three
-fail-closed guards (`--into` without `--for`, a `--into` path that is not an existing directory, a
-`--for` package that declares no flow) refuse rather than write the wrong — or no — baselines.
+A flow key two packages both declare **supersedes** (`beam.flows` is a supersede-key registry): the
+later registrant wins, and the earlier declaration is displaced into supersession history, which
+`keysBy()` never reads. So `keysBy()` answers the shared key for the **winner** only — `--for=<winner>`
+commits it into the winner's repo, and `--for=<the superseded declarer>` lists it as skipped and never
+writes it. The baseline lands in exactly one repo, never duplicated and never tie-broken by this
+command (the catalog already resolved the winner); the doctor reports the supersession, naming the
+winner and the displaced registrant. A package that **extends** another's surface should register a
+sibling/child key at the correct seam, not re-declare the same key (owner ruling 2026-11-24). The
+three fail-closed guards (`--into` without `--for`, a `--into` path that is not an existing directory,
+a `--for` package that declares no flow) refuse rather than write the wrong — or no — baselines.
