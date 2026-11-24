@@ -16,6 +16,7 @@ use Schemastud\Frame\Attributes\Column;
 use Schemastud\Frame\Attributes\RowActions;
 use Schemastud\Frame\Attributes\WidgetIn;
 use Schemastud\Frame\Contracts\ResourceContextContributor;
+use Schemastud\Frame\Registry\ContextBlockFacts;
 use Schemastud\Frame\Registry\ContextContributorRegistry;
 use Schemastud\Frame\Registry\ContextManifest;
 use Spatie\LaravelData\Data;
@@ -255,8 +256,7 @@ class ResourceContributionTest extends TestCase
     {
         return $this->app->make(ContextManifest::class)->forResource(
             ContribCrateData::class,
-            null,
-            'contrib-crate',
+            new ContextBlockFacts(key: 'contrib-crate'),
         );
     }
 

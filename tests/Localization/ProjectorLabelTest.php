@@ -1,6 +1,7 @@
 <?php
 
 use Schemastud\Frame\FrameServiceProvider;
+use Schemastud\Frame\Registry\ContextBlockFacts;
 use Schemastud\Frame\Registry\ContextContributorRegistry;
 use Schemastud\Frame\Registry\ContextManifest;
 use Schemastud\Frame\Registry\DeferredWidgetLabel;
@@ -100,7 +101,7 @@ it('translates a CONTRIBUTED list column\'s label in the container manifest (the
         value: fn () => null,
     ));
 
-    $byNode = app(ContextManifest::class)->forResource(RouteRowData::class, null, 'ff89-labels')['byNode'];
+    $byNode = app(ContextManifest::class)->forResource(RouteRowData::class, new ContextBlockFacts(key: 'ff89-labels'))['byNode'];
 
     expect($byNode['route.target']['list-column']['label'] ?? null)->toBe('Destino');
 });

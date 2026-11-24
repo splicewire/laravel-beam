@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use Schemastud\Frame\Registry\ContextBlockFacts;
 use Schemastud\Frame\Registry\ContextContributorRegistry;
 use Schemastud\Frame\Registry\ContextManifest;
 use Splicewire\Beam\Collections\CollectionSchemaResolver;
@@ -78,7 +79,7 @@ class CollectionFrameContextTest extends TestCase
         $this->app->instance(CollectionSchemaResolver::class, $collectionSchemas);
         $frame = new ContextManifest($this->app->make(ContextContributorRegistry::class));
 
-        $emptyCollection = $frame->forResource(RecordData::class, key: 'records');
+        $emptyCollection = $frame->forResource(RecordData::class, new ContextBlockFacts(key: 'records'));
 
         $this->assertSame(0, DB::table(Beam::table('particles'))->count());
         $this->assertSame(
@@ -107,7 +108,7 @@ class CollectionFrameContextTest extends TestCase
             'payload' => json_encode(['label' => 'Receipt Second Collection Row', 'priority' => 'high', 'quantity' => 7]),
         ]);
 
-        $populatedCollection = $frame->forResource(RecordData::class, key: 'records');
+        $populatedCollection = $frame->forResource(RecordData::class, new ContextBlockFacts(key: 'records'));
 
         $this->assertSame(1, DB::table(Beam::table('particles'))->count());
         $this->assertSame($emptyCollection['byNode'], $populatedCollection['byNode']);
@@ -117,7 +118,7 @@ class CollectionFrameContextTest extends TestCase
         $unaddressed = new ContextManifest($this->app->make(ContextContributorRegistry::class));
         $this->assertArrayNotHasKey(
             'fields.label',
-            $unaddressed->forResource(RecordData::class, key: 'records')['byNode'],
+            $unaddressed->forResource(RecordData::class, new ContextBlockFacts(key: 'records'))['byNode'],
         );
     }
 
@@ -132,7 +133,7 @@ class CollectionFrameContextTest extends TestCase
         $manifest = new ContextManifest($this->app->make(ContextContributorRegistry::class));
 
         $this->expectException(ValidationException::class);
-        $manifest->forResource(RecordData::class, key: 'records');
+        $manifest->forResource(RecordData::class, new ContextBlockFacts(key: 'records'));
     }
 
     public function test_frame_manifest_hides_an_unknown_or_inactive_collection_with_not_found(): void
@@ -146,7 +147,7 @@ class CollectionFrameContextTest extends TestCase
         $manifest = new ContextManifest($this->app->make(ContextContributorRegistry::class));
 
         $this->expectException(NotFoundHttpException::class);
-        $manifest->forResource(RecordData::class, key: 'records');
+        $manifest->forResource(RecordData::class, new ContextBlockFacts(key: 'records'));
     }
 
     public function test_frame_manifest_hides_a_registered_schema_that_is_not_a_collection(): void
@@ -165,6 +166,6 @@ class CollectionFrameContextTest extends TestCase
         $manifest = new ContextManifest($this->app->make(ContextContributorRegistry::class));
 
         $this->expectException(NotFoundHttpException::class);
-        $manifest->forResource(RecordData::class, key: 'records');
+        $manifest->forResource(RecordData::class, new ContextBlockFacts(key: 'records'));
     }
 }
