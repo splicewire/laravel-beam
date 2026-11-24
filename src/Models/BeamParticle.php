@@ -150,34 +150,34 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
     }
 
     /**
-     * Apply a frozen snapshot back onto the live record through the normal write path.
+     * The store outcome of the LAST {@see restoreVersionSnapshot()} call that reached THIS base
+     * implementation, or null if none has since {@see clearRestoreOutcome()} last reset it. The revert
+     * recorder reads it (after clearing and dispatching through the overridable restoreVersionSnapshot())
+     * to tell a STORED write from a vetoed one on a no-op revert — where the restored values already
+     * equal the live ones, so the model never goes dirty and isDirty() cannot tell them apart.
+     */
+    protected ?bool $restoreStoredOutcome = null;
+
+    /**
+     * Apply a frozen snapshot back onto the live record through the normal write path, recording
+     * whether that write STORED on {@see $restoreStoredOutcome}.
      *
-     * The {@see Versionable} contract types this `: void`, and the versioning store (which is the
-     * other caller) refuses a vetoed restore through its OWN transactional save — so this method keeps
-     * the contract shape and delegates to {@see restoreVersionSnapshotStored()}, discarding the
-     * boolean. The revert path needs that boolean (a no-op revert leaves the model clean, so
-     * `isDirty()` cannot tell a stored write from a refused one), so it calls the worker directly.
+     * Stays `: void` per the {@see Versionable} contract (widening it to `: bool` would fatal every
+     * other `: void` implementer). The store outcome the revert path needs rides the slot instead of
+     * the return type: a halting `saving`/`updating` listener (a guard, a policy, a tenancy veto) makes
+     * `save()` return false WITHOUT persisting, so the slot carries the raw result for the caller to
+     * read. Only a strict `false` means refused — a save()-override returning null is NOT a veto.
+     *
+     * The revert recorder dispatches HERE (not at a private worker), so a BeamParticle subclass that
+     * OVERRIDES this method customises revert too; an override that never calls parent leaves the slot
+     * null, which the recorder reads as "unknown" and treats as stored (the pre-amend behaviour). The
+     * versioning store is the other caller: it wraps this in its OWN transaction and keys refusal off
+     * its own save(), so once beam's lock takes the amended versioning tip a vetoed restore through the
+     * store rolls back atomically — this method need not police that path.
      *
      * @param  array<string, mixed>  $snapshot
      */
     public function restoreVersionSnapshot(array $snapshot): void
-    {
-        $this->restoreVersionSnapshotStored($snapshot);
-    }
-
-    /**
-     * Apply a frozen snapshot back onto the live record through the normal write path, returning
-     * whether that write STORED. A halting `saving`/`updating` listener (a guard, a policy, a tenancy
-     * veto) makes `save()` return false WITHOUT persisting; surfacing the boolean lets the revert path
-     * fail loudly even for a no-op revert, where the restored values already equal the live ones so
-     * `forceFill()` leaves the model clean and `isDirty()` stays false whether the write stored or was
-     * vetoed. Not on the {@see Versionable} contract (widening it to `: bool` would break every other
-     * `: void` implementer): BeamParticle's own method, reached through the `instanceof` gate in the
-     * revert path.
-     *
-     * @param  array<string, mixed>  $snapshot
-     */
-    public function restoreVersionSnapshotStored(array $snapshot): bool
     {
         $currentMeta = $this->getAttribute('meta') ?? [];
         if (isset($currentMeta['owner'])) {
@@ -199,13 +199,37 @@ class BeamParticle extends Model implements MigratesSnapshotOnRestore, Versionab
             $snapshot['meta'] = $meta;
         }
 
-        return (bool) $this->forceFill([
+        // Record the raw save() result (no (bool) cast): the recorder keys refusal off a strict
+        // `false`, so a save()-override returning null must stay null (treated as stored), not false.
+        $this->restoreStoredOutcome = $this->forceFill([
             'schema_ref' => $snapshot['schema_ref'] ?? null,
             'schema_id' => $snapshot['schema_id'] ?? null,
             'migration_status' => $snapshot['migration_status'] ?? null,
             'payload' => $snapshot['payload'] ?? null,
             'meta' => $snapshot['meta'] ?? null,
         ])->save();
+    }
+
+    /**
+     * Reset the restore-outcome slot before a restore whose store result the caller will read via
+     * {@see restoreOutcome()}. The recorder clears, dispatches through {@see restoreVersionSnapshot()},
+     * then reads — so a stale outcome from an earlier restore can never be read as this one's.
+     */
+    public function clearRestoreOutcome(): void
+    {
+        $this->restoreStoredOutcome = null;
+    }
+
+    /**
+     * The store outcome of the last {@see restoreVersionSnapshot()} since {@see clearRestoreOutcome()}:
+     * `true` stored, `false` refused (a vetoed save), `null` unknown — the base impl was bypassed by an
+     * override that never called parent, OR a save()-override returned null. A caller treats null as
+     * stored (only a strict `false` is a refusal), so a missing report never newly throws on a write
+     * that may have landed.
+     */
+    public function restoreOutcome(): ?bool
+    {
+        return $this->restoreStoredOutcome;
     }
 
     /**

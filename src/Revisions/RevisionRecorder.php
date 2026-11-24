@@ -86,6 +86,9 @@ class RevisionRecorder extends ActivityRecorder
 
     /**
      * Restore a prior state. Append-only: the reversal itself is recorded as a new entry.
+     *
+     * @throws RevertRefused when the restoring write is vetoed (a halting `saving`/`updating` listener
+     *                       makes `save()` return false): the reversal is NOT recorded.
      */
     public function revert(RevisionEntry $entry): Model
     {
@@ -95,8 +98,14 @@ class RevisionRecorder extends ActivityRecorder
 
         $restored = $entry->old;
         if ($subject instanceof BeamParticle && (isset($subject->meta['owner']) || isset($subject->meta['workflow']))) {
-            $saved = $subject->restoreVersionSnapshotStored(array_replace($subject->toVersionSnapshot(), $entry->old));
+            // Dispatch through the OVERRIDABLE restoreVersionSnapshot() — not a private worker — so a
+            // BeamParticle subclass that overrides restore is honoured on revert too. Clear the outcome
+            // slot first, then read it after: a null reading means the base impl was bypassed by an
+            // override that never called parent (unknown, treated as stored below).
+            $subject->clearRestoreOutcome();
+            $subject->restoreVersionSnapshot(array_replace($subject->toVersionSnapshot(), $entry->old));
             $restored = $subject->only(array_keys($entry->old));
+            $saved = $subject->restoreOutcome();
         } else {
             $saved = $subject->forceFill($entry->old)->save();
         }
@@ -106,12 +115,13 @@ class RevisionRecorder extends ActivityRecorder
         // append-only, recording the reversal when the restored state never landed would log a
         // `revert` for a write that did not store — a history that lies. The `save()` boolean is the
         // only signal that survives a NO-OP revert: when the pre-image already equals the live values,
-        // `forceFill()`/`restoreVersionSnapshot()` mutate nothing, so `isDirty()` stays false whether
-        // the write stored or a listener vetoed it — the old `isDirty()` predicate silently recorded a
-        // `revert` for the refused one. Both branches now carry the explicit outcome (the owner branch
-        // through BeamParticle's `restoreVersionSnapshotStored()`, which surfaces its own `save()`
-        // boolean without widening the `: void` Versionable contract). Fail loudly before recording.
-        if (! $saved) {
+        // the restore mutates nothing, so `isDirty()` stays false whether the write stored or a
+        // listener vetoed it — the old `isDirty()` predicate silently recorded a `revert` for the
+        // refused one. The owner branch carries the outcome on BeamParticle's restore-outcome slot
+        // (without widening the `: void` Versionable contract). ONLY a strict `false` is a refusal: a
+        // non-report (null — an override that bypassed the base impl, or a save()-override returning
+        // null) is treated as stored, so this never newly throws on a write that may have landed.
+        if ($saved === false) {
             throw RevertRefused::for($subject);
         }
 
