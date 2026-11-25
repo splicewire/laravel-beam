@@ -455,6 +455,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
             $model->exists ? $model : null,
             $this->submittedRequirementMembers($definition, $input),
             $this->actorBound ? $this->boundActor : auth()->user(),
+            is_string($this->resource($definition)?->input) ? $this->resource($definition)->input : null,
         );
 
         try {
@@ -484,6 +485,7 @@ class ParticleFrameResourceHandler implements ActorAwareFrameResourceHandler, Fr
             ParticleResource::behaviorFor($definition->key, $side),
             $subject,
             $this->submittedRequirementMembers($definition, $this->contextRequest($this->resource($definition))->all()),
+            is_string($this->resource($definition)?->input) ? $this->resource($definition)->input : null,
         );
 
         if ($refusal !== null) {

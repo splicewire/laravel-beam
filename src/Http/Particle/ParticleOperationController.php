@@ -206,6 +206,7 @@ class ParticleOperationController extends Controller
                 is_string($operation->input) ? $operation->input : null,
                 $request->all(),
             ),
+            is_string($operation->input) ? $operation->input : null,
         );
 
         if ($refusal !== null) {

@@ -654,6 +654,7 @@ class ParticleController extends Controller
             $model->exists ? $model : null,
             $request === null ? [] : $this->submittedRequirementMembers($resource, $request),
             $actor,
+            is_string($resource->input) ? $resource->input : null,
         );
 
         return $writer->requiring($requirement)->write($model, $attributes, $actor, $this->afterHook($resource, $input));
@@ -673,6 +674,7 @@ class ParticleController extends Controller
             $behavior,
             $subject,
             $this->submittedRequirementMembers($resource, $request),
+            is_string($resource->input) ? $resource->input : null,
         );
 
         if ($refusal !== null) {

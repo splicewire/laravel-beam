@@ -31,6 +31,7 @@ class RequirementAdmissionStage implements WriteStage
                 $requirement->behavior,
                 $requirement->subject,
                 $requirement->submittedMembers,
+                $requirement->input,
             );
 
             if ($refusal !== null) {

@@ -3,10 +3,12 @@
 namespace Splicewire\Beam\Agreements;
 
 use Illuminate\Support\Arr;
+use LogicException;
 use ReflectionClass;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Support\DataContainer;
 use Splicewire\Beam\Agreements\Data\AgreementMemberData;
+use Splicewire\Beam\Agreements\Data\OutstandingRequirementData;
 use Splicewire\Beam\Agreements\Data\RequirementRefusalData;
 
 /** A transport-neutral read of the requirements plane; it never records assent or builds a response. */
@@ -20,11 +22,44 @@ class RequirementAdmission
      *
      * @param  array<string, AgreementMemberData>  $submittedMembers  keyed by Agreement key
      */
-    public function inspect(mixed $party, string $behavior, mixed $subject, array $submittedMembers): ?RequirementRefusalData
+    public function inspect(mixed $party, string $behavior, mixed $subject, array $submittedMembers, ?string $input = null): ?RequirementRefusalData
     {
         $requirements = $this->resolver->outstanding($party, $behavior, $subject, $submittedMembers);
 
-        return $requirements === [] ? null : new RequirementRefusalData($requirements);
+        if ($requirements === []) {
+            return null;
+        }
+
+        $memberInput = null;
+        foreach ($requirements as $index => $requirement) {
+            if ($requirement->scope !== 'occurrence' || $requirement->acceptOperation === null) {
+                continue;
+            }
+
+            $memberInput ??= $this->memberInputName($input);
+            if ($memberInput === null) {
+                throw new LogicException(sprintf(
+                    'Occurrence requirement [%s] for [%s] has no declared AgreementMemberData input.',
+                    $requirement->key,
+                    $behavior,
+                ));
+            }
+
+            $requirements[$index] = new OutstandingRequirementData(
+                key: $requirement->key,
+                version: $requirement->version,
+                digest: $requirement->digest,
+                kind: $requirement->kind,
+                title: $requirement->title,
+                scope: $requirement->scope,
+                subject: $requirement->subject,
+                readUrl: $requirement->readUrl,
+                acceptOperation: null,
+                member: $memberInput,
+            );
+        }
+
+        return new RequirementRefusalData($requirements);
     }
 
     /**
@@ -37,21 +72,9 @@ class RequirementAdmission
      */
     public function submittedMembers(?string $input, array $payload): array
     {
-        if ($input === null || ! is_subclass_of($input, Data::class)) {
-            return [];
-        }
-
         $members = [];
-        $dataClass = DataContainer::get()->dataClassFactory()->build(new ReflectionClass($input));
 
-        foreach ($dataClass->properties as $property) {
-            $memberClass = $property->type->dataClass;
-
-            if (! is_string($memberClass) || ! is_a($memberClass, AgreementMemberData::class, true)) {
-                continue;
-            }
-
-            $name = $property->inputMappedName ?? $property->name;
+        foreach ($this->memberInputProperties($input) as [$name, $memberClass]) {
             $value = Arr::get($payload, $name);
 
             if (! is_array($value)) {
@@ -75,6 +98,35 @@ class RequirementAdmission
         }
 
         return $members;
+    }
+
+    /** Return the first declared AgreementMemberData input property in its wire name. */
+    private function memberInputName(?string $input): ?string
+    {
+        return $this->memberInputProperties($input)[0][0] ?? null;
+    }
+
+    /** @return list<array{string, class-string<AgreementMemberData>}> */
+    private function memberInputProperties(?string $input): array
+    {
+        if ($input === null || ! is_subclass_of($input, Data::class)) {
+            return [];
+        }
+
+        $properties = [];
+        $dataClass = DataContainer::get()->dataClassFactory()->build(new ReflectionClass($input));
+
+        foreach ($dataClass->properties as $property) {
+            $memberClass = $property->type->dataClass;
+
+            if (! is_string($memberClass) || ! is_a($memberClass, AgreementMemberData::class, true)) {
+                continue;
+            }
+
+            $properties[] = [$property->inputMappedName ?? $property->name, $memberClass];
+        }
+
+        return $properties;
     }
 
     private static function isMember(mixed $value): bool

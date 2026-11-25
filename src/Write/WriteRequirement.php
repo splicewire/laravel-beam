@@ -20,5 +20,7 @@ final class WriteRequirement
         public readonly mixed $subject = null,
         public readonly array $submittedMembers = [],
         public readonly mixed $actor = null,
+        /** The declared input DTO, used to restate occurrence remedies in its wire name. */
+        public readonly ?string $input = null,
     ) {}
 }

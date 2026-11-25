@@ -7,13 +7,14 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use LogicException;
-use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
+use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Data;
 use Splicewire\Beam\Agreements\Data\AgreementMemberData;
 use Splicewire\Beam\Agreements\Data\OutstandingRequirementData;
 use Splicewire\Beam\Agreements\Data\RequirementRefusalData;
 use Splicewire\Beam\Agreements\RequirementAdmission;
+use Splicewire\Beam\Agreements\RequirementRefused;
 use Splicewire\Beam\Agreements\RequirementResolver;
 use Splicewire\Beam\Facades\Particle;
 use Splicewire\Beam\Particle\OperationKind;
@@ -22,6 +23,9 @@ use Splicewire\Beam\Particle\ParticleOperationRegistry;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
+use Splicewire\Beam\Write\Stages\RequirementAdmissionStage;
+use Splicewire\Beam\Write\WriteContext;
+use Splicewire\Beam\Write\WriteRequirement;
 
 class RequirementAdmissionTest extends TestCase
 {
@@ -81,6 +85,48 @@ class RequirementAdmissionTest extends TestCase
         $this->assertSame($http->json('requirements'), $direct->toArray()['requirements']);
         $this->assertEquals(new AgreementMemberData('voice-release', 2, 'sha256:abc'), $resolver->submittedMembers['voice-release']);
         $this->assertSame('requirement-probe-rows.act', $resolver->behavior);
+    }
+
+    public function test_occurrence_refusal_uses_the_declared_member_while_other_scopes_keep_accept(): void
+    {
+        $resolver = new ScopedRequirementAdmissionResolver;
+        $this->app->instance(RequirementResolver::class, $resolver);
+        $admission = $this->app->make(RequirementAdmission::class);
+
+        $ask = function (array $payload) use ($admission): WriteContext {
+            $requirement = new WriteRequirement(
+                behavior: 'requirement-probe-rows.act',
+                submittedMembers: $admission->submittedMembers(RequirementProbeInput::class, $payload),
+                input: RequirementProbeInput::class,
+            );
+
+            return (new RequirementAdmissionStage)->handle(
+                new WriteContext(new RequirementProbeRow, [], requirement: $requirement),
+                function (WriteContext $context): WriteContext {
+                    $context->payload['result'] = 'passed';
+
+                    return $context;
+                },
+            );
+        };
+
+        try {
+            $ask([]);
+            $this->fail('outstanding requirements did not refuse the write');
+        } catch (RequirementRefused $refused) {
+            $items = $refused->refusal->requirements;
+            $this->assertSame(['occurrence', 'subject', 'party'], array_map(fn ($item) => $item->scope, $items));
+            $this->assertNull($items[0]->acceptOperation);
+            $this->assertSame('agreement_member', $items[0]->member);
+            $this->assertSame('agreements.accept', $items[1]->acceptOperation);
+            $this->assertNull($items[1]->member);
+            $this->assertSame('agreements.accept', $items[2]->acceptOperation);
+            $this->assertNull($items[2]->member);
+        }
+
+        $this->assertSame('passed', $ask([
+            'agreement_member' => ['key' => 'occurrence', 'version' => 1, 'digest' => 'occurrence-digest'],
+        ])->payload['result']);
     }
 
     public function test_member_collection_admits_two_requirements_and_names_only_the_missing_one(): void
@@ -318,4 +364,27 @@ class TwoAgreementAdmissionResolver implements RequirementResolver
 class RequirementProbeOutput extends Data
 {
     public function __construct(public bool $ok) {}
+}
+
+class ScopedRequirementAdmissionResolver implements RequirementResolver
+{
+    public function outstanding(mixed $party, string $behavior, mixed $subject, array $submittedMembers): array
+    {
+        if (isset($submittedMembers['occurrence'])) {
+            return [];
+        }
+
+        return array_map(fn (string $scope, string $key) => new OutstandingRequirementData(
+            key: $key,
+            version: 1,
+            digest: "{$key}-digest",
+            kind: 'contract',
+            title: ucfirst($scope),
+            scope: $scope,
+            subject: null,
+            readUrl: "/agreements/{$key}",
+            acceptOperation: 'agreements.accept',
+            member: null,
+        ), ['occurrence', 'subject', 'party'], ['occurrence', 'subject', 'party']);
+    }
 }
