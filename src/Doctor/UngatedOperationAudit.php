@@ -90,7 +90,11 @@ class UngatedOperationAudit implements DoctorAudit
     /** @return list<Finding> */
     public function run(): array
     {
-        $all = $this->operations->unfiltered()->matches('beam.particle.operations');
+        // One unfiltered view for both the population and the derived-op recognition (graph-operations
+        // 07): a filter that hid a derived op from registrantOf() would otherwise report it outstanding.
+        $unfiltered = $this->operations->unfiltered();
+        assert($unfiltered instanceof ParticleOperationRegistry, 'unfiltered() clones the registry it is called on');
+        $all = $unfiltered->matches('beam.particle.operations');
 
         // `kind: Write` is UngatedWriteOperationAudit's population, not this one's — see the class
         // docblock for why the split is a split. Excluded from the denominator too: a "4 of 36" that
@@ -109,7 +113,7 @@ class UngatedOperationAudit implements DoctorAudit
             }
 
             // Reported under its own heading, never silently subtracted (UndeclaredInputAudit's rule).
-            if (GraphOperations::isDerived($op, $this->operations)) {
+            if (GraphOperations::isDerived($op, $unfiltered)) {
                 $acknowledged[] = $op->key();
             } else {
                 $undeclared[] = $op;
