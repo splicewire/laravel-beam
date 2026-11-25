@@ -2,6 +2,8 @@
 
 namespace Splicewire\Beam\Graph;
 
+use Rushing\Popcorn\Registries\RecordsRegistrants;
+use Rushing\Popcorn\Registries\Registry;
 use Splicewire\Beam\Graph\Data\GraphCyclesData;
 use Splicewire\Beam\Graph\Data\GraphCyclesInput;
 use Splicewire\Beam\Graph\Data\GraphNeighboursInput;
@@ -57,11 +59,17 @@ class GraphOperations
      * recorded under the host and answers false, because deriveFor() never displaces it.
      *
      * {@see \Splicewire\Beam\Doctor\UngatedOperationAudit} reads this to report the derived ops' `null`
-     * ability as acknowledged (scope-gated, see the class docblock) rather than as residue.
+     * ability as acknowledged (scope-gated, see the class docblock) rather than as residue. It hands in
+     * its `unfiltered()` view (graph-operations 07), whose declared type is the Popcorn {@see Registry},
+     * so this takes that contract. A registry that does not record registrants cannot vouch that beam
+     * derived an op, so the op answers false: reported as outstanding, which over-warns and never hides.
+     *
+     * @param  Registry<mixed>  $operations
      */
-    public static function isDerived(ParticleOperation $operation, ParticleOperationRegistry $operations): bool
+    public static function isDerived(ParticleOperation $operation, Registry $operations): bool
     {
         return in_array($operation->name, self::NAMES, true)
+            && $operations instanceof RecordsRegistrants
             && $operations->registrantOf($operation->key()) === self::REGISTRANT;
     }
 

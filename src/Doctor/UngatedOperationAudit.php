@@ -93,7 +93,6 @@ class UngatedOperationAudit implements DoctorAudit
         // One unfiltered view for both the population and the derived-op recognition (graph-operations
         // 07): a filter that hid a derived op from registrantOf() would otherwise report it outstanding.
         $unfiltered = $this->operations->unfiltered();
-        assert($unfiltered instanceof ParticleOperationRegistry, 'unfiltered() clones the registry it is called on');
         $all = $unfiltered->matches('beam.particle.operations');
 
         // `kind: Write` is UngatedWriteOperationAudit's population, not this one's — see the class
