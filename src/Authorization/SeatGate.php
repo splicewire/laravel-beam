@@ -201,6 +201,15 @@ class SeatGate
     private function resourceResolution(string $routeName, ?string $realm): ?SeatGateResolution
     {
         try {
+            $projection = $this->resources->currentRealmProjection($realm);
+            if ($projection !== null) {
+                $resource = $projection->byRouteName[$routeName] ?? null;
+
+                return $resource === null
+                    ? null
+                    : new SeatGateResolution(SeatGateKind::Resource, null, resource: $resource);
+            }
+
             foreach ($this->resources->definitions($realm) as $resource) {
                 if (ListRouteName::of($resource) === $routeName) {
                     return new SeatGateResolution(SeatGateKind::Resource, null, resource: $resource);

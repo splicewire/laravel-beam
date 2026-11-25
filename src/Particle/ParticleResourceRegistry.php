@@ -94,6 +94,12 @@ use Splicewire\Beam\Surgeon\UnrealmedResourceAudit;
 )]
 class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegistrants, RecordsSupersession, Registry
 {
+    private ?string $projectionRealm = null;
+
+    private ?RealmResourceProjection $projection = null;
+
+    private int $projectionRevision = 0;
+
     /**
      * The stored DECLARATIONS, keyed by resource key — always a {@see ParticleResource}, projected
      * per-realm at build.
@@ -468,6 +474,8 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegist
 
         $this->entries->register($resource->key, $resource, $by, $ability);
         $this->registerRealms($resource->key, $realms);
+        $this->projection = null;
+        $this->projectionRevision++;
 
         // graph-operations 02 (D3/D6): a resource whose backing graphs its records gets four derived read
         // operations registered for its key, here at registration — a resource WITHOUT the capability gets
@@ -692,6 +700,41 @@ class ParticleResourceRegistry implements Filled, Gated, Laddered, RecordsRegist
         }
 
         return $this->project($resource, $realm);
+    }
+
+    /**
+     * Share the realm's declaration projection only during this manifest build.
+     *
+     * @template T
+     * @param  \Closure(): T  $build
+     * @return T
+     */
+    public function withRealmProjection(string $realm, \Closure $build): mixed
+    {
+        if ($this->projectionRealm === $realm) {
+            return $build();
+        }
+
+        $previousRealm = $this->projectionRealm;
+        $previousProjection = $this->projection;
+        $previousRevision = $this->projectionRevision;
+        $this->projectionRealm = $realm;
+        $this->projection = null;
+        try {
+            return $build();
+        } finally {
+            $this->projectionRealm = $previousRealm;
+            $this->projection = $previousRevision === $this->projectionRevision ? $previousProjection : null;
+        }
+    }
+
+    public function currentRealmProjection(?string $realm): ?RealmResourceProjection
+    {
+        if ($realm === null || $this->projectionRealm !== $realm) {
+            return null;
+        }
+
+        return $this->projection ??= new RealmResourceProjection($this->definitions($realm));
     }
 
     /**
