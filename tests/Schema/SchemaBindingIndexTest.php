@@ -50,6 +50,20 @@ class SchemaBindingIndexTest extends TestCase
         $this->assertSame(BindingArticleData::class, (new SchemaBindingIndex($registry))->dataClassFor(self::STEM.'/2'));
     }
 
+    public function test_declared_resource_key_uses_unfiltered_declarations_and_excludes_frame_disabled_resources(): void
+    {
+        $registry = new ParticleResourceRegistry;
+        $registry->register($this->resource());
+        $frameDisabled = $this->resource('headless-articles', 'https://beam.test/schemas/content/headless-article');
+        $frameDisabled->frame = false;
+        $registry->register($frameDisabled);
+        $index = new SchemaBindingIndex($registry);
+
+        $this->assertSame('articles', $index->declaredResourceKeyFor(self::STEM.'/3'));
+        $this->assertNull($index->declaredResourceKeyFor('https://beam.test/schemas/content/missing/1'));
+        $this->assertNull($index->declaredResourceKeyFor('https://beam.test/schemas/content/headless-article/1'));
+    }
+
     public function test_two_explicit_claims_on_one_stem_fail_atomically_even_with_the_same_data_class(): void
     {
         $registry = new ParticleResourceRegistry;
@@ -124,6 +138,7 @@ class SchemaBindingIndexTest extends TestCase
 
         $this->assertNull($index->dataClassFor(self::STEM));
         $this->assertSame(BindingArticleData::class, $index->declaredDataClassFor(self::STEM));
+        $this->assertSame('articles', $index->declaredResourceKeyFor(self::STEM));
         $authorizer->allowed = true;
         $this->assertSame(BindingArticleData::class, $index->dataClassFor(self::STEM));
         $authorizer->allowed = false;

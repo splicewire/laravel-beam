@@ -51,6 +51,30 @@ class SchemaBindingIndex
         return null;
     }
 
+    /** Return the key of the declared, framed resource for a schema binding, if any.
+     *
+     * Trusted schema projection metadata bypasses actor filtering, like
+     * declaredDataClassFor(); the transport still authorizes the resource.
+     */
+    public function declaredResourceKeyFor(string $binding): ?string
+    {
+        $identity = SchemaId::from($binding)->recordType();
+        $declared = $this->resources->unfiltered();
+
+        foreach ($declared->keys() as $key) {
+            $resource = $declared->resolve($key);
+            if (
+                $resource instanceof ParticleResource
+                && $resource->frame !== false
+                && $this->bindingFor($resource) === $identity
+            ) {
+                return $resource->key;
+            }
+        }
+
+        return null;
+    }
+
     /** Validate before the owning registry mutates; registration is never actor-filtered. */
     public function assertCanRegister(ParticleResource $incoming): void
     {
