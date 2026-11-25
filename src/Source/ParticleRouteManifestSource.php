@@ -121,6 +121,13 @@ class ParticleRouteManifestSource implements RouteManifestSource
             // `body` type), `false` (it sends none), or no key when undeclared (the body stays `unknown`).
             $input = $this->inputFor($route, $name);
 
+            // owner-review-20261112 53: a READ whose input Data declares no properties has nothing to send. It is
+            // recorded as `false`, so the client keeps the plain no-input read (no `input` argument, no `beamQuery`),
+            // where its `object` type would not type-check against `beamQuery`'s `Record<string, unknown>`.
+            if (is_string($input) && $this->isRead($route) && $this->declaresNoProperties($input)) {
+                $input = false;
+            }
+
             if ($input !== null) {
                 $entry['input'] = $input === false ? false : $this->toTsType($input);
             }
@@ -225,6 +232,33 @@ class ParticleRouteManifestSource implements RouteManifestSource
     private function readMethods(Route $route): array
     {
         return array_values(array_filter($route->methods(), fn (string $m) => $m !== 'HEAD'));
+    }
+
+    /** Whether the route only reads: none of the write verbs the client generator renders as a mutation. */
+    private function isRead(Route $route): bool
+    {
+        return ! array_intersect($this->readMethods($route), ['POST', 'PUT', 'PATCH', 'DELETE']);
+    }
+
+    /**
+     * Whether an input class declares no properties at all (owner-review-20261112 53): no constructor parameter
+     * and no public instance property, INHERITED ones included, so a subclass of a property-bearing Data is not
+     * misread as empty. Not a class (or not loadable) is never "empty".
+     */
+    private function declaresNoProperties(string $class): bool
+    {
+        if (! class_exists($class)) {
+            return false;
+        }
+
+        $reflection = new \ReflectionClass($class);
+        $parameters = $reflection->getConstructor()?->getNumberOfParameters() ?? 0;
+        $properties = array_filter(
+            $reflection->getProperties(\ReflectionProperty::IS_PUBLIC),
+            fn (\ReflectionProperty $property): bool => ! $property->isStatic(),
+        );
+
+        return $parameters === 0 && $properties === [];
     }
 
     /** The trailing verb of a `{resourceKey}.{verb}` route name (e.g. `library-lyrics.index` → `index`). */
