@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Agreements;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use LogicException;
 use ReflectionClass;
@@ -32,7 +33,10 @@ class RequirementAdmission
 
         $memberInput = null;
         foreach ($requirements as $index => $requirement) {
-            if ($requirement->scope !== 'occurrence' || $requirement->acceptOperation === null) {
+            $needsMember = $requirement->scope === 'occurrence'
+                || ($requirement->scope === 'subject' && ! ($subject instanceof Model));
+
+            if (! $needsMember || $requirement->acceptOperation === null) {
                 continue;
             }
 
@@ -100,13 +104,33 @@ class RequirementAdmission
         return $members;
     }
 
-    /** Return the first declared AgreementMemberData input property in its wire name. */
+    /** Return the declared AgreementMemberData input property that can represent the refusal's remedies. */
     private function memberInputName(?string $input): ?string
     {
-        return $this->memberInputProperties($input)[0][0] ?? null;
+        $properties = $this->memberInputProperties($input);
+        if ($properties === []) {
+            return null;
+        }
+
+        $collections = array_values(array_filter($properties, fn (array $property): bool => $property[2]));
+        if (count($collections) === 1) {
+            return $collections[0][0];
+        }
+
+        if (count($collections) > 1 || count($properties) > 1) {
+            $names = array_column($collections ?: $properties, 0);
+
+            throw new LogicException(sprintf(
+                'Input [%s] declares multiple AgreementMemberData properties [%s].',
+                $input,
+                implode(', ', $names),
+            ));
+        }
+
+        return $properties[0][0];
     }
 
-    /** @return list<array{string, class-string<AgreementMemberData>}> */
+    /** @return list<array{string, class-string<AgreementMemberData>, bool}> */
     private function memberInputProperties(?string $input): array
     {
         if ($input === null || ! is_subclass_of($input, Data::class)) {
@@ -123,7 +147,7 @@ class RequirementAdmission
                 continue;
             }
 
-            $properties[] = [$property->inputMappedName ?? $property->name, $memberClass];
+            $properties[] = [$property->inputMappedName ?? $property->name, $memberClass, $property->type->dataCollectableClass !== null];
         }
 
         return $properties;

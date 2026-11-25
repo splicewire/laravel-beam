@@ -2,6 +2,7 @@
 
 namespace Splicewire\Beam\Tests\Particle;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
@@ -87,17 +88,18 @@ class RequirementAdmissionTest extends TestCase
         $this->assertSame('requirement-probe-rows.act', $resolver->behavior);
     }
 
-    public function test_occurrence_refusal_uses_the_declared_member_while_other_scopes_keep_accept(): void
+    public function test_occurrence_and_subject_create_refusals_use_the_declared_member(): void
     {
         $resolver = new ScopedRequirementAdmissionResolver;
         $this->app->instance(RequirementResolver::class, $resolver);
         $admission = $this->app->make(RequirementAdmission::class);
 
-        $ask = function (array $payload) use ($admission): WriteContext {
+        $ask = function (array $payload, ?Model $subject = null, string $input = RequirementProbeInput::class) use ($admission): WriteContext {
             $requirement = new WriteRequirement(
                 behavior: 'requirement-probe-rows.act',
-                submittedMembers: $admission->submittedMembers(RequirementProbeInput::class, $payload),
-                input: RequirementProbeInput::class,
+                subject: $subject,
+                submittedMembers: $admission->submittedMembers($input, $payload),
+                input: $input,
             );
 
             return (new RequirementAdmissionStage)->handle(
@@ -115,18 +117,81 @@ class RequirementAdmissionTest extends TestCase
             $this->fail('outstanding requirements did not refuse the write');
         } catch (RequirementRefused $refused) {
             $items = $refused->refusal->requirements;
-            $this->assertSame(['occurrence', 'subject', 'party'], array_map(fn ($item) => $item->scope, $items));
+            $this->assertSame(['occurrence', 'subject', 'party', 'organisation'], array_map(fn ($item) => $item->scope, $items));
             $this->assertNull($items[0]->acceptOperation);
+            $this->assertSame('agreement_member', $items[0]->member);
+            $this->assertNull($items[1]->acceptOperation);
+            $this->assertSame('agreement_member', $items[1]->member);
+            foreach (array_slice($items, 2) as $item) {
+                $this->assertSame('agreements.accept', $item->acceptOperation);
+                $this->assertNull($item->member);
+            }
+        }
+
+        try {
+            $ask([], new RequirementProbeRow);
+            $this->fail('existing-subject requirements did not refuse the write');
+        } catch (RequirementRefused $refused) {
+            $items = $refused->refusal->requirements;
             $this->assertSame('agreement_member', $items[0]->member);
             $this->assertSame('agreements.accept', $items[1]->acceptOperation);
             $this->assertNull($items[1]->member);
             $this->assertSame('agreements.accept', $items[2]->acceptOperation);
-            $this->assertNull($items[2]->member);
+            $this->assertSame('agreements.accept', $items[3]->acceptOperation);
         }
 
         $this->assertSame('passed', $ask([
             'agreement_member' => ['key' => 'occurrence', 'version' => 1, 'digest' => 'occurrence-digest'],
         ])->payload['result']);
+
+        try {
+            $ask([], null, CollectionAndSingleRequirementProbeInput::class);
+            $this->fail('the DataCollectionOf member input was not selected');
+        } catch (RequirementRefused $refused) {
+            $this->assertSame('agreement_members', $refused->refusal->requirements[0]->member);
+        }
+    }
+
+    public function test_ambiguous_single_member_inputs_fail_loudly(): void
+    {
+        $this->app->instance(RequirementResolver::class, new ScopedRequirementAdmissionResolver);
+
+        try {
+            (new RequirementAdmissionStage)->handle(
+                new WriteContext(new RequirementProbeRow, [], requirement: new WriteRequirement(
+                    behavior: 'requirement-probe-rows.act',
+                    input: AmbiguousRequirementProbeInput::class,
+                )),
+                fn (WriteContext $context): WriteContext => $context,
+            );
+            $this->fail('ambiguous AgreementMemberData input properties were silently resolved');
+        } catch (LogicException $exception) {
+            $this->assertSame(
+                'Input [Splicewire\Beam\Tests\Particle\AmbiguousRequirementProbeInput] declares multiple AgreementMemberData properties [first, second].',
+                $exception->getMessage(),
+            );
+        }
+    }
+
+    public function test_occurrence_refusal_without_a_member_input_fails_with_a_pinned_message(): void
+    {
+        $this->app->instance(RequirementResolver::class, new ScopedRequirementAdmissionResolver);
+
+        try {
+            (new RequirementAdmissionStage)->handle(
+                new WriteContext(new RequirementProbeRow, [], requirement: new WriteRequirement(
+                    behavior: 'requirement-probe-rows.act',
+                    input: RequirementProbeOutput::class,
+                )),
+                fn (WriteContext $context): WriteContext => $context,
+            );
+            $this->fail('an occurrence requirement without an input member did not fail loudly');
+        } catch (LogicException $exception) {
+            $this->assertSame(
+                'Occurrence requirement [occurrence] for [requirement-probe-rows.act] has no declared AgreementMemberData input.',
+                $exception->getMessage(),
+            );
+        }
     }
 
     public function test_member_collection_admits_two_requirements_and_names_only_the_missing_one(): void
@@ -311,7 +376,7 @@ class RequirementAdmissionSpyResolver implements RequirementResolver
     }
 }
 
-class RequirementProbeRow extends \Illuminate\Database\Eloquent\Model
+class RequirementProbeRow extends Model
 {
     protected $table = 'requirement_probe_rows';
 
@@ -385,6 +450,19 @@ class ScopedRequirementAdmissionResolver implements RequirementResolver
             readUrl: "/agreements/{$key}",
             acceptOperation: 'agreements.accept',
             member: null,
-        ), ['occurrence', 'subject', 'party'], ['occurrence', 'subject', 'party']);
+        ), ['occurrence', 'subject', 'party', 'organisation'], ['occurrence', 'subject', 'party', 'organisation']);
     }
+}
+
+class AmbiguousRequirementProbeInput extends Data
+{
+    public function __construct(public AgreementMemberData $first, public AgreementMemberData $second) {}
+}
+
+class CollectionAndSingleRequirementProbeInput extends Data
+{
+    public function __construct(
+        #[MapInputName('single_agreement_member')] public ?AgreementMemberData $single = null,
+        #[MapInputName('agreement_members'), DataCollectionOf(AgreementMemberData::class)] public array $members = [],
+    ) {}
 }
