@@ -10,6 +10,7 @@ use Schemastud\DataSchemas\Attributes\Description;
 use Schemastud\DataSchemas\Attributes\Keyword;
 use Schemastud\DataSchemas\Attributes\MapValues;
 use Schemastud\DataSchemas\Attributes\Title;
+use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\Validation\In;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
@@ -73,6 +74,13 @@ class ConfigSectionEmitter
     {
         $parameter->setPublic();
         $parameter->setType($this->type($key, $space, $namespace));
+
+        // A config key that is not a PHP identifier is carried on the wire by #[MapName]; the property itself is the
+        // mapped identifier ($key->name). Spatie resolves this exactly as the generator reads it back (ticket 13, Part 2).
+        if ($key->mapName !== null) {
+            $space->addUse(MapName::class);
+            $parameter->addAttribute(MapName::class, [$key->mapName]);
+        }
 
         $space->addUse(Title::class)->addUse(Description::class)->addUse(ConfigDraft::class)->addUse(ConfigKey::class);
         $parameter->addAttribute(Title::class, [$key->title]);

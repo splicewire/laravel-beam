@@ -112,17 +112,49 @@ class ConfigSectionSchema
      */
     private function annotated(array $schema, string $class): array
     {
-        $reflection = new ReflectionClass($class);
+        // Wire name => [PHP property, Spatie declaration]. The generator keyed the document on the WIRE name — for a
+        // `#[MapName]` key the OUTPUT mapped name, the axis `for()` generates on (default, non-request mode). Resolved
+        // through the one shared wire-name source, so coverage, the schema and the emitter can never disagree about
+        // what a key is called (ticket 13, Part 2, condition 2).
+        $byWire = ConfigWireNames::map($class);
+
+        $required = array_values(array_filter(
+            $schema['required'] ?? [],
+            static fn (mixed $name): bool => is_string($name),
+        ));
 
         foreach (array_keys($schema['properties'] ?? []) as $name) {
             // A JSON property name is a string; an integer key here names no PHP property.
-            if (! is_string($name) || ! $reflection->hasProperty($name)) {
+            if (! is_string($name) || ! isset($byWire[$name])) {
                 continue;
             }
 
-            $attribute = $reflection->getProperty($name)->getAttributes(ConfigKey::class)[0] ?? null;
+            [$property, $spatie] = $byWire[$name];
+
+            // Part 4 (Option B). `for()` generates in the default (non-request) mode, where the generator marks every
+            // promoted property required — `isRequired()` exempts only `Optional`/`Lazy`, not a plain nullable or a
+            // defaulted one. A Config area must not demand a key the package leaves nullable or defaulted, so its wire
+            // name is pruned from `required`. Nullability is read off the type; the default is asked of Spatie, since
+            // raw reflection answers `false` for a promoted parameter's default (the common case).
+            if (($property->getType()?->allowsNull() ?? false) || ($spatie?->hasDefaultValue ?? false)) {
+                $required = array_values(array_filter($required, static fn (string $required): bool => $required !== $name));
+            }
+
+            // Part 4 (Option B, second shape). A `#[MapValues]` map with no entries is PHP `[]`, which JSON-encodes as
+            // an array, not an object, and fails the map's `type: object`. Admit the empty array alongside the object
+            // so the package default and a host that clears the map both validate — the anyOf coord accepted. Detected
+            // by `additionalProperties`, which a map carries and a nested record (its own `properties`/`$ref`) does not.
+            $property_schema = $schema['properties'][$name];
+
+            if (($property_schema['type'] ?? null) === 'object' && array_key_exists('additionalProperties', $property_schema)) {
+                $schema['properties'][$name] = ['anyOf' => [$property_schema, ['type' => 'array', 'maxItems' => 0]]];
+            }
+
+            $attribute = $property->getAttributes(ConfigKey::class)[0] ?? null;
             $key = $attribute?->newInstance() ?? new ConfigKey;
 
+            // Attached at the property level, beside `anyOf` when the map carries one, never inside a branch — where
+            // every reader of the keyword looks for it (the Part 4 anyOf reader audit, LANE-B-2330).
             $schema['properties'][$name][self::KEYWORD] = array_filter([
                 'ceiling' => $key->ceiling->value,
                 'effect' => $key->effect->value,
@@ -130,8 +162,14 @@ class ConfigSectionSchema
                 'merge' => $key->merge->value,
                 'env' => $key->env,
                 // Only an opaque key carries it, so no other committed schema changes (ticket 06).
-                'opaque' => $reflection->getProperty($name)->getAttributes(ConfigOpaque::class) === [] ? null : true,
+                'opaque' => $property->getAttributes(ConfigOpaque::class) === [] ? null : true,
             ], fn (mixed $value): bool => $value !== null);
+        }
+
+        if ($required === []) {
+            unset($schema['required']);
+        } else {
+            $schema['required'] = $required;
         }
 
         return $schema;

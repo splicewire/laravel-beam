@@ -11,6 +11,7 @@ use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\ConfigSectionSchema;
 use Splicewire\Beam\Config\Overrides\ConfigOverlay;
 use Splicewire\Beam\Config\RegisteredConfigSection;
+use Splicewire\Beam\Doctor\Support\ConfigRootCensus;
 use Throwable;
 
 /**
@@ -49,7 +50,56 @@ class ConfigSectionCoverageAudit implements DoctorAudit
             array_push($findings, ...$this->section($registered));
         }
 
-        return $findings !== [] ? $findings : [Finding::pass(self::CHECK, sprintf('%d Config Section(s): every merged key is covered, the package defaults validate, and every key has a description.', count($sections)))];
+        if ($sections !== [] && $findings === []) {
+            $findings[] = Finding::pass(self::CHECK, sprintf('%d Config Section(s): every merged key is covered, the package defaults validate, and every key has a description.', count($sections)));
+        }
+
+        // config-sections ticket 13, Part 3 (report-only under clamp (a)): classify who owns each config root and list
+        // the roots that are unowned by design, so ticket 13's coverage gate has a vetted skip-set. Classifies and
+        // lists only; gates nothing here.
+        $findings[] = $this->ownership();
+
+        return $findings;
+    }
+
+    /** The config-root ownership census as one report-only finding (config-sections ticket 13, Part 3). */
+    protected function ownership(): Finding
+    {
+        try {
+            $census = $this->census();
+            $roots = $census->roots();
+            $unowned = $census->unownedByDesign();
+
+            $families = array_count_values(array_map(static fn (array $entry): string => $entry['family'], $roots));
+
+            $breakdown = implode(', ', array_map(
+                static fn (string $family, int $count): string => "{$count} {$family}",
+                array_keys($families),
+                array_values($families),
+            ));
+
+            // Each unowned-by-design root by NAME, with its package (owner) and family (LANE-B-2365 item 2).
+            $unownedList = $unowned === []
+                ? 'none'
+                : implode('; ', array_map(static fn (array $e): string => sprintf('%s (package %s, family %s, by %s)', $e['root'], $e['owner'], $e['family'], $e['source']), $unowned));
+
+            return Finding::pass(self::CHECK, sprintf(
+                'Config root ownership (report-only): %d root(s)%s. Owner source: the registry for a declared root, the config/ file tree otherwise; family from the owning package declared requires. Unowned by design (no Config Section expected, a coverage gate must pass these): %s.',
+                count($roots),
+                $breakdown === '' ? '' : ' — '.$breakdown,
+                $unownedList,
+            ));
+        } catch (Throwable $e) {
+            // A census that could not be taken or classified is INDETERMINATE, not a pass: a status-based consumer or a
+            // future coverage gate must not read a failed census as a valid empty skip-set (LANE-B-2370 MEDIUM).
+            return Finding::warn(self::CHECK, sprintf('Config root ownership census not taken: %s', $e->getMessage()));
+        }
+    }
+
+    /** The census, as a seam so a test can substitute one that throws and assert the indeterminate path. */
+    protected function census(): ConfigRootCensus
+    {
+        return new ConfigRootCensus($this->sections);
     }
 
     /** @return list<Finding> */

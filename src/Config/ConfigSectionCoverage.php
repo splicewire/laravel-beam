@@ -121,18 +121,21 @@ class ConfigSectionCoverage
      */
     private static function walk(string $class, array $values, array $path, array &$uncovered): void
     {
-        $reflection = new ReflectionClass($class);
+        // The config key is the WIRE name; a mapped key (Spatie `#[MapName]`) is named by a differently-spelled
+        // property. Resolved through the one shared wire-name source, so coverage and the committed schema agree on
+        // what a key is called (ticket 13, Part 2, condition 2).
+        $byWire = ConfigWireNames::map($class);
 
         foreach ($values as $name => $value) {
             $here = [...$path, (string) $name];
 
-            if (! is_string($name) || ! $reflection->hasProperty($name)) {
+            if (! is_string($name) || ! isset($byWire[$name])) {
                 $uncovered[] = JsonPointer::from($here);
 
                 continue;
             }
 
-            $property = $reflection->getProperty($name);
+            $property = $byWire[$name][0];
 
             if ($property->getAttributes(ConfigOpaque::class) !== [] || ! is_array($value) || $value === [] || array_is_list($value)) {
                 continue;

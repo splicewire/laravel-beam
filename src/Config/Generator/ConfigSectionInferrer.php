@@ -34,6 +34,8 @@ class ConfigSectionInferrer
 
     private string $base = '';
 
+    private string $root = '';
+
     /**
      * @param  array<string, list<string|int|float|bool>>  $literals  {@see ConfigLiteralComparisons::in()}
      * @param  (Closure(string): ?string)|null  $registryFor  the registry root whose entry type a class satisfies
@@ -49,6 +51,7 @@ class ConfigSectionInferrer
     {
         $this->classes = [];
         $this->pointers = [];
+        $this->root = $root;
         $sectionClass ??= Str::studly(str_replace('.', '_', $root)).'Section';
         $this->base = Str::beforeLast($sectionClass, 'Section') ?: $sectionClass;
 
@@ -56,7 +59,7 @@ class ConfigSectionInferrer
         $this->classes[$sectionClass] = [];
         $this->pointers[$sectionClass] = '';
 
-        if ($merged !== [] && ! self::isRecord($merged)) {
+        if ($merged !== [] && ! self::recordShaped($merged)) {
             $entries = $this->entryClass($this->base.'Entry', $merged, []);
         } else {
             $this->classes[$sectionClass] = $this->record($merged, []);
@@ -97,11 +100,12 @@ class ConfigSectionInferrer
         $here = [...$path, $name];
         $pointer = JsonPointer::from($here);
         $syntax = $this->outline->at($pointer);
-        $key = new InferredKey(name: $name, type: 'mixed', env: $syntax['env'] ?? null);
+        [$property, $mapName] = $this->mapName($name, $path, $siblings);
+        $key = new InferredKey(name: $property, type: 'mixed', env: $syntax['env'] ?? null, mapName: $mapName);
         [$key->title, $key->description] = $this->copy($name, $syntax['comment'] ?? '');
 
         if (is_array($value) && $value !== [] && ! array_is_list($value)) {
-            if (self::isRecord($value)) {
+            if (self::recordShaped($value)) {
                 $class = $this->base.$this->studly($here).'Config';
                 $this->classes[$class] = [];
                 $this->pointers[$class] = $pointer;
@@ -368,5 +372,119 @@ class ConfigSectionInferrer
         }
 
         return true;
+    }
+
+    /**
+     * Whether an array is a RECORD (fixed, named fields → its own Data class) rather than a MAP (host-chosen keys,
+     * uniform values → `entries:` / `#[MapValues]`), config-sections ticket 13 Part 2.
+     *
+     * An all-identifier array is a record, unchanged ({@see isRecord}). A non-identifier key no longer forces a map:
+     * when EVERY key reduces to a distinct identifier (so a `#[MapName]` can carry its wire name) and the array is
+     * neither a uniform scalar map nor a host-keyed collection, it is a heterogeneous record with mapped fields — the
+     * shape of a section like `beam.notifications` (`recipient-kinds` beside `listen`, `resources`). Two shapes stay
+     * MAPS even with mappable keys: a uniform scalar map, where every value shares one JSON scalar token
+     * (`beam.commerce billing.flows`, a `kind => class` registry); and a COLLECTION, where every value is itself a
+     * nested associative array ({@see isCollection}) — host-chosen entry keys over uniform-shape objects, like
+     * `app.chat`'s `models` (`gpt-3.5-turbo => {provider, token_limit, …}`), which is a `#[MapValues]` entry class, not
+     * a Data class per model. An array with a key that reduces to no identifier is also a map (its unmappable key
+     * becomes a legible error only if it then has to name a property, see {@see mapName}).
+     *
+     * @param  array<array-key, mixed>  $array
+     */
+    private static function recordShaped(array $array): bool
+    {
+        if (self::isRecord($array)) {
+            return true;
+        }
+
+        if (self::sharedToken($array) !== null || self::isCollection($array)) {
+            return false;
+        }
+
+        foreach (array_keys($array) as $key) {
+            if (self::identify((string) $key) === null) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether an array is a host-keyed COLLECTION: every value is a non-empty associative array (a nested record or
+     * map entry), so the keys are host-chosen entries over a uniform value shape, not a record's fixed fields. Such an
+     * array is a MAP (one `#[MapValues]` entry class), never a Data class per key — the classification the base
+     * `isRecord` gave every non-identifier-keyed array, preserved here for a collection whose keys happen to reduce to
+     * identifiers (config-sections ticket 13).
+     *
+     * @param  array<array-key, mixed>  $array
+     */
+    private static function isCollection(array $array): bool
+    {
+        if ($array === []) {
+            return false;
+        }
+
+        foreach ($array as $value) {
+            if (! is_array($value) || $value === [] || array_is_list($value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The property name and wire name a config key becomes (config-sections ticket 13, Parts 1 and 2). An identifier
+     * answers to itself with no mapping. A non-identifier key reduces to a camelCase property and returns its wire
+     * name, so the emitter writes `#[MapName]` and data-schemas keys the schema on the same wire name. A key that
+     * reduces to no identifier, or whose mapped name a sibling key also takes, throws {@see ConfigSectionInferenceError}
+     * naming the root, the record's pointer and the key — the three facts nette's "Value '0' is not valid name" omits.
+     *
+     * @param  list<string>  $path  the enclosing record's path, for the pointer in an error
+     * @param  array<array-key, mixed>  $siblings  the record's keys, to catch a mapped-name collision
+     * @return array{0: string, 1: ?string}  [property name, wire name or null]
+     */
+    private function mapName(string $key, array $path, array $siblings): array
+    {
+        $name = self::identify($key);
+
+        if ($name === null) {
+            throw new ConfigSectionInferenceError(
+                $this->root,
+                JsonPointer::from($path),
+                $key,
+                'does not reduce to a PHP identifier (it has no leading letter or underscore to name a property)',
+            );
+        }
+
+        if ($name === $key) {
+            return [$key, null];
+        }
+
+        foreach (array_keys($siblings) as $sibling) {
+            if ((string) $sibling !== $key && self::identify((string) $sibling) === $name) {
+                throw new ConfigSectionInferenceError(
+                    $this->root,
+                    JsonPointer::from($path),
+                    $key,
+                    sprintf('maps to the property `%s`, which the sibling key `%s` also takes', $name, $sibling),
+                );
+            }
+        }
+
+        return [$name, $key];
+    }
+
+    /** The PHP identifier a config key reduces to (itself when it already is one), or null when it reduces to none. */
+    private static function identify(string $key): ?string
+    {
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $key) === 1) {
+            return $key;
+        }
+
+        $name = Str::camel(str_replace(['-', '.', ' ', '/'], '_', $key));
+
+        return $name !== '' && preg_match('/^[A-Za-z_]/', $name) === 1 ? $name : null;
     }
 }

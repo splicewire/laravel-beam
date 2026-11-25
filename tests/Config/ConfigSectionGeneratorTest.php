@@ -158,7 +158,15 @@ class ConfigSectionGeneratorTest extends TestCase
 
         $this->assertSame('combobox', $chat['properties']['default_model']['x-widget']);
         $this->assertSame(['keysOf' => '/models'], $chat['properties']['default_model']['x-widget-options']);
-        $this->assertSame('object', $chat['properties']['models']['type']);
+        // A `#[MapValues]` map is the Part 4 empty-map anyOf (ticket 13): the object map beside an empty `[]`, so a host
+        // clearing `models` validates. The object branch is still a map (additionalProperties), keyed by model name.
+        $models = $chat['properties']['models'];
+        $this->assertArrayNotHasKey('type', $models, 'the map property is an anyOf, not a bare object');
+        $this->assertCount(2, $models['anyOf']);
+        $this->assertSame('object', $models['anyOf'][0]['type']);
+        $this->assertArrayHasKey('additionalProperties', $models['anyOf'][0]);
+        $this->assertSame('array', $models['anyOf'][1]['type']);
+        $this->assertSame(0, $models['anyOf'][1]['maxItems']);
 
         // An enum where source compares the key against literals (the scan fixture, shaped like beam-ux's PageGraph).
         $publisher = (new ReflectionClass($this->class('BeamUxHeadConfig')))->getProperty('publisher')->getAttributes(In::class)[0] ?? null;
