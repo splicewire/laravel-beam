@@ -4,6 +4,8 @@ namespace Splicewire\Beam\Tests\Doctor;
 
 use PHPUnit\Framework\Attributes\Test;
 use Rushing\Doctor\DoctorStatus;
+use Rushing\Popcorn\Registries\Authorizer;
+use Rushing\Popcorn\Registries\RegistryKey;
 use Splicewire\Beam\Doctor\UngatedOperationAudit;
 use Splicewire\Beam\Graph\Edges\ParentEdge;
 use Splicewire\Beam\Graph\GraphOperations;
@@ -129,6 +131,42 @@ class UngatedOperationAuditGraphTest extends TestCase
         $this->assertStringContainsString('1 of 4', $finding->detail);
         $this->assertStringContainsString("ability: 'tree-nodes.graph.path'", $finding->detail);
         $this->assertStringContainsString('Not counted as residue: the 3 acknowledged derived graph reads (', $finding->detail);
+    }
+
+    #[Test]
+    public function test_a_derived_graph_read_a_registry_filter_hides_still_reads_as_acknowledged(): void
+    {
+        // graph-operations 07: the population comes from unfiltered(), so a derived op the filter hides
+        // must be recognised against the unfiltered registry too, or it reads as outstanding.
+        $registry = new ParticleOperationRegistry;
+        GraphOperations::deriveFor($this->resource(), $registry);
+
+        // No production path registers an op with a record-level ability today (deriveFor() passes none,
+        // and an ungated record never reaches the authorizer), so the hidden derived op is built by hand:
+        // beam's own `graph` again, as beam, with an ability a deny-all authorizer refuses.
+        $graph = array_values(array_filter(
+            GraphOperations::operationsFor('tree-nodes'),
+            fn (ParticleOperation $op): bool => $op->name === 'graph',
+        ))[0];
+        $registry->register($graph, by: GraphOperations::REGISTRANT, ability: 'tree-nodes.graph.hidden');
+        $registry->authorizeWith(new class implements Authorizer
+        {
+            public function allows(string $ability, RegistryKey $key): bool
+            {
+                return false;
+            }
+        });
+
+        // Control: the filter really hides it, and the unfiltered view still knows beam derived it.
+        $this->assertNull($registry->registrantOf('tree-nodes.graph'));
+        $this->assertSame(GraphOperations::REGISTRANT, $registry->unfiltered()->registrantOf('tree-nodes.graph'));
+
+        $finding = $this->finding($registry);
+
+        $this->assertSame(DoctorStatus::Pass, $finding->status, $finding->detail);
+        $this->assertStringContainsString('0/4 non-write particle operations declare their authorization, and the 4 acknowledged derived graph reads (', $finding->detail);
+        $this->assertStringContainsString('tree-nodes.graph,', $finding->detail);
+        $this->assertStringNotContainsString("ability: 'tree-nodes.graph'", $finding->detail);
     }
 
     #[Test]
