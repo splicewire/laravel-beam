@@ -173,4 +173,21 @@ return [
     */
     'undeclared_surface_artifact' => env('BEAM_UNDECLARED_SURFACE_ARTIFACT'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Undeclared-surface population keys
+    |--------------------------------------------------------------------------
+    |
+    | The config keys whose values change WHICH rows the undeclared-surface audit sees: a feature flag that
+    | mounts routes, a domain list a route group repeats over. The artifact records each key's value in
+    | `baseline.population`, and `--check` refuses to compare counts when a value differs from this run's,
+    | naming the key (owner-review-20261112 ticket 83). Without it, a flagship tree counted 393 under one
+    | flag and 396 under the other, and the check read the gap as drift.
+    |
+    | Empty by default: a host with no such keys records no `population` block. A host that adds a key must
+    | regenerate its artifact under its stated regen environment, since an artifact with no recorded value
+    | for a declared key is refused too.
+    */
+    'undeclared_surface_population' => [],
+
 ];

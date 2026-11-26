@@ -19,11 +19,16 @@ use Splicewire\Beam\Surgeon\UndeclaredSurfaceAudit;
  * `--check` fails on an increase, not on any difference. A decrease is the whole goal, and forcing a rewrite
  * commit for every improvement would make the ratchet an obstacle to the thing it exists to encourage — so a
  * drop reports what it dropped by and passes, leaving the rewrite to the author's own commit.
+ *
+ * Before it compares counts, `--check` compares the run's environment with the artifact's `baseline` and
+ * refuses on a mismatch, naming each field (owner-review-20261112 ticket 83). A count taken under another
+ * `APP_ENV`, another dev-dependency set or another value of a host's declared population key is a different
+ * population, and comparing it read as a false increase or a false hold.
  */
 class UndeclaredSurfaceCommand extends Command
 {
     protected $signature = 'splicewire:beam:undeclared-surface
-        {--check : Compare against the committed artifact and fail if the count increased; writes nothing}
+        {--check : Compare against the committed artifact and fail if the count increased or the baseline environment differs; writes nothing}
         {--path= : Artifact path (default: the configured one)}';
 
     protected $description = 'Write (or check) the committed artifact recording every live surface that declares no shape.';
@@ -80,6 +85,24 @@ class UndeclaredSurfaceCommand extends Command
         }
 
         $committed = json_decode((string) file_get_contents($path), true);
+
+        $mismatches = $this->baselineMismatches(is_array($committed['baseline'] ?? null) ? $committed['baseline'] : []);
+
+        if ($mismatches !== []) {
+            $this->error('Undeclared surface baseline mismatch: this run measures a different population from the '
+                .'committed artifact, so the counts are not compared.');
+
+            foreach ($mismatches as $mismatch) {
+                $this->line("  {$mismatch}");
+            }
+
+            $this->line('  Re-run --check under the artifact\'s recorded environment, or, if that environment is '
+                .'what changed on purpose, Regenerate the artifact (this command without --check) under the one '
+                .'the host names for it.');
+
+            return self::FAILURE;
+        }
+
         $was = is_array($committed['surfaces'] ?? null) ? count($committed['surfaces']) : 0;
         $now = count($rows);
 
@@ -132,6 +155,103 @@ class UndeclaredSurfaceCommand extends Command
     }
 
     /**
+     * The environment this run measures in (owner-review-20261112 ticket 83). `encode()` records it and
+     * `check()` compares it, so the two cannot drift apart.
+     *
+     * `population` holds the values of the config keys the host names in
+     * `beam.client.undeclared_surface_population`: the flags and lists that mount or repeat rows (a feature
+     * flag's routes, a route group repeated per configured domain). It is written only when the host names
+     * keys, so a host that names none keeps its artifact's bytes. `php` and `generated_by` are recorded and
+     * not compared: neither changes which rows mount.
+     *
+     * @return array<string, mixed>
+     */
+    private function baseline(): array
+    {
+        $installed = base_path('vendor/composer/installed.json');
+
+        $baseline = [
+            'environment' => (string) app()->environment(),
+            'php' => PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION,
+            'dev_dependencies_installed' => is_file($installed)
+                && str_contains((string) file_get_contents($installed), '"dev-package-names"'),
+            'generated_by' => 'splicewire:beam:undeclared-surface',
+        ];
+
+        $population = $this->population();
+
+        if ($population !== []) {
+            $baseline['population'] = $population;
+        }
+
+        return $baseline;
+    }
+
+    /**
+     * The declared population keys and their values as JSON would round-trip them, so a recorded value and a
+     * live one compare equal exactly when they would encode the same.
+     *
+     * @return array<string, mixed>
+     */
+    private function population(): array
+    {
+        $population = [];
+
+        foreach ((array) config('beam.client.undeclared_surface_population', []) as $key) {
+            $key = (string) $key;
+            $population[$key] = json_decode((string) json_encode(config($key)), true);
+        }
+
+        return $population;
+    }
+
+    /**
+     * One line per compared field whose committed value differs from this run's, empty when the two measure
+     * the same population. A key recorded on one side and not the other is a mismatch too: an artifact older
+     * than a declared key cannot say which value it was taken under.
+     *
+     * @param  array<string, mixed>  $committed
+     * @return list<string>
+     */
+    private function baselineMismatches(array $committed): array
+    {
+        $now = $this->baseline();
+        $mismatches = [];
+
+        foreach (['environment', 'dev_dependencies_installed'] as $field) {
+            if (array_key_exists($field, $committed) && $committed[$field] !== $now[$field]) {
+                $mismatches[] = sprintf('%s: artifact %s, this run %s', $field, $this->show($committed[$field]), $this->show($now[$field]));
+            }
+        }
+
+        $was = is_array($committed['population'] ?? null) ? $committed['population'] : [];
+        $is = $now['population'] ?? [];
+
+        foreach (array_unique([...array_keys($was), ...array_keys($is)]) as $key) {
+            $recorded = array_key_exists($key, $was);
+            $live = array_key_exists($key, $is);
+
+            if ($recorded && $live && $was[$key] === $is[$key]) {
+                continue;
+            }
+
+            $mismatches[] = sprintf(
+                'population %s: artifact %s, this run %s',
+                $key,
+                $recorded ? $this->show($was[$key]) : '(not recorded)',
+                $live ? $this->show($is[$key]) : '(not declared)',
+            );
+        }
+
+        return $mismatches;
+    }
+
+    private function show(mixed $value): string
+    {
+        return (string) json_encode($value, JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
      * The artifact body. `count` is stored beside the rows so a reviewer reads the number off the diff header
      * without counting entries, and the trailing newline keeps it a well-formed committed text file.
      *
@@ -159,13 +279,7 @@ class UndeclaredSurfaceCommand extends Command
         return json_encode([
             'check' => UndeclaredSurfaceAudit::CHECK,
             'count' => count($rows),
-            'baseline' => [
-                'environment' => (string) app()->environment(),
-                'php' => PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION,
-                'dev_dependencies_installed' => is_file(base_path('vendor/composer/installed.json'))
-                    && str_contains((string) file_get_contents(base_path('vendor/composer/installed.json')), '"dev-package-names"'),
-                'generated_by' => 'splicewire:beam:undeclared-surface',
-            ],
+            'baseline' => $this->baseline(),
             'counts' => [
                 'by_tier' => $this->countBy($rows, 'tier'),
                 'by_origin' => $this->countBy($rows, 'origin'),

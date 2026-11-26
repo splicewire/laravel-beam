@@ -179,6 +179,79 @@ class UndeclaredSurfaceArtifactTest extends TestCase
         }
     }
 
+    /**
+     * owner-review-20261112 ticket 83 — the baseline is a precondition, not a caption.
+     *
+     * The same tree counted 393 under one environment and 396 under another (a feature flag mounted three
+     * rows), and `--check` compared the two numbers as if they measured the same thing. A count taken in a
+     * different environment from its baseline is a different population, so the check refuses to compare
+     * and says which field differs, rather than reading a false increase or a false hold.
+     */
+    public function test_check_refuses_and_names_the_environment_when_it_differs_from_the_baseline(): void
+    {
+        Route::get('api/v1/orphans', [UndeclaredFixtureController::class, 'plain']);
+
+        $this->artisan('splicewire:beam:undeclared-surface', ['--path' => $this->path])->assertSuccessful();
+        $recorded = $this->artifact()['baseline']['environment'];
+
+        $this->app['env'] = 'elsewhere';
+
+        $this->artisan('splicewire:beam:undeclared-surface', ['--check' => true, '--path' => $this->path])
+            ->expectsOutputToContain('baseline mismatch')
+            ->expectsOutputToContain("environment: artifact \"{$recorded}\", this run \"elsewhere\"")
+            ->doesntExpectOutputToContain('holding')
+            ->assertFailed();
+    }
+
+    public function test_the_artifact_records_the_declared_population_keys_and_check_names_a_changed_one(): void
+    {
+        config([
+            'beam.client.undeclared_surface_population' => ['fixture.flag'],
+            'fixture.flag' => false,
+        ]);
+        Route::get('api/v1/orphans', [UndeclaredFixtureController::class, 'plain']);
+
+        $this->artisan('splicewire:beam:undeclared-surface', ['--path' => $this->path])->assertSuccessful();
+
+        $this->assertSame(['fixture.flag' => false], $this->artifact()['baseline']['population']);
+
+        // Same count, different population: without the comparison this would read "holding".
+        config(['fixture.flag' => true]);
+
+        $this->artisan('splicewire:beam:undeclared-surface', ['--check' => true, '--path' => $this->path])
+            ->expectsOutputToContain('population fixture.flag: artifact false, this run true')
+            ->doesntExpectOutputToContain('holding')
+            ->assertFailed();
+    }
+
+    public function test_check_refuses_an_artifact_that_predates_a_declared_population_key(): void
+    {
+        Route::get('api/v1/orphans', [UndeclaredFixtureController::class, 'plain']);
+
+        // Written before the host declared any key, so it carries no population block.
+        $this->artisan('splicewire:beam:undeclared-surface', ['--path' => $this->path])->assertSuccessful();
+        $this->assertArrayNotHasKey('population', $this->artifact()['baseline']);
+
+        config(['beam.client.undeclared_surface_population' => ['fixture.flag'], 'fixture.flag' => true]);
+
+        $this->artisan('splicewire:beam:undeclared-surface', ['--check' => true, '--path' => $this->path])
+            ->expectsOutputToContain('population fixture.flag: artifact (not recorded), this run true')
+            ->expectsOutputToContain('Regenerate')
+            ->assertFailed();
+    }
+
+    public function test_check_still_compares_when_the_population_matches(): void
+    {
+        config(['beam.client.undeclared_surface_population' => ['fixture.flag'], 'fixture.flag' => true]);
+        Route::get('api/v1/orphans', [UndeclaredFixtureController::class, 'plain']);
+
+        $this->artisan('splicewire:beam:undeclared-surface', ['--path' => $this->path])->assertSuccessful();
+
+        $this->artisan('splicewire:beam:undeclared-surface', ['--check' => true, '--path' => $this->path])
+            ->expectsOutputToContain('holding')
+            ->assertSuccessful();
+    }
+
     public function test_check_fails_loudly_when_no_artifact_has_been_committed_yet(): void
     {
         $this->artisan('splicewire:beam:undeclared-surface', ['--check' => true, '--path' => $this->path])
