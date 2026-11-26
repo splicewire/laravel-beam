@@ -162,6 +162,59 @@ class ConfigSectionTicket13Test extends TestCase
         $this->assertFalse($gate->accepts(['enabled' => true, 'routes' => ['home' => 42]], $schema));
     }
 
+    public function test_part4_a_nullable_inline_record_never_gains_an_empty_array_branch(): void
+    {
+        foreach ([false, true] as $additionalProperties) {
+            $record = [
+                'type' => ['object', 'null'],
+                'properties' => ['name' => ['type' => 'string']],
+                'required' => ['name'],
+                'additionalProperties' => $additionalProperties,
+            ];
+            $schema = $this->inlineRecordSchema($record);
+            $actual = $schema['properties']['record'];
+            unset($actual[ConfigSectionSchema::KEYWORD]);
+
+            $this->assertSame($record, $actual, 'boolean additionalProperties does not declare a typed map');
+            $this->assertFalse(app(AcceptanceGate::class)->accepts(['enabled' => true, 'record' => []], $schema));
+            $this->assertTrue(app(AcceptanceGate::class)->accepts(['enabled' => true, 'record' => null], $schema));
+            $this->assertTrue(app(AcceptanceGate::class)->accepts(['enabled' => true, 'record' => ['name' => 'example']], $schema));
+        }
+    }
+
+    public function test_part4_a_non_nullable_inline_record_is_excluded_from_the_map_branch(): void
+    {
+        foreach ([false, true] as $additionalProperties) {
+            $record = [
+                'type' => 'object',
+                'properties' => ['name' => ['type' => 'string']],
+                'required' => ['name'],
+                'additionalProperties' => $additionalProperties,
+            ];
+            $schema = $this->inlineRecordSchema($record, Ticket13RequiredInlineRecordSection::class);
+            $this->assertContains('record', $schema['required'] ?? []);
+            $actual = $schema['properties']['record'];
+            unset($actual[ConfigSectionSchema::KEYWORD]);
+
+            $this->assertSame($record, $actual, 'the previously matched inline record is now excluded');
+            $this->assertFalse(app(AcceptanceGate::class)->accepts(['enabled' => true, 'record' => []], $schema));
+            $this->assertFalse(app(AcceptanceGate::class)->accepts(['enabled' => true, 'record' => null], $schema));
+        }
+    }
+
+    /** The standard generator uses $ref; these fixtures model a configured generator's inline output. */
+    private function inlineRecordSchema(array $record, string $section = Ticket13InlineRecordSection::class): array
+    {
+        $generator = \Mockery::mock(\Schemastud\DataSchemas\Generators\Generator::class);
+        $generator->shouldReceive('generate')->once()->andReturn([
+            'type' => 'object',
+            'properties' => ['enabled' => ['type' => 'boolean'], 'record' => $record],
+            'required' => ['enabled', 'record'],
+        ]);
+
+        return (new ConfigSectionSchema($generator))->for($section);
+    }
+
     // ---- Part 3: the census classifies and lists, report-only -----------------------------------------------------
 
     public function test_part3_the_census_classifies_families_from_requires_and_lists_only_unowned_by_design(): void
@@ -329,5 +382,32 @@ class Ticket13NullableDefaultMapSection extends ConfigSection
         public bool $enabled,
         #[ConfigKey, MapValues('string')]
         public ?array $routes = [],
+    ) {}
+}
+
+#[ConfigRoot(root: 'cs13.inline-record', title: 'Inline record section')]
+class Ticket13InlineRecordSection extends ConfigSection
+{
+    public function __construct(
+        #[ConfigKey]
+        public bool $enabled,
+        #[ConfigKey]
+        public ?Ticket13InlineRecordData $record = null,
+    ) {}
+}
+
+class Ticket13InlineRecordData extends \Splicewire\Beam\Data\BeamData
+{
+    public function __construct(public string $name) {}
+}
+
+#[ConfigRoot(root: 'cs13.required-inline-record', title: 'Required inline record section')]
+class Ticket13RequiredInlineRecordSection extends ConfigSection
+{
+    public function __construct(
+        #[ConfigKey]
+        public bool $enabled,
+        #[ConfigKey]
+        public Ticket13InlineRecordData $record,
     ) {}
 }

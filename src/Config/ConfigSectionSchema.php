@@ -143,10 +143,11 @@ class ConfigSectionSchema
             // Part 4 (Option B, second shape). A `#[MapValues]` map with no entries is PHP `[]`, which JSON-encodes as
             // an array, not an object, and fails the map's `type: object`. Admit the empty array alongside the object
             // so the package default and a host that clears the map both validate — the anyOf coord accepted. Detected
-            // by `additionalProperties`, which a map carries and a nested record (its own `properties`/`$ref`) does not.
+            // by schema-valued `additionalProperties`, which typed maps carry. Boolean true/false do not declare a
+            // value schema and may belong to inline records from the host's configured generator.
             $property_schema = $schema['properties'][$name];
 
-            if (in_array('object', (array) ($property_schema['type'] ?? []), true) && array_key_exists('additionalProperties', $property_schema)) {
+            if (in_array('object', (array) ($property_schema['type'] ?? []), true) && is_array($property_schema['additionalProperties'] ?? null)) {
                 $schema['properties'][$name] = ['anyOf' => [$property_schema, ['type' => 'array', 'maxItems' => 0]]];
             }
 
