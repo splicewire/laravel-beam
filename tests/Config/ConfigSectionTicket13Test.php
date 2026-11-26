@@ -202,6 +202,26 @@ class ConfigSectionTicket13Test extends TestCase
         }
     }
 
+    public function test_part4_a_nullable_inline_record_with_typed_extras_does_not_gain_an_empty_array_branch(): void
+    {
+        $record = [
+            'type' => ['object', 'null'],
+            'properties' => ['name' => ['type' => 'string']],
+            'required' => ['name'],
+            'additionalProperties' => ['type' => 'string'],
+        ];
+        $schema = $this->inlineRecordSchema($record);
+        $actual = $schema['properties']['record'];
+        unset($actual[ConfigSectionSchema::KEYWORD]);
+
+        $this->assertSame($record, $actual, 'named record properties plus typed extras are not a MapValues declaration');
+        $gate = app(AcceptanceGate::class);
+        $this->assertFalse($gate->accepts(['enabled' => true, 'record' => []], $schema));
+        $this->assertTrue($gate->accepts(['enabled' => true, 'record' => null], $schema));
+        $this->assertTrue($gate->accepts(['enabled' => true, 'record' => ['name' => 'example', 'extra' => 'value']], $schema));
+        $this->assertFalse($gate->accepts(['enabled' => true, 'record' => ['name' => 'example', 'extra' => 42]], $schema));
+    }
+
     /** The standard generator uses $ref; these fixtures model a configured generator's inline output. */
     private function inlineRecordSchema(array $record, string $section = Ticket13InlineRecordSection::class): array
     {
