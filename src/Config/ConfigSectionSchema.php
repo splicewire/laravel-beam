@@ -146,7 +146,7 @@ class ConfigSectionSchema
             // by `additionalProperties`, which a map carries and a nested record (its own `properties`/`$ref`) does not.
             $property_schema = $schema['properties'][$name];
 
-            if (($property_schema['type'] ?? null) === 'object' && array_key_exists('additionalProperties', $property_schema)) {
+            if (in_array('object', (array) ($property_schema['type'] ?? []), true) && array_key_exists('additionalProperties', $property_schema)) {
                 $schema['properties'][$name] = ['anyOf' => [$property_schema, ['type' => 'array', 'maxItems' => 0]]];
             }
 

@@ -3,7 +3,11 @@
 namespace Splicewire\Beam\Tests\Config;
 
 use Rushing\Doctor\DoctorStatus;
+use Schemastud\DataSchemas\Attributes\MapValues;
 use Schemastud\DataSchemas\Migration\AcceptanceGate;
+use Splicewire\Beam\Config\Attributes\ConfigKey;
+use Splicewire\Beam\Config\Attributes\ConfigRoot;
+use Splicewire\Beam\Config\ConfigSection;
 use Splicewire\Beam\Config\ConfigSectionCoverage;
 use Splicewire\Beam\Config\ConfigSectionRegistry;
 use Splicewire\Beam\Config\ConfigSectionSchema;
@@ -125,6 +129,37 @@ class ConfigSectionTicket13Test extends TestCase
         $this->assertTrue($gate->accepts(['host-routes' => [], 'enabled' => true], $schema), 'an empty map validates');
         $this->assertTrue($gate->accepts(['host-routes' => ['home' => '/'], 'enabled' => true], $schema), 'a populated map validates');
         $this->assertFalse($gate->accepts(['host-routes' => ['a-list-item'], 'enabled' => true], $schema), 'a non-empty list is neither object nor empty array');
+        $this->assertFalse($gate->accepts(['host-routes' => null, 'enabled' => true], $schema), 'the non-nullable map still rejects null');
+        $this->assertFalse($gate->accepts(['enabled' => true], $schema), 'the non-defaulted map remains required');
+    }
+
+    public function test_part4_a_nullable_defaulted_map_accepts_omitted_null_empty_and_populated_values(): void
+    {
+        $schema = app(ConfigSectionSchema::class)->for(Ticket13NullableDefaultMapSection::class);
+        $gate = app(AcceptanceGate::class);
+
+        $this->assertNotContains('routes', $schema['required'] ?? []);
+        $this->assertArrayHasKey(ConfigSectionSchema::KEYWORD, $schema['properties']['routes']);
+
+        foreach ([
+            'omitted' => [],
+            'legacy null' => ['routes' => null],
+            'empty map' => ['routes' => []],
+            'populated map' => ['routes' => ['home' => '/']],
+        ] as $case => $values) {
+            $values = ['enabled' => true] + $values;
+            $this->assertTrue($gate->accepts($values, $schema), $case.' must validate: '.json_encode($schema, JSON_THROW_ON_ERROR));
+            $this->assertSame([], ConfigSectionCoverage::uncovered(Ticket13NullableDefaultMapSection::class, $values));
+        }
+    }
+
+    public function test_part4_a_nullable_defaulted_map_still_refuses_lists_and_non_string_values(): void
+    {
+        $schema = app(ConfigSectionSchema::class)->for(Ticket13NullableDefaultMapSection::class);
+        $gate = app(AcceptanceGate::class);
+
+        $this->assertFalse($gate->accepts(['enabled' => true, 'routes' => ['not-a-map']], $schema));
+        $this->assertFalse($gate->accepts(['enabled' => true, 'routes' => ['home' => 42]], $schema));
     }
 
     // ---- Part 3: the census classifies and lists, report-only -----------------------------------------------------
@@ -283,4 +318,16 @@ class ConfigSectionTicket13Test extends TestCase
         $this->assertSame(DoctorStatus::Warn, $ownership[0]->status, 'a failed census is indeterminate, not a pass');
         $this->assertStringContainsString('installed.json unreadable', $ownership[0]->detail);
     }
+}
+
+#[ConfigRoot(root: 'cs13.nullable-map', title: 'Nullable map section')]
+class Ticket13NullableDefaultMapSection extends ConfigSection
+{
+    /** @param  array<string, string>|null  $routes */
+    public function __construct(
+        #[ConfigKey]
+        public bool $enabled,
+        #[ConfigKey, MapValues('string')]
+        public ?array $routes = [],
+    ) {}
 }
