@@ -13,13 +13,22 @@ use Splicewire\Beam\Particle\ParticleResourceRegistry;
  * The `BeamParticlePersisted` writer event has no resource key. The catalog therefore marks an entry
  * delivered in process only when exactly one writable resource resolves to its model. The runtime
  * listener uses the same {@see ParticlePersistedEventResolver}, so an ambiguous model is neither
- * offered as an in-process event nor fanned out to multiple resources at write time.
+ * offered as an in-process event nor fanned out to multiple resources.
+ *
+ * This event still is not delivered to webhooks. Three decisions remain open before that can change:
+ * which resource identifies the event, what declared body shape crosses the HTTP boundary, and whose
+ * rows a subjectless subscription is allowed to receive. The published description states the current
+ * non-delivery and changes with the in-process delivery mark.
  *
  * Registration stays eager: `EventTypeRegistry::all()` remains a read of declarations, not a generator.
  */
 class ParticlePersistedEventRegistrar implements Registrar
 {
-    public const DESCRIPTION = 'record was written through the beam write pipeline.';
+    public const DESCRIPTION = 'Catalog-only: Beam does not deliver this event to webhooks yet.';
+
+    public const IN_PROCESS_DESCRIPTION = 'Delivered in process only: Beam does not deliver this event to webhooks yet.';
+
+    public const RECORD_DESCRIPTION = 'record was written through the beam write pipeline.';
 
     private ParticlePersistedEventResolver $resolver;
 
@@ -38,12 +47,15 @@ class ParticlePersistedEventRegistrar implements Registrar
             }
 
             $name = "{$resource->key}.persisted";
+            $deliveredInProcess = $this->resolver->eventNameForModel($model) === $name;
+            $deliveryDescription = $deliveredInProcess ? self::IN_PROCESS_DESCRIPTION : self::DESCRIPTION;
+
             $registry->register(
                 new EventType(
                     name: $name,
                     subject: $model,
-                    description: 'A '.$resource->key.' '.self::DESCRIPTION,
-                    deliveredInProcess: $this->resolver->eventNameForModel($model) === $name,
+                    description: 'A '.$resource->key.' '.self::RECORD_DESCRIPTION.' '.$deliveryDescription,
+                    deliveredInProcess: $deliveredInProcess,
                 ),
                 null,
                 self::class,
@@ -53,6 +65,6 @@ class ParticlePersistedEventRegistrar implements Registrar
 
     public function source(): string
     {
-        return 'BeamParticlePersisted, expanded per uniquely writable particle resource';
+        return 'BeamParticlePersisted, expanded per writable particle resource';
     }
 }

@@ -12,9 +12,14 @@ use Schemastud\Frame\Http\Controllers\FrameResourceController;
 use Splicewire\Beam\Data\HookData;
 use Splicewire\Beam\Events\EventType;
 use Splicewire\Beam\Events\EventTypeRegistry;
+use Splicewire\Beam\Events\ParticlePersistedEventRegistrar;
+use Splicewire\Beam\Events\ResourceKeyOracle;
 use Splicewire\Beam\Facades\Particle;
+use Splicewire\Beam\Models\BeamParticle;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\Ops\ResetHookOp;
+use Splicewire\Beam\Particle\ParticleResource;
+use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
 use Splicewire\Beam\Webhooks\DispatchWebhookJob;
 use Splicewire\Beam\Webhooks\HookEmitter;
@@ -137,6 +142,53 @@ class HookHttpSurfaceTest extends TestCase
         // The two lifecycle names beam core registers for itself (12 §8) are in the same catalog —
         // proving this reads the registry rather than an endpoint-local list.
         $this->assertContains('hooks.disabled', array_column($body['events'], 'name'));
+    }
+
+    public function test_root_catalog_publishes_webhook_non_delivery_for_marked_persisted_events(): void
+    {
+        $resources = new ParticleResourceRegistry;
+        $resources->register(new ParticleResource(
+            key: 'widgets',
+            backing: HookHttpPersistedParticle::class,
+            frame: false,
+        ));
+        $catalog = new EventTypeRegistry(new ResourceKeyOracle($this->app));
+        $catalog->attach(new ParticlePersistedEventRegistrar($resources));
+        $this->app->instance(EventTypeRegistry::class, $catalog);
+
+        $entry = collect($this->getJson('/hooks/events')->assertOk()->json('data.events'))
+            ->firstWhere('name', 'widgets.persisted');
+        $this->assertTrue($entry['deliveredInProcess']);
+        $this->assertStringContainsString(
+            'Delivered in process only: Beam does not deliver this event to webhooks yet',
+            $entry['description'],
+        );
+    }
+
+    public function test_root_catalog_publishes_webhook_non_delivery_for_ambiguous_unmarked_persisted_events(): void
+    {
+        $resources = new ParticleResourceRegistry;
+        foreach (['widgets', 'other-widgets'] as $key) {
+            $resources->register(new ParticleResource(
+                key: $key,
+                backing: HookHttpPersistedParticle::class,
+                frame: false,
+            ));
+        }
+        $catalog = new EventTypeRegistry(new ResourceKeyOracle($this->app));
+        $catalog->attach(new ParticlePersistedEventRegistrar($resources));
+        $this->app->instance(EventTypeRegistry::class, $catalog);
+
+        $entries = collect($this->getJson('/hooks/events')->assertOk()->json('data.events'))
+            ->whereIn('name', ['widgets.persisted', 'other-widgets.persisted']);
+        $this->assertCount(2, $entries);
+        foreach ($entries as $entry) {
+            $this->assertFalse($entry['deliveredInProcess']);
+            $this->assertStringContainsString(
+                'Catalog-only: Beam does not deliver this event to webhooks yet',
+                $entry['description'],
+            );
+        }
     }
 
     public function test_the_scoped_catalog_filters_by_resource_key_segment_wise(): void
@@ -440,6 +492,8 @@ class HookHttpSurfaceTest extends TestCase
         $this->assertSame('hooks/{id}/reset', $route->uri());
     }
 }
+
+class HookHttpPersistedParticle extends BeamParticle {}
 
 class PassThroughEntitlement
 {

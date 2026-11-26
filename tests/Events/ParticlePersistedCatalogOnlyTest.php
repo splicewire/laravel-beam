@@ -11,14 +11,15 @@ use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Events\ParticlePersistedEventRegistrar;
 use Splicewire\Beam\Events\ResourceKeyOracle;
 use Splicewire\Beam\Models\BeamParticle;
+use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
 use Splicewire\Beam\Webhooks\DispatchWebhookJob;
 
 /**
- * `{resource}.persisted` is delivered through the in-process signal only when the model resolves to one
- * writable resource. The catalog mark and write-time resolution must share that rule.
+ * `{resource}.persisted` is delivered to Beam listeners only when its model maps to one writable
+ * resource; Beam does not deliver it to webhooks yet. Its published description explains both facts.
  */
 class ParticlePersistedCatalogOnlyTest extends TestCase
 {
@@ -92,9 +93,44 @@ class ParticlePersistedCatalogOnlyTest extends TestCase
 
         Event::fake([BeamEventOccurred::class]);
         event(new BeamParticlePersisted(new PersistedTestParticle, ['title' => 'a widget']));
-
         event(new BeamParticlePersisted(new UnregisteredTestParticle, ['title' => 'unregistered']));
         Event::assertNotDispatched(BeamEventOccurred::class);
+    }
+
+    public function test_published_description_discloses_webhook_non_delivery_for_marked_and_unmarked_entries(): void
+    {
+        Hook::create([
+            'endpoint' => 'https://receiver.test/hooks',
+            'secret' => Hook::mintSecret(),
+            'events' => ['widgets.persisted'],
+        ]);
+
+        $marked = $this->catalog()->find('widgets.persisted');
+        $this->assertNotNull($marked);
+        $this->assertTrue($marked->deliveredInProcess);
+        $this->assertStringContainsString('Delivered in process only: Beam does not deliver this event to webhooks yet', $marked->description);
+
+        event(new BeamParticlePersisted(new PersistedTestParticle, ['title' => 'marked widget']));
+        Bus::assertNotDispatched(DispatchWebhookJob::class);
+
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'other-widgets',
+            backing: PersistedTestParticle::class,
+            frame: false,
+        ));
+        Hook::create([
+            'endpoint' => 'https://receiver.test/other-hooks',
+            'secret' => Hook::mintSecret(),
+            'events' => ['other-widgets.persisted'],
+        ]);
+
+        $unmarked = $this->catalog()->find('widgets.persisted');
+        $this->assertNotNull($unmarked);
+        $this->assertFalse($unmarked->deliveredInProcess);
+        $this->assertStringContainsString('Catalog-only: Beam does not deliver this event to webhooks yet', $unmarked->description);
+
+        event(new BeamParticlePersisted(new PersistedTestParticle, ['title' => 'ambiguous widget']));
+        Bus::assertNotDispatched(DispatchWebhookJob::class);
     }
 }
 
