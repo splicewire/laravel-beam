@@ -41,6 +41,9 @@ class EventTypeDescriptorData extends BeamData
 
         #[Description('One line of prose describing when the event fires. Not a contract.')]
         public string $description,
+
+        #[Description('Whether the producer dispatches BeamEventOccurred in this process.')]
+        public bool $deliveredInProcess = false,
     ) {}
 
     public static function fromEventType(EventType $type): self
@@ -51,6 +54,7 @@ class EventTypeDescriptorData extends BeamData
             verbPhrase: $type->verbPhrase(),
             subject: static::morphAlias($type->subject),
             description: $type->description,
+            deliveredInProcess: $type->deliveredInProcess,
         );
     }
 

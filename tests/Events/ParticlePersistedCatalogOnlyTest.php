@@ -3,21 +3,22 @@
 namespace Splicewire\Beam\Tests\Events;
 
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Event;
+use Splicewire\Beam\Events\BeamEvent;
+use Splicewire\Beam\Events\BeamEventOccurred;
 use Splicewire\Beam\Events\BeamParticlePersisted;
 use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Events\ParticlePersistedEventRegistrar;
 use Splicewire\Beam\Events\ResourceKeyOracle;
 use Splicewire\Beam\Models\BeamParticle;
-use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Particle\ParticleResource;
 use Splicewire\Beam\Particle\ParticleResourceRegistry;
 use Splicewire\Beam\Tests\TestCase;
 use Splicewire\Beam\Webhooks\DispatchWebhookJob;
 
 /**
- * `{resource}.persisted` is catalogued and not delivered. The two halves are pinned together: a
- * subscribed hook receives nothing when a record is written, and the description `GET /hooks/events`
- * publishes says so. Wiring delivery turns the first half red, and the description must change with it.
+ * `{resource}.persisted` is delivered through the in-process signal only when the model resolves to one
+ * writable resource. The catalog mark and write-time resolution must share that rule.
  */
 class ParticlePersistedCatalogOnlyTest extends TestCase
 {
@@ -30,7 +31,7 @@ class ParticlePersistedCatalogOnlyTest extends TestCase
 
         app(ParticleResourceRegistry::class)->register(new ParticleResource(
             key: 'widgets',
-            backing: BeamParticle::class,
+            backing: PersistedTestParticle::class,
             frame: false,
         ));
 
@@ -45,25 +46,58 @@ class ParticlePersistedCatalogOnlyTest extends TestCase
         return $registry;
     }
 
-    public function test_the_published_description_says_the_event_is_catalog_only(): void
+    public function test_an_annotated_event_carries_the_in_process_delivery_declaration(): void
+    {
+        $type = (new BeamEvent(
+            name: 'widgets.changed',
+            subject: PersistedTestParticle::class,
+            deliveredInProcess: true,
+        ))->toEventType();
+
+        $this->assertTrue($type->deliveredInProcess);
+    }
+
+    public function test_the_catalog_marks_the_unique_model_resource_as_delivered_in_process(): void
     {
         $type = $this->catalog()->find('widgets.persisted');
 
         $this->assertNotNull($type);
-        $this->assertSame('A widgets '.ParticlePersistedEventRegistrar::DESCRIPTION, $type->description);
-        $this->assertStringContainsString('Catalog-only', (string) $type->description);
+        $this->assertTrue($type->deliveredInProcess);
     }
 
-    public function test_a_write_announcement_reaches_no_subscribed_hook(): void
+    public function test_a_persisted_write_dispatches_the_named_in_process_event(): void
     {
-        Hook::create([
-            'endpoint' => 'https://receiver.test/hooks',
-            'secret' => Hook::mintSecret(),
-            'events' => ['widgets.persisted'],
-        ]);
+        Event::fake([BeamEventOccurred::class]);
 
-        event(new BeamParticlePersisted(new BeamParticle, ['title' => 'a widget']));
+        event(new BeamParticlePersisted(new PersistedTestParticle, ['title' => 'a widget']));
 
+        Event::assertDispatched(BeamEventOccurred::class, fn (BeamEventOccurred $event) => $event->eventName === 'widgets.persisted'
+                && $event->subject instanceof PersistedTestParticle
+                && $event->payload === ['title' => 'a widget']
+        );
         Bus::assertNotDispatched(DispatchWebhookJob::class);
     }
+
+    public function test_an_ambiguous_model_is_not_marked_or_dispatched(): void
+    {
+        app(ParticleResourceRegistry::class)->register(new ParticleResource(
+            key: 'other-widgets',
+            backing: PersistedTestParticle::class,
+            frame: false,
+        ));
+
+        $type = $this->catalog()->find('widgets.persisted');
+        $this->assertNotNull($type);
+        $this->assertFalse($type->deliveredInProcess);
+
+        Event::fake([BeamEventOccurred::class]);
+        event(new BeamParticlePersisted(new PersistedTestParticle, ['title' => 'a widget']));
+
+        event(new BeamParticlePersisted(new UnregisteredTestParticle, ['title' => 'unregistered']));
+        Event::assertNotDispatched(BeamEventOccurred::class);
+    }
 }
+
+class PersistedTestParticle extends BeamParticle {}
+
+class UnregisteredTestParticle extends BeamParticle {}

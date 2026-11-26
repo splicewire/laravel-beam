@@ -41,6 +41,7 @@ class BeamEvent
      * @param  class-string|null  $payload  the Data class describing the wire body, when one exists
      * @param  bool  $subjectless  this event genuinely has no subject, and says so
      * @param  string  $description  one line for `GET /hooks/events`
+     * @param  bool  $deliveredInProcess  the producer dispatches BeamEventOccurred in this process
      */
     public function __construct(
         public string $name,
@@ -48,6 +49,7 @@ class BeamEvent
         public ?string $payload = null,
         public bool $subjectless = false,
         public string $description = '',
+        public bool $deliveredInProcess = false,
     ) {}
 
     public function toEventType(): EventType
@@ -58,6 +60,7 @@ class BeamEvent
             payload: $this->payload,
             subjectless: $this->subjectless,
             description: $this->description,
+            deliveredInProcess: $this->deliveredInProcess,
         );
     }
 

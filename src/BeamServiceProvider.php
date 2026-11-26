@@ -2730,6 +2730,10 @@ class BeamServiceProvider extends PackageServiceProvider implements ChainsTraitM
         // ⚠️ `attach()` is EventTypeRegistry's own, not the composed store's: `BasicRegistry::attach()`
         // hands the registrar the store and every write would bypass that validation silently. See the
         // registry's class docblock.
+        Event::listen(
+            Events\BeamParticlePersisted::class,
+            [Events\ParticlePersistedEventListener::class, 'handle'],
+        );
         $this->app->booted(fn () => $this->registerEventTypes());
 
         // The discovery listing's auto-mount (api-surface-coherence 105). On `booted()` for the same

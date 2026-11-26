@@ -64,7 +64,7 @@ class HookHttpSurfaceTest extends TestCase
         Gate::before(fn () => true);
 
         $catalog = $this->app->make(EventTypeRegistry::class);
-        $catalog->register(new EventType(name: 'tenants.provisioned', subjectless: true, description: 'A tenant finished provisioning.'));
+        $catalog->register(new EventType(name: 'tenants.provisioned', subjectless: true, description: 'A tenant finished provisioning.', deliveredInProcess: true));
         $catalog->register(new EventType(name: 'compositions.render.completed', subjectless: true, description: 'A render finished.'));
 
         // The unscoped root catalog DECLARES its resource-lessness (api-surface-coherence 106) rather
@@ -120,7 +120,9 @@ class HookHttpSurfaceTest extends TestCase
         $this->assertNotContains('hooks/hooks/events', $catalogs);
         $this->assertSame(1, $catalogs->filter(fn ($uri) => $uri === 'hooks/events')->count());
         $this->assertContains('mounted-compositions/hooks/events', $catalogs);
-        $this->getJson('/hooks/events')->assertOk()->assertJsonPath('data.resource', null);
+        $root = $this->getJson('/hooks/events')->assertOk()->assertJsonPath('data.resource', null);
+        $events = collect($root->json('data.events'));
+        $this->assertTrue($events->firstWhere('name', 'tenants.provisioned')['deliveredInProcess']);
         $this->getJson('/mounted-compositions/hooks/events')->assertOk()->assertJsonPath('data.resource', 'compositions');
     }
 

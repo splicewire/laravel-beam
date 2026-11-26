@@ -54,6 +54,7 @@ class EventType implements HasRegistryKey
      * @param  class-string|null  $payload  the Data class describing the wire body, or null while undeclared
      * @param  bool  $subjectless  this event genuinely has no subject, and says so
      * @param  string  $description  one line, for `GET /hooks/events` — prose, not a contract
+     * @param  bool  $deliveredInProcess  a producer dispatches the named BeamEventOccurred signal in this process
      */
     public function __construct(
         public string $name,
@@ -61,6 +62,7 @@ class EventType implements HasRegistryKey
         public ?string $payload = null,
         public bool $subjectless = false,
         public string $description = '',
+        public bool $deliveredInProcess = false,
     ) {}
 
     /**

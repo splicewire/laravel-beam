@@ -2,9 +2,11 @@
 
 namespace Splicewire\Beam\Webhooks;
 
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 use Splicewire\Beam\Entitlements\EntitlementGate;
+use Splicewire\Beam\Events\BeamEventOccurred;
 use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Models\Hook;
 
@@ -49,6 +51,7 @@ class HookEmitter
     public function __construct(
         private WebhookDispatcher $dispatcher,
         private EntitlementGate $entitlements,
+        private Dispatcher $events,
     ) {}
 
     /**
@@ -62,6 +65,7 @@ class HookEmitter
     public function emit(string $eventName, array $payload, ?Model $subject = null, ?string $occurredAt = null): array
     {
         $occurredAt ??= now()->toIso8601String();
+        $this->events->dispatch(new BeamEventOccurred($eventName, $subject, $payload));
         $delivered = [];
 
         foreach (Hook::query()->subscribedTo($eventName, $subject)->get() as $hook) {

@@ -48,11 +48,13 @@ class HookEventRegistrar implements Registrar
                 name: 'hooks.disabled',
                 subject: Hook::class,
                 description: 'A hook auto-disabled after consecutive delivery failures; op/reset is the way back.',
+                deliveredInProcess: true,
             ),
             new EventType(
                 name: 'hooks.verified',
                 subject: Hook::class,
                 description: 'A hook answered the hooks.ping round trip with a 2xx and is now verified.',
+                deliveredInProcess: true,
             ),
         ];
     }

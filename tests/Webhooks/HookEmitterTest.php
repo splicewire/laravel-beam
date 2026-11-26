@@ -3,7 +3,10 @@
 namespace Splicewire\Beam\Tests\Webhooks;
 
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Event;
 use Rushing\PermissionCascade\Contracts\EntitlementResolver;
+use Splicewire\Beam\Events\BeamEventOccurred;
+use Splicewire\Beam\Events\EventTypeRegistry;
 use Splicewire\Beam\Models\Hook;
 use Splicewire\Beam\Tests\TestCase;
 use Splicewire\Beam\Webhooks\DispatchWebhookJob;
@@ -56,6 +59,22 @@ class HookEmitterTest extends TestCase
         $this->assertCount(1, $delivered);
         $this->assertNull($hook->fresh()->paused_at);
         Bus::assertDispatched(DispatchWebhookJob::class);
+    }
+
+    public function test_emit_dispatches_the_in_process_signal_with_its_name_subject_and_payload(): void
+    {
+        $hook = $this->hook();
+        $eventType = $this->app->make(EventTypeRegistry::class)->find('hooks.verified');
+        $this->assertNotNull($eventType);
+        $this->assertTrue($eventType->deliveredInProcess);
+        Event::fake([BeamEventOccurred::class]);
+
+        $this->emitter()->emit('hooks.verified', ['hookId' => (string) $hook->id], $hook);
+
+        Event::assertDispatched(BeamEventOccurred::class, fn (BeamEventOccurred $event) => $event->eventName === 'hooks.verified'
+                && $event->subject?->is($hook) === true
+                && $event->payload === ['hookId' => (string) $hook->id]
+        );
     }
 
     public function test_a_lapsed_entitlement_pauses_and_does_not_count_toward_auto_disable(): void
@@ -115,7 +134,7 @@ class HookEmitterTest extends TestCase
         });
 
         $this->assertNull(
-            $this->app->make(\Splicewire\Beam\Events\EventTypeRegistry::class)->find('hooks.ping'),
+            $this->app->make(EventTypeRegistry::class)->find('hooks.ping'),
             'hooks.ping is delivered but not subscribable — listing it would put a name in GET /hooks/events that no `events` array may legally contain.',
         );
     }
