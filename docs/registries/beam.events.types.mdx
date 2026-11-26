@@ -132,28 +132,32 @@ return array_map(
         "resource": "hooks",
         "verbPhrase": "persisted",
         "subject": "hook",
-        "description": "A hooks record was written through the beam write pipeline. Catalog-only: Beam does not deliver this event to webhooks yet."
+        "description": "A hooks record was written through the beam write pipeline. Delivered in process only: Beam does not deliver this event to webhooks yet.",
+        "deliveredInProcess": true
     },
     {
         "name": "hooks.disabled",
         "resource": "hooks",
         "verbPhrase": "disabled",
         "subject": "hook",
-        "description": "A hook auto-disabled after consecutive delivery failures; op/reset is the way back."
+        "description": "A hook auto-disabled after consecutive delivery failures; op/reset is the way back.",
+        "deliveredInProcess": true
     },
     {
         "name": "hooks.verified",
         "resource": "hooks",
         "verbPhrase": "verified",
         "subject": "hook",
-        "description": "A hook answered the hooks.ping round trip with a 2xx and is now verified."
+        "description": "A hook answered the hooks.ping round trip with a 2xx and is now verified.",
+        "deliveredInProcess": true
     },
     {
         "name": "hooks.paused",
         "resource": "hooks",
         "verbPhrase": "paused",
         "subject": "hook",
-        "description": "A hook stopped delivering until an operator resumes it."
+        "description": "A hook stopped delivering until an operator resumes it.",
+        "deliveredInProcess": false
     }
 ]
 ```
